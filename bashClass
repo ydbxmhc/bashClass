@@ -1,0 +1,98 @@
+
+## CLASS tools - not objects in this file
+#
+# To minimize the likelihood of data pollution we use some naming standards.
+# Internal data for any given class will be written to memory with TWO leading
+# underscores followed by the class name and another underscore, then the name
+# of the variable. Standard names will use CamelCase specifically because it is
+# not typical in shell.
+#
+# These are fast and efficient but cannot be written-to in subshells.
+# Cross-process (and other) persistence is managed by writing relevant
+# information to the filesystem; this is slower but dependable.
+#
+
+# initialize the module with some baseline defaults
+declare -A __bashClass_baseProperties=( baseDir "${TMPDIR:=/tmp}/.bashClasses" basePID "$$" )
+declare -A __bashClass_Properties __bashClass
+__bashClass+=( baseDir "${__bashClass_baseProperties[baseDir]}/bashClass" )
+__bashClass_PublicAttributes+=( )
+__bashClass_initErr="
+Unable to initialize bash Classes - did you run it in a subshell?
+bashClass must be sourced to import code; doing so in a subshell will fail.
+"
+[[ -d "${__bashClass[baseDir]}" ]] || ( umask 0000; mkdir -p "${__bashClass[baseDir]}"; );
+#: bashClass baseDir: "${__bashClass[baseDir]}"; # for debugging
+
+# method to get a class's declared properties
+__bashClass.getProperties () {
+  local -I class; : "${class:=bashClass}"; class="${class//[^_:[:alnum:]]/_}"; local -n P="__${class}_Properties";
+  for p in "${@:-${!P[@]}}"; do echo "$p=${P[$p]}"; done
+}
+
+__bashClass.publicAttributes() {
+  local -I class; : "${class:=bashClass}"; class="${class//[^_:[:alnum:]]/_}"; local -n P="__${class}_PublicAttributes";
+  printf '%s\n' "${P[@]}"
+}
+
+# utilitarian "die" function
+__bashClass.crash() { local -i err=1; if [[ "${1:-}" =~ ^[0-9]+$ ]]; then err=$1; shift; fi
+  printf "%s\n" "$@" >&2; exit $err;
+}
+
+# method to get a class's declared base directory property specifically
+__bashClass.baseDir() {
+  local -I class; : "${class:=bashClass}"; class="${class//[^_:[:alnum:]]/_}"; declare -Ag "__$class";
+  local -n d="__$class[baseDir]"; [[ -n "${d:-}" ]] && printf '%s' "${d%/}" ||:
+}
+
+# method to get a class's declared base directory property specifically
+__bashClass.checkPID() { [[ "$$" == "${__bashClass_baseProperties[basePID]}" ]] ||
+  __bashClass.crash 255 "
+Subshell Error -
+    Some bashClass methods must write to global memory to function correctly.
+    If run in a subshell, no changes can perist to the parent process.
+" "$@" "" "Current stack:" "${FUNCNAME[@]}"
+}
+
+# set up a default filesystem space for safer operation
+__bashClass.mkdir() { local d="${1:-}" tmp;
+  if (($#)); then [[ -d "$d" ]] || ( umask 0077; mkdir -p "$d"; )
+  else local -I class; : "${class:=bashClass}"; class="${class//[^_:[:alnum:]]/_}";
+       d="$( class=$class __bashClass.baseDir )"; [[ -d "${d:-}" ]] && return || __bashClass.checkPID;
+       declare -Ag "__$class"; local -n base="__$class[baseDir]" SUPER="__${class}_Properties[isa]";
+       if [[ -n "${SUPER:-}" ]]; then d="$( class="$SUPER" __bashClass.baseDir )";
+          if [[ -n "${d:-}" ]]; then base="$d/$class"; __bashClass.mkdir "$base";
+          else __bashClass.crash "${__bashClass_initErr?INITIALIZATION ERROR}"; fi
+       fi
+  fi
+}
+
+# generic public class attribute accessor
+# uses filesystem for persistence & in case called from a subshell
+bashClass.accessor() {
+  local -I class; : "${class:=bashClass}"; class="${class//[^_:[:alnum:]]/_}";
+  local f attr="${1:-}" val="${2:-}"; declare -Ag "__$class"; local -n d="__$class[baseDir]";
+  [[ -n "${d:-}" ]] || __bashClass.crash "You must initialize classes/objects before using them"
+  [[ -n "${attr:-}" ]] || __bashClass.crash "$FUNCNAME requires an attribute argument (stack: ${FUNCNAME[@]})"
+  printf -v f '%q' "$d/$attr"; [[ -n "${val:-}" ]] && printf '%s' "$val" > "$f" || printf '%s' "$(<$f)";
+}
+
+# WIP - used to disallow redefinition by after-initialization addition of automated methods
+bashClass.finalize() { local -I class; : "${class:=bashClass}"; class="${class//[^_:[:alnum:]]/_}";
+  local -n final="__${class}_Properties[final]"; final=1; # should probably be using a method interface
+}
+
+# the default *class* contructor
+bashClass() {
+  local -I class; : "${class:=bashClass}"; class="${class//[^_:[:alnum:]]/_}"; __bashClass.mkdir;
+  local -n C="__${class}_Properties"; case "${C[final]:-}" in ''|0);; *) __bashClass.crash "$class has been finalized";; esac
+  declare -f "$class.accessor" > /dev/null || eval "$class.accessor() { class='$class' bashClass.accessor \"\$@\"; }"
+  for o in "$@" "${C[isa]:+isa:${C[isa]}}"; do IFS='=:' read -r attr val <<< "$o";
+    attr="${attr//[^_[:alnum:]]/_}"; [[ -n "${attr:-}" ]] || break;
+    declare -f "$class.$attr" > /dev/null || eval "$class.$attr() { class='$class' $class.accessor '$attr' \"\$@\"; }"
+    [[ -z "${val:-}" ]] || "$class.$attr" "$val"
+  done
+}
+
+class=bashClass bashClass "${__bashClass_AutoLoad:+$@}" # initialize the base class
