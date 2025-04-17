@@ -1,0 +1,44 @@
+
+## the default OBJECT creation class
+
+# some basic definitions
+. bashClass # first must import the base code
+declare -A __bashObject __bashObject_Properties=( isa bashClass )
+__bashObject_PublicAttributes=( new isa )
+
+# class constructor
+bashObject() {
+  local -I class; : "${class:=bashObject}"; class="${class//[^_:[:alnum:]]/_}"; local tmp;
+  mapfile -t tmp < <( class=$class __bashClass.getProperties ); bashClass "${tmp[@]}" "$@" # assert declared props first
+  while read -r tmp; do tmp="${tmp//[^_[:alnum:]]/_}"; declare -f "$class.$tmp" >/dev/null ||
+    eval "$class.$tmp() { class='$class' $class.$tmp \"\$@\"; }"; done < <( class="$class" __bashClass.publicAttributes );
+}
+
+# a default object attribute accessor
+bashObject.objectAccessor() { local -I self class; local attr val f d; attr="${1//[^_[:alnum:]]/_}"; val="${2:-}";
+  for v in self class; do [[ -n "${!v:-}" ]] || __bashClass.crash "$FUNCNAME requires '\$$v' be set when called"; done;
+  [[ -n "${attr:-}" ]] || __bashClass.crash "$FUNCNAME requires an attribute argument (stack: ${FUNCNAME[@]})"
+  class="${class//[^_:[:alnum:]]/_}"; self="${self//[^_:[:alnum:]]/_}"; declare -Ag "__$class";
+  local -n d="__$class[baseDir]"; [[ -n "${d:=$( __bashClass.baseDir )}" && -d "$d/$self" ]] ||
+     __bashClass.crash "You must initialize classes/objects before using them"
+  printf -v f '%q' "$d/$self/$attr"; [[ -n "${val:-}" ]] && printf '%s' "$val" > "$f" || printf '%s' "$(<$f)";
+}
+
+# object constructor
+bashObject.new() {
+  local -I class; : "${class:=bashObject}"; class="${class//[^_:[:alnum:]]/_}"; local -n C="__$class";
+  local self oa tmp="$( __bashClass.baseDir )"; printf -v self _%x "${EPOCHREALTIME/.}"; __bashClass.mkdir "$tmp/$self";
+  declare -f "$class.objectAccessor" > /dev/null && oa="$class" || oa=bashObject
+  mapfile -t tmp < <( class="$class" __bashClass.getProperties );
+  for o in "${tmp[@]}" self=$self class=$class isa=$class "$@"; do
+    IFS=':=' read -r attr val <<< "$o"; attr="${attr//[^_[:alnum:]]/_}";
+    eval "$self.$attr() { self='$self' class='$class' $oa.objectAccessor '$attr' \"\$@\"; }"
+    [[ -n "$val" ]] && $self.$attr "$val"
+  done
+  while read -r tmp; do tmp="${tmp//[^_[:alnum:]]/_}";
+    eval "$self.$tmp() { self='$self' class='$class' $class.$tmp \"\$@\"; }"
+  done < <( class="$class" __bashClass.publicAttributes );
+  declare -g _Self="$self"
+}
+
+class=bashObject bashObject "${__bashClass_AutoLoad:+$@}"
