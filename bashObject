@@ -32,15 +32,20 @@ bashObject.new() {
   mapfile -t tmp < <( class="$class" __bashClass.getProperties );
   for o in "${tmp[@]}" self=$self class=$class isa=$class "$@"; do
     IFS=':=' read -r attr val <<< "$o"; attr="${attr//[^_[:alnum:]]/_}";
-    eval "$self.$attr() { self='$self' class='$class' $oa.objectAccessor '$attr' \"\$@\"; }"
+    declare -f "$self.$attr" > /dev/null || eval "$self.$attr() { 
+       self='$self' class='$class' $oa.objectAccessor '$attr' \"\$@\"; }"
     [[ -n "$val" ]] && $self.$attr "$val"
   done
   while read -r tmp; do tmp="${tmp//[^_[:alnum:]]/_}";
-    eval "$self.$tmp() { self='$self' class='$class' $class.$tmp \"\$@\"; }"
+    declare -f "$self.$tmp" > /dev/null || eval "$self.$tmp() { 
+      self='$self' class='$class' $class.$tmp \"\$@\"; }"
   done < <( class="$class" __bashClass.publicAttributes );
   declare -g _Self="$self"
 }
 
-new(){ local class=${1:-bashObject}; (($#)) && shift; class=$class bashObject.new "$@"; }
+new(){
+  local class=${1:-bashObject}; (($#)) && shift; 
+  class=$class bashObject.new "isa=$class" "$@";
+}
 
 class=bashObject bashObject "${__bashClass_AutoLoad:+$@}"

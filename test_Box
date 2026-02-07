@@ -24,7 +24,6 @@ for i in {1..3}; do l=$(ran_dim); w=$(ran_dim); h=$(ran_dim)
   echo "Dimensions: Length=$l, Width=$w, Height=$h"
   
   # Create the box object
-  echo Object:
   new Box length=$l width=$w height=$h; lst+=( $_Self )
   printf "%s is a %s\n" $_Self $($_Self.isa;)
 
