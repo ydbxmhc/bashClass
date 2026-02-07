@@ -1,23 +1,23 @@
 
 . bashObject
 declare -A __Box_Properties=( isa bashObject )
-__Box_PublicAttributes+=( new isa top end side bottom area volume )
+__Box_PublicAttributes+=( isa top end side bottom area volume )
 
 Box.calc() { local -i tot=1
-  if ((required)); then  (( required == $# )) ||
+  if ((required)); then (( required == $# )) ||
      __bashClass.crash "(${FUNCNAME[@]}) $FUNCNAME requires $required INTEGER arguments to multiply"
   fi
   for arg in "$@"; do [[ "${arg:-}" =~ ^[0-9]+$ ]] ||
-     __bashClass.crash "(${FUNCNAME[@]}) $FUNCNAME arguments must be integers"
+     __bashClass.crash "(${FUNCNAME[@]}) $FUNCNAME arguments must be integers: $@"
      (( tot *= arg ))
   done
   echo "$tot"
 }
 Box.area()   { required=2 Box.calc "$@"; }
 
-Box.top()    { local -I self; : ${self:=Box}; Box.area $($self.length) $($self.width);  }
-Box.end()    { local -I self; : ${self:=Box}; Box.area $($self.height) $($self.width);  }
-Box.side()   { local -I self; : ${self:=Box}; Box.area $($self.height) $($self.length); }
+Box.top()    { local -I self; : ${self:=Box}; $self.area $($self.length) $($self.width);  }
+Box.end()    { local -I self; : ${self:=Box}; $self.area $($self.height) $($self.width);  }
+Box.side()   { local -I self; : ${self:=Box}; $self.area $($self.height) $($self.length); }
 Box.bottom() { Box.top; }
 Box.volume() { local -I self; : ${self:=Box}; required=3 Box.calc $($self.length) $($self.height) $($self.width); }
 

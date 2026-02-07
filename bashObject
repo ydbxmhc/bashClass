@@ -41,4 +41,6 @@ bashObject.new() {
   declare -g _Self="$self"
 }
 
+new(){ local class=${1:-bashObject}; (($#)) && shift; class=$class bashObject.new "$@"; }
+
 class=bashObject bashObject "${__bashClass_AutoLoad:+$@}"
