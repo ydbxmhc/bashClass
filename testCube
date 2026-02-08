@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Test script for Box class
+# Creates three Box objects with random dimensions and tests all methods
+
+# Source the Box class
+. Cube
+lst=()
+
+for i in {1..3}; do new Cube size=$((RANDOM%10+1)) unit=mm; lst+=( $_Self )
+  printf "%s is a %s%s %s\n" $_Self $($_Self.size) $($_Self.unit) $($_Self.isa)
+done
+for o in "${lst[@]}"; do echo "$o volume: $($o.volume)"; done
+
+# Display other calculations of last object
+echo "Top Area:    $($_Self.top)"
+echo "End Area:    $($_Self.end)"
+echo "Side Area:   $($_Self.side)"
+echo "Bottom Area: $($_Self.bottom)"

@@ -1,0 +1,19 @@
+
+. Box
+declare -A __Cube_Properties=( isa Box )
+__Cube_PublicAttributes+=( size ${__Box_PublicAttributes[@]} )
+
+Cube.new(){
+  local -I class; : ${class:=Cube}; local arg=( "${@:-size=1}" ); local "$@"; 
+  class=$class bashObject.new "isa=$class" "$@" length=$size height=$size width=$size;
+  for v in length height width; do $_Self.$v $size; done
+}
+
+Cube.side()  { local -I self; : ${self:=Cube}; local s=$($self.size); Box.area $s $s; }
+Cube.top()   { local -I self; : ${self:=Cube}; $self.side; }
+Cube.end()   { local -I self; : ${self:=Cube}; $self.side; }
+Cube.bottom(){ local -I self; : ${self:=Cube}; $self.side; }
+Cube.volume(){ local -I self; : ${self:=Cube}; local s=$($self.size) required=3; Box.calc $s $s $s; }
+
+class=Cube bashObject size ${__Box_PublicAttributes[@]}
+
