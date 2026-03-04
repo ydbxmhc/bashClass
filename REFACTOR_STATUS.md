@@ -210,15 +210,63 @@ __bashClass.deserialize() {
 
 Enables: persistence, IPC, snapshots, debugging, testing, object cloning.
 
+## Design Philosophy
+
+### Inheritance vs Composition
+
+**Support traditional inheritance** (single inheritance with MRO) for familiarity, but **prefer and recommend composition** for flexibility and simplicity. Composition avoids deep inheritance hierarchies and makes relationships explicit.
+
+Example composition pattern:
+```bash
+# Instead of: Cube extends Box
+# Prefer: Cube has-a Box (composition)
+Cube.volume() {
+  local box_calculator="$(__bashClass.getProperty "$self" "calculator")"
+  $box_calculator.calculate "$size" "$size" "$size"
+}
+```
+
+### User Interface / Syntax Design
+
+**Critical consideration:** The visible usage syntax must be intuitive for both OOP developers AND bash users. Avoid "steampunk Lovecraftian nightmare" syntax.
+
+**Goals:**
+- Familiar to OOP users: `$object.method args` feels natural
+- Familiar to bash users: Still looks like bash, not Java-in-disguise
+- Readable: Clear what's happening without deep framework knowledge
+- Minimal magic: Avoid too much hidden behavior
+
+**Examples to evaluate:**
+```bash
+# Object creation - which feels better?
+new Box length=5 width=3 height=7
+Box.new length=5 width=3 height=7
+mybox=$(Box.create length=5 width=3 height=7)
+
+# Method calls - which is clearer?
+$mybox.volume
+$mybox volume
+call $mybox volume
+mybox.volume  # without $?
+
+# Property access
+$mybox.length
+$mybox length
+get $mybox length
+```
+
+**TODO:** Design and document the final syntax before implementation. Test with both OOP and bash-native users for feedback.
+
 ## Next Steps
 
-1. Implement descriptor-based registry system
-2. Build parser with nameref counter pattern
-3. Implement MRO with caching in dispatcher
-4. Add serialization/deserialization functions
-5. Migrate Box/Cube to new system
-6. Add benchmarking to measure improvements
-7. Consider multiple inheritance if use cases emerge
+1. **Design final user-facing syntax** (critical - do this first!)
+2. Implement descriptor-based registry system
+3. Build parser with nameref counter pattern
+4. Implement MRO with caching in dispatcher
+5. Add serialization/deserialization functions
+6. Migrate Box/Cube to new system
+7. Add benchmarking to measure improvements
+8. Document composition patterns as preferred approach
 
 ## Notes
 
