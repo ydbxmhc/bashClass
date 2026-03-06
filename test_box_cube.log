@@ -1,0 +1,35 @@
+=== Box and Cube Calculation Tests ===
+
+Test 1: Create Box with dimensions 5x3x7
+  Created: _64c6202b41816
+  Length: 5
+  Width:  3
+  Height: 7
+
+  Calculations:
+    Top area:    15 (expected: 15)
+    End area:    21 (expected: 21)
+    Side area:   35 (expected: 35)
+    Bottom area: 15 (expected: 15)
+    Volume:      105 (expected: 105)
+
+Test 2: Create Cube with size 4
+  Created: _64c6202b42cd2
+  Size: 4
+  Unit: cm
+
+  Calculations:
+    Side area: 16 (expected: 16)
+    Top area:  16 (expected: 16)
+    Volume:    64 (expected: 64)
+
+Test 3: Cube inherits from Box
+  Calling Box.calc directly from Cube context:
+    4 × 4 = 16 (expected: 16)
+
+Test 4: Multiple objects
+  Box1 volume: 8 (expected: 8)
+  Box2 volume: 150 (expected: 150)
+  Cube1 volume: 27 (expected: 27)
+
+=== All Tests Complete ===

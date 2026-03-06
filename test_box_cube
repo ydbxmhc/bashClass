@@ -1,0 +1,119 @@
+#!/bin/bash
+
+# Test the new Box and Cube implementations - NO SUBSHELLS
+
+. Cube_new
+
+echo "=== Box and Cube Calculation Tests ==="
+echo ""
+
+# ============================================================================
+# Test Box
+# ============================================================================
+
+echo "Test 1: Create Box with dimensions 5x3x7"
+class=Box __bashClass.dispatch new length=5 width=3 height=7
+box="$__bashClass_RETURN"
+echo "  Created: $box"
+
+__bashClass.parse "$box" "length" length
+__bashClass.parse "$box" "width" width
+__bashClass.parse "$box" "height" height
+echo "  Length: $length"
+echo "  Width:  $width"
+echo "  Height: $height"
+
+echo ""
+echo "  Calculations:"
+self="$box" class=Box __bashClass.dispatch top
+top="$__bashClass_RETURN"
+echo "    Top area:    $top (expected: 15)"
+
+self="$box" class=Box __bashClass.dispatch end
+end="$__bashClass_RETURN"
+echo "    End area:    $end (expected: 21)"
+
+self="$box" class=Box __bashClass.dispatch side
+side="$__bashClass_RETURN"
+echo "    Side area:   $side (expected: 35)"
+
+self="$box" class=Box __bashClass.dispatch bottom
+bottom="$__bashClass_RETURN"
+echo "    Bottom area: $bottom (expected: 15)"
+
+self="$box" class=Box __bashClass.dispatch volume
+volume="$__bashClass_RETURN"
+echo "    Volume:      $volume (expected: 105)"
+
+echo ""
+
+# ============================================================================
+# Test Cube
+# ============================================================================
+
+echo "Test 2: Create Cube with size 4"
+class=Cube __bashClass.dispatch new size=4 unit=cm
+cube="$__bashClass_RETURN"
+echo "  Created: $cube"
+
+__bashClass.parse "$cube" "size" size
+__bashClass.parse "$cube" "unit" unit
+echo "  Size: $size"
+echo "  Unit: $unit"
+
+echo ""
+echo "  Calculations:"
+self="$cube" class=Cube __bashClass.dispatch side
+cube_side="$__bashClass_RETURN"
+echo "    Side area: $cube_side (expected: 16)"
+
+self="$cube" class=Cube __bashClass.dispatch top
+cube_top="$__bashClass_RETURN"
+echo "    Top area:  $cube_top (expected: 16)"
+
+self="$cube" class=Cube __bashClass.dispatch volume
+cube_volume="$__bashClass_RETURN"
+echo "    Volume:    $cube_volume (expected: 64)"
+
+echo ""
+
+# ============================================================================
+# Test Inheritance
+# ============================================================================
+
+echo "Test 3: Cube inherits from Box"
+echo "  Calling Box.calc directly from Cube context:"
+self="$cube" class=Cube required=2 __Box_calc 4 4
+result="$__bashClass_RETURN"
+echo "    4 × 4 = $result (expected: 16)"
+
+echo ""
+
+# ============================================================================
+# Test Multiple Objects
+# ============================================================================
+
+echo "Test 4: Multiple objects"
+class=Box __bashClass.dispatch new length=2 width=2 height=2
+box1="$__bashClass_RETURN"
+
+class=Box __bashClass.dispatch new length=10 width=5 height=3
+box2="$__bashClass_RETURN"
+
+class=Cube __bashClass.dispatch new size=3
+cube1="$__bashClass_RETURN"
+
+self="$box1" class=Box __bashClass.dispatch volume
+vol1="$__bashClass_RETURN"
+echo "  Box1 volume: $vol1 (expected: 8)"
+
+self="$box2" class=Box __bashClass.dispatch volume
+vol2="$__bashClass_RETURN"
+echo "  Box2 volume: $vol2 (expected: 150)"
+
+self="$cube1" class=Cube __bashClass.dispatch volume
+vol3="$__bashClass_RETURN"
+echo "  Cube1 volume: $vol3 (expected: 27)"
+
+echo ""
+echo "=== All Tests Complete ==="

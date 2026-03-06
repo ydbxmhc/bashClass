@@ -1,0 +1,119 @@
+#!/bin/bash
+
+# Box class - new dispatcher implementation
+
+. bashDispatcher
+
+# ============================================================================
+# Box Class Descriptor
+# ============================================================================
+
+__bashClass_registry["Box"]="|type=class|id=Box|parent=bashObject|methods=calc,area,top,end,side,bottom,volume,new|properties=length,width,height,unit,color"
+
+# ============================================================================
+# Box Implementation Functions
+# ============================================================================
+
+# Generic multiplication calculator
+__Box_calc() {
+  local -I self class
+  local -i tot=1 required="${required:-0}"
+  
+  if ((required)); then
+    (( required == $# )) || __bashClass.crash "$FUNCNAME requires $required INTEGER arguments to multiply"
+  fi
+  
+  for arg in "$@"; do
+    [[ "${arg:-}" =~ ^[0-9]+$ ]] || __bashClass.crash "$FUNCNAME arguments must be integers: $*"
+    (( tot *= arg ))
+  done
+  
+  __bashClass_RETURN="$tot"
+}
+
+# Calculate area (2D)
+__Box_area() {
+  local -I self class
+  required=2 __Box_calc "$@"
+}
+
+# Calculate top face area
+__Box_top() {
+  local -I self class
+  local length width
+  __bashClass.parse "$self" "length" length
+  __bashClass.parse "$self" "width" width
+  self="$self" class="$class" __bashClass.dispatch area "$length" "$width"
+}
+
+# Calculate end face area
+__Box_end() {
+  local -I self class
+  local height width
+  __bashClass.parse "$self" "height" height
+  __bashClass.parse "$self" "width" width
+  self="$self" class="$class" __bashClass.dispatch area "$height" "$width"
+}
+
+# Calculate side face area
+__Box_side() {
+  local -I self class
+  local height length
+  __bashClass.parse "$self" "height" height
+  __bashClass.parse "$self" "length" length
+  self="$self" class="$class" __bashClass.dispatch area "$height" "$length"
+}
+
+# Calculate bottom face area (same as top)
+__Box_bottom() {
+  local -I self class
+  self="$self" class="$class" __bashClass.dispatch top
+}
+
+# Calculate volume (3D)
+__Box_volume() {
+  local -I self class
+  local length height width
+  __bashClass.parse "$self" "length" length
+  __bashClass.parse "$self" "height" height
+  __bashClass.parse "$self" "width" width
+  required=3 __Box_calc "$length" "$height" "$width"
+}
+
+# Object constructor
+__Box_new() {
+  local -I class
+  : "${class:=Box}"
+  
+  # Generate unique object ID
+  local self
+  printf -v self "_%x" "${EPOCHREALTIME//.}"
+  
+  # Create object descriptor (leading | for consistent parsing)
+  local descriptor="|type=object|id=$self|parent=|methods=|properties=|self=$self|class=$class"
+  
+  # Parse arguments and add properties
+  for arg in "$@"; do
+    IFS='=' read -r prop val <<< "$arg"
+    descriptor="$descriptor|$prop=$val"
+  done
+  
+  # Register object
+  __bashClass_registry[$self]="$descriptor"
+  
+  # Return object ID via global variable
+  __bashClass_RETURN="$self"
+}
+
+# ============================================================================
+# Register Methods
+# ============================================================================
+
+__bashClass.registerMethod Box calc __Box_calc
+__bashClass.registerMethod Box area __Box_area
+__bashClass.registerMethod Box top __Box_top
+__bashClass.registerMethod Box end __Box_end
+__bashClass.registerMethod Box side __Box_side
+__bashClass.registerMethod Box bottom __Box_bottom
+__bashClass.registerMethod Box volume __Box_volume
+__bashClass.registerMethod Box new __Box_new

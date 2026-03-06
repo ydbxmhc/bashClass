@@ -1,0 +1,140 @@
+#!/bin/bash
+
+# Test script for bashDispatcher
+
+. bashDispatcher
+
+echo "=== bashDispatcher Test Suite ==="
+echo ""
+
+# ============================================================================
+# Test 1: Validation
+# ============================================================================
+
+echo "Test 1: Validation"
+__bashClass.validate "ValidName" && echo "  ✓ Valid identifier accepted"
+__bashClass.validate "Box" && echo "  ✓ Class name accepted"
+__bashClass.validate "_private" && echo "  ✓ Underscore prefix accepted"
+
+# This should fail
+__bashClass.validate "Invalid-Name" 2>&1 | grep -q "Invalid identifier" && echo "  ✓ Invalid identifier rejected"
+
+echo ""
+
+# ============================================================================
+# Test 2: Registry and Parsing
+# ============================================================================
+
+echo "Test 2: Registry and Parsing"
+
+# Add test data (with leading | sentinel)
+__bashClass_registry["Box"]="|type=class|id=Box|parent=bashObject|methods=volume,area|properties=length,width,height"
+__bashClass_registry["Cube"]="|type=class|id=Cube|parent=Box|methods=volume|properties=size"
+
+# Test stdout mode (subshell)
+parent=$(__bashClass.parse "Box" "parent")
+[[ "$parent" == "bashObject" ]] && echo "  ✓ Stdout mode works: parent=$parent"
+
+# Test nameref mode
+__bashClass.parse "Cube" "parent" cube_parent
+[[ "$cube_parent" == "Box" ]] && echo "  ✓ Nameref mode works: cube_parent=$cube_parent"
+
+# Test global mode
+__bashClass_returnMode=global __bashClass.parse "Box" "methods"
+[[ "$__bashClass_RETURN" == "volume,area" ]] && echo "  ✓ Global mode works: methods=$__bashClass_RETURN"
+
+echo ""
+
+# ============================================================================
+# Test 3: Method Registration and Dispatch
+# ============================================================================
+
+echo "Test 3: Method Registration and Dispatch"
+
+# Define implementation functions
+Box_volume() {
+  local -I self class
+  echo "Box.volume called with self=$self class=$class"
+}
+
+Box_area() {
+  local -I self class
+  echo "Box.area called with self=$self class=$class"
+}
+
+Cube_volume() {
+  local -I self class
+  echo "Cube.volume called (overridden) with self=$self class=$class"
+}
+
+# Register methods
+__bashClass.registerMethod Box volume Box_volume
+__bashClass.registerMethod Box area Box_area
+__bashClass.registerMethod Cube volume Cube_volume
+
+echo "  ✓ Methods registered"
+
+# Test class method call
+echo -n "  "
+class=Box __bashClass.dispatch volume
+
+# Test object method call
+echo -n "  "
+self="_obj123" class=Box __bashClass.dispatch area
+
+# Test overridden method
+echo -n "  "
+self="_cube456" class=Cube __bashClass.dispatch volume
+
+echo ""
+
+# ============================================================================
+# Test 4: Inheritance (Method Resolution Order)
+# ============================================================================
+
+echo "Test 4: Inheritance (MRO)"
+
+# Cube inherits area from Box (not explicitly registered for Cube)
+echo -n "  "
+self="_cube789" class=Cube __bashClass.dispatch area
+
+# Check that it was cached
+[[ -n "${__bashClass_methodRegistry[Cube.area]}" ]] && echo "  ✓ Inherited method cached"
+
+echo ""
+
+# ============================================================================
+# Test 5: Serialization
+# ============================================================================
+
+echo "Test 5: Serialization"
+
+# Serialize
+__bashClass.serialize test_objects.dat
+[[ -f test_objects.dat ]] && echo "  ✓ Serialized to file"
+
+# Clear registry
+__bashClass_registry=()
+
+# Deserialize
+__bashClass.deserialize test_objects.dat
+[[ "${__bashClass_registry[Box]}" =~ "parent=bashObject" ]] && echo "  ✓ Deserialized from file"
+
+# Cleanup
+rm -f test_objects.dat
+
+echo ""
+
+# ============================================================================
+# Test 6: Subshell Detection
+# ============================================================================
+
+echo "Test 6: Subshell Detection"
+
+__bashClass.inSubshell && echo "  ✗ Should not be in subshell" || echo "  ✓ Not in subshell"
+
+( __bashClass.inSubshell && echo "  ✓ Detected subshell" || echo "  ✗ Failed to detect subshell" )
+
+echo ""
+
+echo "=== All Tests Complete ==="

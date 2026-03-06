@@ -1,0 +1,235 @@
+#!/bin/bash
+
+## bashDispatcher - Modern OOP dispatch system for bash
+##
+## Provides secure, efficient method dispatch with multiple return modes
+## and proper inheritance support.
+
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
+
+# Store root PID for subshell detection
+declare -gi __bashClass_rootPID=$BASHPID
+
+# Global registry: single associative array for all data
+declare -gA __bashClass_registry
+
+# Method registry for dispatch (includes cached inherited methods)
+declare -gA __bashClass_methodRegistry
+
+# Return mode configuration
+declare -g __bashClass_returnMode="${__bashClass_returnMode:-auto}"
+
+# Counter for unique nameref generation
+declare -gi __bashClass_refCounter=0
+
+# Global return variable (for global mode)
+declare -g __bashClass_RETURN=""
+
+# ============================================================================
+# VALIDATION
+# ============================================================================
+
+# Validate identifier: strict check, crash if invalid
+__bashClass.validate() {
+  [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || __bashClass.crash "Invalid identifier: '$1'"
+}
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+# Set global default return mode
+__bashClass.setDefaultMode() {
+  local mode="$1"
+  case "$mode" in
+    auto|nameref|stdout|global|filesystem)
+      __bashClass_returnMode="$mode"
+      ;;
+    *)
+      __bashClass.crash "Invalid mode: $mode (use: auto, nameref, stdout, global, filesystem)"
+      ;;
+  esac
+}
+
+# Get current return mode
+__bashClass.getMode() {
+  printf "%s" "$__bashClass_returnMode"
+}
+
+# ============================================================================
+# PARSING & DATA ACCESS
+# ============================================================================
+
+# Parse a field from a descriptor with polymorphic return
+# Usage: 
+#   value=$(__bashClass.parse "Box" "parent")           # stdout mode
+#   __bashClass.parse "Box" "parent" my_var             # nameref mode
+#   __bashClass_returnMode=global __bashClass.parse ... # global mode
+__bashClass.parse() {
+  local key="$1" field="$2" 
+  local target="${3:-}"
+  
+  # Validate key
+  __bashClass.validate "$key"
+  
+  # Extract the value from descriptor
+  local descriptor="${__bashClass_registry[$key]}"
+  local pattern="\\|${field}=([^|]*)"
+  local value=""
+  [[ "$descriptor" =~ $pattern ]] && value="${BASH_REMATCH[1]}"
+  
+  # Determine return mode
+  local mode="$__bashClass_returnMode"
+  if [[ "$mode" == "auto" ]]; then
+    if [[ $BASHPID != $__bashClass_rootPID ]]; then
+      mode="stdout"
+    elif [[ -n "$target" ]]; then
+      mode="nameref"
+    else
+      mode="stdout"
+    fi
+  fi
+  
+  # Return via selected mode
+  case "$mode" in
+    nameref)
+      [[ -n "$target" ]] || __bashClass.crash "nameref mode requires target variable"
+      [[ $BASHPID == $__bashClass_rootPID ]] || __bashClass.crash "Cannot use nameref in subshell"
+      local refname="__ref_$((++__bashClass_refCounter))"
+      local -n "$refname"="$target"
+      printf -v "$refname" "%s" "$value"
+      ;;
+    stdout)
+      printf "%s" "$value"
+      ;;
+    global)
+      __bashClass_RETURN="$value"
+      ;;
+    filesystem)
+      local tmpfile="${__bashClass_tmpdir:-/tmp}/__bashClass_return_$$"
+      printf "%s" "$value" > "$tmpfile"
+      ;;
+    *)
+      __bashClass.crash "Invalid return mode: $mode"
+      ;;
+  esac
+}
+
+# ============================================================================
+# METHOD REGISTRY
+# ============================================================================
+
+# Register a method implementation
+# Usage: __bashClass.registerMethod ClassName methodName implementationFunction
+__bashClass.registerMethod() {
+  local class="$1" method="$2" impl="$3"
+  
+  __bashClass.validate "$class"
+  __bashClass.validate "$method"
+  __bashClass.validate "$impl"
+  
+  declare -f "$impl" >/dev/null || __bashClass.crash "Function '$impl' does not exist"
+  
+  __bashClass_methodRegistry["$class.$method"]="$impl"
+}
+
+# ============================================================================
+# METHOD DISPATCH
+# ============================================================================
+
+# Unified dispatcher with inheritance support
+# Usage:
+#   class=Box __bashClass.dispatch volume args...              # class method
+#   self="_a1b2c3d4" class=Box __bashClass.dispatch volume ... # object method
+__bashClass.dispatch() {
+  local self="${self:-${class:-bashClass}}" class="${class:-bashClass}"
+  local method="$1"
+  shift
+  
+  __bashClass.validate "$self"
+  __bashClass.validate "$class"
+  __bashClass.validate "$method"
+  
+  # Check cache first (direct lookup)
+  local cache_key="$class.$method"
+  local impl="${__bashClass_methodRegistry[$cache_key]}"
+  
+  # Cache miss? Walk inheritance chain
+  if [[ -z "$impl" ]]; then
+    local current_class="$class"
+    
+    while [[ -n "$current_class" ]]; do
+      local key="$current_class.$method"
+      impl="${__bashClass_methodRegistry[$key]}"
+      
+      # Found it?
+      if [[ -n "$impl" ]]; then
+        # Cache for next time (if not the original class)
+        [[ "$current_class" != "$class" ]] && __bashClass_methodRegistry[$cache_key]="$impl"
+        break
+      fi
+      
+      # Try parent - use nameref to avoid subshell
+      __bashClass.parse "$current_class" "parent" current_class
+    done
+  fi
+  
+  # Still not found?
+  [[ -n "$impl" ]] || __bashClass.crash "Method not found: $class.$method"
+  
+  # Call with context
+  self="$self" class="$class" "$impl" "$@"
+}
+
+# ============================================================================
+# SERIALIZATION
+# ============================================================================
+
+# Serialize entire registry to file
+__bashClass.serialize() {
+  local file="${1:-objects.dat}"
+  for key in "${!__bashClass_registry[@]}"; do
+    printf "%s\t%s\n" "$key" "${__bashClass_registry[$key]}"
+  done > "$file"
+}
+
+# Deserialize from file
+__bashClass.deserialize() {
+  local file="${1:-objects.dat}"
+  [[ -f "$file" ]] || __bashClass.crash "File not found: $file"
+  
+  local key descriptor
+  while IFS=$'\t' read -r key descriptor; do
+    __bashClass.validate "$key"
+    __bashClass_registry[$key]="$descriptor"
+  done < "$file"
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+# Crash with error message (imported from bashClass)
+__bashClass.crash() {
+  local -i err=1
+  if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
+    err=$1
+    shift
+  fi
+  printf "%s\n" "$@" >&2
+  exit $err
+}
+
+# Check if in subshell
+__bashClass.inSubshell() {
+  [[ $BASHPID != $__bashClass_rootPID ]]
+}
+
+# ============================================================================
+# INITIALIZATION COMPLETE
+# ============================================================================
+
+# Mark as loaded
+declare -g __bashDispatcher_loaded=1

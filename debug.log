@@ -1,0 +1,556 @@
+
+. Box_new
++ . Box_new
+#!/bin/bash
+
+# Box class - new dispatcher implementation
+
+. bashDispatcher
+++ . bashDispatcher
+#!/bin/bash
+
+## bashDispatcher - Modern OOP dispatch system for bash
+##
+## Provides secure, efficient method dispatch with multiple return modes
+## and proper inheritance support.
+
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
+
+# Store root PID for subshell detection
+declare -gi __bashClass_rootPID=$BASHPID
++++ declare -gi __bashClass_rootPID=4097
+
+# Global registry: single associative array for all data
+declare -gA __bashClass_registry
++++ declare -gA __bashClass_registry
+
+# Method registry for dispatch (includes cached inherited methods)
+declare -gA __bashClass_methodRegistry
++++ declare -gA __bashClass_methodRegistry
+
+# Return mode configuration
+declare -g __bashClass_returnMode="${__bashClass_returnMode:-auto}"
++++ declare -g __bashClass_returnMode=auto
+
+# Counter for unique nameref generation
+declare -gi __bashClass_refCounter=0
++++ declare -gi __bashClass_refCounter=0
+
+# Global return variable (for global mode)
+declare -g __bashClass_RETURN=""
++++ declare -g __bashClass_RETURN=
+
+# ============================================================================
+# VALIDATION
+# ============================================================================
+
+# Validate identifier: strict check, crash if invalid
+__bashClass.validate() {
+  [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || __bashClass.crash "Invalid identifier: '$1'"
+}
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+# Set global default return mode
+__bashClass.setDefaultMode() {
+  local mode="$1"
+  case "$mode" in
+    auto|nameref|stdout|global|filesystem)
+      __bashClass_returnMode="$mode"
+      ;;
+    *)
+      __bashClass.crash "Invalid mode: $mode (use: auto, nameref, stdout, global, filesystem)"
+      ;;
+  esac
+}
+
+# Get current return mode
+__bashClass.getMode() {
+  printf "%s" "$__bashClass_returnMode"
+}
+
+# ============================================================================
+# PARSING & DATA ACCESS
+# ============================================================================
+
+# Parse a field from a descriptor with polymorphic return
+# Usage: 
+#   value=$(__bashClass.parse "Box" "parent")           # stdout mode
+#   __bashClass.parse "Box" "parent" my_var             # nameref mode
+#   __bashClass_returnMode=global __bashClass.parse ... # global mode
+__bashClass.parse() {
+  local key="$1" field="$2" 
+  local target="${3:-}"
+  
+  # Validate key
+  __bashClass.validate "$key"
+  
+  # Extract the value from descriptor
+  local descriptor="${__bashClass_registry[$key]}"
+  local pattern="\\|${field}=([^|]*)"
+  local value=""
+  [[ "$descriptor" =~ $pattern ]] && value="${BASH_REMATCH[1]}"
+  
+  # Determine return mode
+  local mode="$__bashClass_returnMode"
+  if [[ "$mode" == "auto" ]]; then
+    if [[ $BASHPID != $__bashClass_rootPID ]]; then
+      mode="stdout"
+    elif [[ -n "$target" ]]; then
+      mode="nameref"
+    else
+      mode="stdout"
+    fi
+  fi
+  
+  # Return via selected mode
+  case "$mode" in
+    nameref)
+      [[ -n "$target" ]] || __bashClass.crash "nameref mode requires target variable"
+      [[ $BASHPID == $__bashClass_rootPID ]] || __bashClass.crash "Cannot use nameref in subshell"
+      local refname="__ref_$((++__bashClass_refCounter))"
+      local -n "$refname"="$target"
+      printf -v "$refname" "%s" "$value"
+      ;;
+    stdout)
+      printf "%s" "$value"
+      ;;
+    global)
+      __bashClass_RETURN="$value"
+      ;;
+    filesystem)
+      local tmpfile="${__bashClass_tmpdir:-/tmp}/__bashClass_return_$$"
+      printf "%s" "$value" > "$tmpfile"
+      ;;
+    *)
+      __bashClass.crash "Invalid return mode: $mode"
+      ;;
+  esac
+}
+
+# ============================================================================
+# METHOD REGISTRY
+# ============================================================================
+
+# Register a method implementation
+# Usage: __bashClass.registerMethod ClassName methodName implementationFunction
+__bashClass.registerMethod() {
+  local class="$1" method="$2" impl="$3"
+  
+  __bashClass.validate "$class"
+  __bashClass.validate "$method"
+  __bashClass.validate "$impl"
+  
+  declare -f "$impl" >/dev/null || __bashClass.crash "Function '$impl' does not exist"
+  
+  __bashClass_methodRegistry["$class.$method"]="$impl"
+}
+
+# ============================================================================
+# METHOD DISPATCH
+# ============================================================================
+
+# Unified dispatcher with inheritance support
+# Usage:
+#   class=Box __bashClass.dispatch volume args...              # class method
+#   self="_a1b2c3d4" class=Box __bashClass.dispatch volume ... # object method
+__bashClass.dispatch() {
+  local self="${self:-${class:-bashClass}}" class="${class:-bashClass}"
+  local method="$1"
+  shift
+  
+  __bashClass.validate "$self"
+  __bashClass.validate "$class"
+  __bashClass.validate "$method"
+  
+  # Check cache first (direct lookup)
+  local cache_key="$class.$method"
+  local impl="${__bashClass_methodRegistry[$cache_key]}"
+  
+  # Cache miss? Walk inheritance chain
+  if [[ -z "$impl" ]]; then
+    local current_class="$class"
+    
+    while [[ -n "$current_class" ]]; do
+      local key="$current_class.$method"
+      impl="${__bashClass_methodRegistry[$key]}"
+      
+      # Found it?
+      if [[ -n "$impl" ]]; then
+        # Cache for next time (if not the original class)
+        [[ "$current_class" != "$class" ]] && __bashClass_methodRegistry[$cache_key]="$impl"
+        break
+      fi
+      
+      # Try parent - use nameref to avoid subshell
+      __bashClass.parse "$current_class" "parent" current_class
+    done
+  fi
+  
+  # Still not found?
+  [[ -n "$impl" ]] || __bashClass.crash "Method not found: $class.$method"
+  
+  # Call with context
+  self="$self" class="$class" "$impl" "$@"
+}
+
+# ============================================================================
+# SERIALIZATION
+# ============================================================================
+
+# Serialize entire registry to file
+__bashClass.serialize() {
+  local file="${1:-objects.dat}"
+  for key in "${!__bashClass_registry[@]}"; do
+    printf "%s\t%s\n" "$key" "${__bashClass_registry[$key]}"
+  done > "$file"
+}
+
+# Deserialize from file
+__bashClass.deserialize() {
+  local file="${1:-objects.dat}"
+  [[ -f "$file" ]] || __bashClass.crash "File not found: $file"
+  
+  local key descriptor
+  while IFS=$'\t' read -r key descriptor; do
+    __bashClass.validate "$key"
+    __bashClass_registry[$key]="$descriptor"
+  done < "$file"
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+# Crash with error message (imported from bashClass)
+__bashClass.crash() {
+  local -i err=1
+  if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
+    err=$1
+    shift
+  fi
+  printf "%s\n" "$@" >&2
+  exit $err
+}
+
+# Check if in subshell
+__bashClass.inSubshell() {
+  [[ $BASHPID != $__bashClass_rootPID ]]
+}
+
+# ============================================================================
+# INITIALIZATION COMPLETE
+# ============================================================================
+
+# Mark as loaded
+declare -g __bashDispatcher_loaded=1
++++ declare -g __bashDispatcher_loaded=1
+
+# ============================================================================
+# Box Class Descriptor
+# ============================================================================
+
+__bashClass_registry["Box"]="|type=class|id=Box|parent=bashObject|methods=calc,area,top,end,side,bottom,volume,new|properties=length,width,height,unit,color"
+++ __bashClass_registry["Box"]='|type=class|id=Box|parent=bashObject|methods=calc,area,top,end,side,bottom,volume,new|properties=length,width,height,unit,color'
+
+# ============================================================================
+# Box Implementation Functions
+# ============================================================================
+
+# Generic multiplication calculator
+__Box_calc() {
+  local -I self class
+  local -i tot=1 required="${required:-0}"
+  
+  if ((required)); then
+    (( required == $# )) || __bashClass.crash "$FUNCNAME requires $required INTEGER arguments to multiply"
+  fi
+  
+  for arg in "$@"; do
+    [[ "${arg:-}" =~ ^[0-9]+$ ]] || __bashClass.crash "$FUNCNAME arguments must be integers: $*"
+    (( tot *= arg ))
+  done
+  
+  __bashClass_RETURN="$tot"
+}
+
+# Calculate area (2D)
+__Box_area() {
+  local -I self class
+  required=2 __Box_calc "$@"
+}
+
+# Calculate top face area
+__Box_top() {
+  local -I self class
+  local length width
+  __bashClass.parse "$self" "length" length
+  __bashClass.parse "$self" "width" width
+  self="$self" class="$class" __bashClass.dispatch area "$length" "$width"
+}
+
+# Calculate end face area
+__Box_end() {
+  local -I self class
+  local height width
+  __bashClass.parse "$self" "height" height
+  __bashClass.parse "$self" "width" width
+  self="$self" class="$class" __bashClass.dispatch area "$height" "$width"
+}
+
+# Calculate side face area
+__Box_side() {
+  local -I self class
+  local height length
+  __bashClass.parse "$self" "height" height
+  __bashClass.parse "$self" "length" length
+  self="$self" class="$class" __bashClass.dispatch area "$height" "$length"
+}
+
+# Calculate bottom face area (same as top)
+__Box_bottom() {
+  local -I self class
+  self="$self" class="$class" __bashClass.dispatch top
+}
+
+# Calculate volume (3D)
+__Box_volume() {
+  local -I self class
+  local length height width
+  __bashClass.parse "$self" "length" length
+  __bashClass.parse "$self" "height" height
+  __bashClass.parse "$self" "width" width
+  required=3 __Box_calc "$length" "$height" "$width"
+}
+
+# Object constructor
+__Box_new() {
+  local -I class
+  : "${class:=Box}"
+  
+  # Generate unique object ID
+  local self
+  printf -v self "_%x" "${EPOCHREALTIME//.}"
+  
+  # Create object descriptor (leading | for consistent parsing)
+  local descriptor="|type=object|id=$self|parent=|methods=|properties=|self=$self|class=$class"
+  
+  # Parse arguments and add properties
+  for arg in "$@"; do
+    IFS='=' read -r prop val <<< "$arg"
+    descriptor="$descriptor|$prop=$val"
+  done
+  
+  # Register object
+  __bashClass_registry[$self]="$descriptor"
+  
+  # Return object ID via global variable
+  __bashClass_RETURN="$self"
+}
+
+# ============================================================================
+# Register Methods
+# ============================================================================
+
+__bashClass.registerMethod Box calc __Box_calc
+++ __bashClass.registerMethod Box calc __Box_calc
+++ local class=Box method=calc impl=__Box_calc
+++ __bashClass.validate Box
+++ [[ Box =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate calc
+++ [[ calc =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate __Box_calc
+++ [[ __Box_calc =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ declare -f __Box_calc
+++ __bashClass_methodRegistry["$class.$method"]=__Box_calc
+__bashClass.registerMethod Box area __Box_area
+++ __bashClass.registerMethod Box area __Box_area
+++ local class=Box method=area impl=__Box_area
+++ __bashClass.validate Box
+++ [[ Box =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate area
+++ [[ area =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate __Box_area
+++ [[ __Box_area =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ declare -f __Box_area
+++ __bashClass_methodRegistry["$class.$method"]=__Box_area
+__bashClass.registerMethod Box top __Box_top
+++ __bashClass.registerMethod Box top __Box_top
+++ local class=Box method=top impl=__Box_top
+++ __bashClass.validate Box
+++ [[ Box =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate top
+++ [[ top =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate __Box_top
+++ [[ __Box_top =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ declare -f __Box_top
+++ __bashClass_methodRegistry["$class.$method"]=__Box_top
+__bashClass.registerMethod Box end __Box_end
+++ __bashClass.registerMethod Box end __Box_end
+++ local class=Box method=end impl=__Box_end
+++ __bashClass.validate Box
+++ [[ Box =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate end
+++ [[ end =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate __Box_end
+++ [[ __Box_end =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ declare -f __Box_end
+++ __bashClass_methodRegistry["$class.$method"]=__Box_end
+__bashClass.registerMethod Box side __Box_side
+++ __bashClass.registerMethod Box side __Box_side
+++ local class=Box method=side impl=__Box_side
+++ __bashClass.validate Box
+++ [[ Box =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate side
+++ [[ side =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate __Box_side
+++ [[ __Box_side =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ declare -f __Box_side
+++ __bashClass_methodRegistry["$class.$method"]=__Box_side
+__bashClass.registerMethod Box bottom __Box_bottom
+++ __bashClass.registerMethod Box bottom __Box_bottom
+++ local class=Box method=bottom impl=__Box_bottom
+++ __bashClass.validate Box
+++ [[ Box =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate bottom
+++ [[ bottom =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate __Box_bottom
+++ [[ __Box_bottom =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ declare -f __Box_bottom
+++ __bashClass_methodRegistry["$class.$method"]=__Box_bottom
+__bashClass.registerMethod Box volume __Box_volume
+++ __bashClass.registerMethod Box volume __Box_volume
+++ local class=Box method=volume impl=__Box_volume
+++ __bashClass.validate Box
+++ [[ Box =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate volume
+++ [[ volume =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate __Box_volume
+++ [[ __Box_volume =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ declare -f __Box_volume
+++ __bashClass_methodRegistry["$class.$method"]=__Box_volume
+__bashClass.registerMethod Box new __Box_new
+++ __bashClass.registerMethod Box new __Box_new
+++ local class=Box method=new impl=__Box_new
+++ __bashClass.validate Box
+++ [[ Box =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate new
+++ [[ new =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ __bashClass.validate __Box_new
+++ [[ __Box_new =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ declare -f __Box_new
+++ __bashClass_methodRegistry["$class.$method"]=__Box_new
+
+echo "Creating box..."
++ echo 'Creating box...'
+Creating box...
+class=Box __bashClass.dispatch new length=5 width=3 height=7
++ class=Box
++ __bashClass.dispatch new length=5 width=3 height=7
++ local self=Box class=Box
++ local method=new
++ shift
++ __bashClass.validate Box
++ [[ Box =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
++ __bashClass.validate Box
++ [[ Box =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
++ __bashClass.validate new
++ [[ new =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
++ local cache_key=Box.new
++ local impl=__Box_new
++ [[ -z __Box_new ]]
++ [[ -n __Box_new ]]
++ self=Box
++ class=Box
++ __Box_new length=5 width=3 height=7
++ local -I class
++ : Box
++ local self
++ printf -v self _%x 1772833574344639
++ local 'descriptor=|type=object|id=_64c61fb71d7bf|parent=|methods=|properties=|self=_64c61fb71d7bf|class=Box'
++ for arg in "$@"
++ IFS==
++ read -r prop val
++ descriptor='|type=object|id=_64c61fb71d7bf|parent=|methods=|properties=|self=_64c61fb71d7bf|class=Box|length=5'
++ for arg in "$@"
++ IFS==
++ read -r prop val
++ descriptor='|type=object|id=_64c61fb71d7bf|parent=|methods=|properties=|self=_64c61fb71d7bf|class=Box|length=5|width=3'
++ for arg in "$@"
++ IFS==
++ read -r prop val
++ descriptor='|type=object|id=_64c61fb71d7bf|parent=|methods=|properties=|self=_64c61fb71d7bf|class=Box|length=5|width=3|height=7'
++ __bashClass_registry[$self]='|type=object|id=_64c61fb71d7bf|parent=|methods=|properties=|self=_64c61fb71d7bf|class=Box|length=5|width=3|height=7'
++ __bashClass_RETURN=_64c61fb71d7bf
+box="$__bashClass_RETURN"
++ box=_64c61fb71d7bf
+echo "Box ID: $box"
++ echo 'Box ID: _64c61fb71d7bf'
+Box ID: _64c61fb71d7bf
+echo ""
++ echo ''
+
+
+echo "Registry entry for box:"
++ echo 'Registry entry for box:'
+Registry entry for box:
+echo "Keys in registry: ${!__bashClass_registry[@]}"
++ echo 'Keys in registry: _64c61fb71d7bf' Box
+Keys in registry: _64c61fb71d7bf Box
+echo "Value: ${__bashClass_registry[$box]:-NOT FOUND}"
++ echo 'Value: |type=object|id=_64c61fb71d7bf|parent=|methods=|properties=|self=_64c61fb71d7bf|class=Box|length=5|width=3|height=7'
+Value: |type=object|id=_64c61fb71d7bf|parent=|methods=|properties=|self=_64c61fb71d7bf|class=Box|length=5|width=3|height=7
+echo ""
++ echo ''
+
+
+echo "Parsing length:"
++ echo 'Parsing length:'
+Parsing length:
+length=$(__bashClass.parse "$box" "length")
+++ __bashClass.parse _64c61fb71d7bf length
+++ local key=_64c61fb71d7bf field=length
+++ local target=
+++ __bashClass.validate _64c61fb71d7bf
+++ [[ _64c61fb71d7bf =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+++ local 'descriptor=|type=object|id=_64c61fb71d7bf|parent=|methods=|properties=|self=_64c61fb71d7bf|class=Box|length=5|width=3|height=7'
+++ local 'pattern=\|length=([^|]*)'
+++ local value=
+++ [[ |type=object|id=_64c61fb71d7bf|parent=|methods=|properties=|self=_64c61fb71d7bf|class=Box|length=5|width=3|height=7 =~ \|length=([^|]*) ]]
+++ value=5
+++ local mode=auto
+++ [[ auto == \a\u\t\o ]]
+++ [[ 4098 != 4097 ]]
+++ mode=stdout
+++ case "$mode" in
+++ printf %s 5
++ length=5
+echo "Result: '$length'"
++ echo 'Result: '\''5'\'''
+Result: '5'
+echo ""
++ echo ''
+
+
+echo "Testing regex manually:"
++ echo 'Testing regex manually:'
+Testing regex manually:
+descriptor="${__bashClass_registry[$box]}"
++ descriptor='|type=object|id=_64c61fb71d7bf|parent=|methods=|properties=|self=_64c61fb71d7bf|class=Box|length=5|width=3|height=7'
+echo "Descriptor: $descriptor"
++ echo 'Descriptor: |type=object|id=_64c61fb71d7bf|parent=|methods=|properties=|self=_64c61fb71d7bf|class=Box|length=5|width=3|height=7'
+Descriptor: |type=object|id=_64c61fb71d7bf|parent=|methods=|properties=|self=_64c61fb71d7bf|class=Box|length=5|width=3|height=7
+pattern="\|length=([^|]*)"
++ pattern='\|length=([^|]*)'
+if [[ "$descriptor" =~ $pattern ]]; then
+  echo "Match found: '${BASH_REMATCH[1]}'"
+else
+  echo "No match"
+fi
++ [[ |type=object|id=_64c61fb71d7bf|parent=|methods=|properties=|self=_64c61fb71d7bf|class=Box|length=5|width=3|height=7 =~ \|length=([^|]*) ]]
++ echo 'Match found: '\''5'\'''
+Match found: '5'

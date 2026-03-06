@@ -1,0 +1,32 @@
+=== bashDispatcher Test Suite ===
+
+Test 1: Validation
+  ✓ Valid identifier accepted
+  ✓ Class name accepted
+  ✓ Underscore prefix accepted
+  ✓ Invalid identifier rejected
+
+Test 2: Registry and Parsing
+  ✓ Stdout mode works: parent=bashObject
+  ✓ Nameref mode works: cube_parent=Box
+  ✓ Global mode works: methods=volume,area
+
+Test 3: Method Registration and Dispatch
+  ✓ Methods registered
+  Box.volume called with self=Box class=Box
+  Box.area called with self=_obj123 class=Box
+  Cube.volume called (overridden) with self=_cube456 class=Cube
+
+Test 4: Inheritance (MRO)
+  Box.area called with self=_cube789 class=Cube
+  ✓ Inherited method cached
+
+Test 5: Serialization
+  ✓ Serialized to file
+  ✓ Deserialized from file
+
+Test 6: Subshell Detection
+  ✓ Not in subshell
+  ✓ Detected subshell
+
+=== All Tests Complete ===
