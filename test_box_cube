@@ -1,99 +1,94 @@
 #!/bin/bash
 
-# Test the new Box and Cube implementations - NO SUBSHELLS
+# Test the new Box and Cube implementations with full interface
 
 . Cube_new
 
-echo "=== Box and Cube Calculation Tests ==="
-echo ""
+printf "=== Box and Cube Interface Tests ===\n\n"
 
 # ============================================================================
-# Test Box
+# Test 1: Box creation and property access
 # ============================================================================
 
-echo "Test 1: Create Box with dimensions 5x3x7"
+printf "Test 1: Create Box with dimensions 5x3x7\n"
 class=Box __bashClass.dispatch new length=5 width=3 height=7
 box="$__bashClass_RETURN"
-echo "  Created: $box"
+printf "  Created: %s\n" "$box"
 
-__bashClass.parse "$box" "length" length
-__bashClass.parse "$box" "width" width
-__bashClass.parse "$box" "height" height
-echo "  Length: $length"
-echo "  Width:  $width"
-echo "  Height: $height"
+# Property accessors via dotted syntax
+$box.get length; printf "  Length: %s\n" "$__bashClass_RETURN"
+$box.get width;  printf "  Width:  %s\n" "$__bashClass_RETURN"
+$box.get height; printf "  Height: %s\n" "$__bashClass_RETURN"
 
-echo ""
-echo "  Calculations:"
-self="$box" class=Box __bashClass.dispatch top
-top="$__bashClass_RETURN"
-echo "    Top area:    $top (expected: 15)"
+# Shorthand property access (get/set by property name)
+$box.length; printf "  Length (shorthand): %s\n" "$__bashClass_RETURN"
 
-self="$box" class=Box __bashClass.dispatch end
-end="$__bashClass_RETURN"
-echo "    End area:    $end (expected: 21)"
-
-self="$box" class=Box __bashClass.dispatch side
-side="$__bashClass_RETURN"
-echo "    Side area:   $side (expected: 35)"
-
-self="$box" class=Box __bashClass.dispatch bottom
-bottom="$__bashClass_RETURN"
-echo "    Bottom area: $bottom (expected: 15)"
-
-self="$box" class=Box __bashClass.dispatch volume
-volume="$__bashClass_RETURN"
-echo "    Volume:      $volume (expected: 105)"
-
-echo ""
+printf "\n  Calculations:\n"
+$box.top;    printf "    Top area:    %s (expected: 15)\n" "$__bashClass_RETURN"
+$box.end;    printf "    End area:    %s (expected: 21)\n" "$__bashClass_RETURN"
+$box.side;   printf "    Side area:   %s (expected: 35)\n" "$__bashClass_RETURN"
+$box.bottom; printf "    Bottom area: %s (expected: 15)\n" "$__bashClass_RETURN"
+$box.volume; printf "    Volume:      %s (expected: 105)\n" "$__bashClass_RETURN"
 
 # ============================================================================
-# Test Cube
+# Test 2: Cube creation and calculations
 # ============================================================================
 
-echo "Test 2: Create Cube with size 4"
+printf "\nTest 2: Create Cube with size 4\n"
 class=Cube __bashClass.dispatch new size=4 unit=cm
 cube="$__bashClass_RETURN"
-echo "  Created: $cube"
+printf "  Created: %s\n" "$cube"
 
-__bashClass.parse "$cube" "size" size
-__bashClass.parse "$cube" "unit" unit
-echo "  Size: $size"
-echo "  Unit: $unit"
+$cube.size; printf "  Size: %s\n" "$__bashClass_RETURN"
+$cube.unit; printf "  Unit: %s\n" "$__bashClass_RETURN"
 
-echo ""
-echo "  Calculations:"
-self="$cube" class=Cube __bashClass.dispatch side
-cube_side="$__bashClass_RETURN"
-echo "    Side area: $cube_side (expected: 16)"
-
-self="$cube" class=Cube __bashClass.dispatch top
-cube_top="$__bashClass_RETURN"
-echo "    Top area:  $cube_top (expected: 16)"
-
-self="$cube" class=Cube __bashClass.dispatch volume
-cube_volume="$__bashClass_RETURN"
-echo "    Volume:    $cube_volume (expected: 64)"
-
-echo ""
+printf "\n  Calculations:\n"
+$cube.side;   printf "    Side area: %s (expected: 16)\n" "$__bashClass_RETURN"
+$cube.top;    printf "    Top area:  %s (expected: 16)\n" "$__bashClass_RETURN"
+$cube.volume; printf "    Volume:    %s (expected: 64)\n" "$__bashClass_RETURN"
 
 # ============================================================================
-# Test Inheritance
+# Test 3: isa - type checking
 # ============================================================================
 
-echo "Test 3: Cube inherits from Box"
-echo "  Calling Box.calc directly from Cube context:"
-self="$cube" class=Cube required=2 __Box_calc 4 4
-result="$__bashClass_RETURN"
-echo "    4 × 4 = $result (expected: 16)"
-
-echo ""
+printf "\nTest 3: Type checking (isa)\n"
+$cube.isa;      printf "  Cube.isa:      %s (expected: Cube)\n" "$__bashClass_RETURN"
+$cube.isa Cube  && printf "  isa Cube:      true\n"  || printf "  isa Cube:      false\n"
+$cube.isa Box   && printf "  isa Box:       true\n"  || printf "  isa Box:       false\n"
+$cube.isa bashClass && printf "  isa bashClass: true\n" || printf "  isa bashClass: false\n"
+$cube.isa String && printf "  isa String:    true\n"  || printf "  isa String:    false\n"
 
 # ============================================================================
-# Test Multiple Objects
+# Test 4: set - property mutation
 # ============================================================================
 
-echo "Test 4: Multiple objects"
+printf "\nTest 4: Property mutation (set)\n"
+$box.length;  printf "  Box length before: %s\n" "$__bashClass_RETURN"
+$box.length 10
+$box.length;  printf "  Box length after:  %s (expected: 10)\n" "$__bashClass_RETURN"
+$box.volume;  printf "  Box volume after:  %s (expected: 210)\n" "$__bashClass_RETURN"
+
+# ============================================================================
+# Test 5: toString
+# ============================================================================
+
+printf "\nTest 5: toString\n"
+$cube.toString; printf "  Cube: %s\n" "$__bashClass_RETURN"
+$box.toString;  printf "  Box:  %s\n" "$__bashClass_RETURN"
+
+# ============================================================================
+# Test 6: Inheritance (MRO)
+# ============================================================================
+
+printf "\nTest 6: Inheritance\n"
+# Cube should inherit get/set from bashClass
+$cube.get size; printf "  Cube.get size: %s (expected: 4)\n" "$__bashClass_RETURN"
+
+# ============================================================================
+# Test 7: Multiple objects
+# ============================================================================
+
+printf "\nTest 7: Multiple objects\n"
 class=Box __bashClass.dispatch new length=2 width=2 height=2
 box1="$__bashClass_RETURN"
 
@@ -103,17 +98,28 @@ box2="$__bashClass_RETURN"
 class=Cube __bashClass.dispatch new size=3
 cube1="$__bashClass_RETURN"
 
-self="$box1" class=Box __bashClass.dispatch volume
-vol1="$__bashClass_RETURN"
-echo "  Box1 volume: $vol1 (expected: 8)"
+$box1.volume;  printf "  Box1 volume:  %s (expected: 8)\n" "$__bashClass_RETURN"
+$box2.volume;  printf "  Box2 volume:  %s (expected: 150)\n" "$__bashClass_RETURN"
+$cube1.volume; printf "  Cube1 volume: %s (expected: 27)\n" "$__bashClass_RETURN"
 
-self="$box2" class=Box __bashClass.dispatch volume
-vol2="$__bashClass_RETURN"
-echo "  Box2 volume: $vol2 (expected: 150)"
+# ============================================================================
+# Test 8: Typecasting
+# ============================================================================
 
-self="$cube1" class=Cube __bashClass.dispatch volume
-vol3="$__bashClass_RETURN"
-echo "  Cube1 volume: $vol3 (expected: 27)"
+printf "\nTest 8: Typecasting\n"
+$cube.volume; printf "  Cube volume (as Cube): %s (expected: 64)\n" "$__bashClass_RETURN"
+class=Box $cube.volume; printf "  Cube volume (as Box):  %s (expected: 64)\n" "$__bashClass_RETURN"
 
-echo ""
-echo "=== All Tests Complete ==="
+# ============================================================================
+# Test 9: Value encoding (special characters)
+# ============================================================================
+
+printf "\nTest 9: Value encoding\n"
+class=Box __bashClass.dispatch new length=5 width=3 height=7
+enc_box="$__bashClass_RETURN"
+$enc_box.set color "red|green=blue"
+$enc_box.get color; printf "  Stored and retrieved: '%s' (expected: 'red|green=blue')\n" "$__bashClass_RETURN"
+$enc_box.set color "100%%"
+$enc_box.get color; printf "  Percent encoding:    '%s' (expected: '100%%%%')\n" "$__bashClass_RETURN"
+
+printf "\n=== All Tests Complete ===\n"

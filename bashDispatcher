@@ -28,12 +28,40 @@ declare -gi __bashClass_refCounter=0
 declare -g __bashClass_RETURN=""
 
 # ============================================================================
+# VALUE ENCODING/DECODING
+# ============================================================================
+
+# Encode a value for safe storage in pipe-delimited descriptors
+# Escapes: | -> %7C, = -> %3D, % -> %25 (percent first to avoid double-encoding)
+__bashClass.encode() {
+  local val="$1"
+  val="${val//%/%25}"
+  val="${val//|/%7C}"
+  val="${val//=/%3D}"
+  __bashClass_RETURN="$val"
+}
+
+# Decode a value retrieved from a descriptor
+__bashClass.decode() {
+  local val="$1"
+  val="${val//%3D/=}"
+  val="${val//%7C/|}"
+  val="${val//%25/%}"
+  __bashClass_RETURN="$val"
+}
+
+# ============================================================================
 # VALIDATION
 # ============================================================================
 
 # Validate identifier: strict check, crash if invalid
 __bashClass.validate() {
   [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || __bashClass.crash "Invalid identifier: '$1'"
+}
+
+# Validate function name: allows dots (for Class.method naming)
+__bashClass.validateFunc() {
+  [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_.]*$ ]] || __bashClass.crash "Invalid function name: '$1'"
 }
 
 # ============================================================================
@@ -78,7 +106,13 @@ __bashClass.parse() {
   local descriptor="${__bashClass_registry[$key]}"
   local pattern="\\|${field}=([^|]*)"
   local value=""
-  [[ "$descriptor" =~ $pattern ]] && value="${BASH_REMATCH[1]}"
+  if [[ "$descriptor" =~ $pattern ]]; then
+    value="${BASH_REMATCH[1]}"
+    # Decode stored value
+    value="${value//%3D/=}"
+    value="${value//%7C/|}"
+    value="${value//%25/%}"
+  fi
   
   # Determine return mode
   local mode="$__bashClass_returnMode"
@@ -128,7 +162,7 @@ __bashClass.registerMethod() {
   
   __bashClass.validate "$class"
   __bashClass.validate "$method"
-  __bashClass.validate "$impl"
+  __bashClass.validateFunc "$impl"
   
   declare -f "$impl" >/dev/null || __bashClass.crash "Function '$impl' does not exist"
   
@@ -211,7 +245,7 @@ __bashClass.deserialize() {
 # UTILITY FUNCTIONS
 # ============================================================================
 
-# Crash with error message (imported from bashClass)
+# Crash with error message
 __bashClass.crash() {
   local -i err=1
   if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
@@ -226,6 +260,175 @@ __bashClass.crash() {
 __bashClass.inSubshell() {
   [[ $BASHPID != $__bashClass_rootPID ]]
 }
+
+# ============================================================================
+# STANDARD INTERFACE METHODS (inherited by all classes)
+# ============================================================================
+
+# Default get - retrieve a property value
+__bashClass.get() {
+  local -I self class
+  local prop="$1"
+  __bashClass.parse "$self" "$prop" __bashClass_RETURN
+}
+
+# Default set - update a property value
+__bashClass.set() {
+  local -I self class
+  local prop="$1" value="$2"
+  
+  # Encode value for safe storage
+  local encoded="$value"
+  encoded="${encoded//%/%25}"
+  encoded="${encoded//|/%7C}"
+  encoded="${encoded//=/%3D}"
+  
+  local descriptor="${__bashClass_registry[$self]}"
+
+  # Update existing property or append new one
+  if [[ "$descriptor" =~ \|${prop}=[^|]* ]]; then
+    local old="${BASH_REMATCH[0]}"
+    __bashClass_registry[$self]="${descriptor/${old}/|${prop}=${encoded}}"
+  else
+    __bashClass_registry[$self]="$descriptor|$prop=$encoded"
+  fi
+}
+
+# Default isa - type checking with ancestry support
+# No args: return class name
+# With arg: return 0 if object is or inherits from that class
+__bashClass.isa() {
+  local -I self class
+  local query="${1:-}"
+
+  # No argument - report class
+  if [[ -z "$query" ]]; then
+    __bashClass_RETURN="$class"
+    return 0
+  fi
+
+  # Walk inheritance chain looking for match
+  local current="$class"
+  while [[ -n "$current" ]]; do
+    [[ "$current" == "$query" ]] && return 0
+    __bashClass.parse "$current" "parent" current
+  done
+
+  return 1
+}
+
+# Default toString - format descriptor for display
+__bashClass.toString() {
+  local -I self class
+  local descriptor="${__bashClass_registry[$self]}"
+  local output="$class($self){"
+  local field value decoded
+
+  # Parse each field from descriptor
+  while [[ "$descriptor" =~ \|([^=]+)=([^|]*) ]]; do
+    field="${BASH_REMATCH[1]}"
+    value="${BASH_REMATCH[2]}"
+    # Skip internal fields
+    case "$field" in
+      type|id|parent|methods|properties|self) ;;
+      *)
+        # Decode for display
+        decoded="$value"
+        decoded="${decoded//%3D/=}"
+        decoded="${decoded//%7C/|}"
+        decoded="${decoded//%25/%}"
+        output="$output $field=$decoded"
+        ;;
+    esac
+    descriptor="${descriptor#*"${BASH_REMATCH[0]}"}"
+  done
+
+  __bashClass_RETURN="$output }"
+}
+
+# Default new - object constructor
+__bashClass.new() {
+  local -I class
+  : "${class:=bashClass}"
+
+  # Generate unique object ID
+  local self
+  printf -v self "_%x" "${EPOCHREALTIME//.}"
+
+  # Build descriptor from class properties
+  local props
+  __bashClass.parse "$class" "properties" props
+  local descriptor="|type=object|id=$self|self=$self|class=$class"
+
+  # Parse arguments and encode values
+  for arg in "$@"; do
+    IFS='=' read -r prop val <<< "$arg"
+    val="${val//%/%25}"
+    val="${val//|/%7C}"
+    val="${val//=/%3D}"
+    descriptor="$descriptor|$prop=$val"
+  done
+
+  # Register object
+  __bashClass_registry[$self]="$descriptor"
+
+  # Generate dotted wrapper functions for all registered methods
+  local current="$class" method impl
+  while [[ -n "$current" ]]; do
+    local methods
+    __bashClass.parse "$current" "methods" methods
+    IFS=',' read -ra method_list <<< "$methods"
+    for method in "${method_list[@]}"; do
+      [[ -n "$method" ]] || continue
+      # Don't overwrite if already created (child overrides parent)
+      declare -f "$self.$method" >/dev/null && continue
+      eval "$self.$method() { self='$self' class='$class' __bashClass.dispatch $method \"\$@\"; }"
+    done
+    __bashClass.parse "$current" "parent" current
+  done
+
+  # Generate dotted wrappers for standard interface methods
+  for method in get set isa toString; do
+    declare -f "$self.$method" >/dev/null && continue
+    eval "$self.$method() { self='$self' class='$class' __bashClass.dispatch $method \"\$@\"; }"
+  done
+
+  # Generate property accessors (get/set via method name)
+  __bashClass.parse "$class" "properties" props
+  IFS=',' read -ra prop_list <<< "$props"
+  for prop in "${prop_list[@]}"; do
+    [[ -n "$prop" ]] || continue
+    declare -f "$self.$prop" >/dev/null && continue
+    eval "$self.$prop() { 
+      if ((\$#)); then self='$self' class='$class' __bashClass.dispatch set '$prop' \"\$1\"
+      else self='$self' class='$class' __bashClass.dispatch get '$prop'; fi
+    }"
+  done
+
+  __bashClass_RETURN="$self"
+}
+
+# Default super - call parent class method
+__bashClass.super() {
+  local -I self class
+  local parent
+  __bashClass.parse "$class" "parent" parent
+  [[ -n "$parent" ]] || __bashClass.crash "$class has no parent"
+  self="$self" class="$parent" __bashClass.dispatch "$@"
+}
+
+# ============================================================================
+# REGISTER BASE METHODS
+# ============================================================================
+
+# Register standard methods on bashClass (root of all inheritance)
+__bashClass_registry["bashClass"]="|type=class|id=bashClass|parent=|methods=new,get,set,isa,toString,super|properties="
+__bashClass.registerMethod bashClass get __bashClass.get
+__bashClass.registerMethod bashClass set __bashClass.set
+__bashClass.registerMethod bashClass isa __bashClass.isa
+__bashClass.registerMethod bashClass toString __bashClass.toString
+__bashClass.registerMethod bashClass new __bashClass.new
+__bashClass.registerMethod bashClass super __bashClass.super
 
 # ============================================================================
 # INITIALIZATION COMPLETE

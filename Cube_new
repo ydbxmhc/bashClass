@@ -8,48 +8,29 @@
 # Cube Class Descriptor
 # ============================================================================
 
-__bashClass_registry["Cube"]="|type=class|id=Cube|parent=Box|methods=new,side,top,end,bottom,volume|properties=size"
+__bashClass_registry["Cube"]="|type=class|id=Cube|parent=Box|methods=new,side,top,end,bottom,volume|properties=size,length,width,height,unit"
 
 # ============================================================================
 # Cube Implementation Functions
 # ============================================================================
 
-# Object constructor
-__Cube_new() {
+# Cube constructor - sets all dimensions equal to size
+__Cube.new() {
   local -I class
   : "${class:=Cube}"
-  local size="${size:-1}"
-  
-  # Parse size from arguments
+  local size=1
+
+  # Extract size from arguments
   for arg in "$@"; do
     [[ "$arg" =~ ^size=([0-9]+)$ ]] && size="${BASH_REMATCH[1]}"
   done
-  
-  # Generate unique object ID
-  local self
-  printf -v self "_%x" "${EPOCHREALTIME//.}"
-  
-  # Create object descriptor with size and derived dimensions (leading | for consistent parsing)
-  local descriptor="|type=object|id=$self|parent=|methods=|properties=|self=$self|class=$class|size=$size|length=$size|width=$size|height=$size"
-  
-  # Add other properties from arguments
-  for arg in "$@"; do
-    if [[ "$arg" =~ ^([^=]+)=(.+)$ ]]; then
-      local prop="${BASH_REMATCH[1]}"
-      local val="${BASH_REMATCH[2]}"
-      [[ "$prop" != "size" ]] && descriptor="$descriptor|$prop=$val"
-    fi
-  done
-  
-  # Register object
-  __bashClass_registry[$self]="$descriptor"
-  
-  # Return object ID via global variable
-  __bashClass_RETURN="$self"
+
+  # Delegate to base constructor with derived dimensions
+  __bashClass.new "$@" length=$size width=$size height=$size
 }
 
-# Calculate side face area (all faces are equal for cube)
-__Cube_side() {
+# Calculate side face area (all faces equal for cube)
+__Cube.side() {
   local -I self class
   local size
   __bashClass.parse "$self" "size" size
@@ -57,38 +38,38 @@ __Cube_side() {
 }
 
 # Top face (same as side for cube)
-__Cube_top() {
+__Cube.top() {
   local -I self class
   self="$self" class="$class" __bashClass.dispatch side
 }
 
 # End face (same as side for cube)
-__Cube_end() {
+__Cube.end() {
   local -I self class
   self="$self" class="$class" __bashClass.dispatch side
 }
 
 # Bottom face (same as side for cube)
-__Cube_bottom() {
+__Cube.bottom() {
   local -I self class
   self="$self" class="$class" __bashClass.dispatch side
 }
 
 # Calculate volume
-__Cube_volume() {
+__Cube.volume() {
   local -I self class
   local size
   __bashClass.parse "$self" "size" size
-  required=3 __Box_calc "$size" "$size" "$size"
+  required=3 __Box.calc "$size" "$size" "$size"
 }
 
 # ============================================================================
 # Register Methods
 # ============================================================================
 
-__bashClass.registerMethod Cube new __Cube_new
-__bashClass.registerMethod Cube side __Cube_side
-__bashClass.registerMethod Cube top __Cube_top
-__bashClass.registerMethod Cube end __Cube_end
-__bashClass.registerMethod Cube bottom __Cube_bottom
-__bashClass.registerMethod Cube volume __Cube_volume
+__bashClass.registerMethod Cube new __Cube.new
+__bashClass.registerMethod Cube side __Cube.side
+__bashClass.registerMethod Cube top __Cube.top
+__bashClass.registerMethod Cube end __Cube.end
+__bashClass.registerMethod Cube bottom __Cube.bottom
+__bashClass.registerMethod Cube volume __Cube.volume
