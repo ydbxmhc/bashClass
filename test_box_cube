@@ -2,7 +2,7 @@
 
 # Test the new Box and Cube implementations with full interface
 
-. bashClass Cube
+. boop Cube
 
 printf "=== Box and Cube Interface Tests ===\n\n"
 

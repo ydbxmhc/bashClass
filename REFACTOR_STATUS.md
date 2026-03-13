@@ -6,11 +6,12 @@ Branch: `refactor-dispatcher`
 
 ## What We Built
 
-### Universal Dispatch System (`bashClass`)
+### Universal Dispatch System (`boop`)
 
 A complete OOP dispatch framework for bash built around a single associative array registry
 with pipe-delimited descriptor values. Classes and objects share the same registry, distinguished
-by their `type` field.
+by their `type` field. The framework file is named `boop` — the internal namespace remains
+`__bashClass_*`.
 
 **Key architectural decisions:**
 
@@ -55,6 +56,22 @@ bashClass (root — all standard methods registered here)
   └── Box (calc, area, top, end, side, bottom, volume, new)
         └── Cube (new, side, top, end, bottom, volume)
 ```
+
+### Import System
+
+The framework provides automatic class loading with path resolution and double-load
+protection.
+
+- `. boop Cube` — loads framework + imports Cube (which pulls in Box automatically)
+- `boop import` — when executed (not sourced), prints the framework directory path
+- `. "$(boop import)/boop" Cube` — source from anywhere if `boop` is in PATH
+- `__bashClass.import Box Cube` — programmatic import after framework is loaded
+
+Resolution order: `__bashClass_classPath` registry → `__bashClass_dir` (co-located) → PATH.
+
+Load guards: class files check `__bashClass_registry` on entry. The framework uses
+`__bashClass_loading` to prevent circular recursion when a class file re-sources `boop`
+as part of its own dependency chain.
 
 ### Standard Interface Methods (inherited from bashClass)
 
@@ -111,18 +128,13 @@ that introspects the call stack (`FUNCNAME`, `BASH_ARGV`) to generate hierarchic
 (e.g., `Box.length`) so the tmpdir is self-documenting. Uses `>|` to handle `noclobber`.
 
 ### `__bashClass.return` Stress Testing
-Need a comprehensive test suite that exercises:
-- All five return modes explicitly
-- Nameref collisions (the bug we already found and fixed)
-- Nested calls (encode inside parse inside dispatch)
-- Subshell detection (auto mode switching)
-- Edge cases: empty values, special characters, very long strings
-- Tests that should succeed, tests that should fail, and tests designed to surprise us
+Done. `test_stress` covers all five return modes, nameref collisions, nested calls,
+subshell detection, edge cases, and adversarial inputs. 132 assertions across 27 sections.
 
 ### Rename bashClass → boop
-Pending. The framework file `bashClass` will be renamed to `boop` because it's too funny
-not to. All internal references (`__bashClass_*`), class files, tests, and docs will need
-updating. Pure rename — no behavioral changes.
+Done. The framework file was renamed from `bashClass` to `boop`. Internal symbols
+(`__bashClass_*`) were intentionally kept — the filename is the personality, the
+internals are the plumbing. All source references, tests, and docs updated.
 
 ### Clone, Destroy, Equals
 Deferred. Expected to be more complex than they initially sound. `equals` is either trivially
@@ -137,11 +149,11 @@ provide helper methods.
 
 | File | Purpose |
 |------|---------|
-| `bashClass` | Core framework — dispatch, registry, encoding, standard methods |
+| `boop` | Core framework — dispatch, registry, encoding, standard methods, import system |
 | `Box` | Box class implementation |
 | `Cube` | Cube class (extends Box) |
 | `test_box_cube` | Functional test suite — 14 test groups |
-| `test_stress` | Adversarial stress test suite — 129 assertions + optional benchmark |
+| `test_stress` | Adversarial stress test suite — 132 assertions + optional benchmark |
 | `README.md` | Project overview |
 | `REFACTOR_STATUS.md` | This file |
 

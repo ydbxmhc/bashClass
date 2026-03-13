@@ -1,7 +1,7 @@
 #!/bin/bash
 set -u
 
-# Stress test / adversarial test suite for bashClass
+# Stress test / adversarial test suite for boop
 # Tests that should FAIL (and we catch the failure), tests that should
 # SUCCEED in weird conditions, and tests designed to surprise us.
 
@@ -98,8 +98,8 @@ __suite_start="$EPOCHREALTIME"
 # SECTION 0a: Source class definitions (parse + load time)
 # ============================================================================
 __timer_start
-printf "\n--- source bashClass Cube (loads bashClass → Box → Cube) ---\n"
-. bashClass Cube
+printf "\n--- source boop Cube (loads boop → Box → Cube) ---\n"
+. boop Cube
 __timer_stop
 printf "  Loaded in %ss\n" "$__timer_elapsed"
 __timer_begin=""
@@ -127,20 +127,20 @@ __section "validate"
 # Should pass
 expect_ok   "valid identifier: Box"          __bashClass.validate "Box"
 expect_ok   "valid identifier: _foo123"      __bashClass.validate "_foo123"
-expect_ok   "valid function: Box.calc"      bash -c '. bashClass Cube; type=function __bashClass.validate "Box.calc"'
-expect_ok   "valid function: a.b.c"          bash -c '. bashClass Cube; type=function __bashClass.validate "a.b.c"'
+expect_ok   "valid function: Box.calc"      bash -c '. boop Cube; type=function __bashClass.validate "Box.calc"'
+expect_ok   "valid function: a.b.c"          bash -c '. boop Cube; type=function __bashClass.validate "a.b.c"'
 
 # Should fail
-expect_fail "empty string"                   bash -c '. bashClass Cube; __bashClass.validate ""'
-expect_fail "starts with number: 1Box"       bash -c '. bashClass Cube; __bashClass.validate "1Box"'
-expect_fail "has spaces: my box"             bash -c '. bashClass Cube; __bashClass.validate "my box"'
-expect_fail "has dash: my-box"               bash -c '. bashClass Cube; __bashClass.validate "my-box"'
-expect_fail "dot in identifier mode"         bash -c '. bashClass Cube; __bashClass.validate "Box.new"'
-expect_fail "semicolon injection: foo;ls"    bash -c '. bashClass Cube; __bashClass.validate "foo;ls"'
-expect_fail "pipe injection: foo|bar"        bash -c '. bashClass Cube; __bashClass.validate "foo|bar"'
-expect_fail "dollar injection"               bash -c '. bashClass Cube; __bashClass.validate "\$HOME"'
-expect_fail "backtick injection"             bash -c '. bashClass Cube; __bashClass.validate "\`whoami\`"'
-expect_fail "misspelled typecast: typ=func"  bash -c '. bashClass Cube; typ=function __bashClass.validate "Box.calc"'
+expect_fail "empty string"                   bash -c '. boop Cube; __bashClass.validate ""'
+expect_fail "starts with number: 1Box"       bash -c '. boop Cube; __bashClass.validate "1Box"'
+expect_fail "has spaces: my box"             bash -c '. boop Cube; __bashClass.validate "my box"'
+expect_fail "has dash: my-box"               bash -c '. boop Cube; __bashClass.validate "my-box"'
+expect_fail "dot in identifier mode"         bash -c '. boop Cube; __bashClass.validate "Box.new"'
+expect_fail "semicolon injection: foo;ls"    bash -c '. boop Cube; __bashClass.validate "foo;ls"'
+expect_fail "pipe injection: foo|bar"        bash -c '. boop Cube; __bashClass.validate "foo|bar"'
+expect_fail "dollar injection"               bash -c '. boop Cube; __bashClass.validate "\$HOME"'
+expect_fail "backtick injection"             bash -c '. boop Cube; __bashClass.validate "\`whoami\`"'
+expect_fail "misspelled typecast: typ=func"  bash -c '. boop Cube; typ=function __bashClass.validate "Box.calc"'
 
 
 # ============================================================================
@@ -168,7 +168,7 @@ expect_value "explicit global mode" "hello_global" true
 
 # Explicit stdout
 expect_stdout "explicit stdout mode" "hello_stdout" \
-  bash -c '. bashClass Cube; __bashClass_returnMode=stdout; __bashClass.return "hello_stdout"'
+  bash -c '. boop Cube; __bashClass_returnMode=stdout; __bashClass.return "hello_stdout"'
 
 # Explicit nameref
 __bashClass_returnMode=auto
@@ -182,11 +182,11 @@ fi
 
 # Nameref with no target (should crash)
 expect_fail "nameref mode, no target" \
-  bash -c '. bashClass Cube; __bashClass_returnMode=nameref; __bashClass.return "boom"'
+  bash -c '. boop Cube; __bashClass_returnMode=nameref; __bashClass.return "boom"'
 
 # Nameref in subshell (should work now — namerefs are local var refs)
 expect_ok "nameref in subshell" \
-  bash -c '. bashClass Cube; __bashClass_returnMode=nameref; __bashClass.return "boom" myvar'
+  bash -c '. boop Cube; __bashClass_returnMode=nameref; __bashClass.return "boom" myvar'
 
 # Filesystem mode
 __bashClass_returnMode=filesystem
@@ -207,7 +207,7 @@ fi
 
 # Invalid mode
 expect_fail "invalid return mode: banana" \
-  bash -c '. bashClass Cube; __bashClass_returnMode=banana; __bashClass.return "boom"'
+  bash -c '. boop Cube; __bashClass_returnMode=banana; __bashClass.return "boom"'
 
 # Reset
 __bashClass_returnMode=auto
@@ -306,11 +306,11 @@ fi
 
 # Parse with invalid key
 expect_fail "parse with invalid key (spaces)" \
-  bash -c '. bashClass Cube; __bashClass.parse "bad key" "field" x'
+  bash -c '. boop Cube; __bashClass.parse "bad key" "field" x'
 
 # Parse with empty key
 expect_fail "parse with empty key" \
-  bash -c '. bashClass Cube; __bashClass.parse "" "field" x'
+  bash -c '. boop Cube; __bashClass.parse "" "field" x'
 
 # Parse unregistered key (valid name but not in registry)
 __bashClass.parse "NoSuchThing" "field" __pval
@@ -328,23 +328,23 @@ __section "dispatch"
 
 # Dispatch nonexistent method
 expect_fail "dispatch nonexistent method" \
-  bash -c '. bashClass Cube; new Box length=1 width=1 height=1; class=Box __bashClass.dispatch explode'
+  bash -c '. boop Cube; new Box length=1 width=1 height=1; class=Box __bashClass.dispatch explode'
 
 # Dispatch with invalid class name
 expect_fail "dispatch with invalid class (has dash)" \
-  bash -c '. bashClass Cube; class=my-class __bashClass.dispatch new'
+  bash -c '. boop Cube; class=my-class __bashClass.dispatch new'
 
 # Dispatch with empty method
 expect_fail "dispatch with empty method" \
-  bash -c '. bashClass Cube; class=Box __bashClass.dispatch ""'
+  bash -c '. boop Cube; class=Box __bashClass.dispatch ""'
 
 # Dispatch method with injection attempt
 expect_fail "dispatch method injection: volume;ls" \
-  bash -c '. bashClass Cube; class=Box __bashClass.dispatch "volume;ls"'
+  bash -c '. boop Cube; class=Box __bashClass.dispatch "volume;ls"'
 
 # Dispatch to unregistered class
 expect_fail "dispatch to unregistered class" \
-  bash -c '. bashClass Cube; class=Sphere __bashClass.dispatch new'
+  bash -c '. boop Cube; class=Sphere __bashClass.dispatch new'
 
 
 # ============================================================================
@@ -354,19 +354,19 @@ __section "registerMethod"
 
 # Register with nonexistent function
 expect_fail "register nonexistent function" \
-  bash -c '. bashClass Cube; __bashClass.registerMethod Box foo __nonexistent_func'
+  bash -c '. boop Cube; __bashClass.registerMethod Box foo __nonexistent_func'
 
 # Register with invalid class name
 expect_fail "register with invalid class" \
-  bash -c '. bashClass Cube; __bashClass.registerMethod "bad class" foo Box.calc'
+  bash -c '. boop Cube; __bashClass.registerMethod "bad class" foo Box.calc'
 
 # Register with invalid method name
 expect_fail "register with invalid method (has dot)" \
-  bash -c '. bashClass Cube; __bashClass.registerMethod Box "bad.method" Box.calc'
+  bash -c '. boop Cube; __bashClass.registerMethod Box "bad.method" Box.calc'
 
 # Register with empty args
 expect_fail "register with empty class" \
-  bash -c '. bashClass Cube; __bashClass.registerMethod "" foo Box.calc'
+  bash -c '. boop Cube; __bashClass.registerMethod "" foo Box.calc'
 
 
 # ============================================================================
@@ -376,11 +376,11 @@ __section "constructors"
 
 # new with nonexistent class
 expect_fail "new nonexistent class" \
-  bash -c '. bashClass Cube; new Sphere size=5'
+  bash -c '. boop Cube; new Sphere size=5'
 
 # new with invalid class name
 expect_fail "new with invalid class name" \
-  bash -c '. bashClass Cube; new "bad class" size=5'
+  bash -c '. boop Cube; new "bad class" size=5'
 
 # new with no args (should still work — empty object)
 new Box
@@ -651,7 +651,7 @@ expect_value "Cube volume typecast to Box" "125" true
 
 # Typecast to nonexistent class — should crash
 expect_fail "typecast to nonexistent class" \
-  bash -c ". bashClass Cube; new Cube size=5; tc=\$__bashClass_RETURN; \$tc.volume; class=Sphere \$tc.volume"
+  bash -c ". boop Cube; new Cube size=5; tc=\$__bashClass_RETURN; \$tc.volume; class=Sphere \$tc.volume"
 
 # Typecast to parent (Box) then back to normal
 class=Box $__tc.side
@@ -672,11 +672,11 @@ __section "super"
 
 # super from bashClass (no parent — should crash)
 expect_fail "super from root class" \
-  bash -c '. bashClass Cube; new bashClass; obj=$__bashClass_RETURN; $obj.super volume'
+  bash -c '. boop Cube; new bashClass; obj=$__bashClass_RETURN; $obj.super volume'
 
 # super from Box (parent is bashClass, which has no volume — should crash)
 expect_fail "super volume from Box (bashClass has no volume)" \
-  bash -c '. bashClass Cube; new Box length=1 width=1 height=1; obj=$__bashClass_RETURN; self=$obj class=Box __bashClass.dispatch super volume'
+  bash -c '. boop Cube; new Box length=1 width=1 height=1; obj=$__bashClass_RETURN; self=$obj class=Box __bashClass.dispatch super volume'
 
 
 # ============================================================================
@@ -706,10 +706,10 @@ fi
 
 # bencode file mode with nonexistent file
 expect_fail "bencode nonexistent file" \
-  bash -c '. bashClass Cube; input=file __bashClass.bencode /tmp/no_such_file_ever'
+  bash -c '. boop Cube; input=file __bashClass.bencode /tmp/no_such_file_ever'
 
 # bdecode with invalid base64 (base64 -d may warn but exit 0 on some systems)
-__bdec_out=$(bash -c '. bashClass Cube; __bashClass.bdecode "not-valid-base64!!!"' 2>&1); __bdec_rc=$?
+__bdec_out=$(bash -c '. boop Cube; __bashClass.bdecode "not-valid-base64!!!"' 2>&1); __bdec_rc=$?
 if (( __bdec_rc != 0 )); then
   printf "  PASS: bdecode invalid base64 (rejected, exit %d)\n" "$__bdec_rc"; (( passed++ ))
 else
@@ -724,14 +724,14 @@ fi
 __section "setDefaultMode"
 
 expect_fail "setDefaultMode with garbage" \
-  bash -c '. bashClass Cube; __bashClass.setDefaultMode "garbage"'
+  bash -c '. boop Cube; __bashClass.setDefaultMode "garbage"'
 
 expect_fail "setDefaultMode with empty" \
-  bash -c '. bashClass Cube; __bashClass.setDefaultMode ""'
+  bash -c '. boop Cube; __bashClass.setDefaultMode ""'
 
 # Valid modes should not crash
 for mode in auto nameref stdout global filesystem; do
-  expect_ok "setDefaultMode $mode" bash -c ". bashClass Cube; __bashClass.setDefaultMode $mode"
+  expect_ok "setDefaultMode $mode" bash -c ". boop Cube; __bashClass.setDefaultMode $mode"
 done
 
 
@@ -741,10 +741,10 @@ done
 __section "registerClass"
 
 expect_fail "registerClass with invalid name" \
-  bash -c '. bashClass Cube; __bashClass.registerClass "bad class"'
+  bash -c '. boop Cube; __bashClass.registerClass "bad class"'
 
 expect_fail "registerClass with no descriptor" \
-  bash -c '. bashClass Cube; __bashClass.registerClass "Phantom"'
+  bash -c '. boop Cube; __bashClass.registerClass "Phantom"'
 
 
 # ============================================================================
@@ -776,7 +776,7 @@ expect_value "post-refresh volume still correct" "60" true
 
 # Refresh nonexistent object
 expect_fail "refresh nonexistent object" \
-  bash -c '. bashClass Cube; __bashClass.refresh "no_such_obj"'
+  bash -c '. boop Cube; __bashClass.refresh "no_such_obj"'
 
 
 # ============================================================================
@@ -801,7 +801,7 @@ expect_value "explicit global: volume" "336" true
 
 # Stdout mode — now that Box.calc uses __bashClass.return, this works
 expect_stdout "stdout mode: volume" "336" \
-  bash -c '. bashClass Cube; new Box length=6 width=7 height=8; b=$__bashClass_RETURN; __bashClass_returnMode=stdout; $b.volume'
+  bash -c '. boop Cube; new Box length=6 width=7 height=8; b=$__bashClass_RETURN; __bashClass_returnMode=stdout; $b.volume'
 
 # Nameref mode through get
 __bashClass_returnMode=auto
@@ -829,13 +829,13 @@ fi
 
 # Deserialize into fresh env and check a value
 expect_ok "deserialize reads back" \
-  bash -c ". bashClass Cube; __bashClass.deserialize '$__ser_file'"
+  bash -c ". boop Cube; __bashClass.deserialize '$__ser_file'"
 
 rm -f "$__ser_file"
 
 # Deserialize nonexistent file
 expect_fail "deserialize nonexistent file" \
-  bash -c '. bashClass Cube; __bashClass.deserialize /tmp/no_such_file_ever'
+  bash -c '. boop Cube; __bashClass.deserialize /tmp/no_such_file_ever'
 
 
 # ============================================================================
@@ -887,10 +887,10 @@ __section "crash"
 
 # Default exit code is 1
 expect_fail "crash default exit code" \
-  bash -c '. bashClass Cube; __bashClass.crash "boom"'
+  bash -c '. boop Cube; __bashClass.crash "boom"'
 
 # Custom exit code
-__crash_out=$(bash -c '. bashClass Cube; __bashClass.crash 42 "custom code"' 2>&1); __crash_rc=$?
+__crash_out=$(bash -c '. boop Cube; __bashClass.crash 42 "custom code"' 2>&1); __crash_rc=$?
 if (( __crash_rc == 42 )); then
   printf "  PASS: crash with custom exit code 42\n"; (( passed++ ))
 else
@@ -898,7 +898,7 @@ else
 fi
 
 # Crash message goes to stderr
-__crash_stdout=$(bash -c '. bashClass Cube; __bashClass.crash "stderr test"' 2>/dev/null)
+__crash_stdout=$(bash -c '. boop Cube; __bashClass.crash "stderr test"' 2>/dev/null)
 if [[ -z "$__crash_stdout" ]]; then
   printf "  PASS: crash message goes to stderr, not stdout\n"; (( passed++ ))
 else
@@ -1031,42 +1031,42 @@ __section "nonzero validation"
 
 # Zero should be rejected
 expect_fail "calc rejects zero" \
-  bash -c '. bashClass Cube; Box.calc 5 0 3'
+  bash -c '. boop Cube; Box.calc 5 0 3'
 
 # Negative should be rejected (not matching ^[0-9]+$)
 expect_fail "calc rejects negative" \
-  bash -c '. bashClass Cube; Box.calc 5 -3 7'
+  bash -c '. boop Cube; Box.calc 5 -3 7'
 
 # Non-numeric should be rejected
 expect_fail "calc rejects letters" \
-  bash -c '. bashClass Cube; Box.calc 5 abc 7'
+  bash -c '. boop Cube; Box.calc 5 abc 7'
 
 # Empty string should be rejected
 expect_fail "calc rejects empty arg" \
-  bash -c '. bashClass Cube; Box.calc 5 "" 7'
+  bash -c '. boop Cube; Box.calc 5 "" 7'
 
 # Float should be rejected
 expect_fail "calc rejects float" \
-  bash -c '. bashClass Cube; Box.calc 5 3.5 7'
+  bash -c '. boop Cube; Box.calc 5 3.5 7'
 
 # Single valid arg works
 expect_stdout "calc single arg" "42" \
-  bash -c '. bashClass Cube; Box.calc 42; printf "%s" "$__bashClass_RETURN"'
+  bash -c '. boop Cube; Box.calc 42; printf "%s" "$__bashClass_RETURN"'
 
 # Multiple valid args multiply
 expect_stdout "calc 2*3*7" "42" \
-  bash -c '. bashClass Cube; Box.calc 2 3 7; printf "%s" "$__bashClass_RETURN"'
+  bash -c '. boop Cube; Box.calc 2 3 7; printf "%s" "$__bashClass_RETURN"'
 
 # required= typecast enforces arg count
 expect_fail "calc required=3 with 2 args" \
-  bash -c '. bashClass Cube; required=3 Box.calc 5 3'
+  bash -c '. boop Cube; required=3 Box.calc 5 3'
 
 expect_ok "calc required=2 with 2 args" \
-  bash -c '. bashClass Cube; required=2 Box.calc 5 3'
+  bash -c '. boop Cube; required=2 Box.calc 5 3'
 
 # Volume on a box with zero dimension (set after creation)
 expect_fail "volume after setting dimension to 0" \
-  bash -c '. bashClass Cube; new Box length=5 width=3 height=7; b=$__bashClass_RETURN; $b.set height 0; $b.volume'
+  bash -c '. boop Cube; new Box length=5 width=3 height=7; b=$__bashClass_RETURN; $b.set height 0; $b.volume'
 
 
 # ============================================================================

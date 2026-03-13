@@ -1,26 +1,26 @@
 #!/bin/bash
 set -u
 
-## bashClass - Modern OOP dispatch system for bash
+## boop - Modern OOP dispatch system for bash
 ##
 ## Provides secure, efficient method dispatch with multiple return modes
 ## and proper inheritance support.
 ##
 ## Usage (sourced):
-##   . bashClass                    # load framework only
-##   . bashClass Box Cube           # load framework + import classes
+##   . boop                    # load framework only
+##   . boop Box Cube           # load framework + import classes
 ##
 ## Usage (executed):
-##   bashClass import               # print framework directory path
-##   . "$(bashClass import)/bashClass"  # source from anywhere
+##   boop import               # print framework directory path
+##   . "$(boop import)/boop"   # source from anywhere
 
 # ============================================================================
-# EXECUTED MODE — CLI interface (bashClass is run, not sourced)
+# EXECUTED MODE — CLI interface (boop is run, not sourced)
 # ============================================================================
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   case "${1:-}" in
     import) printf "%s" "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" ;;
-    *)      printf "Usage: bashClass import\n" >&2; exit 1 ;;
+    *)      printf "Usage: boop import\n" >&2; exit 1 ;;
   esac
   exit 0
 fi
@@ -553,7 +553,7 @@ new() {
 
 # Resolve and source a class file. Searches:
 #   1. __bashClass_classPath registry (explicit path overrides)
-#   2. __bashClass_dir (where bashClass itself lives)
+#   2. __bashClass_dir (where boop itself lives)
 #   3. PATH (via . command)
 # Classes already in __bashClass_registry are skipped (load guard).
 __bashClass.import() {
@@ -563,7 +563,7 @@ __bashClass.import() {
     [[ -n "${__bashClass_registry[$__import_class]+set}" ]] && continue
 
     # Already loading? Skip (prevents circular recursion when a class
-    # file sources bashClass as part of its own load sequence).
+    # file sources boop as part of its own load sequence).
     [[ -n "${__bashClass_loading[$__import_class]:-}" ]] && continue
     __bashClass_loading[$__import_class]=1
 
@@ -613,7 +613,7 @@ fi  # end of (( ! __bashClass_loaded ))
 # ============================================================================
 # IMPORT ARGUMENTS — always processed, even on subsequent sources
 # ============================================================================
-# Usage: . bashClass Box Cube
+# Usage: . boop Box Cube
 # Each argument is a class name to import via __bashClass.import
 if (( $# )); then
   __bashClass.import "$@"

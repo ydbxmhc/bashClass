@@ -5,7 +5,7 @@
 # Load guard — if already registered, nothing to do
 [[ -n "${__bashClass_registry[Box]+set}" ]] && return 2>/dev/null
 
-. bashClass
+. boop
 
 # ============================================================================
 # Box Class Descriptor

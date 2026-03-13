@@ -5,7 +5,7 @@
 # Load guard — if already registered, nothing to do
 [[ -n "${__bashClass_registry[Cube]+set}" ]] && return 2>/dev/null
 
-. bashClass Box
+. boop Box
 
 # ============================================================================
 # Cube Class Descriptor
