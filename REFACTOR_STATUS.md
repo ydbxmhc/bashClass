@@ -6,7 +6,7 @@ Branch: `refactor-dispatcher`
 
 ## What We Built
 
-### Universal Dispatch System (`bashDispatcher`)
+### Universal Dispatch System (`bashClass`)
 
 A complete OOP dispatch framework for bash built around a single associative array registry
 with pipe-delimited descriptor values. Classes and objects share the same registry, distinguished
@@ -27,7 +27,18 @@ by their `type` field.
   (`__parse_key`, `__return_val`, `__encode_val`, etc.) to prevent nameref collisions across
   the call stack. This was discovered the hard way — bash namerefs resolve to the *nearest*
   matching name on the stack, so a `local value` in `__bashClass.return` would shadow the
-  caller's `value`.
+  caller's `value`. User class methods follow the same convention: `Box.volume` uses
+  `__Box_volume_l`, `__Box_volume_vol`, etc. If users don't follow this convention and
+  get nameref collisions, that's on them.
+- **`__return` typecast for named returns**: Any value-producing method can accept a
+  `__return=varname` typecast prefix. The method passes `${__return:-}` (unquoted) as the
+  second argument to `__bashClass.return`, which writes directly into the caller's named
+  variable via nameref. When `__return` is unset, the expansion vanishes (no empty arg
+  passed) and the global return mode governs. This enables zero-copy delegation chains:
+  `__return=__Box_volume_vol required=3 Box.calc "$l" "$h" "$w"` writes the result
+  straight into `volume`'s local without touching `__bashClass_RETURN`. Thin wrappers
+  like `Box.area` can pass through the caller's `__return` directly:
+  `required=2 __return=${__return:-} Box.calc "$@"`.
 - **Dots in names**: Method and property names use dots (`Box.volume`, `$obj.length`) as a
   deliberate safety feature. `$obj.foo=123` fails because it's not a valid variable name.
   With underscores, `$obj_foo=123` would silently create a useless variable.
@@ -108,6 +119,11 @@ Need a comprehensive test suite that exercises:
 - Edge cases: empty values, special characters, very long strings
 - Tests that should succeed, tests that should fail, and tests designed to surprise us
 
+### Rename bashClass → boop
+Pending. The framework file `bashClass` will be renamed to `boop` because it's too funny
+not to. All internal references (`__bashClass_*`), class files, tests, and docs will need
+updating. Pure rename — no behavioral changes.
+
 ### Clone, Destroy, Equals
 Deferred. Expected to be more complex than they initially sound. `equals` is either trivially
 easy (`[[ $this == $that ]]`) or sneaky-complex (deep comparison). Clone needs to handle
@@ -121,16 +137,11 @@ provide helper methods.
 
 | File | Purpose |
 |------|---------|
-| `bashDispatcher` | Core framework — dispatch, registry, encoding, standard methods |
-| `Box_new` | Box class implementation using new dispatcher |
-| `Cube_new` | Cube class (extends Box) using new dispatcher |
-| `test_box_cube` | Comprehensive test suite — 10 test groups |
-| `bashClass` | Original framework (preserved for reference) |
-| `bashObject` | Original object system (preserved for reference) |
-| `Box` | Original Box (preserved for reference) |
-| `Cube` | Original Cube (preserved for reference) |
-| `test_Box` | Original Box test (preserved for reference) |
-| `testCube` | Original Cube test (preserved for reference) |
+| `bashClass` | Core framework — dispatch, registry, encoding, standard methods |
+| `Box` | Box class implementation |
+| `Cube` | Cube class (extends Box) |
+| `test_box_cube` | Functional test suite — 14 test groups |
+| `test_stress` | Adversarial stress test suite — 129 assertions + optional benchmark |
 | `README.md` | Project overview |
 | `REFACTOR_STATUS.md` | This file |
 
@@ -145,3 +156,80 @@ provide helper methods.
 - **Subshells only when unavoidable**: Namerefs and globals for internal plumbing. Subshells
   only for `base64` callouts and user-chosen stdout mode.
 - **This is a personal project**: For learning and showcasing quirky bash skills. Fun is a feature.
+
+## Writing Class Methods — Conventions
+
+### Local Variable Naming
+
+All local variables in a method MUST be prefixed with `__ClassName_methodName_`. This
+prevents nameref collisions when methods delegate to each other through the call stack.
+
+```bash
+# Good
+Box.volume() {
+  local -I self class
+  local __Box_volume_l __Box_volume_h __Box_volume_w __Box_volume_vol
+  ...
+}
+
+# Bad — will collide with other functions that use 'length'
+Box.volume() {
+  local -I self class
+  local length height width vol
+  ...
+}
+```
+
+Framework internals use `__functionName_` (e.g., `__parse_key`, `__return_val`). User
+class methods use `__ClassName_methodName_` (e.g., `__Box_volume_l`). If you don't
+follow this convention and get nameref collisions, that's your problem.
+
+### Returning Values
+
+Every method that produces a value must end with:
+
+```bash
+__bashClass.return "$result" ${__return:-}
+```
+
+The `${__return:-}` is intentionally unquoted. When `__return` is unset, it expands to
+nothing and disappears — no empty argument is passed. When set to a valid identifier,
+it passes through as the nameref target. Invalid identifiers crash at the nameref
+assignment, which is correct behavior.
+
+### Delegating to Other Methods
+
+When calling another value-producing method, declare a prefixed local and pass its name
+via the `__return` typecast:
+
+```bash
+Box.volume() {
+  local -I self class
+  local __Box_volume_l __Box_volume_h __Box_volume_w __Box_volume_vol
+  __bashClass.parse "$self" "length" __Box_volume_l
+  __bashClass.parse "$self" "height" __Box_volume_h
+  __bashClass.parse "$self" "width" __Box_volume_w
+  __return=__Box_volume_vol required=3 Box.calc "$__Box_volume_l" "$__Box_volume_h" "$__Box_volume_w"
+  __bashClass.return "$__Box_volume_vol" ${__return:-}
+}
+```
+
+For thin wrappers that don't need to inspect the result, pass `__return` through:
+
+```bash
+Box.area() {
+  local -I self class
+  required=2 __return=${__return:-} Box.calc "$@"
+}
+```
+
+### Zero-Dimension Validation
+
+`Box.calc` rejects zero and non-integer arguments. The check:
+
+```bash
+[[ "${arg:-}" =~ ^[0-9]+$ ]] && ((arg)) || __bashClass.crash "..."
+```
+
+The `&&` chain validates: (1) it's a digit string, AND (2) it's nonzero. If either
+fails, the `||` fires the crash. A box with a zero dimension is nonsensical.

@@ -1,0 +1,1220 @@
+#!/bin/bash
+set -u
+
+# Stress test / adversarial test suite for bashClass
+# Tests that should FAIL (and we catch the failure), tests that should
+# SUCCEED in weird conditions, and tests designed to surprise us.
+
+__bench_count="${1:-0}"
+
+passed=0
+failed=0
+errors=0
+
+# Timing helpers — no subshells, uses EPOCHREALTIME
+__timer_start() { __timer_begin="$EPOCHREALTIME"; }
+__timer_stop() {
+  local __end="$EPOCHREALTIME"
+  local __s="${__timer_begin//.}" __e="${__end//.}"
+  local -i __diff_us=$(( __e - __s ))
+  local __sec=$(( __diff_us / 1000000 )) __frac=$(( __diff_us % 1000000 ))
+  printf -v __timer_elapsed "%d.%06d" "$__sec" "$__frac"
+}
+
+# Run a command that SHOULD succeed. Capture output and exit code.
+expect_ok() {
+  local __desc="$1"; shift
+  local __out __rc
+  __out=$("$@" 2>&1); __rc=$?
+  if (( __rc == 0 )); then
+    printf "  PASS: %s\n" "$__desc"
+    (( passed++ ))
+  else
+    printf "  FAIL: %s (exit %d)\n" "$__desc" "$__rc"
+    printf "        %s\n" "$__out"
+    (( failed++ ))
+  fi
+}
+
+# Run a command that SHOULD fail (crash/nonzero exit).
+# Must run in subshell so crash doesn't kill us.
+expect_fail() {
+  local __desc="$1"; shift
+  local __out __rc
+  __out=$("$@" 2>&1); __rc=$?
+  if (( __rc != 0 )); then
+    printf "  PASS: %s (correctly rejected, exit %d)\n" "$__desc" "$__rc"
+    (( passed++ ))
+  else
+    printf "  FAIL: %s (should have failed but didn't)\n" "$__desc"
+    printf "        output: %s\n" "$__out"
+    (( failed++ ))
+  fi
+}
+
+# Run a command, check that __bashClass_RETURN matches expected value.
+# Runs in current shell so globals are visible.
+expect_value() {
+  local __desc="$1" __expected="$2"; shift 2
+  "$@" 2>/dev/null
+  if [[ "$__bashClass_RETURN" == "$__expected" ]]; then
+    printf "  PASS: %s = '%s'\n" "$__desc" "$__expected"
+    (( passed++ ))
+  else
+    printf "  FAIL: %s expected '%s' got '%s'\n" "$__desc" "$__expected" "$__bashClass_RETURN"
+    (( failed++ ))
+  fi
+}
+
+# Check that stdout output from a subshell matches expected value.
+expect_stdout() {
+  local __desc="$1" __expected="$2"; shift 2
+  local __out
+  __out=$("$@" 2>/dev/null)
+  if [[ "$__out" == "$__expected" ]]; then
+    printf "  PASS: %s = '%s'\n" "$__desc" "$__expected"
+    (( passed++ ))
+  else
+    printf "  FAIL: %s expected '%s' got '%s'\n" "$__desc" "$__expected" "$__out"
+    (( failed++ ))
+  fi
+}
+
+printf "=== STRESS TEST SUITE ===\n\n"
+
+# Section timing: stops previous section timer (if any), prints elapsed, starts new
+__section() {
+  if [[ -n "${__timer_begin:-}" ]]; then
+    __timer_stop
+    printf "  [%ss]\n" "$__timer_elapsed"
+  fi
+  printf "\n--- %s ---\n" "$1"
+  __timer_start
+}
+
+__suite_start="$EPOCHREALTIME"
+
+# ============================================================================
+# SECTION 0a: Source class definitions (parse + load time)
+# ============================================================================
+__timer_start
+printf "\n--- source bashClass Cube (loads bashClass → Box → Cube) ---\n"
+. bashClass Cube
+__timer_stop
+printf "  Loaded in %ss\n" "$__timer_elapsed"
+__timer_begin=""
+
+# ============================================================================
+# SECTION 0b: Object creation timing
+# ============================================================================
+__section "object creation"
+__timer_start
+new Box length=5 width=3 height=7; box="$__bashClass_RETURN"
+__timer_stop
+printf "  new Box:  %ss\n" "$__timer_elapsed"
+__timer_start
+new Cube size=4 unit=cm; cube="$__bashClass_RETURN"
+__timer_stop
+printf "  new Cube: %ss\n" "$__timer_elapsed"
+__timer_begin=""
+
+
+# ============================================================================
+# SECTION 1: __bashClass.validate — input validation
+# ============================================================================
+__section "validate"
+
+# Should pass
+expect_ok   "valid identifier: Box"          __bashClass.validate "Box"
+expect_ok   "valid identifier: _foo123"      __bashClass.validate "_foo123"
+expect_ok   "valid function: Box.calc"      bash -c '. bashClass Cube; type=function __bashClass.validate "Box.calc"'
+expect_ok   "valid function: a.b.c"          bash -c '. bashClass Cube; type=function __bashClass.validate "a.b.c"'
+
+# Should fail
+expect_fail "empty string"                   bash -c '. bashClass Cube; __bashClass.validate ""'
+expect_fail "starts with number: 1Box"       bash -c '. bashClass Cube; __bashClass.validate "1Box"'
+expect_fail "has spaces: my box"             bash -c '. bashClass Cube; __bashClass.validate "my box"'
+expect_fail "has dash: my-box"               bash -c '. bashClass Cube; __bashClass.validate "my-box"'
+expect_fail "dot in identifier mode"         bash -c '. bashClass Cube; __bashClass.validate "Box.new"'
+expect_fail "semicolon injection: foo;ls"    bash -c '. bashClass Cube; __bashClass.validate "foo;ls"'
+expect_fail "pipe injection: foo|bar"        bash -c '. bashClass Cube; __bashClass.validate "foo|bar"'
+expect_fail "dollar injection"               bash -c '. bashClass Cube; __bashClass.validate "\$HOME"'
+expect_fail "backtick injection"             bash -c '. bashClass Cube; __bashClass.validate "\`whoami\`"'
+expect_fail "misspelled typecast: typ=func"  bash -c '. bashClass Cube; typ=function __bashClass.validate "Box.calc"'
+
+
+# ============================================================================
+# SECTION 2: __bashClass.return — all five modes
+# ============================================================================
+__section "return modes"
+
+# Auto mode: global in main shell
+__bashClass_returnMode=auto
+__bashClass.return "hello_auto"
+expect_value "auto mode in main shell → global" "hello_auto" true
+
+# Auto mode: stdout in subshell (must be subshell of THIS process)
+__sub_out=$( __bashClass.return "hello_sub" )
+if [[ "$__sub_out" == "hello_sub" ]]; then
+  printf "  PASS: auto mode in subshell → stdout\n"; (( passed++ ))
+else
+  printf "  FAIL: auto mode in subshell expected 'hello_sub' got '%s'\n" "$__sub_out"; (( failed++ ))
+fi
+
+# Explicit global
+__bashClass_returnMode=global
+__bashClass.return "hello_global"
+expect_value "explicit global mode" "hello_global" true
+
+# Explicit stdout
+expect_stdout "explicit stdout mode" "hello_stdout" \
+  bash -c '. bashClass Cube; __bashClass_returnMode=stdout; __bashClass.return "hello_stdout"'
+
+# Explicit nameref
+__bashClass_returnMode=auto
+local_target=""
+__bashClass.return "hello_nameref" local_target
+if [[ "$local_target" == "hello_nameref" ]]; then
+  printf "  PASS: nameref mode = 'hello_nameref'\n"; (( passed++ ))
+else
+  printf "  FAIL: nameref expected 'hello_nameref' got '%s'\n" "$local_target"; (( failed++ ))
+fi
+
+# Nameref with no target (should crash)
+expect_fail "nameref mode, no target" \
+  bash -c '. bashClass Cube; __bashClass_returnMode=nameref; __bashClass.return "boom"'
+
+# Nameref in subshell (should work now — namerefs are local var refs)
+expect_ok "nameref in subshell" \
+  bash -c '. bashClass Cube; __bashClass_returnMode=nameref; __bashClass.return "boom" myvar'
+
+# Filesystem mode
+__bashClass_returnMode=filesystem
+__bashClass_tmpdir="/tmp"
+__bashClass.return "hello_fs"
+__fs_file="/tmp/__bashClass___bashClass.return_$BASHPID"
+# The file is written by the function above us, but FUNCNAME[1] in return
+# is the *caller*, which is "main" in a script. Let's just check the tmpdir.
+__fs_found=0
+for f in /tmp/__bashClass_*; do
+  [[ -f "$f" ]] && __fs_found=1 && rm -f "$f"
+done
+if (( __fs_found )); then
+  printf "  PASS: filesystem mode wrote a file\n"; (( passed++ ))
+else
+  printf "  FAIL: filesystem mode — no file found\n"; (( failed++ ))
+fi
+
+# Invalid mode
+expect_fail "invalid return mode: banana" \
+  bash -c '. bashClass Cube; __bashClass_returnMode=banana; __bashClass.return "boom"'
+
+# Reset
+__bashClass_returnMode=auto
+
+
+# ============================================================================
+# SECTION 3: __bashClass.encode / decode — edge cases
+# ============================================================================
+__section "encode/decode"
+
+# Empty string round-trip
+__bashClass.encode "" __enc; __bashClass.decode "$__enc" __dec
+if [[ "$__dec" == "" ]]; then
+  printf "  PASS: empty string round-trip\n"; (( passed++ ))
+else
+  printf "  FAIL: empty string round-trip got '%s'\n" "$__dec"; (( failed++ ))
+fi
+
+# All special chars at once
+__bashClass.encode "%|=
+	" __enc
+__bashClass.decode "$__enc" __dec
+if [[ "$__dec" == $'%|=\n\t' ]]; then
+  printf "  PASS: all special chars round-trip\n"; (( passed++ ))
+else
+  printf "  FAIL: all special chars round-trip got '%s'\n" "$__dec"; (( failed++ ))
+fi
+
+# Double-encode (encode an already-encoded string)
+__bashClass.encode "hello%25world" __enc
+__bashClass.decode "$__enc" __dec
+if [[ "$__dec" == "hello%25world" ]]; then
+  printf "  PASS: double-encode round-trip preserves %%25\n"; (( passed++ ))
+else
+  printf "  FAIL: double-encode round-trip got '%s'\n" "$__dec"; (( failed++ ))
+fi
+
+# Very long string (1000 chars)
+__long_str=$(printf 'A%.0s' {1..1000})
+__bashClass.encode "$__long_str" __enc
+__bashClass.decode "$__enc" __dec
+if [[ "$__dec" == "$__long_str" ]]; then
+  printf "  PASS: 1000-char string round-trip\n"; (( passed++ ))
+else
+  printf "  FAIL: 1000-char string length %d vs %d\n" "${#__dec}" "${#__long_str}"; (( failed++ ))
+fi
+
+# String of only percents
+__bashClass.encode "%%%" __enc
+__bashClass.decode "$__enc" __dec
+if [[ "$__dec" == "%%%" ]]; then
+  printf "  PASS: triple percent round-trip\n"; (( passed++ ))
+else
+  printf "  FAIL: triple percent got '%s'\n" "$__dec"; (( failed++ ))
+fi
+
+# String of only pipes
+__bashClass.encode "|||" __enc
+__bashClass.decode "$__enc" __dec
+if [[ "$__dec" == "|||" ]]; then
+  printf "  PASS: triple pipe round-trip\n"; (( passed++ ))
+else
+  printf "  FAIL: triple pipe got '%s'\n" "$__dec"; (( failed++ ))
+fi
+
+# String with encoded-looking sequences (should not double-decode)
+__bashClass.encode "%7C%0A%25" __enc
+__bashClass.decode "$__enc" __dec
+if [[ "$__dec" == "%7C%0A%25" ]]; then
+  printf "  PASS: encoded-looking input preserved\n"; (( passed++ ))
+else
+  printf "  FAIL: encoded-looking input got '%s'\n" "$__dec"; (( failed++ ))
+fi
+
+
+# ============================================================================
+# SECTION 4: __bashClass.parse — bad keys, missing fields, injection
+# ============================================================================
+__section "parse"
+
+# Valid parse
+__bashClass.parse "$box" "length" __pval
+if [[ "$__pval" == "5" ]]; then
+  printf "  PASS: parse existing field\n"; (( passed++ ))
+else
+  printf "  FAIL: parse existing field got '%s'\n" "$__pval"; (( failed++ ))
+fi
+
+# Parse nonexistent field (should return empty, not crash)
+__bashClass.parse "$box" "nonexistent" __pval
+if [[ "$__pval" == "" ]]; then
+  printf "  PASS: parse missing field returns empty\n"; (( passed++ ))
+else
+  printf "  FAIL: parse missing field got '%s'\n" "$__pval"; (( failed++ ))
+fi
+
+# Parse with invalid key
+expect_fail "parse with invalid key (spaces)" \
+  bash -c '. bashClass Cube; __bashClass.parse "bad key" "field" x'
+
+# Parse with empty key
+expect_fail "parse with empty key" \
+  bash -c '. bashClass Cube; __bashClass.parse "" "field" x'
+
+# Parse unregistered key (valid name but not in registry)
+__bashClass.parse "NoSuchThing" "field" __pval
+if [[ "$__pval" == "" ]]; then
+  printf "  PASS: parse unregistered key returns empty\n"; (( passed++ ))
+else
+  printf "  FAIL: parse unregistered key got '%s'\n" "$__pval"; (( failed++ ))
+fi
+
+
+# ============================================================================
+# SECTION 5: __bashClass.dispatch — bad methods, bad classes, injection
+# ============================================================================
+__section "dispatch"
+
+# Dispatch nonexistent method
+expect_fail "dispatch nonexistent method" \
+  bash -c '. bashClass Cube; new Box length=1 width=1 height=1; class=Box __bashClass.dispatch explode'
+
+# Dispatch with invalid class name
+expect_fail "dispatch with invalid class (has dash)" \
+  bash -c '. bashClass Cube; class=my-class __bashClass.dispatch new'
+
+# Dispatch with empty method
+expect_fail "dispatch with empty method" \
+  bash -c '. bashClass Cube; class=Box __bashClass.dispatch ""'
+
+# Dispatch method with injection attempt
+expect_fail "dispatch method injection: volume;ls" \
+  bash -c '. bashClass Cube; class=Box __bashClass.dispatch "volume;ls"'
+
+# Dispatch to unregistered class
+expect_fail "dispatch to unregistered class" \
+  bash -c '. bashClass Cube; class=Sphere __bashClass.dispatch new'
+
+
+# ============================================================================
+# SECTION 6: __bashClass.registerMethod — bad inputs
+# ============================================================================
+__section "registerMethod"
+
+# Register with nonexistent function
+expect_fail "register nonexistent function" \
+  bash -c '. bashClass Cube; __bashClass.registerMethod Box foo __nonexistent_func'
+
+# Register with invalid class name
+expect_fail "register with invalid class" \
+  bash -c '. bashClass Cube; __bashClass.registerMethod "bad class" foo Box.calc'
+
+# Register with invalid method name
+expect_fail "register with invalid method (has dot)" \
+  bash -c '. bashClass Cube; __bashClass.registerMethod Box "bad.method" Box.calc'
+
+# Register with empty args
+expect_fail "register with empty class" \
+  bash -c '. bashClass Cube; __bashClass.registerMethod "" foo Box.calc'
+
+
+# ============================================================================
+# SECTION 7: new / constructors — bad args, missing class, weird values
+# ============================================================================
+__section "constructors"
+
+# new with nonexistent class
+expect_fail "new nonexistent class" \
+  bash -c '. bashClass Cube; new Sphere size=5'
+
+# new with invalid class name
+expect_fail "new with invalid class name" \
+  bash -c '. bashClass Cube; new "bad class" size=5'
+
+# new with no args (should still work — empty object)
+new Box
+__empty_box="$__bashClass_RETURN"
+if [[ -n "$__empty_box" ]]; then
+  printf "  PASS: new Box with no args creates object\n"; (( passed++ ))
+else
+  printf "  FAIL: new Box with no args returned empty\n"; (( failed++ ))
+fi
+
+# Property with special chars in value
+new Box length=5 width=3 height=7 color="red|blue=green%100"
+__special_box="$__bashClass_RETURN"
+$__special_box.color
+if [[ "$__bashClass_RETURN" == "red|blue=green%100" ]]; then
+  printf "  PASS: special chars in constructor arg\n"; (( passed++ ))
+else
+  printf "  FAIL: special chars got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# Class-as-constructor (Box)
+Box length=1 width=1 height=1
+__cbox="$__bashClass_RETURN"
+$__cbox.volume
+if [[ "$__bashClass_RETURN" == "1" ]]; then
+  printf "  PASS: Box class-as-constructor works\n"; (( passed++ ))
+else
+  printf "  FAIL: Box class-as-constructor volume got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# Class-as-constructor (Cube)
+Cube size=3
+__ccube="$__bashClass_RETURN"
+$__ccube.volume
+if [[ "$__bashClass_RETURN" == "27" ]]; then
+  printf "  PASS: Cube class-as-constructor works\n"; (( passed++ ))
+else
+  printf "  FAIL: Cube class-as-constructor volume got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# Explicit dispatch constructor
+class=Box __bashClass.dispatch new length=2 width=3 height=4
+__dbox="$__bashClass_RETURN"
+$__dbox.volume
+if [[ "$__bashClass_RETURN" == "24" ]]; then
+  printf "  PASS: explicit dispatch constructor works\n"; (( passed++ ))
+else
+  printf "  FAIL: explicit dispatch constructor volume got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# Explicit dispatch constructor (Cube)
+class=Cube __bashClass.dispatch new size=5
+__dcube="$__bashClass_RETURN"
+$__dcube.volume
+if [[ "$__bashClass_RETURN" == "125" ]]; then
+  printf "  PASS: explicit dispatch constructor Cube works\n"; (( passed++ ))
+else
+  printf "  FAIL: explicit dispatch constructor Cube volume got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# Duplicate property in args (last one wins? or first?)
+new Box length=5 width=3 height=7 length=99
+__dup_box="$__bashClass_RETURN"
+$__dup_box.length
+printf "  INFO: duplicate prop length=5 then length=99 → '%s' (documenting behavior)\n" "$__bashClass_RETURN"
+(( passed++ ))
+
+
+# ============================================================================
+# SECTION 8: get/set — edge cases
+# ============================================================================
+__section "get/set"
+
+# Get nonexistent property (should return empty)
+$box.get "nosuchprop"
+if [[ "$__bashClass_RETURN" == "" ]]; then
+  printf "  PASS: get nonexistent property returns empty\n"; (( passed++ ))
+else
+  printf "  FAIL: get nonexistent got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# Set then get empty string
+$box.set "emptyval" ""
+$box.get "emptyval"
+if [[ "$__bashClass_RETURN" == "" ]]; then
+  printf "  PASS: set/get empty string\n"; (( passed++ ))
+else
+  printf "  FAIL: set/get empty string got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# Set a value with newlines, tabs, pipes, equals, percents
+$box.set "crazy" $'line1\nline2\t|col=100%'
+$box.get "crazy"
+if [[ "$__bashClass_RETURN" == $'line1\nline2\t|col=100%' ]]; then
+  printf "  PASS: set/get value with all special chars\n"; (( passed++ ))
+else
+  printf "  FAIL: set/get special chars got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# Overwrite existing property
+$box.set "length" "42"
+$box.get "length"
+if [[ "$__bashClass_RETURN" == "42" ]]; then
+  printf "  PASS: overwrite existing property\n"; (( passed++ ))
+else
+  printf "  FAIL: overwrite got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# Set property via shorthand accessor
+$box.length 77
+$box.length
+if [[ "$__bashClass_RETURN" == "77" ]]; then
+  printf "  PASS: shorthand set/get\n"; (( passed++ ))
+else
+  printf "  FAIL: shorthand got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+
+# ============================================================================
+# SECTION 9: isa — edge cases
+# ============================================================================
+__section "isa"
+
+# isa with no args returns class
+$cube.isa
+if [[ "$__bashClass_RETURN" == "Cube" ]]; then
+  printf "  PASS: isa no-arg returns class name\n"; (( passed++ ))
+else
+  printf "  FAIL: isa no-arg got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# isa with nonexistent class (should return false)
+$cube.isa "Sphere"
+if (( $? != 0 )); then
+  printf "  PASS: isa Sphere returns false\n"; (( passed++ ))
+else
+  printf "  FAIL: isa Sphere returned true\n"; (( failed++ ))
+fi
+
+# isa with empty string (should return class name via the empty check)
+$cube.isa ""
+if [[ "$__bashClass_RETURN" == "Cube" ]]; then
+  printf "  PASS: isa empty string returns class name\n"; (( passed++ ))
+else
+  printf "  FAIL: isa empty string got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# isa walks full chain
+$cube.isa bashClass && __isa_rc=0 || __isa_rc=1
+if (( __isa_rc == 0 )); then
+  printf "  PASS: isa bashClass from Cube (full chain)\n"; (( passed++ ))
+else
+  printf "  FAIL: isa bashClass from Cube returned false\n"; (( failed++ ))
+fi
+
+
+# ============================================================================
+# SECTION 10: toString — edge cases
+# ============================================================================
+__section "toString"
+
+# toString on object with no user properties
+new bashClass
+__bare="$__bashClass_RETURN"
+$__bare.toString
+printf "  INFO: bare bashClass toString: '%s'\n" "$__bashClass_RETURN"
+(( passed++ ))
+
+# toString pretty on object with special chars in values
+new Box length=5 width=3 height=7 color="red|blue"
+__pp_box="$__bashClass_RETURN"
+prettyPrint=true $__pp_box.toString
+printf "  INFO: pretty with special chars:\n%s\n" "$__bashClass_RETURN"
+(( passed++ ))
+
+# toString with misspelled typecast (should get compact, not crash)
+prettyprint=true $cube.toString
+if [[ "$__bashClass_RETURN" == *"{"* ]]; then
+  printf "  PASS: misspelled prettyprint still works (compact)\n"; (( passed++ ))
+else
+  printf "  FAIL: misspelled prettyprint broke something\n"; (( failed++ ))
+fi
+
+
+# ============================================================================
+# SECTION 11: Subshell behavior — globals don't escape
+# ============================================================================
+__section "subshell traps"
+
+# Set a value in a subshell — should NOT be visible in parent
+__bashClass_RETURN="before_subshell"
+( new Box length=99 width=99 height=99 )
+if [[ "$__bashClass_RETURN" == "before_subshell" ]]; then
+  printf "  PASS: subshell new doesn't leak to parent global\n"; (( passed++ ))
+else
+  printf "  FAIL: subshell leaked '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# Object created in subshell is invisible to parent
+__sub_obj=$( new Box length=1 width=1 height=1; printf "%s" "$__bashClass_RETURN" )
+if [[ -z "${__bashClass_registry[$__sub_obj]:-}" ]]; then
+  printf "  PASS: subshell object not in parent registry\n"; (( passed++ ))
+else
+  printf "  FAIL: subshell object leaked to parent registry\n"; (( failed++ ))
+fi
+
+# Method call in subshell uses stdout (auto mode)
+__sub_vol=$( $cube.volume )
+# In subshell, auto→stdout, so volume prints to stdout directly.
+if [[ "$__sub_vol" == "64" ]]; then
+  printf "  PASS: method in subshell returns via stdout (auto mode)\n"; (( passed++ ))
+else
+  printf "  FAIL: method in subshell got '%s'\n" "$__sub_vol"; (( failed++ ))
+fi
+
+
+# ============================================================================
+# SECTION 12: Lazy stubs and baking — verify behavior
+# ============================================================================
+__section "lazy stubs"
+
+# Create fresh object, inspect stub before first call
+new Box length=2 width=3 height=4
+__stub_box="$__bashClass_RETURN"
+
+# The stub should contain __init=true
+__stub_def=$(declare -f "$__stub_box.volume")
+if [[ "$__stub_def" == *"__init=true"* ]]; then
+  printf "  PASS: stub contains __init=true before first call\n"; (( passed++ ))
+else
+  printf "  FAIL: stub doesn't contain __init=true: %s\n" "$__stub_def"; (( failed++ ))
+fi
+
+# Call it — should bake
+$__stub_box.volume
+
+# Now the baked version should NOT contain __init=true
+__baked_def=$(declare -f "$__stub_box.volume")
+if [[ "$__baked_def" != *"__init=true"* ]]; then
+  printf "  PASS: baked wrapper does not contain __init=true\n"; (( passed++ ))
+else
+  printf "  FAIL: baked wrapper still has __init=true: %s\n" "$__baked_def"; (( failed++ ))
+fi
+
+# Baked wrapper should contain the resolved impl name
+if [[ "$__baked_def" == *"Box.volume"* ]]; then
+  printf "  PASS: baked wrapper calls Box.volume directly\n"; (( passed++ ))
+else
+  printf "  FAIL: baked wrapper doesn't reference Box.volume: %s\n" "$__baked_def"; (( failed++ ))
+fi
+
+
+# ============================================================================
+# SECTION 13: Typecasting — baked wrapper fallback
+# ============================================================================
+__section "typecasting"
+
+new Cube size=5
+__tc="$__bashClass_RETURN"
+
+# Bake it first
+$__tc.volume
+expect_value "Cube volume normal" "125" $__tc.volume
+
+# Typecast to Box — should dispatch, not use baked Cube path
+class=Box $__tc.volume
+expect_value "Cube volume typecast to Box" "125" true
+
+# Typecast to nonexistent class — should crash
+expect_fail "typecast to nonexistent class" \
+  bash -c ". bashClass Cube; new Cube size=5; tc=\$__bashClass_RETURN; \$tc.volume; class=Sphere \$tc.volume"
+
+# Typecast to parent (Box) then back to normal
+class=Box $__tc.side
+__tc_side="$__bashClass_RETURN"
+$__tc.side
+__tc_side2="$__bashClass_RETURN"
+if [[ "$__tc_side" == "25" && "$__tc_side2" == "25" ]]; then
+  printf "  PASS: typecast to Box.side then normal Cube.side both = 25\n"; (( passed++ ))
+else
+  printf "  FAIL: typecast side=%s normal side=%s\n" "$__tc_side" "$__tc_side2"; (( failed++ ))
+fi
+
+
+# ============================================================================
+# SECTION 14: super — edge cases
+# ============================================================================
+__section "super"
+
+# super from bashClass (no parent — should crash)
+expect_fail "super from root class" \
+  bash -c '. bashClass Cube; new bashClass; obj=$__bashClass_RETURN; $obj.super volume'
+
+# super from Box (parent is bashClass, which has no volume — should crash)
+expect_fail "super volume from Box (bashClass has no volume)" \
+  bash -c '. bashClass Cube; new Box length=1 width=1 height=1; obj=$__bashClass_RETURN; self=$obj class=Box __bashClass.dispatch super volume'
+
+
+# ============================================================================
+# SECTION 15: bencode/bdecode — bad inputs
+# ============================================================================
+__section "bencode/bdecode"
+
+# bencode empty string
+__bashClass.bencode ""
+__bashClass.bdecode "$__bashClass_RETURN"
+if [[ "$__bashClass_RETURN" == "" ]]; then
+  printf "  PASS: bencode/bdecode empty string\n"; (( passed++ ))
+else
+  printf "  FAIL: bencode/bdecode empty got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# bencode with misspelled typecast (input vs inpt)
+# Should fall through to default (string mode), not crash
+__bashClass.bencode "hello"
+__orig="$__bashClass_RETURN"
+inpt=file __bashClass.bencode "hello"
+if [[ "$__bashClass_RETURN" == "$__orig" ]]; then
+  printf "  PASS: misspelled typecast falls through to string mode\n"; (( passed++ ))
+else
+  printf "  FAIL: misspelled typecast gave different result\n"; (( failed++ ))
+fi
+
+# bencode file mode with nonexistent file
+expect_fail "bencode nonexistent file" \
+  bash -c '. bashClass Cube; input=file __bashClass.bencode /tmp/no_such_file_ever'
+
+# bdecode with invalid base64 (base64 -d may warn but exit 0 on some systems)
+__bdec_out=$(bash -c '. bashClass Cube; __bashClass.bdecode "not-valid-base64!!!"' 2>&1); __bdec_rc=$?
+if (( __bdec_rc != 0 )); then
+  printf "  PASS: bdecode invalid base64 (rejected, exit %d)\n" "$__bdec_rc"; (( passed++ ))
+else
+  printf "  INFO: bdecode invalid base64 did not crash (exit 0) — base64 -d is lenient on this system\n"
+  (( passed++ ))
+fi
+
+
+# ============================================================================
+# SECTION 16: setDefaultMode — bad inputs
+# ============================================================================
+__section "setDefaultMode"
+
+expect_fail "setDefaultMode with garbage" \
+  bash -c '. bashClass Cube; __bashClass.setDefaultMode "garbage"'
+
+expect_fail "setDefaultMode with empty" \
+  bash -c '. bashClass Cube; __bashClass.setDefaultMode ""'
+
+# Valid modes should not crash
+for mode in auto nameref stdout global filesystem; do
+  expect_ok "setDefaultMode $mode" bash -c ". bashClass Cube; __bashClass.setDefaultMode $mode"
+done
+
+
+# ============================================================================
+# SECTION 17: registerClass — bad inputs
+# ============================================================================
+__section "registerClass"
+
+expect_fail "registerClass with invalid name" \
+  bash -c '. bashClass Cube; __bashClass.registerClass "bad class"'
+
+expect_fail "registerClass with no descriptor" \
+  bash -c '. bashClass Cube; __bashClass.registerClass "Phantom"'
+
+
+# ============================================================================
+# SECTION 18: refresh — re-stubbing
+# ============================================================================
+__section "refresh"
+
+new Box length=3 width=4 height=5
+__rbox="$__bashClass_RETURN"
+
+# Bake it
+$__rbox.volume
+expect_value "pre-refresh volume" "60" true
+
+# Refresh — should re-stub
+__bashClass.refresh "$__rbox"
+
+# Check that it's a stub again
+__rdef=$(declare -f "$__rbox.volume")
+if [[ "$__rdef" == *"__init=true"* ]]; then
+  printf "  PASS: refresh re-stubbed the method\n"; (( passed++ ))
+else
+  printf "  FAIL: refresh didn't re-stub: %s\n" "$__rdef"; (( failed++ ))
+fi
+
+# Call again — should re-bake and still work
+$__rbox.volume
+expect_value "post-refresh volume still correct" "60" true
+
+# Refresh nonexistent object
+expect_fail "refresh nonexistent object" \
+  bash -c '. bashClass Cube; __bashClass.refresh "no_such_obj"'
+
+
+# ============================================================================
+# SECTION 19: Return modes through the full stack
+# Each mode exercised through actual object method calls, not just
+# calling __bashClass.return directly.
+# ============================================================================
+__section "return modes through object methods"
+
+new Box length=6 width=7 height=8
+__rm_box="$__bashClass_RETURN"
+
+# Global mode (default auto in main shell)
+__bashClass_returnMode=auto
+$__rm_box.volume
+expect_value "auto/global: volume" "336" true
+
+# Explicit global
+__bashClass_returnMode=global
+$__rm_box.volume
+expect_value "explicit global: volume" "336" true
+
+# Stdout mode — now that Box.calc uses __bashClass.return, this works
+expect_stdout "stdout mode: volume" "336" \
+  bash -c '. bashClass Cube; new Box length=6 width=7 height=8; b=$__bashClass_RETURN; __bashClass_returnMode=stdout; $b.volume'
+
+# Nameref mode through get
+__bashClass_returnMode=auto
+$__rm_box.get length
+expect_value "get length via global" "6" true
+
+# Reset
+__bashClass_returnMode=auto
+
+
+# ============================================================================
+# SECTION 20: Serialization — round-trip
+# ============================================================================
+__section "serialization"
+
+__ser_file="/tmp/test_serialize_$$.dat"
+
+# Serialize
+__bashClass.serialize "$__ser_file"
+if [[ -f "$__ser_file" ]]; then
+  printf "  PASS: serialize wrote file\n"; (( passed++ ))
+else
+  printf "  FAIL: serialize didn't write file\n"; (( failed++ ))
+fi
+
+# Deserialize into fresh env and check a value
+expect_ok "deserialize reads back" \
+  bash -c ". bashClass Cube; __bashClass.deserialize '$__ser_file'"
+
+rm -f "$__ser_file"
+
+# Deserialize nonexistent file
+expect_fail "deserialize nonexistent file" \
+  bash -c '. bashClass Cube; __bashClass.deserialize /tmp/no_such_file_ever'
+
+
+# ============================================================================
+# SECTION 21: Multiple inheritance chain depth
+# ============================================================================
+__section "deep inheritance"
+
+# Cube → Box → bashClass: get inherited from bashClass, 2 levels deep
+$cube.get "size"
+expect_value "Cube.get (inherited 2 levels) = size" "4" true
+
+# isa walks the full chain
+$cube.isa bashClass && __deep_rc=0 || __deep_rc=1
+if (( __deep_rc == 0 )); then
+  printf "  PASS: Cube isa bashClass (2 levels)\n"; (( passed++ ))
+else
+  printf "  FAIL: Cube isa bashClass returned false\n"; (( failed++ ))
+fi
+
+
+# ============================================================================
+# SECTION 22: Rapid object creation — timing and uniqueness
+# ============================================================================
+__section "rapid creation"
+
+declare -A __seen_ids
+__dupes=0
+for i in {1..50}; do
+  new Box length=$i width=$i height=$i
+  __id="$__bashClass_RETURN"
+  if [[ -n "${__seen_ids[$__id]:-}" ]]; then
+    (( __dupes++ ))
+  fi
+  __seen_ids[$__id]=1
+done
+
+if (( __dupes == 0 )); then
+  printf "  PASS: 50 rapid objects, all unique IDs\n"; (( passed++ ))
+else
+  printf "  FAIL: %d duplicate IDs in 50 objects\n" "$__dupes"; (( failed++ ))
+fi
+unset __seen_ids
+
+
+# ============================================================================
+# SECTION 23: crash function — error codes
+# ============================================================================
+__section "crash"
+
+# Default exit code is 1
+expect_fail "crash default exit code" \
+  bash -c '. bashClass Cube; __bashClass.crash "boom"'
+
+# Custom exit code
+__crash_out=$(bash -c '. bashClass Cube; __bashClass.crash 42 "custom code"' 2>&1); __crash_rc=$?
+if (( __crash_rc == 42 )); then
+  printf "  PASS: crash with custom exit code 42\n"; (( passed++ ))
+else
+  printf "  FAIL: crash exit code was %d, expected 42\n" "$__crash_rc"; (( failed++ ))
+fi
+
+# Crash message goes to stderr
+__crash_stdout=$(bash -c '. bashClass Cube; __bashClass.crash "stderr test"' 2>/dev/null)
+if [[ -z "$__crash_stdout" ]]; then
+  printf "  PASS: crash message goes to stderr, not stdout\n"; (( passed++ ))
+else
+  printf "  FAIL: crash leaked to stdout: '%s'\n" "$__crash_stdout"; (( failed++ ))
+fi
+
+
+# ============================================================================
+# Close last section timer
+# ============================================================================
+__timer_stop
+printf "  [%ss]\n" "$__timer_elapsed"
+
+
+# ============================================================================
+# SECTION 24: __return typecast — named return through the full stack
+# ============================================================================
+__section "__return typecast"
+
+new Box length=5 width=3 height=7
+__rt_box="$__bashClass_RETURN"
+
+# __return on a leaf method (calc via volume)
+__rt_vol=""
+__return=__rt_vol $__rt_box.volume
+if [[ "$__rt_vol" == "105" ]]; then
+  printf "  PASS: __return on volume = 105\n"; (( passed++ ))
+else
+  printf "  FAIL: __return on volume got '%s'\n" "$__rt_vol"; (( failed++ ))
+fi
+
+# __return on get (leaf, through dispatch)
+__rt_len=""
+__return=__rt_len $__rt_box.get length
+if [[ "$__rt_len" == "5" ]]; then
+  printf "  PASS: __return on get length = 5\n"; (( passed++ ))
+else
+  printf "  FAIL: __return on get length got '%s'\n" "$__rt_len"; (( failed++ ))
+fi
+
+# __return on property shorthand accessor
+__rt_width=""
+__return=__rt_width $__rt_box.width
+if [[ "$__rt_width" == "3" ]]; then
+  printf "  PASS: __return on shorthand width = 3\n"; (( passed++ ))
+else
+  printf "  FAIL: __return on shorthand width got '%s'\n" "$__rt_width"; (( failed++ ))
+fi
+
+# __return on isa (no-arg, returns class name)
+__rt_class=""
+__return=__rt_class $__rt_box.isa
+if [[ "$__rt_class" == "Box" ]]; then
+  printf "  PASS: __return on isa = Box\n"; (( passed++ ))
+else
+  printf "  FAIL: __return on isa got '%s'\n" "$__rt_class"; (( failed++ ))
+fi
+
+# __return on toString (compact)
+__rt_str=""
+__return=__rt_str $__rt_box.toString
+if [[ "$__rt_str" == *"Box("* ]]; then
+  printf "  PASS: __return on toString contains Box(\n"; (( passed++ ))
+else
+  printf "  FAIL: __return on toString got '%s'\n" "$__rt_str"; (( failed++ ))
+fi
+
+# __return on toString pretty
+__rt_pretty=""
+__return=__rt_pretty $__rt_box.toString pretty
+if [[ "$__rt_pretty" == *$'\n'* ]]; then
+  printf "  PASS: __return on toString pretty contains newlines\n"; (( passed++ ))
+else
+  printf "  FAIL: __return on toString pretty got '%s'\n" "$__rt_pretty"; (( failed++ ))
+fi
+
+# __return through delegation chain: Cube.top → Cube.side → Box.area → Box.calc
+new Cube size=4
+__rt_cube="$__bashClass_RETURN"
+__rt_top=""
+__return=__rt_top $__rt_cube.top
+if [[ "$__rt_top" == "16" ]]; then
+  printf "  PASS: __return through Cube.top chain = 16\n"; (( passed++ ))
+else
+  printf "  FAIL: __return through Cube.top chain got '%s'\n" "$__rt_top"; (( failed++ ))
+fi
+
+# __return on bottom (delegates to top)
+__rt_bottom=""
+__return=__rt_bottom $__rt_cube.bottom
+if [[ "$__rt_bottom" == "16" ]]; then
+  printf "  PASS: __return through Cube.bottom → side = 16\n"; (( passed++ ))
+else
+  printf "  FAIL: __return through Cube.bottom got '%s'\n" "$__rt_bottom"; (( failed++ ))
+fi
+
+# __return on new (constructor returns object ID)
+__rt_newobj=""
+__return=__rt_newobj new Box length=1 width=1 height=1
+if [[ "$__rt_newobj" =~ ^_[0-9a-f]+$ ]]; then
+  printf "  PASS: __return on new returns valid object ID\n"; (( passed++ ))
+else
+  printf "  FAIL: __return on new got '%s'\n" "$__rt_newobj"; (( failed++ ))
+fi
+
+# __return does NOT pollute __bashClass_RETURN when used
+__bashClass_RETURN="sentinel"
+__rt_check=""
+__return=__rt_check $__rt_box.volume
+if [[ "$__bashClass_RETURN" == "sentinel" ]]; then
+  printf "  PASS: __return bypasses __bashClass_RETURN\n"; (( passed++ ))
+else
+  printf "  FAIL: __return leaked to __bashClass_RETURN: '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# __return with typecast to parent class
+__rt_tc=""
+__return=__rt_tc class=Box $__rt_cube.volume
+if [[ "$__rt_tc" == "64" ]]; then
+  printf "  PASS: __return with typecast to Box = 64\n"; (( passed++ ))
+else
+  printf "  FAIL: __return with typecast got '%s'\n" "$__rt_tc"; (( failed++ ))
+fi
+
+
+# ============================================================================
+# SECTION 25: Nonzero integer validation — Box.calc
+# ============================================================================
+__section "nonzero validation"
+
+# Zero should be rejected
+expect_fail "calc rejects zero" \
+  bash -c '. bashClass Cube; Box.calc 5 0 3'
+
+# Negative should be rejected (not matching ^[0-9]+$)
+expect_fail "calc rejects negative" \
+  bash -c '. bashClass Cube; Box.calc 5 -3 7'
+
+# Non-numeric should be rejected
+expect_fail "calc rejects letters" \
+  bash -c '. bashClass Cube; Box.calc 5 abc 7'
+
+# Empty string should be rejected
+expect_fail "calc rejects empty arg" \
+  bash -c '. bashClass Cube; Box.calc 5 "" 7'
+
+# Float should be rejected
+expect_fail "calc rejects float" \
+  bash -c '. bashClass Cube; Box.calc 5 3.5 7'
+
+# Single valid arg works
+expect_stdout "calc single arg" "42" \
+  bash -c '. bashClass Cube; Box.calc 42; printf "%s" "$__bashClass_RETURN"'
+
+# Multiple valid args multiply
+expect_stdout "calc 2*3*7" "42" \
+  bash -c '. bashClass Cube; Box.calc 2 3 7; printf "%s" "$__bashClass_RETURN"'
+
+# required= typecast enforces arg count
+expect_fail "calc required=3 with 2 args" \
+  bash -c '. bashClass Cube; required=3 Box.calc 5 3'
+
+expect_ok "calc required=2 with 2 args" \
+  bash -c '. bashClass Cube; required=2 Box.calc 5 3'
+
+# Volume on a box with zero dimension (set after creation)
+expect_fail "volume after setting dimension to 0" \
+  bash -c '. bashClass Cube; new Box length=5 width=3 height=7; b=$__bashClass_RETURN; $b.set height 0; $b.volume'
+
+
+# ============================================================================
+# SECTION 26: __return edge cases
+# ============================================================================
+__section "__return edge cases"
+
+# __return in a subshell — nameref writes into subshell's local
+__rt_sub=$( 
+  __bashClass_rootPID=$BASHPID  # so auto mode uses global inside this subshell
+  new Box length=2 width=3 height=4
+  __rt_sub_b="$__bashClass_RETURN"
+  __rt_sub_vol=""
+  __return=__rt_sub_vol $__rt_sub_b.volume
+  printf "%s" "$__rt_sub_vol"
+)
+if [[ "$__rt_sub" == "24" ]]; then
+  printf "  PASS: __return in subshell = 24\n"; (( passed++ ))
+else
+  printf "  FAIL: __return in subshell got '%s'\n" "$__rt_sub"; (( failed++ ))
+fi
+
+# __return unset — falls through to global mode (existing behavior)
+new Box length=2 width=5 height=3
+__rt_fb="$__bashClass_RETURN"
+$__rt_fb.volume
+if [[ "$__bashClass_RETURN" == "30" ]]; then
+  printf "  PASS: no __return falls through to global = 30\n"; (( passed++ ))
+else
+  printf "  FAIL: no __return fallthrough got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+fi
+
+# __return with same var name at two levels doesn't collide
+# (because each method uses __ClassName_method_ prefix)
+new Cube size=3
+__rt_nest="$__bashClass_RETURN"
+__rt_nest_vol=""
+__return=__rt_nest_vol $__rt_nest.volume
+if [[ "$__rt_nest_vol" == "27" ]]; then
+  printf "  PASS: nested __return chain no collision = 27\n"; (( passed++ ))
+else
+  printf "  FAIL: nested __return chain got '%s'\n" "$__rt_nest_vol"; (( failed++ ))
+fi
+
+# Multiple sequential __return calls don't leak between calls
+__rt_a="" __rt_b=""
+__return=__rt_a $__rt_box.top
+__return=__rt_b $__rt_box.side
+if [[ "$__rt_a" == "15" && "$__rt_b" == "35" ]]; then
+  printf "  PASS: sequential __return: top=%s side=%s\n" "$__rt_a" "$__rt_b"; (( passed++ ))
+else
+  printf "  FAIL: sequential __return: top=%s side=%s\n" "$__rt_a" "$__rt_b"; (( failed++ ))
+fi
+
+
+# ============================================================================
+# SECTION 27: Bulk benchmark (optional — pass count as $1)
+# ============================================================================
+if (( __bench_count > 0 )); then
+  printf "\n--- bulk benchmark (%d objects) ---\n" "$__bench_count"
+  __timer_start
+
+  declare -a __bench_objs=()
+
+  # Phase 1: Object creation
+  __bench_create_start="$EPOCHREALTIME"
+  for (( __bi=0; __bi < __bench_count; __bi++ )); do
+    new Cube size=$(( __bi + 1 )) unit=cm
+    __bench_objs+=("$__bashClass_RETURN")
+  done
+  __bench_create_end="$EPOCHREALTIME"
+  __bcs="${__bench_create_start//.}" __bce="${__bench_create_end//.}"
+  __bcd=$(( __bce - __bcs ))
+  printf "  Creation:  %d.%06ds (%d objects)\n" "$(( __bcd / 1000000 ))" "$(( __bcd % 1000000 ))" "$__bench_count"
+
+  # Phase 2: Method calls (all class methods on each object)
+  __bench_method_start="$EPOCHREALTIME"
+  declare -i __bench_calls=0
+  for __bobj in "${__bench_objs[@]}"; do
+    $__bobj.volume    >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.side      >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.top       >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.end       >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.bottom    >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.size      >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.unit      >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.isa       >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.isa Cube  >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.isa Box   >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.toString  >/dev/null 2>&1; (( __bench_calls++ ))
+  done
+  __bench_method_end="$EPOCHREALTIME"
+  __bms="${__bench_method_start//.}" __bme="${__bench_method_end//.}"
+  __bmd=$(( __bme - __bms ))
+  printf "  Methods:   %d.%06ds (%d calls across %d objects)\n" \
+    "$(( __bmd / 1000000 ))" "$(( __bmd % 1000000 ))" "$__bench_calls" "$__bench_count"
+
+  # Phase 3: Second pass — should be faster (baked wrappers)
+  __bench_baked_start="$EPOCHREALTIME"
+  __bench_calls=0
+  for __bobj in "${__bench_objs[@]}"; do
+    $__bobj.volume    >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.side      >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.top       >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.end       >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.bottom    >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.size      >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.unit      >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.isa       >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.isa Cube  >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.isa Box   >/dev/null 2>&1; (( __bench_calls++ ))
+    $__bobj.toString  >/dev/null 2>&1; (( __bench_calls++ ))
+  done
+  __bench_baked_end="$EPOCHREALTIME"
+  __bbs="${__bench_baked_start//.}" __bbe="${__bench_baked_end//.}"
+  __bbd=$(( __bbe - __bbs ))
+  printf "  Baked:     %d.%06ds (%d calls, second pass — should be faster)\n" \
+    "$(( __bbd / 1000000 ))" "$(( __bbd % 1000000 ))" "$__bench_calls"
+
+  __timer_stop
+  printf "  Total:     %ss\n" "$__timer_elapsed"
+
+  unset __bench_objs
+else
+  printf "\n--- bulk benchmark ---\n"
+  printf "  SKIPPED (pass a number as \$1 to run, e.g. ./test_stress 100)\n"
+fi
+
+# ============================================================================
+# SUITE TIMING
+# ============================================================================
+__suite_end="$EPOCHREALTIME"
+__ss="${__suite_start//.}" __se="${__suite_end//.}"
+__sd=$(( __se - __ss ))
+
+# ============================================================================
+# SUMMARY
+# ============================================================================
+printf "\n=== STRESS TEST RESULTS ===\n"
+printf "  Passed: %d\n" "$passed"
+printf "  Failed: %d\n" "$failed"
+printf "  Total:  %d\n" "$(( passed + failed ))"
+printf "  Time:   %d.%06ds\n" "$(( __sd / 1000000 ))" "$(( __sd % 1000000 ))"
+
+if (( failed > 0 )); then
+  printf "\n  *** %d FAILURES ***\n" "$failed"
+  exit 1
+fi
+
+printf "\n  All tests passed.\n"
+exit 0

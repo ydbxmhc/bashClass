@@ -1,0 +1,113 @@
+#!/bin/bash
+
+# Box class
+
+# Load guard — if already registered, nothing to do
+[[ -n "${__bashClass_registry[Box]+set}" ]] && return 2>/dev/null
+
+. bashClass
+
+# ============================================================================
+# Box Class Descriptor
+# ============================================================================
+
+__bashClass_registry["Box"]="|class=Box|parent=bashClass|methods=calc,area,top,end,side,bottom,volume,new|properties=length,width,height,unit,color"
+
+# ============================================================================
+# Box Implementation Functions
+# ============================================================================
+
+# Generic multiplication calculator
+Box.calc() {
+  local -I self class
+  local -i __Box_calc_tot=1 required="${required:-0}"
+
+  if ((required)); then
+    (( required == $# )) || __bashClass.crash "$FUNCNAME requires $required INTEGER arguments to multiply"
+  fi
+
+  for __Box_calc_arg in "$@"; do
+    [[ "${__Box_calc_arg:-}" =~ ^[0-9]+$ ]] && ((__Box_calc_arg)) || __bashClass.crash "$FUNCNAME arguments must be nonzero integers: $*"
+    (( __Box_calc_tot *= __Box_calc_arg ))
+  done
+
+  __bashClass.return "$__Box_calc_tot" ${__return:-}
+}
+
+# Calculate area (2D) — thin wrapper, passes __return through
+Box.area() {
+  local -I self class
+  required=2 __return=${__return:-} Box.calc "$@"
+}
+
+# Calculate top face area
+Box.top() {
+  local -I self class
+  local __Box_top_l __Box_top_w __Box_top_val
+  __bashClass.parse "$self" "length" __Box_top_l
+  __bashClass.parse "$self" "width" __Box_top_w
+  __return=__Box_top_val self="$self" class="$class" __bashClass.dispatch area "$__Box_top_l" "$__Box_top_w"
+  __bashClass.return "$__Box_top_val" ${__return:-}
+}
+
+# Calculate end face area
+Box.end() {
+  local -I self class
+  local __Box_end_h __Box_end_w __Box_end_val
+  __bashClass.parse "$self" "height" __Box_end_h
+  __bashClass.parse "$self" "width" __Box_end_w
+  __return=__Box_end_val self="$self" class="$class" __bashClass.dispatch area "$__Box_end_h" "$__Box_end_w"
+  __bashClass.return "$__Box_end_val" ${__return:-}
+}
+
+# Calculate side face area
+Box.side() {
+  local -I self class
+  local __Box_side_h __Box_side_l __Box_side_val
+  __bashClass.parse "$self" "height" __Box_side_h
+  __bashClass.parse "$self" "length" __Box_side_l
+  __return=__Box_side_val self="$self" class="$class" __bashClass.dispatch area "$__Box_side_h" "$__Box_side_l"
+  __bashClass.return "$__Box_side_val" ${__return:-}
+}
+
+# Calculate bottom face area (same as top)
+Box.bottom() {
+  local -I self class
+  local __Box_bottom_val
+  __return=__Box_bottom_val self="$self" class="$class" __bashClass.dispatch top
+  __bashClass.return "$__Box_bottom_val" ${__return:-}
+}
+
+# Calculate volume (3D)
+Box.volume() {
+  local -I self class
+  local __Box_volume_l __Box_volume_h __Box_volume_w __Box_volume_vol
+  __bashClass.parse "$self" "length" __Box_volume_l
+  __bashClass.parse "$self" "height" __Box_volume_h
+  __bashClass.parse "$self" "width" __Box_volume_w
+  __return=__Box_volume_vol required=3 Box.calc "$__Box_volume_l" "$__Box_volume_h" "$__Box_volume_w"
+  __bashClass.return "$__Box_volume_vol" ${__return:-}
+}
+
+# Box constructor - delegates to base, adds defaults
+Box.new() {
+  local -I class
+  : "${class:=Box}"
+  local __Box_new_self
+  __return=__Box_new_self __bashClass.new "$@"
+  __bashClass.return "$__Box_new_self" ${__return:-}
+}
+
+# ============================================================================
+# Register Methods & Finalize
+# ============================================================================
+
+__bashClass.registerMethod Box calc Box.calc
+__bashClass.registerMethod Box area Box.area
+__bashClass.registerMethod Box top Box.top
+__bashClass.registerMethod Box end Box.end
+__bashClass.registerMethod Box side Box.side
+__bashClass.registerMethod Box bottom Box.bottom
+__bashClass.registerMethod Box volume Box.volume
+__bashClass.registerMethod Box new Box.new
+__bashClass.registerClass Box

@@ -2,15 +2,15 @@
 
 # Test the new Box and Cube implementations with full interface
 
-. Cube_new
+. bashClass Cube
 
 printf "=== Box and Cube Interface Tests ===\n\n"
 
 # ============================================================================
-# Test 1: Box creation and property access
+# Test 1: Box creation and property access (old dispatch syntax)
 # ============================================================================
 
-printf "Test 1: Create Box with dimensions 5x3x7\n"
+printf "Test 1: Create Box with dimensions 5x3x7 (dispatch syntax)\n"
 class=Box __bashClass.dispatch new length=5 width=3 height=7
 box="$__bashClass_RETURN"
 printf "  Created: %s\n" "$box"
@@ -69,12 +69,16 @@ $box.length;  printf "  Box length after:  %s (expected: 10)\n" "$__bashClass_RE
 $box.volume;  printf "  Box volume after:  %s (expected: 210)\n" "$__bashClass_RETURN"
 
 # ============================================================================
-# Test 5: toString
+# Test 5: toString (compact and pretty)
 # ============================================================================
 
 printf "\nTest 5: toString\n"
 $cube.toString; printf "  Cube: %s\n" "$__bashClass_RETURN"
 $box.toString;  printf "  Box:  %s\n" "$__bashClass_RETURN"
+printf "\n  Pretty (arg):\n"
+$cube.toString pretty; printf "%s\n" "$__bashClass_RETURN"
+printf "  Pretty (env):\n"
+prettyPrint=true $box.toString; printf "%s\n" "$__bashClass_RETURN"
 
 # ============================================================================
 # Test 6: Inheritance (MRO)
@@ -147,5 +151,73 @@ printf "  File encoded: %s\n" "$encoded_file"
 __bashClass.bdecode "$encoded_file"
 printf "  File round-trip: '%s' (expected: 'binary...data...here')\n" "$__bashClass_RETURN"
 rm -f /tmp/test_binary.dat
+
+# ============================================================================
+# Test 11: Global `new` convenience function
+# ============================================================================
+
+printf "\nTest 11: Global new function\n"
+new Box length=6 width=4 height=2
+nbox="$__bashClass_RETURN"
+printf "  Created: %s\n" "$nbox"
+$nbox.volume; printf "  Volume: %s (expected: 48)\n" "$__bashClass_RETURN"
+$nbox.length;  printf "  Length: %s (expected: 6)\n" "$__bashClass_RETURN"
+
+new Cube size=5
+ncube="$__bashClass_RETURN"
+printf "  Created: %s\n" "$ncube"
+$ncube.volume; printf "  Volume: %s (expected: 125)\n" "$__bashClass_RETURN"
+$ncube.isa Cube && printf "  isa Cube: true\n" || printf "  isa Cube: false\n"
+
+# ============================================================================
+# Test 12: Class-as-constructor
+# ============================================================================
+
+printf "\nTest 12: Class-as-constructor\n"
+Box length=8 width=2 height=3
+cbox="$__bashClass_RETURN"
+printf "  Created: %s\n" "$cbox"
+$cbox.volume; printf "  Volume: %s (expected: 48)\n" "$__bashClass_RETURN"
+
+Cube size=7
+ccube="$__bashClass_RETURN"
+printf "  Created: %s\n" "$ccube"
+$ccube.volume; printf "  Volume: %s (expected: 343)\n" "$__bashClass_RETURN"
+$ccube.isa Box && printf "  isa Box: true\n" || printf "  isa Box: false\n"
+
+# ============================================================================
+# Test 13: Lazy stub baking (verify stubs get replaced)
+# ============================================================================
+
+printf "\nTest 13: Lazy stub baking\n"
+new Box length=3 width=3 height=3
+sbox="$__bashClass_RETURN"
+
+# First call — stub dispatches, bakes direct wrapper
+$sbox.volume; printf "  First call:  %s (expected: 27)\n" "$__bashClass_RETURN"
+
+# Second call — baked wrapper, no dispatch
+$sbox.volume; printf "  Second call: %s (expected: 27)\n" "$__bashClass_RETURN"
+
+# Verify the baked function exists and is NOT a stub anymore
+declare -f "$sbox.volume" | head -1
+printf "  Baked wrapper exists: %s\n" "$(declare -f "$sbox.volume" >/dev/null && printf 'yes' || printf 'no')"
+
+# ============================================================================
+# Test 14: Typecast with baked wrapper (dispatch fallback)
+# ============================================================================
+
+printf "\nTest 14: Typecast with baked wrapper\n"
+new Cube size=3
+tcast="$__bashClass_RETURN"
+
+# Normal call — bakes as Cube
+$tcast.volume; printf "  As Cube: %s (expected: 27)\n" "$__bashClass_RETURN"
+
+# Typecast to Box — should fall back to dispatch
+class=Box $tcast.volume; printf "  As Box:  %s (expected: 27)\n" "$__bashClass_RETURN"
+
+# Normal call again — baked wrapper should still work
+$tcast.volume; printf "  As Cube again: %s (expected: 27)\n" "$__bashClass_RETURN"
 
 printf "\n=== All Tests Complete ===\n"
