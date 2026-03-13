@@ -118,8 +118,34 @@ printf "\nTest 9: Value encoding\n"
 class=Box __bashClass.dispatch new length=5 width=3 height=7
 enc_box="$__bashClass_RETURN"
 $enc_box.set color "red|green=blue"
-$enc_box.get color; printf "  Stored and retrieved: '%s' (expected: 'red|green=blue')\n" "$__bashClass_RETURN"
+$enc_box.get color; printf "  Pipes and equals:    '%s' (expected: 'red|green=blue')\n" "$__bashClass_RETURN"
+$enc_box.set color "100%"
+$enc_box.get color; printf "  Single percent:      '%s' (expected: '100%%')\n" "$__bashClass_RETURN"
 $enc_box.set color "100%%"
-$enc_box.get color; printf "  Percent encoding:    '%s' (expected: '100%%%%')\n" "$__bashClass_RETURN"
+$enc_box.get color; printf "  Double percent:      '%s' (expected: '100%%%%')\n" "$__bashClass_RETURN"
+$enc_box.set color "line1
+line2"
+$enc_box.get color; printf "  Newlines:            '%s' (expected: 'line1\\nline2')\n" "$__bashClass_RETURN"
+$enc_box.set color "col1	col2"
+$enc_box.get color; printf "  Tabs:                '%s' (expected: 'col1\\tcol2')\n" "$__bashClass_RETURN"
+
+# ============================================================================
+# Test 10: Binary-safe encoding (bencode/bdecode)
+# ============================================================================
+
+printf "\nTest 10: Binary-safe encoding\n"
+__bashClass.bencode "hello|world=foo%bar"
+printf "  Encoded: %s\n" "$__bashClass_RETURN"
+__bashClass.bdecode "$__bashClass_RETURN"
+printf "  Decoded: '%s' (expected: 'hello|world=foo%%bar')\n" "$__bashClass_RETURN"
+
+# Test file encoding via typecast
+printf "binary\x00data\x01here" > /tmp/test_binary.dat
+input=file __bashClass.bencode /tmp/test_binary.dat
+encoded_file="$__bashClass_RETURN"
+printf "  File encoded: %s\n" "$encoded_file"
+__bashClass.bdecode "$encoded_file"
+printf "  File round-trip: '%s' (expected: 'binary...data...here')\n" "$__bashClass_RETURN"
+rm -f /tmp/test_binary.dat
 
 printf "\n=== All Tests Complete ===\n"
