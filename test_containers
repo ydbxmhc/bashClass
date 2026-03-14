@@ -287,6 +287,110 @@ else
 fi
 
 # ============================================================================
+# DEEP TRAVERSAL — itemAt / setAt / itemFrom / setOn
+# ============================================================================
+
+printf "\n--- itemAt: nested List traversal ---\n"
+
+into=matrix List
+for (( __r=0; __r < 3; __r++ )); do
+  into=__row List
+  for (( __c=0; __c < 3; __c++ )); do
+    $__row.push "$(( __r * 3 + __c + 1 ))"
+  done
+  $matrix.push "$__row"
+done
+
+expect_value "itemAt 0 0 = 1" "1" $matrix.itemAt 0 0
+expect_value "itemAt 1 2 = 6" "6" $matrix.itemAt 1 2
+expect_value "itemAt 2 1 = 8" "8" $matrix.itemAt 2 1
+expect_value "itemAt -1 -1 = 9" "9" $matrix.itemAt -1 -1
+
+# Missing intermediate returns empty
+expect_value "itemAt out of range = empty" "" $matrix.itemAt 99 0
+
+printf "\n--- itemAt: mixed List/Map ---\n"
+
+into=db List
+into=server1 Map
+$server1.set "host" "alpha.example.com"
+$server1.set "port" "5432"
+into=server2 Map
+$server2.set "host" "beta.example.com"
+$server2.set "port" "3306"
+$db.push "$server1"
+$db.push "$server2"
+
+expect_value "List→Map: db[0]['host']" "alpha.example.com" $db.itemAt 0 "host"
+expect_value "List→Map: db[1]['port']" "3306" $db.itemAt 1 "port"
+expect_value "List→Map: missing key" "" $db.itemAt 0 "nope"
+
+printf "\n--- setAt ---\n"
+
+$matrix.setAt "99" 1 1
+expect_value "setAt 1 1 = 99" "99" $matrix.itemAt 1 1
+# Neighbors unchanged
+expect_value "setAt neighbor 1 0 unchanged" "4" $matrix.itemAt 1 0
+expect_value "setAt neighbor 1 2 unchanged" "6" $matrix.itemAt 1 2
+
+$db.setAt "gamma.example.com" 0 "host"
+expect_value "setAt Map value" "gamma.example.com" $db.itemAt 0 "host"
+
+# setAt on missing intermediate crashes
+expect_fail "setAt missing intermediate" bash -c '. boop List; into=l List; into=inner List; $inner.push x; $l.push "$inner"; $l.setAt val 99 0'
+
+printf "\n--- itemFrom: property-rooted traversal ---\n"
+
+into=cube2 Cube size=3
+into=tags2 List
+$tags2.push "heavy" "fragile" "glass"
+$cube2.set tags "$tags2"
+
+into=ifval $cube2.itemFrom tags 0
+expect_into "itemFrom tags 0 = heavy" "heavy" "ifval"
+
+into=ifval2 $cube2.itemFrom tags -1
+expect_into "itemFrom tags -1 = glass" "glass" "ifval2"
+
+# Missing property returns empty
+into=ifval3 $cube2.itemFrom nope 0
+expect_into "itemFrom missing property = empty" "" "ifval3"
+
+# Deep: object with Map property containing Lists
+into=obj3 Box length=1 width=1 height=1
+into=inventory Map
+into=fruits List
+$fruits.push "apple" "banana" "cherry"
+$inventory.set "fruits" "$fruits"
+into=vegs List
+$vegs.push "carrot" "pea"
+$inventory.set "vegs" "$vegs"
+$obj3.set stock "$inventory"
+
+into=deep1 $obj3.itemFrom stock "fruits" 1
+expect_into "itemFrom 3 levels: stock→fruits→1 = banana" "banana" "deep1"
+
+into=deep2 $obj3.itemFrom stock "vegs" 0
+expect_into "itemFrom 3 levels: stock→vegs→0 = carrot" "carrot" "deep2"
+
+printf "\n--- setOn: property-rooted write ---\n"
+
+$cube2.setOn tags "FRAGILE" 1
+into=soval $cube2.itemFrom tags 1
+expect_into "setOn tags 1 = FRAGILE" "FRAGILE" "soval"
+
+# Neighbors unchanged
+into=soval2 $cube2.itemFrom tags 0
+expect_into "setOn neighbor 0 unchanged" "heavy" "soval2"
+
+$obj3.setOn stock "grape" "fruits" 2
+into=soval3 $obj3.itemFrom stock "fruits" 2
+expect_into "setOn 3 levels: stock→fruits→2 = grape" "grape" "soval3"
+
+# setOn missing property crashes
+expect_fail "setOn missing property" bash -c '. boop List Cube; into=c Cube size=1; $c.setOn nope val 0'
+
+# ============================================================================
 # DESTROY TEST
 # ============================================================================
 
