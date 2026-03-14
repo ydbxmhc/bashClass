@@ -63,8 +63,6 @@ The framework provides automatic class loading with path resolution and double-l
 protection.
 
 - `. boop Cube` — loads framework + imports Cube (which pulls in Box automatically)
-- `boop import` — when executed (not sourced), prints the framework directory path
-- `. "$(boop import)/boop" Cube` — source from anywhere if `boop` is in PATH
 - `__bashClass.import Box Cube` — programmatic import after framework is loaded
 
 Resolution order: `__bashClass_classPath` registry → `__bashClass_dir` (co-located) → PATH.

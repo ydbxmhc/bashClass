@@ -47,9 +47,6 @@ into=c3 class=Cube __bashClass.dispatch new size=4  # explicit dispatch
 
 # Classes resolve their own dependencies — Cube loads Box automatically
 . boop Cube
-
-# From anywhere (if boop is in PATH)
-. "$(boop import)/boop" Cube
 ```
 
 Class files use load guards (`__bashClass_registry` check) to prevent double-loading.

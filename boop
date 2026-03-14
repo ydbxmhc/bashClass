@@ -6,24 +6,9 @@ set -u
 ## Provides secure, efficient method dispatch with multiple return modes
 ## and proper inheritance support.
 ##
-## Usage (sourced):
+## Usage:
 ##   . boop                    # load framework only
 ##   . boop Box Cube           # load framework + import classes
-##
-## Usage (executed):
-##   boop import               # print framework directory path
-##   . "$(boop import)/boop"   # source from anywhere
-
-# ============================================================================
-# EXECUTED MODE — CLI interface (boop is run, not sourced)
-# ============================================================================
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  case "${1:-}" in
-    import) printf "%s" "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" ;;
-    *)      printf "Usage: boop import\n" >&2; exit 1 ;;
-  esac
-  exit 0
-fi
 
 # ============================================================================
 # SOURCED MODE — Framework definitions (once only)
