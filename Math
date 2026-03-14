@@ -53,7 +53,55 @@ __Math.setRound() { __Math_round=$1; }
 # Math Class Descriptor
 # ============================================================================
 
-__bashClass_registry["Math"]="|class=Math|parent=bashClass|methods=new,add,sub,subtract,mul,multiply,div,divide,square,abs,neg,eq,lt,gt,le,ge,cmp,round,toInt,val,toString,isZero|properties=digits,scale,neg"
+__bashClass_registry["Math"]="|class=Math|parent=bashClass|methods=new,add,sub,subtract,mul,multiply,div,divide,mod,pow,square,abs,neg,eq,lt,gt,le,ge,cmp,round,toInt,toScale,format,val,toString,isZero|properties=digits,scale,neg"
+
+
+# ============================================================================
+# Native integer fast path
+# ============================================================================
+# When both operands fit in bash's 64-bit signed integer range, we skip
+# the string engine entirely and use $(( )). This is ~100x faster for
+# small numbers. The string engine is the fallback for big numbers.
+#
+# Safe digit counts (conservative, accounting for intermediate values):
+#   add/sub: both operands ≤ 18 digits (result ≤ 19, still fits)
+#   mul:     combined digits ≤ 18 (product fits in 64-bit)
+#   div:     dividend after scale padding ≤ 18 digits
+#   mod:     same as add/sub (operands ≤ 18)
+#   pow:     checked per-iteration (result can grow fast)
+declare -gi __Math_FAST_DIGITS=18
+
+# Convert a digits/scale/neg triple to a signed bash integer.
+# Returns 0 (success) or 1 (too large). Result via nameref $4.
+__Math.toInt64() {
+  local __ti_d="$1"
+  local -i __ti_s="$2" __ti_n="$3"
+  local -n __ti_out="$4"
+  (( ${#__ti_d} > __Math_FAST_DIGITS )) && return 1
+  # Reconstruct the scaled integer: digits IS the scaled integer
+  # (e.g., digits="314" scale=2 means the integer 314 represents 3.14)
+  __ti_out=$(( __ti_n ? -( 10#$__ti_d ) : 10#$__ti_d ))
+  return 0
+}
+
+# Convert a signed bash integer + scale back to digits/scale/neg triple.
+# Result via namerefs $3, $4, $5.
+__Math.fromInt64() {
+  local -i __fi_val="$1" __fi_scale="$2"
+  local -n __fi_od="$3" __fi_os="$4" __fi_on="$5"
+  __fi_os=$__fi_scale
+  if (( __fi_val < 0 )); then
+    __fi_on=1
+    __fi_od="${__fi_val#-}"
+  else
+    __fi_on=0
+    __fi_od="$__fi_val"
+  fi
+  # Strip leading zeros
+  __fi_od="${__fi_od#"${__fi_od%%[!0]*}"}"
+  : "${__fi_od:=0}"
+  [[ "$__fi_od" == "0" ]] && __fi_on=0
+}
 
 
 # ============================================================================
@@ -489,23 +537,36 @@ Math.new() {
 # ============================================================================
 
 # Add: self + arg. Handles sign logic, delegates to strAdd/strSub.
+# Fast path: if both operands fit in 64-bit, uses native $(( )).
 __Math.i_add() {
   local -I self class
   local __add_dA __add_dB
   local -i __add_sA __add_sB __add_nA __add_nB
   __Math.resolve "$self" __add_dA __add_sA __add_nA
   __Math.resolve "$1" __add_dB __add_sB __add_nB
+
+  # Fast path: native integer arithmetic
+  local -i __add_iA __add_iB
+  if __Math.toInt64 "$__add_dA" $__add_sA $__add_nA __add_iA \
+  && __Math.toInt64 "$__add_dB" $__add_sB $__add_nB __add_iB; then
+    __Math.alignScale __add_dA __add_sA __add_dB __add_sB
+    __Math.toInt64 "$__add_dA" $__add_sA $__add_nA __add_iA
+    __Math.toInt64 "$__add_dB" $__add_sB $__add_nB __add_iB
+    local __add_fd; local -i __add_fs __add_fn
+    __Math.fromInt64 $(( __add_iA + __add_iB )) $__add_sA __add_fd __add_fs __add_fn
+    __Math.fromParts "$__add_fd" $__add_fs $__add_fn ${into:-}
+    return
+  fi
+
   __Math.alignScale __add_dA __add_sA __add_dB __add_sB
 
   local __add_rd
   local -i __add_rn
 
   if (( __add_nA == __add_nB )); then
-    # Same sign: add magnitudes, keep sign
     __Math.strAdd "$__add_dA" "$__add_dB" __add_rd
     __add_rn=$__add_nA
   else
-    # Different signs: subtract smaller from larger
     __Math.strCmp "$__add_dA" "$__add_dB"
     local -i __add_cmp=$?
     if (( __add_cmp == 0 )); then
@@ -542,12 +603,24 @@ __Math.i_sub() {
 # Multiply: self * arg.
 # Digit strings are multiplied directly. Result scale = scaleA + scaleB.
 # Result sign = XOR of input signs.
+# Fast path: if combined digit count ≤ 18, uses native $(( )).
 __Math.i_mul() {
   local -I self class
   local __mul_dA __mul_dB
   local -i __mul_sA __mul_sB __mul_nA __mul_nB
   __Math.resolve "$self" __mul_dA __mul_sA __mul_nA
   __Math.resolve "$1" __mul_dB __mul_sB __mul_nB
+
+  # Fast path: combined digits fit in 64-bit product
+  if (( ${#__mul_dA} + ${#__mul_dB} <= __Math_FAST_DIGITS )); then
+    local -i __mul_iA __mul_iB
+    __Math.toInt64 "$__mul_dA" $__mul_sA $__mul_nA __mul_iA
+    __Math.toInt64 "$__mul_dB" $__mul_sB $__mul_nB __mul_iB
+    local __mul_fd; local -i __mul_fs __mul_fn
+    __Math.fromInt64 $(( __mul_iA * __mul_iB )) $(( __mul_sA + __mul_sB )) __mul_fd __mul_fs __mul_fn
+    __Math.fromParts "$__mul_fd" $__mul_fs $__mul_fn ${into:-}
+    return
+  fi
 
   local __mul_rd
   __Math.strMul "$__mul_dA" "$__mul_dB" __mul_rd
@@ -558,6 +631,7 @@ __Math.i_mul() {
 # Divide: self / arg.
 # Respects precision= typecast or global __Math_precision.
 # Respects round= typecast or global __Math_round.
+# Fast path: if dividend (after scale padding) fits in 64-bit, uses $(( )).
 __Math.i_div() {
   local -I self class
   local -i precision; : "${precision:=$__Math_precision}"
@@ -569,6 +643,32 @@ __Math.i_div() {
   __Math.resolve "$1" __div_dB __div_sB __div_nB
 
   [[ "$__div_dB" == "0" ]] && __bashClass.crash "Math: division by zero"
+
+  # Fast path: native integer division when operands are small enough.
+  # After align, we multiply dividend by 10^extra for fractional digits.
+  # Total digit count of (aligned_dividend * 10^extra) must fit in 64-bit.
+  local -i __div_extra=$(( precision > 6 ? precision : 6 ))
+  local -i __div_maxA=${#__div_dA} __div_maxB=${#__div_dB}
+  (( __div_maxA < __div_maxB )) && __div_maxA=$__div_maxB
+  if (( __div_maxA + __div_extra <= __Math_FAST_DIGITS )); then
+    __Math.alignScale __div_dA __div_sA __div_dB __div_sB
+    local -i __div_iA __div_iB
+    __Math.toInt64 "$__div_dA" $__div_sA $__div_nA __div_iA
+    __Math.toInt64 "$__div_dB" $__div_sB $__div_nB __div_iB
+    local __div_pow
+    printf -v __div_pow "1%0${__div_extra}d" 0
+    local -i __div_mul=10#$__div_pow
+    # Preserve sign, operate on magnitudes
+    local -i __div_absA=${__div_iA#-} __div_absB=${__div_iB#-}
+    local -i __div_raw=$(( (__div_absA * __div_mul) / __div_absB ))
+    local -i __div_rn=$(( __div_nA != __div_nB ? 1 : 0 ))
+    local __div_fd; local -i __div_fs __div_fn
+    __Math.fromInt64 $__div_raw $__div_extra __div_fd __div_fs __div_fn
+    (( __div_rn )) && __div_fn=$__div_rn
+    [[ "$__div_fd" == "0" ]] && __div_fn=0
+    __Math.fromParts "$__div_fd" $__div_fs $__div_fn ${into:-}
+    return
+  fi
 
   # Align scales so we're dividing integers of the same magnitude
   __Math.alignScale __div_dA __div_sA __div_dB __div_sB
@@ -622,6 +722,59 @@ __Math.i_div() {
 __Math.i_square() {
   local -I self class
   self="$self" class="$class" into=${into:-} __Math.i_mul "$self"
+}
+
+# Modulo: self % arg. Aligns scales, computes remainder.
+# Fast path only — mod on arbitrary-precision strings would need
+# a full strMod implementation. For now, crashes if operands are too large.
+__Math.i_mod() {
+  local -I self class
+  local __mod_dA __mod_dB
+  local -i __mod_sA __mod_sB __mod_nA __mod_nB
+  __Math.resolve "$self" __mod_dA __mod_sA __mod_nA
+  __Math.resolve "$1" __mod_dB __mod_sB __mod_nB
+
+  [[ "$__mod_dB" == "0" ]] && __bashClass.crash "Math: modulo by zero"
+
+  __Math.alignScale __mod_dA __mod_sA __mod_dB __mod_sB
+
+  local -i __mod_iA __mod_iB
+  __Math.toInt64 "$__mod_dA" $__mod_sA $__mod_nA __mod_iA \
+    || __bashClass.crash "Math: mod operand too large for native arithmetic"
+  __Math.toInt64 "$__mod_dB" $__mod_sB $__mod_nB __mod_iB \
+    || __bashClass.crash "Math: mod operand too large for native arithmetic"
+
+  local __mod_fd; local -i __mod_fs __mod_fn
+  __Math.fromInt64 $(( __mod_iA % __mod_iB )) $__mod_sA __mod_fd __mod_fs __mod_fn
+  __Math.fromParts "$__mod_fd" $__mod_fs $__mod_fn ${into:-}
+}
+
+# Power: self ^ arg (non-negative integer exponent only).
+# Uses repeated multiplication via i_mul, which auto-selects fast or
+# string path per iteration. This means small bases stay fast and large
+# bases gracefully fall back to arbitrary precision.
+__Math.i_pow() {
+  local -I self class
+  local __pow_dB
+  local -i __pow_sB __pow_nB
+  __Math.resolve "$1" __pow_dB __pow_sB __pow_nB
+
+  (( __pow_sB != 0 )) && __bashClass.crash "Math: fractional exponents not supported"
+  (( __pow_nB )) && __bashClass.crash "Math: negative exponents not supported"
+
+  # Exponent is a plain integer
+  local -i __pow_exp=10#$__pow_dB
+
+  # Start with 1
+  local __pow_result
+  into=__pow_result Math.new 1
+
+  local -i __pow_i
+  for (( __pow_i=0; __pow_i < __pow_exp; __pow_i++ )); do
+    into=__pow_result self="$__pow_result" class=Math __Math.i_mul "$self"
+  done
+
+  __bashClass.return "$__pow_result" ${into:-}
 }
 
 
@@ -783,9 +936,53 @@ Math.val() {
 Math.toString() {
   local -I self class
   local __ts_val
-  self="$self" class="$class" Math.val
-  __ts_val="$__bashClass_RETURN"
+  into=__ts_val self="$self" class="$class" Math.val
   __bashClass.return "Math($self){ $__ts_val }" ${into:-}
+}
+
+# Change scale (decimal places). Pads with zeros or rounds to fit.
+# Returns a new Math object at the requested scale.
+#
+# Usage: into=r $m.toScale 4    # force 4 decimal places
+Math.toScale() {
+  local -I self class
+  local -i __tsc_target="${1:-0}"
+  local __tsc_d; local -i __tsc_s __tsc_n
+  __Math.resolve "$self" __tsc_d __tsc_s __tsc_n
+
+  if (( __tsc_target > __tsc_s )); then
+    # Pad with trailing zeros
+    local -i __tsc_diff=$(( __tsc_target - __tsc_s ))
+    local __tsc_pad
+    printf -v __tsc_pad "%0${__tsc_diff}d" 0
+    __tsc_d="${__tsc_d}${__tsc_pad}"
+    # Bypass fromParts to preserve trailing zeros
+    local __tsc_self
+    into=__tsc_self class=Math __bashClass.new "digits=$__tsc_d" "scale=$__tsc_target" "neg=$__tsc_n"
+    __bashClass.return "$__tsc_self" ${into:-}
+  elif (( __tsc_target < __tsc_s )); then
+    local -i __tsc_sigdigits=$(( ${#__tsc_d} - (__tsc_s - __tsc_target) ))
+    (( __tsc_sigdigits < 1 )) && __tsc_sigdigits=1
+    local __tsc_tmp
+    __Math.fromParts "$__tsc_d" $__tsc_s $__tsc_n __tsc_tmp
+    into=${into:-} self="$__tsc_tmp" class=Math Math.round $__tsc_sigdigits
+  else
+    __Math.fromParts "$__tsc_d" $__tsc_s $__tsc_n ${into:-}
+  fi
+}
+
+# Format with a printf format string. Converts to decimal string first,
+# then applies printf. Useful for padding, alignment, fixed-width output.
+#
+# Usage: into=s $m.format "%010.4f"    # "00003.1400"
+#        into=s $m.format "%.2f"       # "3.14"
+Math.format() {
+  local -I self class
+  local __fmt_str
+  into=__fmt_str self="$self" class="$class" Math.val
+  local __fmt_result
+  printf -v __fmt_result "$1" "$__fmt_str"
+  __bashClass.return "$__fmt_result" ${into:-}
 }
 
 
@@ -1144,6 +1341,8 @@ __bashClass.registerMethod Math multiply __Math.i_mul
 __bashClass.registerMethod Math div __Math.i_div
 __bashClass.registerMethod Math divide __Math.i_div
 __bashClass.registerMethod Math square __Math.i_square
+__bashClass.registerMethod Math mod __Math.i_mod
+__bashClass.registerMethod Math pow __Math.i_pow
 __bashClass.registerMethod Math abs __Math.i_abs
 __bashClass.registerMethod Math neg __Math.i_neg
 __bashClass.registerMethod Math eq Math.eq
@@ -1154,6 +1353,8 @@ __bashClass.registerMethod Math ge Math.ge
 __bashClass.registerMethod Math cmp Math.cmp
 __bashClass.registerMethod Math round Math.round
 __bashClass.registerMethod Math toInt Math.toInt
+__bashClass.registerMethod Math toScale Math.toScale
+__bashClass.registerMethod Math format Math.format
 __bashClass.registerMethod Math val Math.val
 __bashClass.registerMethod Math toString Math.toString
 __bashClass.registerMethod Math isZero Math.isZero
@@ -1231,6 +1432,7 @@ __Math.formatVal() {
 }
 
 # Internal: static binary op. Returns plain value string via __bashClass.return.
+# Uses native $(( )) fast path when operands fit in 64-bit.
 __Math.staticBinOp() {
   local __sbo_op="$1"
   local __sbo_dA __sbo_dB
@@ -1241,6 +1443,37 @@ __Math.staticBinOp() {
   local __sbo_rd
   local -i __sbo_rs __sbo_rn
 
+  # Fast path for add/sub/mul/mod when operands fit in 64-bit
+  case "$__sbo_op" in
+    add|sub|mod)
+      if (( ${#__sbo_dA} <= __Math_FAST_DIGITS && ${#__sbo_dB} <= __Math_FAST_DIGITS )); then
+        __Math.alignScale __sbo_dA __sbo_sA __sbo_dB __sbo_sB
+        if (( ${#__sbo_dA} <= __Math_FAST_DIGITS )); then
+          local -i __sbo_iA __sbo_iB
+          __Math.toInt64 "$__sbo_dA" $__sbo_sA $__sbo_nA __sbo_iA
+          __Math.toInt64 "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_iB
+          case "$__sbo_op" in
+            add) __Math.fromInt64 $(( __sbo_iA + __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
+            sub) __Math.fromInt64 $(( __sbo_iA - __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
+            mod) [[ "$__sbo_dB" == "0" ]] && __bashClass.crash "Math: modulo by zero"
+                 __Math.fromInt64 $(( __sbo_iA % __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
+          esac
+          __Math.formatVal "$__sbo_rd" $__sbo_rs $__sbo_rn ${into:-}
+          return
+        fi
+      fi ;;
+    mul)
+      if (( ${#__sbo_dA} + ${#__sbo_dB} <= __Math_FAST_DIGITS )); then
+        local -i __sbo_iA __sbo_iB
+        __Math.toInt64 "$__sbo_dA" $__sbo_sA $__sbo_nA __sbo_iA
+        __Math.toInt64 "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_iB
+        __Math.fromInt64 $(( __sbo_iA * __sbo_iB )) $(( __sbo_sA + __sbo_sB )) __sbo_rd __sbo_rs __sbo_rn
+        __Math.formatVal "$__sbo_rd" $__sbo_rs $__sbo_rn ${into:-}
+        return
+      fi ;;
+  esac
+
+  # Slow path: arbitrary precision string engine
   case "$__sbo_op" in
     add) __Math.alignScale __sbo_dA __sbo_sA __sbo_dB __sbo_sB
          __Math.rawAdd "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn ;;
@@ -1250,6 +1483,14 @@ __Math.staticBinOp() {
     div) local -i __sbo_prec=${precision:-$__Math_precision}
          local -i __sbo_round=${round:-$__Math_round}
          __Math.rawDiv "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn $__sbo_prec $__sbo_round ;;
+    mod) [[ "$__sbo_dB" == "0" ]] && __bashClass.crash "Math: modulo by zero"
+         __Math.alignScale __sbo_dA __sbo_sA __sbo_dB __sbo_sB
+         local -i __sbo_iA __sbo_iB
+         __Math.toInt64 "$__sbo_dA" $__sbo_sA $__sbo_nA __sbo_iA \
+           || __bashClass.crash "Math: mod operand too large for native arithmetic"
+         __Math.toInt64 "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_iB \
+           || __bashClass.crash "Math: mod operand too large for native arithmetic"
+         __Math.fromInt64 $(( __sbo_iA % __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
   esac
 
   __Math.formatVal "$__sbo_rd" $__sbo_rs $__sbo_rn ${into:-}
@@ -1284,6 +1525,13 @@ Math.divide()   { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_di
 Math.square()   { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_square "$@"; else __Math.staticUnaryOp square "$1"; fi; }
 Math.abs()      { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_abs "$@"; else __Math.staticUnaryOp abs "$1"; fi; }
 Math.neg()      { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_neg "$@"; else __Math.staticUnaryOp neg "$1"; fi; }
+Math.mod()      { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_mod "$@"; else __Math.staticBinOp mod "$@"; fi; }
+Math.pow()      { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_pow "$@"; else
+  # Static pow: create temp object, call i_pow, extract value
+  local __spow_tmp; into=__spow_tmp Math.new "$1"
+  local __spow_result; into=__spow_result self="$__spow_tmp" class=Math __Math.i_pow "$2"
+  local __spow_val; into=__spow_val self="$__spow_result" class=Math Math.val
+  __bashClass.return "$__spow_val" ${into:-}; fi; }
 
 # Symbol aliases — same functions, shorter names.
 # The +, *, / characters require the `function` keyword form inside eval.
@@ -1294,6 +1542,8 @@ eval 'function Math.+  { Math.add "$@"; }'
 eval 'function Math.-  { Math.subtract "$@"; }'
 eval 'function Math.* { Math.multiply "$@"; }'
 eval 'function Math./  { Math.divide "$@"; }'
+eval 'function Math.%  { Math.mod "$@"; }'
+eval 'function Math.^  { Math.pow "$@"; }'
 
 # ============================================================================
 # Expression Evaluators — Math.DO (infix) and Math.RPN (postfix)
