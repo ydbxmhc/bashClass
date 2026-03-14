@@ -1,4 +1,5 @@
 #!/bin/bash
+set -u
 
 # Test the new Box and Cube implementations with full interface
 

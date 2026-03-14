@@ -146,15 +146,16 @@ __Float.alignScale() {
   local -n __align_vA="$1" __align_sA="$2" __align_vB="$3" __align_sB="$4" __align_common="$5"
   if (( __align_sA > __align_sB )); then
     local -i __align_diff=$(( __align_sA - __align_sB ))
-    local -i __align_mul=1 __align_i
-    for (( __align_i=0; __align_i < __align_diff; __align_i++ )); do (( __align_mul *= 10 )); done
-    (( __align_vB *= __align_mul ))
+    # Build 10^diff via printf: "1" followed by diff zeros, then force base-10
+    local __align_pow
+    printf -v __align_pow "1%0${__align_diff}d" 0
+    (( __align_vB *= 10#$__align_pow ))
     __align_common=$__align_sA
   elif (( __align_sB > __align_sA )); then
     local -i __align_diff=$(( __align_sB - __align_sA ))
-    local -i __align_mul=1 __align_i
-    for (( __align_i=0; __align_i < __align_diff; __align_i++ )); do (( __align_mul *= 10 )); done
-    (( __align_vA *= __align_mul ))
+    local __align_pow
+    printf -v __align_pow "1%0${__align_diff}d" 0
+    (( __align_vA *= 10#$__align_pow ))
     __align_common=$__align_sB
   else
     __align_common=$__align_sA
@@ -177,7 +178,13 @@ __Float.formatValue() {
   (( __fmt_val < 0 )) && { __fmt_sign="-"; (( __fmt_val = -__fmt_val )); }
 
   local __fmt_str="$__fmt_val"
-  while (( ${#__fmt_str} <= __fmt_scale )); do __fmt_str="0${__fmt_str}"; done
+  # Pad to at least (scale+1) digits in one shot via printf
+  if (( ${#__fmt_str} <= __fmt_scale )); then
+    local -i __fmt_need=$(( __fmt_scale + 1 - ${#__fmt_str} ))
+    local __fmt_zeros
+    printf -v __fmt_zeros "%0${__fmt_need}d" 0
+    __fmt_str="${__fmt_zeros}${__fmt_str}"
+  fi
 
   local -i __fmt_split=$(( ${#__fmt_str} - __fmt_scale ))
   __bashClass.return "${__fmt_sign}${__fmt_str:0:$__fmt_split}.${__fmt_str:$__fmt_split}" "${3:-}"
@@ -233,17 +240,14 @@ Float.new() {
     local -i __Float_new_fs=$__Float_new_forceScale
     if (( __Float_new_fs > __Float_new_scale )); then
       local -i __Float_new_diff=$(( __Float_new_fs - __Float_new_scale ))
-      local -i __Float_new_mul=1 __Float_new_i
-      for (( __Float_new_i=0; __Float_new_i < __Float_new_diff; __Float_new_i++ )); do
-        (( __Float_new_mul *= 10 ))
-      done
-      (( __Float_new_val *= __Float_new_mul ))
+      local __Float_new_pow
+      printf -v __Float_new_pow "1%0${__Float_new_diff}d" 0
+      (( __Float_new_val *= 10#$__Float_new_pow ))
     elif (( __Float_new_fs < __Float_new_scale )); then
       local -i __Float_new_diff=$(( __Float_new_scale - __Float_new_fs ))
-      local -i __Float_new_div=1 __Float_new_i
-      for (( __Float_new_i=0; __Float_new_i < __Float_new_diff; __Float_new_i++ )); do
-        (( __Float_new_div *= 10 ))
-      done
+      local __Float_new_pow
+      printf -v __Float_new_pow "1%0${__Float_new_diff}d" 0
+      local -i __Float_new_div=10#$__Float_new_pow
       local -i __Float_new_remainder=$(( __Float_new_val % __Float_new_div ))
       (( __Float_new_val /= __Float_new_div ))
       local -i __Float_new_half=$(( __Float_new_div / 2 ))
@@ -309,10 +313,9 @@ Float.div() {
   __Float.alignScale __Float_div_vA __Float_div_sA __Float_div_vB __Float_div_sB __Float_div_common
 
   local -i __Float_div_extra=$(( __Float_div_common > 6 ? __Float_div_common : 6 ))
-  local -i __Float_div_mul=1 __Float_div_i
-  for (( __Float_div_i=0; __Float_div_i < __Float_div_extra; __Float_div_i++ )); do
-    (( __Float_div_mul *= 10 ))
-  done
+  local __Float_div_pow
+  printf -v __Float_div_pow "1%0${__Float_div_extra}d" 0
+  local -i __Float_div_mul=10#$__Float_div_pow
   __Float.fromRaw $(( (__Float_div_vA * __Float_div_mul) / __Float_div_vB )) $__Float_div_extra ${into:-}
 }
 
@@ -429,19 +432,19 @@ Float.round() {
 
   if (( __Float_round_places >= __Float_round_scale )); then
     local -i __Float_round_diff=$(( __Float_round_places - __Float_round_scale ))
-    local -i __Float_round_mul=1 __Float_round_i
-    for (( __Float_round_i=0; __Float_round_i < __Float_round_diff; __Float_round_i++ )); do
-      (( __Float_round_mul *= 10 ))
-    done
-    __Float.fromRaw $(( __Float_round_val * __Float_round_mul )) $__Float_round_places ${into:-}
+    if (( __Float_round_diff > 0 )); then
+      local __Float_round_pow
+      printf -v __Float_round_pow "1%0${__Float_round_diff}d" 0
+      (( __Float_round_val *= 10#$__Float_round_pow ))
+    fi
+    __Float.fromRaw $__Float_round_val $__Float_round_places ${into:-}
     return
   fi
 
   local -i __Float_round_diff=$(( __Float_round_scale - __Float_round_places ))
-  local -i __Float_round_div=1 __Float_round_i
-  for (( __Float_round_i=0; __Float_round_i < __Float_round_diff; __Float_round_i++ )); do
-    (( __Float_round_div *= 10 ))
-  done
+  local __Float_round_pow
+  printf -v __Float_round_pow "1%0${__Float_round_diff}d" 0
+  local -i __Float_round_div=10#$__Float_round_pow
 
   local -i __Float_round_sign=1
   (( __Float_round_val < 0 )) && { __Float_round_sign=-1; (( __Float_round_val = -__Float_round_val )); }
@@ -458,10 +461,9 @@ Float.toInt() {
   local -i __Float_toInt_val __Float_toInt_scale
   __Float.resolve "$self" __Float_toInt_val __Float_toInt_scale
   if (( __Float_toInt_scale > 0 )); then
-    local -i __Float_toInt_div=1 __Float_toInt_i
-    for (( __Float_toInt_i=0; __Float_toInt_i < __Float_toInt_scale; __Float_toInt_i++ )); do
-      (( __Float_toInt_div *= 10 ))
-    done
+    local __Float_toInt_pow
+    printf -v __Float_toInt_pow "1%0${__Float_toInt_scale}d" 0
+    local -i __Float_toInt_div=10#$__Float_toInt_pow
     (( __Float_toInt_val /= __Float_toInt_div ))
   fi
   __bashClass.return "$__Float_toInt_val" ${into:-}

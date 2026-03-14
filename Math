@@ -81,8 +81,19 @@ declare -gi __Math_BASE=1000000000
 # Returns via exit code: 0 if equal, 1 if A > B, 2 if A < B.
 __Math.strCmp() {
   local __cmp_a="$1" __cmp_b="$2"
-  while (( ${#__cmp_a} < ${#__cmp_b} )); do __cmp_a="0${__cmp_a}"; done
-  while (( ${#__cmp_b} < ${#__cmp_a} )); do __cmp_b="0${__cmp_b}"; done
+  # Pad shorter string to match length in one shot via printf
+  local -i __cmp_la=${#__cmp_a} __cmp_lb=${#__cmp_b}
+  if (( __cmp_la < __cmp_lb )); then
+    local -i __cmp_need=$(( __cmp_lb - __cmp_la ))
+    local __cmp_pad
+    printf -v __cmp_pad "%0${__cmp_need}d" 0
+    __cmp_a="${__cmp_pad}${__cmp_a}"
+  elif (( __cmp_lb < __cmp_la )); then
+    local -i __cmp_need=$(( __cmp_la - __cmp_lb ))
+    local __cmp_pad
+    printf -v __cmp_pad "%0${__cmp_need}d" 0
+    __cmp_b="${__cmp_pad}${__cmp_b}"
+  fi
   [[ "$__cmp_a" == "$__cmp_b" ]] && return 0
   [[ "$__cmp_a" > "$__cmp_b" ]] && return 1
   return 2
@@ -93,10 +104,23 @@ __Math.strAdd() {
   local __add_a="$1" __add_b="$2"
   local -n __add_result="$3"
 
-  # Pad to same length, then to chunk boundary
-  while (( ${#__add_a} < ${#__add_b} )); do __add_a="0${__add_a}"; done
-  while (( ${#__add_b} < ${#__add_a} )); do __add_b="0${__add_b}"; done
-  while (( ${#__add_a} % __Math_CHUNK )); do __add_a="0${__add_a}"; __add_b="0${__add_b}"; done
+  # Pad to same length, then to chunk boundary — all in one shot
+  local -i __add_la=${#__add_a} __add_lb=${#__add_b} __add_maxlen __add_padlen
+  (( __add_maxlen = __add_la > __add_lb ? __add_la : __add_lb ))
+  # Round up to next chunk boundary
+  (( __add_padlen = (__add_maxlen + __Math_CHUNK - 1) / __Math_CHUNK * __Math_CHUNK ))
+  if (( __add_la < __add_padlen )); then
+    local -i __add_need=$(( __add_padlen - __add_la ))
+    local __add_zeros
+    printf -v __add_zeros "%0${__add_need}d" 0
+    __add_a="${__add_zeros}${__add_a}"
+  fi
+  if (( __add_lb < __add_padlen )); then
+    local -i __add_need=$(( __add_padlen - __add_lb ))
+    local __add_zeros
+    printf -v __add_zeros "%0${__add_need}d" 0
+    __add_b="${__add_zeros}${__add_b}"
+  fi
 
   local -i __add_carry=0 __add_pos __add_len=${#__add_a} __add_sum
   local __add_fmt
@@ -117,9 +141,22 @@ __Math.strSub() {
   local __sub_a="$1" __sub_b="$2"
   local -n __sub_result="$3"
 
-  while (( ${#__sub_a} < ${#__sub_b} )); do __sub_a="0${__sub_a}"; done
-  while (( ${#__sub_b} < ${#__sub_a} )); do __sub_b="0${__sub_b}"; done
-  while (( ${#__sub_a} % __Math_CHUNK )); do __sub_a="0${__sub_a}"; __sub_b="0${__sub_b}"; done
+  # Pad to same length, then to chunk boundary — all in one shot
+  local -i __sub_la=${#__sub_a} __sub_lb=${#__sub_b} __sub_maxlen __sub_padlen
+  (( __sub_maxlen = __sub_la > __sub_lb ? __sub_la : __sub_lb ))
+  (( __sub_padlen = (__sub_maxlen + __Math_CHUNK - 1) / __Math_CHUNK * __Math_CHUNK ))
+  if (( __sub_la < __sub_padlen )); then
+    local -i __sub_need=$(( __sub_padlen - __sub_la ))
+    local __sub_zeros
+    printf -v __sub_zeros "%0${__sub_need}d" 0
+    __sub_a="${__sub_zeros}${__sub_a}"
+  fi
+  if (( __sub_lb < __sub_padlen )); then
+    local -i __sub_need=$(( __sub_padlen - __sub_lb ))
+    local __sub_zeros
+    printf -v __sub_zeros "%0${__sub_need}d" 0
+    __sub_b="${__sub_zeros}${__sub_b}"
+  fi
 
   local -i __sub_borrow=0 __sub_pos __sub_len=${#__sub_a} __sub_diff
   local __sub_fmt
@@ -148,9 +185,21 @@ __Math.strMul() {
 
   [[ "$__mul_a" == "0" || "$__mul_b" == "0" ]] && { __mul_result="0"; return; }
 
-  # Pad to chunk boundaries
-  while (( ${#__mul_a} % __Math_CHUNK )); do __mul_a="0${__mul_a}"; done
-  while (( ${#__mul_b} % __Math_CHUNK )); do __mul_b="0${__mul_b}"; done
+  # Pad to chunk boundaries in one shot
+  local -i __mul_rem_a=$(( ${#__mul_a} % __Math_CHUNK ))
+  if (( __mul_rem_a )); then
+    local -i __mul_need_a=$(( __Math_CHUNK - __mul_rem_a ))
+    local __mul_zeros_a
+    printf -v __mul_zeros_a "%0${__mul_need_a}d" 0
+    __mul_a="${__mul_zeros_a}${__mul_a}"
+  fi
+  local -i __mul_rem_b=$(( ${#__mul_b} % __Math_CHUNK ))
+  if (( __mul_rem_b )); then
+    local -i __mul_need_b=$(( __Math_CHUNK - __mul_rem_b ))
+    local __mul_zeros_b
+    printf -v __mul_zeros_b "%0${__mul_need_b}d" 0
+    __mul_b="${__mul_zeros_b}${__mul_b}"
+  fi
 
   local -i __mul_na=$(( ${#__mul_a} / __Math_CHUNK ))
   local -i __mul_nb=$(( ${#__mul_b} / __Math_CHUNK ))
@@ -213,7 +262,13 @@ __Math.strMulSmall() {
   (( __muls_n == 0 )) && { __muls_result="0"; return; }
   (( __muls_n == 1 )) && { __muls_result="$__muls_a"; return; }
 
-  while (( ${#__muls_a} % __Math_CHUNK )); do __muls_a="0${__muls_a}"; done
+  local -i __muls_rem=$(( ${#__muls_a} % __Math_CHUNK ))
+  if (( __muls_rem )); then
+    local -i __muls_need=$(( __Math_CHUNK - __muls_rem ))
+    local __muls_zeros
+    printf -v __muls_zeros "%0${__muls_need}d" 0
+    __muls_a="${__muls_zeros}${__muls_a}"
+  fi
 
   local -i __muls_carry=0 __muls_pos __muls_len=${#__muls_a} __muls_prod
   __muls_result=""
@@ -327,16 +382,20 @@ __Math.resolve() {
   if [[ "$__res_input" == *.* ]]; then
     local __res_int="${__res_input%%.*}"
     local __res_frac="${__res_input#*.}"
-    __res_int="$(__Math.stripLeading "$__res_int")"
+    # Inline stripLeading — no subshell
+    __res_int="${__res_int#"${__res_int%%[!0]*}"}"
+    : "${__res_int:=0}"
     __res_digits="${__res_int}${__res_frac}"
     __res_scale=${#__res_frac}
   else
-    __res_digits="$(__Math.stripLeading "$__res_input")"
+    __res_digits="${__res_input#"${__res_input%%[!0]*}"}"
+    : "${__res_digits:=0}"
     __res_scale=0
   fi
 
   # Normalize: strip leading zeros from digits but keep at least "0"
-  __res_digits="$(__Math.stripLeading "$__res_digits")"
+  __res_digits="${__res_digits#"${__res_digits%%[!0]*}"}"
+  : "${__res_digits:=0}"
   # If digits is "0", force neg=0 (no negative zero)
   [[ "$__res_digits" == "0" ]] && __res_neg=0
 }
@@ -346,14 +405,19 @@ __Math.resolve() {
 # directly comparable and addable/subtractable.
 __Math.alignScale() {
   local -n __as_dA="$1" __as_sA="$2" __as_dB="$3" __as_sB="$4"
-  while (( __as_sA < __as_sB )); do
-    __as_dA="${__as_dA}0"
-    (( __as_sA++ ))
-  done
-  while (( __as_sB < __as_sA )); do
-    __as_dB="${__as_dB}0"
-    (( __as_sB++ ))
-  done
+  local -i __as_diff
+  local __as_pad
+  if (( __as_sA < __as_sB )); then
+    __as_diff=$(( __as_sB - __as_sA ))
+    printf -v __as_pad "%0${__as_diff}d" 0
+    __as_dA="${__as_dA}${__as_pad}"
+    __as_sA=$__as_sB
+  elif (( __as_sB < __as_sA )); then
+    __as_diff=$(( __as_sA - __as_sB ))
+    printf -v __as_pad "%0${__as_diff}d" 0
+    __as_dB="${__as_dB}${__as_pad}"
+    __as_sB=$__as_sA
+  fi
 }
 
 # Build a Math object from raw components. Strips leading zeros,
@@ -362,15 +426,29 @@ __Math.fromParts() {
   local __fp_digits="$1"
   local -i __fp_scale="$2" __fp_neg="$3"
 
-  # Strip leading zeros
-  __fp_digits="$(__Math.stripLeading "$__fp_digits")"
+  # Strip leading zeros (inline — no subshell)
+  __fp_digits="${__fp_digits#"${__fp_digits%%[!0]*}"}"
+  : "${__fp_digits:=0}"
 
-  # Strip trailing zeros past the decimal point
+  # Strip trailing zeros past the decimal point.
+  # Uses parameter expansion to find the trailing zeros suffix,
+  # then trims by length in one shot instead of one-char-at-a-time.
   if (( __fp_scale > 0 )); then
-    while (( __fp_scale > 0 )) && [[ "$__fp_digits" == *0 ]]; do
-      __fp_digits="${__fp_digits%0}"
-      (( __fp_scale-- ))
-    done
+    local __fp_tz="${__fp_digits%%[!0]*}"  # won't work — need trailing
+    # Reverse approach: strip trailing zeros via suffix removal
+    local __fp_stripped="${__fp_digits%"${__fp_digits##*[!0]}"}"
+    # __fp_stripped is everything up to and including the last non-zero
+    # Actually: ${var##*[!0]} gives the trailing zeros suffix
+    local __fp_tail="${__fp_digits##*[!0]}"
+    local -i __fp_taillen=${#__fp_tail}
+    if (( __fp_taillen > 0 && __fp_taillen <= __fp_scale )); then
+      __fp_digits="${__fp_digits:0:${#__fp_digits}-__fp_taillen}"
+      (( __fp_scale -= __fp_taillen ))
+    elif (( __fp_taillen > __fp_scale )); then
+      # Only strip up to scale zeros (don't eat into integer part)
+      __fp_digits="${__fp_digits:0:${#__fp_digits}-__fp_scale}"
+      __fp_scale=0
+    fi
     : "${__fp_digits:=0}"
   fi
 
@@ -507,17 +585,28 @@ __Math.i_div() {
   if (( ${#__div_q} > precision )); then
     local -i __div_removed=$(( ${#__div_q} - precision ))
     if (( round )); then
-      # Check the digit just past precision for rounding
-      local -i __div_check=${__div_q:precision:1}
-      __div_q="${__div_q:0:precision}"
+      # Round half-up via printf on the last 2 digits at the cut point.
+      # printf '%.0f' with a synthetic decimal handles the rounding natively.
+      local __div_end="${__div_q:precision-1:2}"
+      __div_q="${__div_q:0:precision-1}"
       (( __div_qs -= __div_removed ))
-      if (( __div_check >= 5 )); then
-        local __div_one="1"
-        local -i __div_pad=$(( ${#__div_q} - 1 ))
-        while (( __div_pad > 0 )); do __div_one="0${__div_one}"; (( __div_pad-- )); done
-        __Math.strAdd "$__div_q" "$__div_one" __div_q
-        # If carry extended the length, the integer part grew by one digit
-        (( ${#__div_q} > precision )) && (( __div_qs-- ))
+      local __div_rounded
+      printf -v __div_rounded '%.0f' "${__div_end/%?/.&}"
+      if (( ${#__div_rounded} > 1 )); then
+        # Rounded "X9.5+" → carry. Propagate through trailing 9s.
+        if [[ "$__div_q" == *[!9]* ]]; then
+          local __div_nines="${__div_q##*[!9]}"
+          local -i __div_hlen=$(( ${#__div_q} - ${#__div_nines} ))
+          local -i __div_bump=$(( ${__div_q:__div_hlen-1:1} + 1 ))
+          printf -v __div_q '%s%d%0*d' "${__div_q:0:__div_hlen-1}" $__div_bump ${#__div_nines} 0
+        else
+          # Entire prefix is 9s — carry extends the number
+          printf -v __div_q '1%0*d' ${#__div_q} 0
+          (( __div_qs-- ))
+        fi
+        __div_q="${__div_q}0"
+      else
+        __div_q="${__div_q}${__div_rounded}"
       fi
     else
       __div_q="${__div_q:0:precision}"
@@ -615,10 +704,25 @@ Math.round() {
   __rnd_d="${__rnd_d:0:__rnd_prec}"
 
   if (( __rnd_check >= 5 )); then
-    local __rnd_one="1"
-    local -i __rnd_pad=$(( __rnd_prec - 1 ))
-    while (( __rnd_pad > 0 )); do __rnd_one="0${__rnd_one}"; (( __rnd_pad-- )); done
-    __Math.strAdd "$__rnd_d" "$__rnd_one" __rnd_d
+    # Round half-up via printf on the last 2 digits at the cut point.
+    local __rnd_end="${__rnd_d: -1}${__rnd_check}"
+    __rnd_d="${__rnd_d:0:${#__rnd_d}-1}"
+    local __rnd_rounded
+    printf -v __rnd_rounded '%.0f' "${__rnd_end/%?/.&}"
+    if (( ${#__rnd_rounded} > 1 )); then
+      # Carry — propagate through trailing 9s
+      if [[ "$__rnd_d" == *[!9]* ]]; then
+        local __rnd_nines="${__rnd_d##*[!9]}"
+        local -i __rnd_hlen=$(( ${#__rnd_d} - ${#__rnd_nines} ))
+        local -i __rnd_bump=$(( ${__rnd_d:__rnd_hlen-1:1} + 1 ))
+        printf -v __rnd_d '%s%d%0*d' "${__rnd_d:0:__rnd_hlen-1}" $__rnd_bump ${#__rnd_nines} 0
+      else
+        printf -v __rnd_d '1%0*d' ${#__rnd_d} 0
+      fi
+      __rnd_d="${__rnd_d}0"
+    else
+      __rnd_d="${__rnd_d}${__rnd_rounded}"
+    fi
   fi
 
   # Adjust scale: we removed (__rnd_len - __rnd_prec) digits from the end
@@ -640,7 +744,9 @@ Math.toInt() {
   fi
 
   local __ti_int="${__ti_d:0:${#__ti_d}-__ti_s}"
-  __ti_int="$(__Math.stripLeading "$__ti_int")"
+  # Inline stripLeading — no subshell
+  __ti_int="${__ti_int#"${__ti_int%%[!0]*}"}"
+  : "${__ti_int:=0}"
   (( __ti_n )) && [[ "$__ti_int" != "0" ]] && __ti_int="-${__ti_int}"
   __bashClass.return "$__ti_int" ${into:-}
 }
@@ -655,9 +761,15 @@ Math.val() {
   if (( __val_s == 0 )); then
     __val_result="$__val_d"
   elif (( __val_s >= ${#__val_d} )); then
-    # All digits are fractional — pad with leading zeros
-    local __val_pad="$__val_d"
-    while (( ${#__val_pad} < __val_s )); do __val_pad="0${__val_pad}"; done
+    # All digits are fractional — pad with leading zeros in one shot
+    local -i __val_need=$(( __val_s - ${#__val_d} ))
+    local __val_pad
+    if (( __val_need > 0 )); then
+      printf -v __val_pad "%0${__val_need}d" 0
+      __val_pad="${__val_pad}${__val_d}"
+    else
+      __val_pad="$__val_d"
+    fi
     __val_result="0.${__val_pad}"
   else
     local -i __val_split=$(( ${#__val_d} - __val_s ))
@@ -783,15 +895,25 @@ __Math.rawDiv() {
   if (( ${#__rd_od} > __rd_prec )); then
     local -i __rd_removed=$(( ${#__rd_od} - __rd_prec ))
     if (( __rd_round )); then
-      local -i __rd_check=${__rd_od:__rd_prec:1}
-      __rd_od="${__rd_od:0:__rd_prec}"
+      local __rd_end="${__rd_od:__rd_prec-1:2}"
+      __rd_od="${__rd_od:0:__rd_prec-1}"
       (( __rd_qs -= __rd_removed ))
-      if (( __rd_check >= 5 )); then
-        local __rd_one="1"
-        local -i __rd_pad=$(( ${#__rd_od} - 1 ))
-        while (( __rd_pad > 0 )); do __rd_one="0${__rd_one}"; (( __rd_pad-- )); done
-        __Math.strAdd "$__rd_od" "$__rd_one" __rd_od
-        (( ${#__rd_od} > __rd_prec )) && (( __rd_qs-- ))
+      local __rd_rounded
+      printf -v __rd_rounded '%.0f' "${__rd_end/%?/.&}"
+      if (( ${#__rd_rounded} > 1 )); then
+        # Carry — propagate through trailing 9s
+        if [[ "$__rd_od" == *[!9]* ]]; then
+          local __rd_nines="${__rd_od##*[!9]}"
+          local -i __rd_hlen=$(( ${#__rd_od} - ${#__rd_nines} ))
+          local -i __rd_bump=$(( ${__rd_od:__rd_hlen-1:1} + 1 ))
+          printf -v __rd_od '%s%d%0*d' "${__rd_od:0:__rd_hlen-1}" $__rd_bump ${#__rd_nines} 0
+        else
+          printf -v __rd_od '1%0*d' ${#__rd_od} 0
+          (( __rd_qs-- ))
+        fi
+        __rd_od="${__rd_od}0"
+      else
+        __rd_od="${__rd_od}${__rd_rounded}"
       fi
     else
       __rd_od="${__rd_od:0:__rd_prec}"
@@ -894,7 +1016,12 @@ __Math.arctan_recip() {
     if (( __at_intdigits == 0 )); then
       # Count leading zeros: pad digits to scale length, count prefix zeros
       local __at_padded="$__at_td"
-      while (( ${#__at_padded} < __at_ts )); do __at_padded="0${__at_padded}"; done
+      if (( ${#__at_padded} < __at_ts )); then
+        local -i __at_pneed=$(( __at_ts - ${#__at_padded} ))
+        local __at_pz
+        printf -v __at_pz "%0${__at_pneed}d" 0
+        __at_padded="${__at_pz}${__at_padded}"
+      fi
       local __at_lz="${__at_padded%%[!0]*}"
       if (( ${#__at_lz} >= __at_prec )); then
         break
@@ -1062,16 +1189,21 @@ __Math.formatVal() {
   local __fv_d="$1"
   local -i __fv_s="$2" __fv_n="$3"
 
-  # Strip leading zeros from digits
+  # Strip leading zeros from digits (inline — no subshell)
   __fv_d="${__fv_d#"${__fv_d%%[!0]*}"}"
   : "${__fv_d:=0}"
 
-  # Strip trailing zeros past decimal
+  # Strip trailing zeros past decimal in one shot via suffix detection
   if (( __fv_s > 0 )); then
-    while (( __fv_s > 0 )) && [[ "$__fv_d" == *0 ]]; do
-      __fv_d="${__fv_d%0}"
-      (( __fv_s-- ))
-    done
+    local __fv_tail="${__fv_d##*[!0]}"
+    local -i __fv_taillen=${#__fv_tail}
+    if (( __fv_taillen > 0 && __fv_taillen <= __fv_s )); then
+      __fv_d="${__fv_d:0:${#__fv_d}-__fv_taillen}"
+      (( __fv_s -= __fv_taillen ))
+    elif (( __fv_taillen > __fv_s )); then
+      __fv_d="${__fv_d:0:${#__fv_d}-__fv_s}"
+      __fv_s=0
+    fi
     : "${__fv_d:=0}"
   fi
 
@@ -1079,8 +1211,15 @@ __Math.formatVal() {
   if (( __fv_s == 0 )); then
     __fv_result="$__fv_d"
   elif (( __fv_s >= ${#__fv_d} )); then
-    local __fv_pad="$__fv_d"
-    while (( ${#__fv_pad} < __fv_s )); do __fv_pad="0${__fv_pad}"; done
+    # Pad with leading zeros in one shot via printf
+    local -i __fv_need=$(( __fv_s - ${#__fv_d} ))
+    local __fv_pad
+    if (( __fv_need > 0 )); then
+      printf -v __fv_pad "%0${__fv_need}d" 0
+      __fv_pad="${__fv_pad}${__fv_d}"
+    else
+      __fv_pad="$__fv_d"
+    fi
     __fv_result="0.${__fv_pad}"
   else
     local -i __fv_split=$(( ${#__fv_d} - __fv_s ))
