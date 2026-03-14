@@ -53,7 +53,7 @@ __Math.setRound() { __Math_round=$1; }
 # Math Class Descriptor
 # ============================================================================
 
-__bashClass_registry["Math"]="|class=Math|parent=bashClass|methods=new,add,sub,mul,div,mod,pow,abs,neg,eq,lt,gt,le,ge,cmp,round,toInt,val,toString,isZero|properties=digits,scale,neg"
+__bashClass_registry["Math"]="|class=Math|parent=bashClass|methods=new,add,sub,mul,div,mod,pow,square,abs,neg,eq,lt,gt,le,ge,cmp,round,toInt,val,toString,isZero|properties=digits,scale,neg"
 
 
 # ============================================================================
@@ -527,6 +527,12 @@ Math.div() {
   fi
 
   __Math.fromParts "$__div_q" $__div_qs $__div_rn ${into:-}
+}
+
+# Square: self * self. Convenience wrapper — same as mul with self as arg.
+Math.square() {
+  local -I self class
+  self="$self" class="$class" into=${into:-} Math.mul "$self"
 }
 
 
@@ -1007,6 +1013,7 @@ __bashClass.registerMethod Math add Math.add
 __bashClass.registerMethod Math sub Math.sub
 __bashClass.registerMethod Math mul Math.mul
 __bashClass.registerMethod Math div Math.div
+__bashClass.registerMethod Math square Math.square
 __bashClass.registerMethod Math abs Math.abs
 __bashClass.registerMethod Math neg Math.neg
 __bashClass.registerMethod Math eq Math.eq
