@@ -89,7 +89,7 @@ Box.volume() {
   __bashClass.return "$__Box_volume_vol" ${into:-}
 }
 
-# Box constructor - delegates to base, adds defaults
+# Box constructor — delegates to base class.
 Box.new() {
   local -I class
   : "${class:=Box}"

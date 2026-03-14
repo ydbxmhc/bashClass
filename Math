@@ -687,6 +687,8 @@ Math.toString() {
 # three arguments: out_digits, out_scale, out_neg.
 
 # Raw add: (dA,sA,nA) + (dB,sB,nB) → (dR,sR,nR)
+# Aligns scales, then delegates to strAdd or strSub based on sign.
+# Same logic as Math.add but without object creation or resolution.
 __Math.rawAdd() {
   local __ra_dA="$1" __ra_dB="$4"
   local -i __ra_sA="$2" __ra_nA="$3" __ra_sB="$5" __ra_nB="$6"
@@ -717,7 +719,7 @@ __Math.rawAdd() {
   [[ "$__ra_od" == "0" ]] && __ra_on=0
 }
 
-# Raw sub: (dA,sA,nA) - (dB,sB,nB) → flip sign of B and rawAdd
+# Raw sub: (dA,sA,nA) - (dB,sB,nB) → flip sign of B and rawAdd.
 __Math.rawSub() {
   local -i __rs_nB="$6"
   (( __rs_nB = !__rs_nB ))
@@ -726,6 +728,7 @@ __Math.rawSub() {
 }
 
 # Raw mul: (dA,sA,nA) * (dB,sB,nB) → (dR,sR,nR)
+# Result scale = scaleA + scaleB. Sign = XOR of input signs.
 __Math.rawMul() {
   local __rm_dA="$1" __rm_dB="$4"
   local -i __rm_sA="$2" __rm_nA="$3" __rm_sB="$5" __rm_nB="$6"
@@ -738,6 +741,7 @@ __Math.rawMul() {
 }
 
 # Raw mul by small integer: (dA,sA,nA) * int → (dR,sR,nR)
+# Handles negative multiplier by splitting sign from magnitude.
 __Math.rawMulSmall() {
   local __rms_dA="$1"
   local -i __rms_sA="$2" __rms_nA="$3" __rms_n="$4"
@@ -750,7 +754,10 @@ __Math.rawMulSmall() {
   [[ "$__rms_od" == "0" ]] && __rms_on=0
 }
 
-# Raw div: (dA,sA,nA) / (dB,sB,nB) → (dR,sR,nR) with precision+rounding
+# Raw div: (dA,sA,nA) / (dB,sB,nB) → (dR,sR,nR)
+# Aligns scales, performs string division, then rounds or truncates to
+# the requested precision. Same logic as Math.div but without objects.
+# $10 = precision (default __Math_precision), $11 = round flag (default __Math_round).
 __Math.rawDiv() {
   local __rd_dA="$1" __rd_dB="$4"
   local -i __rd_sA="$2" __rd_nA="$3" __rd_sB="$5" __rd_nB="$6"
@@ -793,6 +800,7 @@ __Math.rawDiv() {
 
 # Raw div by small integer: (dA,sA,nA) / int → (dR,sR,nR)
 # Converts the small int to a triple and delegates to rawDiv.
+# $8 = precision override, $9 = round flag override.
 __Math.rawDivSmall() {
   local -i __rds_n="${4}"
   local -i __rds_nB=0
