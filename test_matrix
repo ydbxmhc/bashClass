@@ -1,0 +1,141 @@
+#!/bin/bash
+set -u
+
+# Matrix benchmark — create NxN grid, print, transpose, print again.
+# Usage: ./test_matrix 3       (3x3 matrix)
+#        ./test_matrix 5       (5x5 matrix)
+
+. boop List
+
+N="${1:-3}"
+
+# Timing helper
+__timer_start() { __timer_begin="$EPOCHREALTIME"; }
+__timer_stop() {
+  local __end="$EPOCHREALTIME"
+  local __s="${__timer_begin//.}" __e="${__end//.}"
+  local -i __diff_us=$(( __e - __s ))
+  printf -v __timer_elapsed "%d.%06d" "$(( __diff_us / 1000000 ))" "$(( __diff_us % 1000000 ))"
+}
+
+printf "=== Matrix Benchmark (%dx%d) ===\n\n" "$N" "$N"
+
+# ============================================================================
+# Phase 1: Build NxN matrix
+# ============================================================================
+__timer_start
+
+into=matrix List
+for (( r=0; r < N; r++ )); do
+  into=row List
+  for (( c=0; c < N; c++ )); do
+    $row.push "$(( r * N + c + 1 ))"
+  done
+  $matrix.push "$row"
+done
+
+__timer_stop
+printf "Build:     %ss\n" "$__timer_elapsed"
+
+# ============================================================================
+# Phase 2: Print original
+# ============================================================================
+__timer_start
+
+printf "\nOriginal:\n"
+for (( r=0; r < N; r++ )); do
+  into=row $matrix.get "$r"
+  for (( c=0; c < N; c++ )); do
+    into=val $row.get "$c"
+    printf "%4s" "$val"
+  done
+  printf "\n"
+done
+
+__timer_stop
+printf "\nPrint:     %ss\n" "$__timer_elapsed"
+
+# ============================================================================
+# Phase 3: Transpose (build new matrix with rows/cols swapped)
+# ============================================================================
+__timer_start
+
+into=transposed List
+for (( c=0; c < N; c++ )); do
+  into=new_row List
+  for (( r=0; r < N; r++ )); do
+    into=src_row $matrix.get "$r"
+    into=val $src_row.get "$c"
+    $new_row.push "$val"
+  done
+  $transposed.push "$new_row"
+done
+
+__timer_stop
+printf "Transpose: %ss\n" "$__timer_elapsed"
+
+# ============================================================================
+# Phase 4: Print transposed
+# ============================================================================
+__timer_start
+
+printf "\nTransposed:\n"
+for (( r=0; r < N; r++ )); do
+  into=row $transposed.get "$r"
+  for (( c=0; c < N; c++ )); do
+    into=val $row.get "$c"
+    printf "%4s" "$val"
+  done
+  printf "\n"
+done
+
+__timer_stop
+printf "\nPrint:     %ss\n" "$__timer_elapsed"
+
+# ============================================================================
+# Phase 5: Horizontal flip (reverse each row)
+# ============================================================================
+__timer_start
+
+into=flipped List
+for (( r=0; r < N; r++ )); do
+  into=src_row $matrix.get "$r"
+  into=new_row List
+  for (( c=N-1; c >= 0; c-- )); do
+    into=val $src_row.get "$c"
+    $new_row.push "$val"
+  done
+  $flipped.push "$new_row"
+done
+
+__timer_stop
+printf "H-Flip:    %ss\n" "$__timer_elapsed"
+
+# ============================================================================
+# Phase 6: Print flipped
+# ============================================================================
+__timer_start
+
+printf "\nH-Flipped:\n"
+for (( r=0; r < N; r++ )); do
+  into=row $flipped.get "$r"
+  for (( c=0; c < N; c++ )); do
+    into=val $row.get "$c"
+    printf "%4s" "$val"
+  done
+  printf "\n"
+done
+
+__timer_stop
+printf "\nPrint:     %ss\n" "$__timer_elapsed"
+
+# ============================================================================
+# Summary
+# ============================================================================
+into=obj_count List
+$obj_count.push "matrix rows: $N"
+$obj_count.push "total List objects: $(( 1 + N + 1 + N + 1 + N ))"
+printf "\n--- Stats ---\n"
+into=s $obj_count.toArray
+printf "%s\n" "$s"
+printf "=== Done ===\n"

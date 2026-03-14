@@ -1,0 +1,366 @@
+#!/bin/bash
+
+# List — indexed array container.
+#
+# Wraps a bash indexed array (declare -ga) with object semantics.
+# Implements the Container contract with standard list operations:
+# push/pop (stack-end), shift/unshift (queue-end), random access by
+# index, slicing, and deletion with automatic re-indexing.
+#
+# Storage: each List instance owns a global indexed array named
+# __bashClass_data_${self}. Element data lives there, not in the
+# pipe-delimited descriptor. This gives us native bash array performance
+# for reads/writes while the object system handles identity and dispatch.
+#
+# Negative indices: get, set, delete, has, and slice all support negative
+# indices (Python-style). -1 is the last element, -2 is second-to-last, etc.
+#
+# Composition: List elements can be any string, including object IDs.
+# Storing another List's ID creates nested/multidimensional arrays.
+# Storing a Map's ID creates heterogeneous structures. The framework
+# doesn't care what's inside — it's turtles all the way down.
+
+# Load guard — if already registered, nothing to do
+[[ -n "${__bashClass_registry[List]+set}" ]] && return 2>/dev/null
+
+. boop Container
+
+# ============================================================================
+# List Class Descriptor
+# ============================================================================
+
+__bashClass_registry["List"]="|class=List|parent=Container|methods=new,get,set,delete,length,clear,has,push,pop,shift,unshift,slice,toArray,toString|properties=type"
+
+# ============================================================================
+# List Implementation Functions
+# ============================================================================
+
+# Constructor — creates a new List instance with an indexed companion array.
+#
+# Delegates to __bashClass.new for descriptor creation and stub generation,
+# then declares a global indexed array (__bashClass_data_${self}) as the
+# companion storage. The type=indexed argument lands in the descriptor so
+# introspection (toString, Container.toString) can report the storage flavor
+# without poking at the companion array directly.
+#
+# The class= default ensures subclasses that forget to set class still get
+# a List, not a bare Container. Any extra key=value args pass through to
+# __bashClass.new and end up in the descriptor as metadata.
+#
+# Usage: into=mylist List
+#        into=mylist class=List __bashClass.dispatch new
+List.new() {
+  local -I class
+  : "${class:=List}"
+  local __List_new_self
+  into=__List_new_self __bashClass.new type=indexed "$@"
+  declare -ga "__bashClass_data_${__List_new_self}"
+  __bashClass.return "$__List_new_self" ${into:-}
+}
+
+# Retrieve an element by integer index.
+#
+# Supports negative indices (Python-style): -1 is the last element,
+# -2 is second-to-last, etc. Negative values are resolved by adding
+# the array length, so -1 on a 5-element list becomes index 4.
+#
+# Out-of-range indices return empty string — not a crash. This is a
+# deliberate design choice: get is a read operation, and returning
+# nothing for a missing index is the same contract as Map.get for a
+# missing key. Callers who need bounds enforcement should check has()
+# first or validate the return.
+#
+# The nameref __List_get_arr avoids a subshell by pointing directly
+# at the companion array. Combined with ${into:-} passthrough, a
+# get-into-local is zero-copy: into=val $list.get 0
+#
+# Usage: into=val $list.get 0      # first element
+#        into=val $list.get -1     # last element
+#        $list.get 99              # empty string (no crash)
+List.get() {
+  local -I self class
+  local -i __List_get_idx="$1"
+  local -n __List_get_arr="__bashClass_data_${self}"
+  local -i __List_get_len=${#__List_get_arr[@]}
+  (( __List_get_idx < 0 )) && (( __List_get_idx += __List_get_len ))
+  if (( __List_get_idx < 0 || __List_get_idx >= __List_get_len )); then
+    __bashClass.return "" ${into:-}
+    return
+  fi
+  __bashClass.return "${__List_get_arr[$__List_get_idx]}" ${into:-}
+}
+
+# Store a value at a specific index.
+#
+# Supports negative indices (resolved the same way as get). The valid
+# range is 0..length inclusive — setting at index == length is an append
+# (equivalent to push for a single element). Anything outside that range
+# crashes with an explicit error showing both the requested index and the
+# current length, because silent truncation or sparse arrays would be worse.
+#
+# Unlike get, set is a mutating operation, so out-of-range is a hard error.
+# If you want to append without knowing the length, use push instead.
+#
+# Does not produce a return value — this is a void operation.
+#
+# Usage: $list.set 0 "new_first"    # replace first element
+#        $list.set -1 "new_last"    # replace last element
+#        $list.set 5 "append"       # append if length is 5
+List.set() {
+  local -I self class
+  local -i __List_set_idx="$1"
+  local __List_set_val="$2"
+  local -n __List_set_arr="__bashClass_data_${self}"
+  local -i __List_set_len=${#__List_set_arr[@]}
+  (( __List_set_idx < 0 )) && (( __List_set_idx += __List_set_len ))
+  (( __List_set_idx < 0 || __List_set_idx > __List_set_len )) && \
+    __bashClass.crash "List index out of range: $1 (length: $__List_set_len)"
+  __List_set_arr[$__List_set_idx]="$__List_set_val"
+}
+
+# Remove an element at a specific index and re-index the array.
+#
+# Supports negative indices. Out-of-range crashes (same rationale as set —
+# deleting a nonexistent element is a logic error, not a no-op).
+#
+# Implementation detail: bash's `unset` on an indexed array element leaves
+# a hole (sparse array). The re-assignment __List_del_arr=("${__List_del_arr[@]}")
+# compacts the array back to contiguous indices. This is O(n) but necessary —
+# sparse indexed arrays break length calculations and iteration patterns.
+#
+# Does not return the deleted value. If you need the value before deleting,
+# call get first. This keeps delete simple and avoids the "did they want the
+# value or not" ambiguity.
+#
+# Usage: $list.delete 0     # remove first, shift everything down
+#        $list.delete -1    # remove last (same as pop, but no return)
+List.delete() {
+  local -I self class
+  local -i __List_del_idx="$1"
+  local -n __List_del_arr="__bashClass_data_${self}"
+  local -i __List_del_len=${#__List_del_arr[@]}
+  (( __List_del_idx < 0 )) && (( __List_del_idx += __List_del_len ))
+  (( __List_del_idx < 0 || __List_del_idx >= __List_del_len )) && \
+    __bashClass.crash "List index out of range: $1 (length: $__List_del_len)"
+  unset '__List_del_arr[$__List_del_idx]'
+  __List_del_arr=("${__List_del_arr[@]}")
+}
+
+# Return the number of elements in the list.
+#
+# Uses bash's native ${#array[@]} — O(1) since bash tracks array length
+# internally. Routes through __bashClass.return for consistent value delivery.
+#
+# Usage: into=len $list.length
+#        $list.length; printf "%s\n" "$__bashClass_RETURN"
+List.length() {
+  local -I self class
+  local -n __List_length_arr="__bashClass_data_${self}"
+  __bashClass.return "${#__List_length_arr[@]}" ${into:-}
+}
+
+# Remove all elements from the list.
+#
+# Resets the companion array to empty. The global array itself persists
+# (it's not unset — that's destroy's job), just emptied. O(1) operation.
+#
+# Usage: $list.clear
+List.clear() {
+  local -I self class
+  local -n __List_clear_arr="__bashClass_data_${self}"
+  __List_clear_arr=()
+}
+
+# Check whether an index is within bounds.
+#
+# Supports negative indices (resolved the same way as get/set/delete).
+# Returns exit code 0 (true) if the resolved index falls within
+# 0..length-1, exit code 1 (false) otherwise. Uses bash boolean
+# convention — no value is produced, just the exit code.
+#
+# Usage: $list.has 0 && printf "has first element"
+#        $list.has -1 && printf "not empty"
+#        $list.has 99 || printf "out of range"
+List.has() {
+  local -I self class
+  local -i __List_has_idx="$1"
+  local -n __List_has_arr="__bashClass_data_${self}"
+  local -i __List_has_len=${#__List_has_arr[@]}
+  (( __List_has_idx < 0 )) && (( __List_has_idx += __List_has_len ))
+  (( __List_has_idx >= 0 && __List_has_idx < __List_has_len )) && return 0 || return 1
+}
+
+# Append one or more elements to the end of the list.
+#
+# Accepts variadic arguments — all are appended in order. Uses bash's
+# native += operator on the companion array, which is O(1) amortized
+# per element (bash handles the internal reallocation).
+#
+# Does not produce a return value. If you need the new length after
+# pushing, call length separately.
+#
+# Usage: $list.push "alpha"
+#        $list.push "a" "b" "c"    # append three at once
+List.push() {
+  local -I self class
+  local -n __List_push_arr="__bashClass_data_${self}"
+  __List_push_arr+=("$@")
+}
+
+# Remove and return the last element (stack-style LIFO).
+#
+# Crashes on empty list — popping nothing is a logic error, not a
+# silent no-op. Check isEmpty or length first if the list might be empty.
+#
+# Uses bash's negative index syntax (arr[-1]) to grab the last element,
+# then unset it. No re-indexing needed since the removed element is
+# already at the end.
+#
+# Usage: into=val $list.pop
+#        $list.pop; printf "%s\n" "$__bashClass_RETURN"
+List.pop() {
+  local -I self class
+  local -n __List_pop_arr="__bashClass_data_${self}"
+  local -i __List_pop_len=${#__List_pop_arr[@]}
+  (( __List_pop_len == 0 )) && __bashClass.crash "pop from empty List"
+  local __List_pop_val="${__List_pop_arr[-1]}"
+  unset '__List_pop_arr[-1]'
+  __bashClass.return "$__List_pop_val" ${into:-}
+}
+
+# Remove and return the first element (queue-style FIFO).
+#
+# Crashes on empty list (same rationale as pop). After capturing element 0,
+# the array is rebuilt from index 1 onward via slice syntax, which
+# re-indexes everything. This is O(n) — if you're doing heavy queue work,
+# consider whether the access pattern justifies the cost.
+#
+# Usage: into=val $list.shift
+#        $list.shift; printf "%s\n" "$__bashClass_RETURN"
+List.shift() {
+  local -I self class
+  local -n __List_shift_arr="__bashClass_data_${self}"
+  local -i __List_shift_len=${#__List_shift_arr[@]}
+  (( __List_shift_len == 0 )) && __bashClass.crash "shift from empty List"
+  local __List_shift_val="${__List_shift_arr[0]}"
+  __List_shift_arr=("${__List_shift_arr[@]:1}")
+  __bashClass.return "$__List_shift_val" ${into:-}
+}
+
+# Prepend one or more elements to the beginning of the list.
+#
+# Accepts variadic arguments. The new elements appear in the order given,
+# followed by the existing elements. Implemented by rebuilding the array
+# with the new elements first — O(n) for the same reason as shift.
+#
+# Usage: $list.unshift "first"
+#        $list.unshift "a" "b"    # "a" becomes index 0, "b" index 1
+List.unshift() {
+  local -I self class
+  local -n __List_unshift_arr="__bashClass_data_${self}"
+  __List_unshift_arr=("$@" "${__List_unshift_arr[@]}")
+}
+
+# Extract a sub-range of elements as a newline-delimited string.
+#
+# Follows Python slice semantics: start is inclusive, end is exclusive.
+# Both support negative indices. Omitting end means "to the end of the list".
+# An empty or invalid range returns empty string (not a crash — slicing
+# nothing is a valid operation).
+#
+# Uses bash's ${array[@]:offset:count} slice syntax for the extraction,
+# then printf -v to join with newlines. The trailing newline from printf
+# is stripped so the output is clean for consumption.
+#
+# Usage: into=s $list.slice 1 3    # elements at index 1, 2
+#        into=s $list.slice 2      # index 2 through end
+#        into=s $list.slice -2     # last two elements
+List.slice() {
+  local -I self class
+  local -i __List_slice_start="${1:-0}" __List_slice_end
+  local -n __List_slice_arr="__bashClass_data_${self}"
+  local -i __List_slice_len=${#__List_slice_arr[@]}
+  __List_slice_end="${2:-$__List_slice_len}"
+  (( __List_slice_start < 0 )) && (( __List_slice_start += __List_slice_len ))
+  (( __List_slice_end < 0 )) && (( __List_slice_end += __List_slice_len ))
+  local -i __List_slice_count=$(( __List_slice_end - __List_slice_start ))
+  (( __List_slice_count <= 0 )) && { __bashClass.return "" ${into:-}; return; }
+  local __List_slice_out
+  printf -v __List_slice_out "%s\n" "${__List_slice_arr[@]:$__List_slice_start:$__List_slice_count}"
+  __List_slice_out="${__List_slice_out%$'\n'}"
+  __bashClass.return "$__List_slice_out" ${into:-}
+}
+
+# Serialize all elements to a newline-delimited string.
+#
+# Returns empty string for an empty list (not a newline, not nothing —
+# empty string). For non-empty lists, elements are joined with newlines
+# via printf -v, with the trailing newline stripped.
+#
+# This is the Container contract implementation. The newline delimiter
+# is a convention shared with Map.toArray (which uses "key=value" lines).
+# Callers can split the result with `IFS=$'\n' read -ra` or iterate
+# with `while IFS= read -r`.
+#
+# Usage: into=all $list.toArray
+List.toArray() {
+  local -I self class
+  local -n __List_toArray_arr="__bashClass_data_${self}"
+  local __List_toArray_out
+  if (( ${#__List_toArray_arr[@]} == 0 )); then
+    __bashClass.return "" ${into:-}
+    return
+  fi
+  printf -v __List_toArray_out "%s\n" "${__List_toArray_arr[@]}"
+  __List_toArray_out="${__List_toArray_out%$'\n'}"
+  __bashClass.return "$__List_toArray_out" ${into:-}
+}
+
+# Human-readable representation of the list and its contents.
+#
+# Overrides Container.toString to show actual elements instead of just
+# metadata. Format: List(_a1b2c3)[ "alpha", "beta", "gamma" ]
+#
+# Elements are quoted in the output for visual clarity and to make
+# whitespace in values visible. This is display-only — the quotes are
+# not part of the stored data.
+#
+# Does not support pretty-print mode (unlike the base toString). Lists
+# are inherently linear, so columnar formatting doesn't add much. If
+# you need formatted output, iterate with get and format yourself.
+#
+# Usage: $list.toString
+#        into=s $list.toString; printf "%s\n" "$s"
+List.toString() {
+  local -I self class
+  local -n __List_ts_arr="__bashClass_data_${self}"
+  local -i __List_ts_len=${#__List_ts_arr[@]}
+  local __List_ts_out="List($self)[ "
+  local -i __List_ts_i
+  for (( __List_ts_i=0; __List_ts_i < __List_ts_len; __List_ts_i++ )); do
+    (( __List_ts_i > 0 )) && __List_ts_out="$__List_ts_out, "
+    __List_ts_out="$__List_ts_out\"${__List_ts_arr[$__List_ts_i]}\""
+  done
+  __List_ts_out="$__List_ts_out ]"
+  __bashClass.return "$__List_ts_out" ${into:-}
+}
+
+# ============================================================================
+# Register Methods & Finalize
+# ============================================================================
+
+__bashClass.registerMethod List new List.new
+__bashClass.registerMethod List get List.get
+__bashClass.registerMethod List set List.set
+__bashClass.registerMethod List delete List.delete
+__bashClass.registerMethod List length List.length
+__bashClass.registerMethod List clear List.clear
+__bashClass.registerMethod List has List.has
+__bashClass.registerMethod List push List.push
+__bashClass.registerMethod List pop List.pop
+__bashClass.registerMethod List shift List.shift
+__bashClass.registerMethod List unshift List.unshift
+__bashClass.registerMethod List slice List.slice
+__bashClass.registerMethod List toArray List.toArray
+__bashClass.registerMethod List toString List.toString
+__bashClass.registerClass List

@@ -53,8 +53,11 @@ by their `type` field. The framework file is named `boop` — the internal names
 
 ```
 bashClass (root — all standard methods registered here)
-  └── Box (calc, area, top, end, side, bottom, volume, new)
-        └── Cube (new, side, top, end, bottom, volume)
+  ├── Box (calc, area, top, end, side, bottom, volume, new)
+  │     └── Cube (new, side, top, end, bottom, volume)
+  └── Container (virtual base — get, set, delete, length, clear, has, toArray, isEmpty, destroy, toString, new)
+        ├── List (push, pop, shift, unshift, slice, toArray, toString, new)
+        └── Map (keys, values, toArray, toString, new)
 ```
 
 ### Import System
@@ -134,10 +137,35 @@ Done. The framework file was renamed from `bashClass` to `boop`. Internal symbol
 (`__bashClass_*`) were intentionally kept — the filename is the personality, the
 internals are the plumbing. All source references, tests, and docs updated.
 
-### Clone, Destroy, Equals
-Deferred. Expected to be more complex than they initially sound. `equals` is either trivially
-easy (`[[ $this == $that ]]`) or sneaky-complex (deep comparison). Clone needs to handle
-the wrapper functions. Destroy needs to clean up wrappers and registry entries.
+### Container / List / Map
+
+```
+bashClass (root)
+  └── Box → Cube
+  └── Container (virtual base)
+        ├── List (indexed array wrapper)
+        └── Map  (associative array wrapper)
+```
+
+Container defines the interface contract (get, set, delete, length, clear, has, toArray)
+with crash stubs that name the offending child class. Provides working isEmpty, destroy,
+toString, and new.
+
+List wraps `declare -ga` with push/pop/shift/unshift/slice, negative indices, and
+automatic re-indexing on delete. Map wraps `declare -gA` with keys/values/has and
+idempotent delete.
+
+Data lives in companion arrays (`__bashClass_data_${self}`), not in the descriptor.
+This gives native bash array performance while the object system handles identity and
+dispatch. Composition works by storing object IDs as element values — nested Lists
+create multidimensional arrays, Maps of Lists create dictionaries, etc.
+
+66 tests in `test_containers`, plus `test_matrix` for nested List benchmarking
+(3×3 in ~0.03s, 10×10 in ~0.1s, 25×25 in ~0.5s).
+### Clone, Equals
+Deferred. `equals` is either trivially easy (`[[ $this == $that ]]`) or sneaky-complex
+(deep comparison). Clone needs to handle wrapper functions and companion arrays.
+Destroy is implemented on Container (cleans up companion array + registry entry).
 
 ### Composition Patterns
 Prefer composition over inheritance. Need to document recommended patterns and possibly
@@ -148,9 +176,14 @@ provide helper methods.
 | File | Purpose |
 |------|---------|
 | `boop` | Core framework — dispatch, registry, encoding, standard methods, import system |
+| `Container` | Virtual base class for container types |
+| `List` | Indexed array container (extends Container) |
+| `Map` | Associative array container (extends Container) |
 | `Box` | Box class implementation |
 | `Cube` | Cube class (extends Box) |
 | `test_box_cube` | Functional test suite — 14 test groups |
+| `test_containers` | Container/List/Map test suite — 66 tests |
+| `test_matrix` | Matrix benchmark — nested Lists, transpose, flip |
 | `test_stress` | Adversarial stress test suite — 132 assertions + optional benchmark |
 | `README.md` | Project overview |
 | `REFACTOR_STATUS.md` | This file |

@@ -1,0 +1,319 @@
+#!/bin/bash
+set -u
+
+# Test suite for Container, List, and Map classes
+
+. boop List Map
+
+passed=0
+failed=0
+
+expect_value() {
+  local __desc="$1" __expected="$2"; shift 2
+  "$@" 2>/dev/null
+  if [[ "$__bashClass_RETURN" == "$__expected" ]]; then
+    printf "  PASS: %s\n" "$__desc"
+    (( passed++ ))
+  else
+    printf "  FAIL: %s expected '%s' got '%s'\n" "$__desc" "$__expected" "$__bashClass_RETURN"
+    (( failed++ ))
+  fi
+}
+
+expect_into() {
+  local __desc="$1" __expected="$2" __var="$3"
+  if [[ "${!__var}" == "$__expected" ]]; then
+    printf "  PASS: %s\n" "$__desc"
+    (( passed++ ))
+  else
+    printf "  FAIL: %s expected '%s' got '%s'\n" "$__desc" "$__expected" "${!__var}"
+    (( failed++ ))
+  fi
+}
+
+expect_rc() {
+  local __desc="$1" __expected="$2"; shift 2
+  "$@" 2>/dev/null; local __rc=$?
+  if (( __rc == __expected )); then
+    printf "  PASS: %s (rc=%d)\n" "$__desc" "$__rc"
+    (( passed++ ))
+  else
+    printf "  FAIL: %s expected rc=%d got rc=%d\n" "$__desc" "$__expected" "$__rc"
+    (( failed++ ))
+  fi
+}
+
+expect_fail() {
+  local __desc="$1"; shift
+  local __out __rc
+  __out=$("$@" 2>&1); __rc=$?
+  if (( __rc != 0 )); then
+    printf "  PASS: %s (correctly rejected)\n" "$__desc"
+    (( passed++ ))
+  else
+    printf "  FAIL: %s (should have failed)\n" "$__desc"
+    (( failed++ ))
+  fi
+}
+
+printf "=== CONTAINER TEST SUITE ===\n"
+
+# ============================================================================
+# LIST TESTS
+# ============================================================================
+
+printf "\n--- List: creation ---\n"
+
+into=list List
+if [[ "$list" =~ ^_[0-9a-f]+$ ]]; then
+  printf "  PASS: List created with valid ID\n"; (( passed++ ))
+else
+  printf "  FAIL: List ID invalid: '%s'\n" "$list"; (( failed++ ))
+fi
+# Check isa
+if $list.isa List; then printf "  PASS: isa List\n"; (( passed++ )); else printf "  FAIL: isa List\n"; (( failed++ )); fi
+if $list.isa Container; then printf "  PASS: isa Container\n"; (( passed++ )); else printf "  FAIL: isa Container\n"; (( failed++ )); fi
+if $list.isa bashClass; then printf "  PASS: isa bashClass\n"; (( passed++ )); else printf "  FAIL: isa bashClass\n"; (( failed++ )); fi
+
+printf "\n--- List: push/pop/length ---\n"
+
+$list.push "alpha" "beta" "gamma"
+expect_value "length after push 3" "3" $list.length
+
+into=popped $list.pop
+expect_into "pop returns last" "gamma" "popped"
+expect_value "length after pop" "2" $list.length
+
+printf "\n--- List: get/set ---\n"
+
+expect_value "get 0" "alpha" $list.get 0
+expect_value "get 1" "beta" $list.get 1
+expect_value "get -1 (last)" "beta" $list.get -1
+
+$list.set 0 "ALPHA"
+expect_value "get 0 after set" "ALPHA" $list.get 0
+
+printf "\n--- List: shift/unshift ---\n"
+
+into=shifted $list.shift
+expect_into "shift returns first" "ALPHA" "shifted"
+expect_value "length after shift" "1" $list.length
+
+$list.unshift "first" "second"
+expect_value "length after unshift 2" "3" $list.length
+expect_value "get 0 after unshift" "first" $list.get 0
+expect_value "get 1 after unshift" "second" $list.get 1
+expect_value "get 2 after unshift" "beta" $list.get 2
+
+printf "\n--- List: has ---\n"
+
+expect_rc "has 0 (exists)" 0 $list.has 0
+expect_rc "has 2 (exists)" 0 $list.has 2
+expect_rc "has 3 (out of range)" 1 $list.has 3
+expect_rc "has -1 (last)" 0 $list.has -1
+expect_rc "has -4 (too negative)" 1 $list.has -4
+
+printf "\n--- List: delete ---\n"
+
+$list.delete 1
+expect_value "length after delete" "2" $list.length
+expect_value "get 0 after delete" "first" $list.get 0
+expect_value "get 1 after delete (shifted)" "beta" $list.get 1
+
+printf "\n--- List: slice ---\n"
+
+$list.clear
+$list.push "a" "b" "c" "d" "e"
+
+into=sl $list.slice 1 3
+expect_into "slice 1..3" "b
+c" "sl"
+
+into=sl2 $list.slice 3
+expect_into "slice 3..end" "d
+e" "sl2"
+
+into=sl3 $list.slice -2
+expect_into "slice -2..end" "d
+e" "sl3"
+
+printf "\n--- List: toArray ---\n"
+
+into=arr $list.toArray
+expect_into "toArray" "a
+b
+c
+d
+e" "arr"
+
+printf "\n--- List: toString ---\n"
+
+$list.toString
+printf "  INFO: %s\n" "$__bashClass_RETURN"
+(( passed++ ))
+
+printf "\n--- List: isEmpty ---\n"
+
+expect_rc "not empty" 1 $list.isEmpty
+$list.clear
+expect_rc "empty after clear" 0 $list.isEmpty
+expect_value "length after clear" "0" $list.length
+
+printf "\n--- List: edge cases ---\n"
+
+expect_fail "pop from empty" bash -c '. boop List; into=l List; $l.pop'
+expect_fail "shift from empty" bash -c '. boop List; into=l List; $l.shift'
+
+# Out of range get returns empty (not crash)
+into=empty_get $list.get 99
+expect_into "get out of range returns empty" "" "empty_get"
+
+# ============================================================================
+# MAP TESTS
+# ============================================================================
+
+printf "\n--- Map: creation ---\n"
+
+into=map Map
+$map.isa Map && printf "  PASS: isa Map\n" && (( passed++ )) || { printf "  FAIL: isa Map\n"; (( failed++ )); }
+$map.isa Container && printf "  PASS: isa Container\n" && (( passed++ )) || { printf "  FAIL: isa Container\n"; (( failed++ )); }
+
+printf "\n--- Map: set/get/length ---\n"
+
+$map.set "host" "localhost"
+$map.set "port" "8080"
+$map.set "debug" "true"
+
+expect_value "length" "3" $map.length
+expect_value "get host" "localhost" $map.get "host"
+expect_value "get port" "8080" $map.get "port"
+expect_value "get missing key" "" $map.get "nope"
+
+printf "\n--- Map: has ---\n"
+
+expect_rc "has host" 0 $map.has "host"
+expect_rc "has missing" 1 $map.has "nope"
+
+printf "\n--- Map: delete ---\n"
+
+$map.delete "debug"
+expect_value "length after delete" "2" $map.length
+expect_rc "has debug after delete" 1 $map.has "debug"
+
+printf "\n--- Map: keys/values ---\n"
+
+into=k $map.keys
+# Keys order is not guaranteed in associative arrays, so just check both exist
+if [[ "$k" == *"host"* && "$k" == *"port"* ]]; then
+  printf "  PASS: keys contains host and port\n"; (( passed++ ))
+else
+  printf "  FAIL: keys got '%s'\n" "$k"; (( failed++ ))
+fi
+
+into=v $map.values
+if [[ "$v" == *"localhost"* && "$v" == *"8080"* ]]; then
+  printf "  PASS: values contains localhost and 8080\n"; (( passed++ ))
+else
+  printf "  FAIL: values got '%s'\n" "$v"; (( failed++ ))
+fi
+
+printf "\n--- Map: toArray ---\n"
+
+into=entries $map.toArray
+if [[ "$entries" == *"host=localhost"* && "$entries" == *"port=8080"* ]]; then
+  printf "  PASS: toArray contains expected entries\n"; (( passed++ ))
+else
+  printf "  FAIL: toArray got '%s'\n" "$entries"; (( failed++ ))
+fi
+
+printf "\n--- Map: toString ---\n"
+
+$map.toString
+printf "  INFO: %s\n" "$__bashClass_RETURN"
+(( passed++ ))
+
+printf "\n--- Map: clear/isEmpty ---\n"
+
+expect_rc "not empty" 1 $map.isEmpty
+$map.clear
+expect_rc "empty after clear" 0 $map.isEmpty
+expect_value "length after clear" "0" $map.length
+
+printf "\n--- Map: overwrite ---\n"
+
+$map.set "key" "first"
+$map.set "key" "second"
+expect_value "overwrite" "second" $map.get "key"
+
+# ============================================================================
+# CONTAINER VIRTUAL METHOD TESTS
+# ============================================================================
+
+printf "\n--- Container: virtual methods crash ---\n"
+
+expect_fail "Container.get crashes" bash -c '. boop Container; into=c Container; $c.get 0'
+expect_fail "Container.set crashes" bash -c '. boop Container; into=c Container; $c.set 0 x'
+expect_fail "Container.delete crashes" bash -c '. boop Container; into=c Container; $c.delete 0'
+expect_fail "Container.length crashes" bash -c '. boop Container; into=c Container; $c.length'
+expect_fail "Container.clear crashes" bash -c '. boop Container; into=c Container; $c.clear'
+expect_fail "Container.has crashes" bash -c '. boop Container; into=c Container; $c.has 0'
+expect_fail "Container.toArray crashes" bash -c '. boop Container; into=c Container; $c.toArray'
+
+# ============================================================================
+# COMPOSITION TEST — container as object property
+# ============================================================================
+
+printf "\n--- Composition: List on Cube ---\n"
+
+. boop Cube
+
+into=cube Cube size=4
+into=tags List
+$tags.push "heavy" "fragile" "this-side-up"
+$cube.set tags "$tags"
+
+# Retrieve and use
+into=t $cube.get tags
+expect_value "composed List.get 0" "heavy" $t.get 0
+expect_value "composed List.get 2" "this-side-up" $t.get 2
+expect_value "composed List.length" "3" $t.length
+
+# Subshell chain
+__chain_val=$( $( $cube.get tags ).get 1 )
+if [[ "$__chain_val" == "fragile" ]]; then
+  printf "  PASS: subshell chain = fragile\n"; (( passed++ ))
+else
+  printf "  FAIL: subshell chain got '%s'\n" "$__chain_val"; (( failed++ ))
+fi
+
+# ============================================================================
+# DESTROY TEST
+# ============================================================================
+
+printf "\n--- Destroy ---\n"
+
+into=dlist List
+$dlist.push "a" "b" "c"
+$dlist.destroy
+if [[ -z "${__bashClass_registry[$dlist]:-}" ]]; then
+  printf "  PASS: destroy removes from registry\n"; (( passed++ ))
+else
+  printf "  FAIL: destroy didn't remove from registry\n"; (( failed++ ))
+fi
+
+# ============================================================================
+# SUMMARY
+# ============================================================================
+
+printf "\n=== CONTAINER TEST RESULTS ===\n"
+printf "  Passed: %d\n" "$passed"
+printf "  Failed: %d\n" "$failed"
+printf "  Total:  %d\n" "$(( passed + failed ))"
+
+if (( failed > 0 )); then
+  printf "\n  *** %d FAILURES ***\n" "$failed"
+  exit 1
+fi
+
+printf "\n  All tests passed.\n"
+exit 0

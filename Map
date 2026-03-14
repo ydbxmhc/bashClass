@@ -1,0 +1,270 @@
+#!/bin/bash
+
+# Map — associative array container.
+#
+# Wraps a bash associative array (declare -gA) with object semantics.
+# Implements the Container contract with key-value operations: get, set,
+# delete, has, keys, values, and iteration via toArray.
+#
+# Storage: each Map instance owns a global associative array named
+# __bashClass_data_${self}. Key-value data lives there, not in the
+# pipe-delimited descriptor. This gives us native bash associative array
+# performance for lookups while the object system handles identity,
+# dispatch, and lifecycle.
+#
+# Key ordering: bash associative arrays do NOT preserve insertion order.
+# keys(), values(), and toArray() return entries in bash's internal hash
+# order, which is effectively random. If you need ordered keys, maintain
+# a companion List of key names alongside the Map.
+#
+# Composition: Map values can be any string, including object IDs.
+# Storing a List's ID as a value creates a dictionary-of-lists pattern.
+# Storing another Map's ID creates nested dictionaries. Same turtles,
+# different shell.
+
+# Load guard — if already registered, nothing to do
+[[ -n "${__bashClass_registry[Map]+set}" ]] && return 2>/dev/null
+
+. boop Container
+
+# ============================================================================
+# Map Class Descriptor
+# ============================================================================
+
+__bashClass_registry["Map"]="|class=Map|parent=Container|methods=new,get,set,delete,length,clear,has,keys,values,toArray,toString|properties=type"
+
+# ============================================================================
+# Map Implementation Functions
+# ============================================================================
+
+# Constructor — creates a new Map instance with an associative companion array.
+#
+# Delegates to __bashClass.new for descriptor creation and stub generation,
+# then declares a global associative array (__bashClass_data_${self}) as the
+# companion storage. The type=associative argument lands in the descriptor
+# so introspection can report the storage flavor.
+#
+# The class= default ensures subclasses that forget to set class still get
+# a Map, not a bare Container. Any extra key=value args pass through to
+# __bashClass.new and end up in the descriptor as metadata.
+#
+# Usage: into=mymap Map
+#        into=mymap class=Map __bashClass.dispatch new
+Map.new() {
+  local -I class
+  : "${class:=Map}"
+  local __Map_new_self
+  into=__Map_new_self __bashClass.new type=associative "$@"
+  declare -gA "__bashClass_data_${__Map_new_self}"
+  __bashClass.return "$__Map_new_self" ${into:-}
+}
+
+# Retrieve a value by its string key.
+#
+# Returns empty string if the key doesn't exist — not a crash. This
+# mirrors bash's native ${array[key]:-} behavior and matches List.get's
+# contract for out-of-range indices. Callers who need to distinguish
+# "key exists with empty value" from "key doesn't exist" should use
+# has() first.
+#
+# The nameref __Map_get_arr avoids a subshell by pointing directly at
+# the companion array. Combined with ${into:-} passthrough, a get-into-local
+# is zero-copy.
+#
+# Usage: into=val $map.get "host"
+#        $map.get "missing_key"    # returns empty string
+Map.get() {
+  local -I self class
+  local __Map_get_key="$1"
+  local -n __Map_get_arr="__bashClass_data_${self}"
+  __bashClass.return "${__Map_get_arr[$__Map_get_key]:-}" ${into:-}
+}
+
+# Store a key-value pair in the map.
+#
+# If the key already exists, its value is overwritten (last write wins).
+# If the key is new, it's added. Bash associative arrays handle both
+# cases identically — no special logic needed.
+#
+# Does not produce a return value — this is a void operation.
+# Keys can be any non-empty string that bash accepts as an associative
+# array key (which is effectively any string).
+#
+# Usage: $map.set "host" "localhost"
+#        $map.set "port" "8080"
+Map.set() {
+  local -I self class
+  local __Map_set_key="$1" __Map_set_val="$2"
+  local -n __Map_set_arr="__bashClass_data_${self}"
+  __Map_set_arr[$__Map_set_key]="$__Map_set_val"
+}
+
+# Remove a key-value pair from the map.
+#
+# Silent no-op if the key doesn't exist — deleting a missing key is not
+# a logic error for associative containers (unlike List.delete on an
+# out-of-range index). This matches the behavior of most hash map
+# implementations: delete is idempotent.
+#
+# Does not return the deleted value. If you need it, call get first.
+#
+# Usage: $map.delete "debug"
+Map.delete() {
+  local -I self class
+  local __Map_del_key="$1"
+  local -n __Map_del_arr="__bashClass_data_${self}"
+  unset "__Map_del_arr[$__Map_del_key]"
+}
+
+# Return the number of key-value pairs in the map.
+#
+# Uses bash's native ${#array[@]} — O(1). Routes through
+# __bashClass.return for consistent value delivery.
+#
+# Usage: into=len $map.length
+Map.length() {
+  local -I self class
+  local -n __Map_length_arr="__bashClass_data_${self}"
+  __bashClass.return "${#__Map_length_arr[@]}" ${into:-}
+}
+
+# Remove all key-value pairs from the map.
+#
+# Resets the companion array to empty. The global array itself persists
+# (that's destroy's job to clean up), just emptied. O(1) operation.
+#
+# Usage: $map.clear
+Map.clear() {
+  local -I self class
+  local -n __Map_clear_arr="__bashClass_data_${self}"
+  __Map_clear_arr=()
+}
+
+# Check whether a key exists in the map.
+#
+# Uses the ${array[key]+set} idiom to distinguish "key exists" from
+# "key is unset" — this correctly handles keys whose value is empty
+# string. Returns exit code 0 (true) if the key exists, 1 (false)
+# otherwise. Uses bash boolean convention — no value produced.
+#
+# Usage: $map.has "host" && printf "host is configured"
+#        $map.has "nope" || printf "key not found"
+Map.has() {
+  local -I self class
+  local __Map_has_key="$1"
+  local -n __Map_has_arr="__bashClass_data_${self}"
+  [[ -n "${__Map_has_arr[$__Map_has_key]+set}" ]] && return 0 || return 1
+}
+
+
+# Return all keys as a newline-delimited string.
+#
+# Keys appear in bash's internal hash order (effectively random — not
+# insertion order). Returns empty string for an empty map. The trailing
+# newline from printf is stripped so the output is clean.
+#
+# Callers can split the result with `IFS=$'\n' read -ra` to get an
+# array of keys for iteration.
+#
+# Usage: into=k $map.keys
+Map.keys() {
+  local -I self class
+  local -n __Map_keys_arr="__bashClass_data_${self}"
+  local __Map_keys_out
+  if (( ${#__Map_keys_arr[@]} == 0 )); then
+    __bashClass.return "" ${into:-}
+    return
+  fi
+  printf -v __Map_keys_out "%s\n" "${!__Map_keys_arr[@]}"
+  __Map_keys_out="${__Map_keys_out%$'\n'}"
+  __bashClass.return "$__Map_keys_out" ${into:-}
+}
+
+# Return all values as a newline-delimited string.
+#
+# Values appear in the same hash order as keys() — corresponding
+# positionally, so the Nth value line matches the Nth key line.
+# Returns empty string for an empty map.
+#
+# Usage: into=v $map.values
+Map.values() {
+  local -I self class
+  local -n __Map_values_arr="__bashClass_data_${self}"
+  local __Map_values_out
+  if (( ${#__Map_values_arr[@]} == 0 )); then
+    __bashClass.return "" ${into:-}
+    return
+  fi
+  printf -v __Map_values_out "%s\n" "${__Map_values_arr[@]}"
+  __Map_values_out="${__Map_values_out%$'\n'}"
+  __bashClass.return "$__Map_values_out" ${into:-}
+}
+
+# Serialize all entries as newline-delimited "key=value" lines.
+#
+# This is the Container contract implementation. Each line is a single
+# key=value pair. Entries appear in hash order (same as keys/values).
+# Returns empty string for an empty map.
+#
+# Note: if values contain newlines or equals signs, the output becomes
+# ambiguous. For structured serialization, iterate with keys() and get()
+# instead. This method is for simple display and debugging.
+#
+# Usage: into=entries $map.toArray
+Map.toArray() {
+  local -I self class
+  local -n __Map_toArray_arr="__bashClass_data_${self}"
+  local __Map_toArray_out="" __Map_toArray_key
+  for __Map_toArray_key in "${!__Map_toArray_arr[@]}"; do
+    __Map_toArray_out="$__Map_toArray_out$__Map_toArray_key=${__Map_toArray_arr[$__Map_toArray_key]}
+"
+  done
+  __Map_toArray_out="${__Map_toArray_out%$'\n'}"
+  __bashClass.return "$__Map_toArray_out" ${into:-}
+}
+
+# Human-readable representation of the map and its contents.
+#
+# Overrides Container.toString to show actual key-value pairs instead of
+# just metadata. Format: Map(_a1b2c3){ host="localhost", port="8080" }
+#
+# Values are quoted in the output for visual clarity. Keys are not quoted
+# (they're identifiers in practice, even though bash allows arbitrary
+# strings as associative array keys). Entries appear in hash order.
+#
+# Does not support pretty-print mode. Maps are inherently flat key-value
+# stores, so the inline format is already readable. For formatted output,
+# iterate with keys() and get().
+#
+# Usage: $map.toString
+#        into=s $map.toString; printf "%s\n" "$s"
+Map.toString() {
+  local -I self class
+  local -n __Map_ts_arr="__bashClass_data_${self}"
+  local -i __Map_ts_len=${#__Map_ts_arr[@]}
+  local __Map_ts_out="Map($self){ " __Map_ts_key __Map_ts_first=1
+  for __Map_ts_key in "${!__Map_ts_arr[@]}"; do
+    (( __Map_ts_first )) || __Map_ts_out="$__Map_ts_out, "
+    __Map_ts_out="$__Map_ts_out$__Map_ts_key=\"${__Map_ts_arr[$__Map_ts_key]}\""
+    __Map_ts_first=0
+  done
+  __Map_ts_out="$__Map_ts_out }"
+  __bashClass.return "$__Map_ts_out" ${into:-}
+}
+
+# ============================================================================
+# Register Methods & Finalize
+# ============================================================================
+
+__bashClass.registerMethod Map new Map.new
+__bashClass.registerMethod Map get Map.get
+__bashClass.registerMethod Map set Map.set
+__bashClass.registerMethod Map delete Map.delete
+__bashClass.registerMethod Map length Map.length
+__bashClass.registerMethod Map clear Map.clear
+__bashClass.registerMethod Map has Map.has
+__bashClass.registerMethod Map keys Map.keys
+__bashClass.registerMethod Map values Map.values
+__bashClass.registerMethod Map toArray Map.toArray
+__bashClass.registerMethod Map toString Map.toString
+__bashClass.registerClass Map
