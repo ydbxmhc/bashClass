@@ -1,0 +1,539 @@
+#!/bin/bash
+
+# Float — virtual decimal arithmetic via scaled integers.
+#
+# Stores values as scaled integers in the descriptor. 3.14 at scale 2
+# is stored as value=314, scale=2. All arithmetic uses bash's native
+# $(( )) integer math — no forks, no subshells, zero overhead.
+#
+# This is a convenience class for doing decimal math in bash without
+# losing your mind. Config file math, percentages, currency, simple
+# formulas. It is not a scientific computing library. If you need
+# arbitrary precision or heavy number crunching, use Python/Perl/C.
+#
+# Precision is bounded by bash's 64-bit signed integer range
+# (±9223372036854775807, ~18 significant digits). The scaled integer
+# representation means the effective range depends on scale: at scale 2,
+# you get ~16 digits of integer part. At scale 10, ~8. This is more
+# than enough for any sane bash use case.
+#
+# Presentation: toString returns "Float(_id){ value }". val returns
+# the raw decimal string. format accepts a printf format string for
+# arbitrary display control.
+#
+# Inheritance: Float extends bashClass directly. It's a value type,
+# not a container. Value and scale live in the descriptor.
+#
+# ============================================================================
+# DESIGN NOTE: Coprocess escalation (removed)
+# ============================================================================
+#
+# An earlier version of Float included an awk coprocess fallback for
+# overflow scenarios. The idea: track digit counts before each operation,
+# and if the result would risk exceeding 64-bit range, spin up a named
+# coproc (`coproc __Float_awk { awk '...' }`) and route all subsequent
+# operations through it via file descriptors. Once active, the coprocess
+# stayed active — no reason to go back.
+#
+# The coprocess architecture worked:
+#   - Named coproc with `coproc NAME { awk '...' }` for process identity
+#   - Read/write via `printf '%s\n' "A op B" >&${NAME[1]}`
+#     and `read -r -t 5 result <&${NAME[0]}`
+#   - fflush() in the awk program after each output to prevent blocking
+#   - Sticky flag (__Float_awk_active) so escalation was one-way
+#   - Manual trigger ($f.useAwk) for preemptive escalation
+#   - Idempotent startup — safe to call startAwk multiple times
+#
+# We removed it because the precision ceiling was the same either way.
+# IEEE 754 doubles give ~15-16 significant digits. The scaled integer
+# representation in bash gives ~18. Capping awk output at %.15g to fit
+# back into bash integers meant awk couldn't do anything bash couldn't
+# already do natively. The coprocess added real complexity (coproc
+# lifecycle, file descriptors, format capping, escalation branches in
+# every arithmetic method) for zero practical benefit.
+#
+# If someone builds a BigInt or BigFloat class that needs true arbitrary
+# precision, the coprocess pattern is the right approach — but with bc
+# instead of awk (bc supports arbitrary precision via its scale setting).
+# The key lessons from our implementation:
+#   - Named coprocs (`coproc NAME { ... }`) give you stable FD references
+#   - fflush() is mandatory or reads block forever
+#   - The escalation should be one-way (sticky flag, never go back)
+#   - Format the output to fit your storage — %.15g for 64-bit integers
+#   - Timeout on reads (`read -t 5`) as a safety net against hangs
+#
+# ============================================================================
+# TODO: Geometry class
+# ============================================================================
+# A Geometry class built on Float for area, perimeter, distance, etc.
+# All of that stays in the add/sub/mul/div lane — pure virtual decimal,
+# no coprocess needed.
+#
+# TODO: Trig class (awk coprocess)
+# ============================================================================
+# Trig functions (sin, cos, tan, atan2) have no closed-form integer
+# representation — this is the legitimate use case for the coprocess
+# pattern. awk has sin(), cos(), atan2() built in. A Trig class that
+# lazily starts an awk coproc on first call would be clean and focused:
+# the coprocess exists because trig genuinely can't be done natively,
+# unlike basic arithmetic where the virtual decimal already covers it.
+# Float stays pure bash; Trig owns the coprocess.
+# ============================================================================
+
+# Load guard
+[[ -n "${__bashClass_registry[Float]+set}" ]] && return 2>/dev/null
+
+. boop
+
+# ============================================================================
+# Float Class Descriptor
+# ============================================================================
+
+__bashClass_registry["Float"]="|class=Float|parent=bashClass|methods=new,add,sub,mul,div,mod,pow,abs,neg,eq,lt,gt,le,ge,round,toInt,toScale,format,toString,val|properties=value,scale"
+
+# ============================================================================
+# Internal helpers
+# ============================================================================
+
+# Resolve a Float argument: if it looks like an object ID (starts with _
+# and exists in the registry), extract its value and scale. Otherwise
+# parse it as a literal decimal string.
+#
+# Sets the caller's variables via nameref:
+#   $2 = integer value (scaled)
+#   $3 = scale (number of decimal places)
+#
+# Literal parsing: "3.14" → value=314, scale=2
+#                  "42"   → value=42, scale=0
+#                  "-0.5" → value=-5, scale=1
+#                  ".25"  → value=25, scale=2
+__Float.resolve() {
+  local __resolve_input="$1"
+  local -n __resolve_val="$2" __resolve_scale="$3"
+
+  # Is it an object ID?
+  if [[ "$__resolve_input" == _* && -n "${__bashClass_registry[$__resolve_input]:-}" ]]; then
+    __bashClass.parse "$__resolve_input" "value" __resolve_val
+    __bashClass.parse "$__resolve_input" "scale" __resolve_scale
+    return
+  fi
+
+  # Parse literal decimal string
+  local __resolve_sign=""
+  [[ "$__resolve_input" == -* ]] && { __resolve_sign="-"; __resolve_input="${__resolve_input#-}"; }
+
+  if [[ "$__resolve_input" == *.* ]]; then
+    local __resolve_int="${__resolve_input%%.*}"
+    local __resolve_frac="${__resolve_input#*.}"
+    __resolve_int="${__resolve_int#"${__resolve_int%%[!0]*}"}"
+    __resolve_scale=${#__resolve_frac}
+    local __resolve_combined="${__resolve_int}${__resolve_frac}"
+    __resolve_combined="${__resolve_combined#"${__resolve_combined%%[!0]*}"}"
+    : "${__resolve_combined:=0}"
+    __resolve_val=$(( ${__resolve_sign}${__resolve_combined} ))
+  else
+    __resolve_scale=0
+    __resolve_val=$(( ${__resolve_sign}${__resolve_input} ))
+  fi
+}
+
+# Normalize two operands to the same scale by multiplying the smaller-scale
+# one up. Sets caller's variables via nameref:
+#   $1/$2 = valA/scaleA (modified in place if needed)
+#   $3/$4 = valB/scaleB (modified in place if needed)
+#   $5    = the common scale
+__Float.alignScale() {
+  local -n __align_vA="$1" __align_sA="$2" __align_vB="$3" __align_sB="$4" __align_common="$5"
+  if (( __align_sA > __align_sB )); then
+    local -i __align_diff=$(( __align_sA - __align_sB ))
+    local -i __align_mul=1 __align_i
+    for (( __align_i=0; __align_i < __align_diff; __align_i++ )); do (( __align_mul *= 10 )); done
+    (( __align_vB *= __align_mul ))
+    __align_common=$__align_sA
+  elif (( __align_sB > __align_sA )); then
+    local -i __align_diff=$(( __align_sB - __align_sA ))
+    local -i __align_mul=1 __align_i
+    for (( __align_i=0; __align_i < __align_diff; __align_i++ )); do (( __align_mul *= 10 )); done
+    (( __align_vA *= __align_mul ))
+    __align_common=$__align_sB
+  else
+    __align_common=$__align_sA
+  fi
+}
+
+# Format a scaled integer back to decimal string representation.
+# value=314, scale=2 → "3.14"
+# value=-5, scale=1 → "-0.5"
+# value=42, scale=0 → "42"
+__Float.formatValue() {
+  local -i __fmt_val="$1" __fmt_scale="$2"
+
+  if (( __fmt_scale == 0 )); then
+    __bashClass.return "$__fmt_val" "${3:-}"
+    return
+  fi
+
+  local __fmt_sign=""
+  (( __fmt_val < 0 )) && { __fmt_sign="-"; (( __fmt_val = -__fmt_val )); }
+
+  local __fmt_str="$__fmt_val"
+  while (( ${#__fmt_str} <= __fmt_scale )); do __fmt_str="0${__fmt_str}"; done
+
+  local -i __fmt_split=$(( ${#__fmt_str} - __fmt_scale ))
+  __bashClass.return "${__fmt_sign}${__fmt_str:0:$__fmt_split}.${__fmt_str:$__fmt_split}" "${3:-}"
+}
+
+# Build a new Float object from a raw integer value and scale.
+# Used internally by arithmetic operations to return results without
+# going through the full constructor parsing path.
+__Float.fromRaw() {
+  local -i __raw_val="$1" __raw_scale="$2"
+  local __raw_self
+  into=__raw_self class=Float __bashClass.new "value=$__raw_val" "scale=$__raw_scale"
+  __bashClass.return "$__raw_self" "${3:-}"
+}
+
+
+# ============================================================================
+# Constructor
+# ============================================================================
+
+# Create a new Float from a decimal string or integer.
+#
+# Usage: into=f Float 3.14
+#        into=f Float value=3.14
+#        into=f Float value=3.14 scale=6    # force scale (pads with zeros)
+#        into=f Float 42                    # integer, scale=0
+#
+# If the first positional arg doesn't contain '=', it's treated as the
+# value directly. Otherwise standard key=value descriptor args apply.
+Float.new() {
+  local -I class
+  : "${class:=Float}"
+
+  local __Float_new_input="" __Float_new_forceScale=""
+  local __Float_new_arg
+  for __Float_new_arg in "$@"; do
+    if [[ "$__Float_new_arg" == scale=* ]]; then
+      __Float_new_forceScale="${__Float_new_arg#scale=}"
+    elif [[ "$__Float_new_arg" == value=* ]]; then
+      __Float_new_input="${__Float_new_arg#value=}"
+    elif [[ "$__Float_new_arg" != *=* ]]; then
+      __Float_new_input="$__Float_new_arg"
+    fi
+  done
+
+  : "${__Float_new_input:=0}"
+
+  local -i __Float_new_val __Float_new_scale
+  __Float.resolve "$__Float_new_input" __Float_new_val __Float_new_scale
+
+  # If forced scale is larger, pad; if smaller, truncate (round half-up)
+  if [[ -n "$__Float_new_forceScale" ]]; then
+    local -i __Float_new_fs=$__Float_new_forceScale
+    if (( __Float_new_fs > __Float_new_scale )); then
+      local -i __Float_new_diff=$(( __Float_new_fs - __Float_new_scale ))
+      local -i __Float_new_mul=1 __Float_new_i
+      for (( __Float_new_i=0; __Float_new_i < __Float_new_diff; __Float_new_i++ )); do
+        (( __Float_new_mul *= 10 ))
+      done
+      (( __Float_new_val *= __Float_new_mul ))
+    elif (( __Float_new_fs < __Float_new_scale )); then
+      local -i __Float_new_diff=$(( __Float_new_scale - __Float_new_fs ))
+      local -i __Float_new_div=1 __Float_new_i
+      for (( __Float_new_i=0; __Float_new_i < __Float_new_diff; __Float_new_i++ )); do
+        (( __Float_new_div *= 10 ))
+      done
+      local -i __Float_new_remainder=$(( __Float_new_val % __Float_new_div ))
+      (( __Float_new_val /= __Float_new_div ))
+      local -i __Float_new_half=$(( __Float_new_div / 2 ))
+      (( __Float_new_remainder >= __Float_new_half )) && (( __Float_new_val++ ))
+    fi
+    __Float_new_scale=$__Float_new_fs
+  fi
+
+  local __Float_new_self
+  into=__Float_new_self __bashClass.new "value=$__Float_new_val" "scale=$__Float_new_scale"
+  __bashClass.return "$__Float_new_self" ${into:-}
+}
+
+# ============================================================================
+# Arithmetic operations
+#
+# Pure bash integer math on scaled values. Each operation resolves its
+# argument (Float object ID or literal decimal string), aligns scales
+# where needed, computes, and returns a new Float.
+# ============================================================================
+
+# Add: self + arg. Aligns scales, adds integers.
+Float.add() {
+  local -I self class
+  local -i __Float_add_vA __Float_add_sA __Float_add_vB __Float_add_sB __Float_add_common
+  __Float.resolve "$self" __Float_add_vA __Float_add_sA
+  __Float.resolve "$1" __Float_add_vB __Float_add_sB
+  __Float.alignScale __Float_add_vA __Float_add_sA __Float_add_vB __Float_add_sB __Float_add_common
+  __Float.fromRaw $(( __Float_add_vA + __Float_add_vB )) $__Float_add_common ${into:-}
+}
+
+# Subtract: self - arg.
+Float.sub() {
+  local -I self class
+  local -i __Float_sub_vA __Float_sub_sA __Float_sub_vB __Float_sub_sB __Float_sub_common
+  __Float.resolve "$self" __Float_sub_vA __Float_sub_sA
+  __Float.resolve "$1" __Float_sub_vB __Float_sub_sB
+  __Float.alignScale __Float_sub_vA __Float_sub_sA __Float_sub_vB __Float_sub_sB __Float_sub_common
+  __Float.fromRaw $(( __Float_sub_vA - __Float_sub_vB )) $__Float_sub_common ${into:-}
+}
+
+# Multiply: self * arg.
+# Result scale = scaleA + scaleB (product of scaled integers has combined scale).
+Float.mul() {
+  local -I self class
+  local -i __Float_mul_vA __Float_mul_sA __Float_mul_vB __Float_mul_sB
+  __Float.resolve "$self" __Float_mul_vA __Float_mul_sA
+  __Float.resolve "$1" __Float_mul_vB __Float_mul_sB
+  __Float.fromRaw $(( __Float_mul_vA * __Float_mul_vB )) $(( __Float_mul_sA + __Float_mul_sB )) ${into:-}
+}
+
+# Divide: self / arg.
+# After alignScale both operands share the same scale, so dividing them
+# cancels the scale out (result is effectively scale 0). To preserve
+# fractional digits, the dividend is multiplied by 10^extra BEFORE the
+# integer division. The result scale is just the extra digits added.
+Float.div() {
+  local -I self class
+  local -i __Float_div_vA __Float_div_sA __Float_div_vB __Float_div_sB __Float_div_common
+  __Float.resolve "$self" __Float_div_vA __Float_div_sA
+  __Float.resolve "$1" __Float_div_vB __Float_div_sB
+  (( __Float_div_vB == 0 )) && __bashClass.crash "Float: division by zero"
+  __Float.alignScale __Float_div_vA __Float_div_sA __Float_div_vB __Float_div_sB __Float_div_common
+
+  local -i __Float_div_extra=$(( __Float_div_common > 6 ? __Float_div_common : 6 ))
+  local -i __Float_div_mul=1 __Float_div_i
+  for (( __Float_div_i=0; __Float_div_i < __Float_div_extra; __Float_div_i++ )); do
+    (( __Float_div_mul *= 10 ))
+  done
+  __Float.fromRaw $(( (__Float_div_vA * __Float_div_mul) / __Float_div_vB )) $__Float_div_extra ${into:-}
+}
+
+# Modulo: self % arg.
+Float.mod() {
+  local -I self class
+  local -i __Float_mod_vA __Float_mod_sA __Float_mod_vB __Float_mod_sB __Float_mod_common
+  __Float.resolve "$self" __Float_mod_vA __Float_mod_sA
+  __Float.resolve "$1" __Float_mod_vB __Float_mod_sB
+  (( __Float_mod_vB == 0 )) && __bashClass.crash "Float: modulo by zero"
+  __Float.alignScale __Float_mod_vA __Float_mod_sA __Float_mod_vB __Float_mod_sB __Float_mod_common
+  __Float.fromRaw $(( __Float_mod_vA % __Float_mod_vB )) $__Float_mod_common ${into:-}
+}
+
+# Power: self ^ arg (non-negative integer exponent only).
+# Fractional or negative exponents would need a coprocess — see the
+# design note at the top of this file for the architecture that was
+# prototyped and removed.
+Float.pow() {
+  local -I self class
+  local -i __Float_pow_vA __Float_pow_sA __Float_pow_vB __Float_pow_sB
+  __Float.resolve "$self" __Float_pow_vA __Float_pow_sA
+  __Float.resolve "$1" __Float_pow_vB __Float_pow_sB
+
+  (( __Float_pow_sB != 0 )) && __bashClass.crash "Float: fractional exponents not supported"
+  (( __Float_pow_vB < 0 )) && __bashClass.crash "Float: negative exponents not supported"
+
+  local -i __Float_pow_result=1 __Float_pow_resultScale=0 __Float_pow_i
+  for (( __Float_pow_i=0; __Float_pow_i < __Float_pow_vB; __Float_pow_i++ )); do
+    (( __Float_pow_result *= __Float_pow_vA ))
+    (( __Float_pow_resultScale += __Float_pow_sA ))
+  done
+  __Float.fromRaw $__Float_pow_result $__Float_pow_resultScale ${into:-}
+}
+
+
+# ============================================================================
+# Comparison operations — exit codes (bash boolean convention)
+# ============================================================================
+
+Float.eq() {
+  local -I self class
+  local -i __Float_eq_vA __Float_eq_sA __Float_eq_vB __Float_eq_sB __Float_eq_common
+  __Float.resolve "$self" __Float_eq_vA __Float_eq_sA
+  __Float.resolve "$1" __Float_eq_vB __Float_eq_sB
+  __Float.alignScale __Float_eq_vA __Float_eq_sA __Float_eq_vB __Float_eq_sB __Float_eq_common
+  (( __Float_eq_vA == __Float_eq_vB )) && return 0 || return 1
+}
+
+Float.lt() {
+  local -I self class
+  local -i __Float_lt_vA __Float_lt_sA __Float_lt_vB __Float_lt_sB __Float_lt_common
+  __Float.resolve "$self" __Float_lt_vA __Float_lt_sA
+  __Float.resolve "$1" __Float_lt_vB __Float_lt_sB
+  __Float.alignScale __Float_lt_vA __Float_lt_sA __Float_lt_vB __Float_lt_sB __Float_lt_common
+  (( __Float_lt_vA < __Float_lt_vB )) && return 0 || return 1
+}
+
+Float.gt() {
+  local -I self class
+  local -i __Float_gt_vA __Float_gt_sA __Float_gt_vB __Float_gt_sB __Float_gt_common
+  __Float.resolve "$self" __Float_gt_vA __Float_gt_sA
+  __Float.resolve "$1" __Float_gt_vB __Float_gt_sB
+  __Float.alignScale __Float_gt_vA __Float_gt_sA __Float_gt_vB __Float_gt_sB __Float_gt_common
+  (( __Float_gt_vA > __Float_gt_vB )) && return 0 || return 1
+}
+
+Float.le() {
+  local -I self class
+  local -i __Float_le_vA __Float_le_sA __Float_le_vB __Float_le_sB __Float_le_common
+  __Float.resolve "$self" __Float_le_vA __Float_le_sA
+  __Float.resolve "$1" __Float_le_vB __Float_le_sB
+  __Float.alignScale __Float_le_vA __Float_le_sA __Float_le_vB __Float_le_sB __Float_le_common
+  (( __Float_le_vA <= __Float_le_vB )) && return 0 || return 1
+}
+
+Float.ge() {
+  local -I self class
+  local -i __Float_ge_vA __Float_ge_sA __Float_ge_vB __Float_ge_sB __Float_ge_common
+  __Float.resolve "$self" __Float_ge_vA __Float_ge_sA
+  __Float.resolve "$1" __Float_ge_vB __Float_ge_sB
+  __Float.alignScale __Float_ge_vA __Float_ge_sA __Float_ge_vB __Float_ge_sB __Float_ge_common
+  (( __Float_ge_vA >= __Float_ge_vB )) && return 0 || return 1
+}
+
+# ============================================================================
+# Utility methods
+# ============================================================================
+
+# Absolute value as a new Float.
+Float.abs() {
+  local -I self class
+  local -i __Float_abs_val __Float_abs_scale
+  __Float.resolve "$self" __Float_abs_val __Float_abs_scale
+  (( __Float_abs_val < 0 )) && (( __Float_abs_val = -__Float_abs_val ))
+  __Float.fromRaw $__Float_abs_val $__Float_abs_scale ${into:-}
+}
+
+# Negated value as a new Float.
+Float.neg() {
+  local -I self class
+  local -i __Float_neg_val __Float_neg_scale
+  __Float.resolve "$self" __Float_neg_val __Float_neg_scale
+  __Float.fromRaw $(( -__Float_neg_val )) $__Float_neg_scale ${into:-}
+}
+
+# Round to N decimal places. Returns a new Float.
+# Uses round-half-up: 2.345 rounded to 2 places → 2.35
+Float.round() {
+  local -I self class
+  local -i __Float_round_places="${1:-0}"
+  local -i __Float_round_val __Float_round_scale
+  __Float.resolve "$self" __Float_round_val __Float_round_scale
+
+  if (( __Float_round_places >= __Float_round_scale )); then
+    local -i __Float_round_diff=$(( __Float_round_places - __Float_round_scale ))
+    local -i __Float_round_mul=1 __Float_round_i
+    for (( __Float_round_i=0; __Float_round_i < __Float_round_diff; __Float_round_i++ )); do
+      (( __Float_round_mul *= 10 ))
+    done
+    __Float.fromRaw $(( __Float_round_val * __Float_round_mul )) $__Float_round_places ${into:-}
+    return
+  fi
+
+  local -i __Float_round_diff=$(( __Float_round_scale - __Float_round_places ))
+  local -i __Float_round_div=1 __Float_round_i
+  for (( __Float_round_i=0; __Float_round_i < __Float_round_diff; __Float_round_i++ )); do
+    (( __Float_round_div *= 10 ))
+  done
+
+  local -i __Float_round_sign=1
+  (( __Float_round_val < 0 )) && { __Float_round_sign=-1; (( __Float_round_val = -__Float_round_val )); }
+
+  local -i __Float_round_remainder=$(( __Float_round_val % __Float_round_div ))
+  (( __Float_round_val /= __Float_round_div ))
+  (( __Float_round_remainder >= (__Float_round_div / 2) )) && (( __Float_round_val++ ))
+  __Float.fromRaw $(( __Float_round_val * __Float_round_sign )) $__Float_round_places ${into:-}
+}
+
+# Truncate to integer. Returns a string, not a Float.
+Float.toInt() {
+  local -I self class
+  local -i __Float_toInt_val __Float_toInt_scale
+  __Float.resolve "$self" __Float_toInt_val __Float_toInt_scale
+  if (( __Float_toInt_scale > 0 )); then
+    local -i __Float_toInt_div=1 __Float_toInt_i
+    for (( __Float_toInt_i=0; __Float_toInt_i < __Float_toInt_scale; __Float_toInt_i++ )); do
+      (( __Float_toInt_div *= 10 ))
+    done
+    (( __Float_toInt_val /= __Float_toInt_div ))
+  fi
+  __bashClass.return "$__Float_toInt_val" ${into:-}
+}
+
+# New Float with a different scale (pad or round).
+Float.toScale() {
+  local -I self class
+  local -i __Float_toScale_val __Float_toScale_scale
+  __Float.resolve "$self" __Float_toScale_val __Float_toScale_scale
+  local __Float_toScale_str
+  __Float.formatValue $__Float_toScale_val $__Float_toScale_scale __Float_toScale_str
+  local __Float_toScale_new
+  into=__Float_toScale_new Float "$__Float_toScale_str" scale=$1
+  __bashClass.return "$__Float_toScale_new" ${into:-}
+}
+
+# Raw decimal string value. "3.14", "-0.5", "42", etc.
+Float.val() {
+  local -I self class
+  local -i __Float_val_v __Float_val_s
+  __Float.resolve "$self" __Float_val_v __Float_val_s
+  __Float.formatValue $__Float_val_v $__Float_val_s ${into:-}
+}
+
+# Format with a printf format string. Converts to decimal string first,
+# then applies printf. Useful for padding, alignment, fixed-width output.
+#
+# Usage: into=s $f.format "%010.4f"    # "00003.1400"
+#        into=s $f.format "%.2f"       # "3.14"
+Float.format() {
+  local -I self class
+  local __Float_format_str
+  self="$self" class="$class" Float.val
+  __Float_format_str="$__bashClass_RETURN"
+  local __Float_format_result
+  printf -v __Float_format_result "$1" "$__Float_format_str"
+  __bashClass.return "$__Float_format_result" ${into:-}
+}
+
+# toString — "Float(_id){ value }"
+Float.toString() {
+  local -I self class
+  local -i __Float_ts_val __Float_ts_scale
+  __Float.resolve "$self" __Float_ts_val __Float_ts_scale
+  local __Float_ts_str
+  __Float.formatValue $__Float_ts_val $__Float_ts_scale __Float_ts_str
+  __bashClass.return "Float($self){ $__Float_ts_str }" ${into:-}
+}
+
+# ============================================================================
+# Register Methods & Finalize
+# ============================================================================
+
+__bashClass.registerMethod Float new Float.new
+__bashClass.registerMethod Float add Float.add
+__bashClass.registerMethod Float sub Float.sub
+__bashClass.registerMethod Float mul Float.mul
+__bashClass.registerMethod Float div Float.div
+__bashClass.registerMethod Float mod Float.mod
+__bashClass.registerMethod Float pow Float.pow
+__bashClass.registerMethod Float abs Float.abs
+__bashClass.registerMethod Float neg Float.neg
+__bashClass.registerMethod Float eq Float.eq
+__bashClass.registerMethod Float lt Float.lt
+__bashClass.registerMethod Float gt Float.gt
+__bashClass.registerMethod Float le Float.le
+__bashClass.registerMethod Float ge Float.ge
+__bashClass.registerMethod Float round Float.round
+__bashClass.registerMethod Float toInt Float.toInt
+__bashClass.registerMethod Float toScale Float.toScale
+__bashClass.registerMethod Float val Float.val
+__bashClass.registerMethod Float format Float.format
+__bashClass.registerMethod Float toString Float.toString
+__bashClass.registerClass Float
