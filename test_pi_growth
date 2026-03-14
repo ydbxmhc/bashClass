@@ -1,0 +1,38 @@
+#!/bin/bash
+set -u
+
+# Pi growth test — compute pi one additional digit at a time, leveraging
+# the static cache from previous calls. Stops when a single increment
+# takes more than 10 seconds. Shows the growing value and elapsed time
+# after each call so you can watch pi emerge digit by digit.
+
+. boop Math
+
+printf "=== PI GROWTH TEST ===\n"
+printf "  Computing pi one digit at a time until a single digit takes >10s...\n\n"
+
+# Start at a reasonable base so the first few aren't trivially instant
+prec=5
+max_time=10
+
+while true; do
+  t1=$EPOCHREALTIME
+  into=pi Math.pi $prec
+  t2=$EPOCHREALTIME
+
+  into=v $pi.val
+  elapsed=$(awk "BEGIN{printf \"%.3f\", $t2 - $t1}")
+
+  printf "  pi(%3d) = %-60s  [%s sec]\n" "$prec" "$v" "$elapsed"
+
+  # Check if this digit took more than the threshold
+  over=$(awk "BEGIN{print ($t2 - $t1 > $max_time) ? 1 : 0}")
+  if (( over )); then
+    printf "\n  Stopped: pi(%d) took %s seconds (threshold: %ds)\n" "$prec" "$elapsed" "$max_time"
+    break
+  fi
+
+  (( prec++ ))
+done
+
+printf "\n=== PI GROWTH COMPLETE ===\n"

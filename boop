@@ -51,6 +51,24 @@ declare -gA __bashClass_classPath
 # mid-load and recurse until bash gives up).
 declare -gA __bashClass_loading
 
+# Function-level static storage. A flat associative array for any function
+# to stash values between calls — memoization, cached intermediates,
+# convergence state, lookup tables, whatever. Keyed by compound strings
+# so each function owns its own namespace without polluting globals.
+#
+# Convention: keys are "FunctionName.varName" or "ClassName.method.varName".
+# Functions read/write directly — no helper needed.
+#
+# Usage:
+#   __bashClass_static["Math.arctan.cache_1_5"]="0.19739555984988..."
+#   local cached="${__bashClass_static[Math.arctan.cache_1_5]:-}"
+#   __bashClass_static["factorial.12"]="479001600"
+#
+# This lives in boop (not in a class file) because it's a framework-level
+# facility. Any function in any class can use it. The data persists for
+# the lifetime of the shell process.
+declare -gA __bashClass_static
+
 # ============================================================================
 # GLOBALS - Configuration
 # ============================================================================

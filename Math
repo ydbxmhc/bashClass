@@ -1,0 +1,996 @@
+#!/bin/bash
+
+# Math — arbitrary precision arithmetic via string-based digit math.
+#
+# Numbers are stored as strings of digits with a tracked sign and decimal
+# position. All arithmetic is done digit-by-digit using bash's native
+# $(( )) on small chunks. No forks, no subshells, no external tools.
+# Precision is bounded only by available memory.
+#
+# Internal representation (in the descriptor):
+#   digits = string of digits, no leading zeros (except "0" itself)
+#   scale  = number of digits after the decimal point
+#   neg    = 0 (positive/zero) or 1 (negative)
+#
+# Global precision controls how many significant digits operations like
+# division produce before stopping. Overridable per-call via the
+# precision= typecast. Rounding of the last digit is on by default
+# but can be disabled globally or per-call via round=0.
+#
+# Higher-level functions (arctan, pi) are series expansions built on
+# the same add/sub/mul/div primitives. They converge to the configured
+# precision and return.
+#
+# This is grade-school math executed by a computer. Long addition with
+# carry, long multiplication with partial products, long division one
+# digit at a time. Anyone who can do it with pencil and paper already
+# understands the algorithms.
+
+# Load guard
+[[ -n "${__bashClass_registry[Math]+set}" ]] && return 2>/dev/null
+
+. boop
+
+# ============================================================================
+# Global Precision Configuration
+# ============================================================================
+
+# Default significant digits for operations that can produce infinite
+# results (division, trig, pi). Exact operations (add, sub, mul) are
+# not affected unless explicitly rounded via $m.round.
+declare -gi __Math_precision=20
+
+# Default rounding behavior. 1 = round last digit (half-up), 0 = truncate.
+declare -gi __Math_round=1
+
+# Set global precision. Affects all subsequent inexact operations.
+__Math.setPrecision() { __Math_precision=$1; }
+
+# Set global rounding. 0 = truncate, 1 = round half-up.
+__Math.setRound() { __Math_round=$1; }
+
+# ============================================================================
+# Math Class Descriptor
+# ============================================================================
+
+__bashClass_registry["Math"]="|class=Math|parent=bashClass|methods=new,add,sub,mul,div,mod,pow,abs,neg,eq,lt,gt,le,ge,cmp,round,toInt,val,toString,isZero|properties=digits,scale,neg"
+
+
+# ============================================================================
+# Internal string math engine
+# ============================================================================
+# These __Math.str* functions operate on raw digit strings (no sign, no
+# decimal point). The caller is responsible for sign handling and decimal
+# tracking. This keeps the core engine simple and composable.
+#
+# Digit strings are stored big-endian: "314159" means 3,1,4,1,5,9 from
+# most significant to least significant. Leading zeros are stripped on
+# output (except for the value "0" itself).
+#
+# CHUNKED ARITHMETIC: To minimize bash overhead, add/sub/mul process
+# 9 digits at a time. Each chunk fits in a 64-bit integer, and
+# chunk × chunk (up to 999999999 × 999999999 = ~9.99e17) also fits.
+# This gives roughly 81x fewer $(( )) calls for multiply compared to
+# single-digit processing.
+
+# Chunk size for bulk operations. 9 digits per chunk, base 10^9.
+declare -gi __Math_CHUNK=9
+declare -gi __Math_BASE=1000000000
+
+# Compare two unsigned digit strings numerically.
+# Returns via exit code: 0 if equal, 1 if A > B, 2 if A < B.
+__Math.strCmp() {
+  local __cmp_a="$1" __cmp_b="$2"
+  while (( ${#__cmp_a} < ${#__cmp_b} )); do __cmp_a="0${__cmp_a}"; done
+  while (( ${#__cmp_b} < ${#__cmp_a} )); do __cmp_b="0${__cmp_b}"; done
+  [[ "$__cmp_a" == "$__cmp_b" ]] && return 0
+  [[ "$__cmp_a" > "$__cmp_b" ]] && return 1
+  return 2
+}
+
+# Add two unsigned digit strings. Chunked: processes 9 digits at a time.
+__Math.strAdd() {
+  local __add_a="$1" __add_b="$2"
+  local -n __add_result="$3"
+
+  # Pad to same length, then to chunk boundary
+  while (( ${#__add_a} < ${#__add_b} )); do __add_a="0${__add_a}"; done
+  while (( ${#__add_b} < ${#__add_a} )); do __add_b="0${__add_b}"; done
+  while (( ${#__add_a} % __Math_CHUNK )); do __add_a="0${__add_a}"; __add_b="0${__add_b}"; done
+
+  local -i __add_carry=0 __add_pos __add_len=${#__add_a} __add_sum
+  local __add_fmt
+  __add_result=""
+  for (( __add_pos = __add_len - __Math_CHUNK; __add_pos >= 0; __add_pos -= __Math_CHUNK )); do
+    __add_sum=$(( 10#${__add_a:__add_pos:__Math_CHUNK} + 10#${__add_b:__add_pos:__Math_CHUNK} + __add_carry ))
+    __add_carry=$(( __add_sum / __Math_BASE ))
+    printf -v __add_fmt "%09d" $(( __add_sum % __Math_BASE ))
+    __add_result="${__add_fmt}${__add_result}"
+  done
+  (( __add_carry )) && __add_result="${__add_carry}${__add_result}"
+  __add_result="${__add_result#"${__add_result%%[!0]*}"}"
+  : "${__add_result:=0}"
+}
+
+# Subtract two unsigned digit strings (A - B). Assumes A >= B. Chunked.
+__Math.strSub() {
+  local __sub_a="$1" __sub_b="$2"
+  local -n __sub_result="$3"
+
+  while (( ${#__sub_a} < ${#__sub_b} )); do __sub_a="0${__sub_a}"; done
+  while (( ${#__sub_b} < ${#__sub_a} )); do __sub_b="0${__sub_b}"; done
+  while (( ${#__sub_a} % __Math_CHUNK )); do __sub_a="0${__sub_a}"; __sub_b="0${__sub_b}"; done
+
+  local -i __sub_borrow=0 __sub_pos __sub_len=${#__sub_a} __sub_diff
+  local __sub_fmt
+  __sub_result=""
+  for (( __sub_pos = __sub_len - __Math_CHUNK; __sub_pos >= 0; __sub_pos -= __Math_CHUNK )); do
+    __sub_diff=$(( 10#${__sub_a:__sub_pos:__Math_CHUNK} - 10#${__sub_b:__sub_pos:__Math_CHUNK} - __sub_borrow ))
+    if (( __sub_diff < 0 )); then
+      (( __sub_diff += __Math_BASE ))
+      __sub_borrow=1
+    else
+      __sub_borrow=0
+    fi
+    printf -v __sub_fmt "%09d" $__sub_diff
+    __sub_result="${__sub_fmt}${__sub_result}"
+  done
+  __sub_result="${__sub_result#"${__sub_result%%[!0]*}"}"
+  : "${__sub_result:=0}"
+}
+
+# Multiply two unsigned digit strings. Chunked grade-school method.
+# Splits both operands into 9-digit chunks, multiplies chunk pairs,
+# and accumulates with proper positional shifts.
+__Math.strMul() {
+  local __mul_a="$1" __mul_b="$2"
+  local -n __mul_result="$3"
+
+  [[ "$__mul_a" == "0" || "$__mul_b" == "0" ]] && { __mul_result="0"; return; }
+
+  # Pad to chunk boundaries
+  while (( ${#__mul_a} % __Math_CHUNK )); do __mul_a="0${__mul_a}"; done
+  while (( ${#__mul_b} % __Math_CHUNK )); do __mul_b="0${__mul_b}"; done
+
+  local -i __mul_na=$(( ${#__mul_a} / __Math_CHUNK ))
+  local -i __mul_nb=$(( ${#__mul_b} / __Math_CHUNK ))
+  local -i __mul_nresult=$(( __mul_na + __mul_nb ))
+
+  # Result accumulator as array of chunks
+  local -a __mul_acc=()
+  local -i __mul_k
+  for (( __mul_k=0; __mul_k < __mul_nresult; __mul_k++ )); do __mul_acc[$__mul_k]=0; done
+
+  # Multiply each chunk pair and accumulate.
+  # Chunks are indexed left-to-right in the string but represent
+  # most-significant-first, so chunk[0] of A is the highest-order chunk.
+  # In the accumulator, index 0 = highest order. We need to map:
+  #   A_chunk[i] * B_chunk[j] → acc[i+j] (with carry into i+j-1)
+  # But since acc is most-significant-first, the positional math works
+  # out the same as standard grade-school with the shift being i+j
+  # from the right... actually, let's just index from the RIGHT to
+  # keep it simple and match the standard algorithm.
+  local -i __mul_i __mul_j __mul_ca __mul_cb __mul_prod __mul_pos
+  for (( __mul_i = __mul_na - 1; __mul_i >= 0; __mul_i-- )); do
+    __mul_ca=10#${__mul_a:__mul_i*__Math_CHUNK:__Math_CHUNK}
+    (( __mul_ca == 0 )) && continue
+    local -i __mul_carry=0
+    for (( __mul_j = __mul_nb - 1; __mul_j >= 0; __mul_j-- )); do
+      __mul_cb=10#${__mul_b:__mul_j*__Math_CHUNK:__Math_CHUNK}
+      # Position in result: distance from right end
+      # A chunk i (0=leftmost) is at position (na-1-i) from right
+      # B chunk j (0=leftmost) is at position (nb-1-j) from right
+      # Result position from right = (na-1-i) + (nb-1-j)
+      # Result index (0=leftmost) = nresult-1 - pos_from_right
+      __mul_pos=$(( __mul_nresult - 1 - (__mul_na - 1 - __mul_i) - (__mul_nb - 1 - __mul_j) ))
+      __mul_prod=$(( __mul_ca * __mul_cb + __mul_acc[__mul_pos] + __mul_carry ))
+      __mul_acc[$__mul_pos]=$(( __mul_prod % __Math_BASE ))
+      __mul_carry=$(( __mul_prod / __Math_BASE ))
+    done
+    if (( __mul_carry )); then
+      (( __mul_acc[__mul_pos - 1] += __mul_carry ))
+    fi
+  done
+
+  # Convert accumulator back to digit string (index 0 = most significant)
+  __mul_result=""
+  local __mul_chunk
+  for (( __mul_k = 0; __mul_k < __mul_nresult; __mul_k++ )); do
+    printf -v __mul_chunk "%09d" ${__mul_acc[$__mul_k]}
+    __mul_result="${__mul_result}${__mul_chunk}"
+  done
+  __mul_result="${__mul_result#"${__mul_result%%[!0]*}"}"
+  : "${__mul_result:=0}"
+}
+
+# Multiply an unsigned digit string by a small integer (0-999999999).
+# Chunked for speed. Returns result via nameref $3.
+__Math.strMulSmall() {
+  local __muls_a="$1"
+  local -i __muls_n="$2"
+  local -n __muls_result="$3"
+
+  (( __muls_n == 0 )) && { __muls_result="0"; return; }
+  (( __muls_n == 1 )) && { __muls_result="$__muls_a"; return; }
+
+  while (( ${#__muls_a} % __Math_CHUNK )); do __muls_a="0${__muls_a}"; done
+
+  local -i __muls_carry=0 __muls_pos __muls_len=${#__muls_a} __muls_prod
+  __muls_result=""
+  local __muls_fmt
+  for (( __muls_pos = __muls_len - __Math_CHUNK; __muls_pos >= 0; __muls_pos -= __Math_CHUNK )); do
+    __muls_prod=$(( 10#${__muls_a:__muls_pos:__Math_CHUNK} * __muls_n + __muls_carry ))
+    __muls_carry=$(( __muls_prod / __Math_BASE ))
+    printf -v __muls_fmt "%09d" $(( __muls_prod % __Math_BASE ))
+    __muls_result="${__muls_fmt}${__muls_result}"
+  done
+  (( __muls_carry )) && __muls_result="${__muls_carry}${__muls_result}"
+  __muls_result="${__muls_result#"${__muls_result%%[!0]*}"}"
+  : "${__muls_result:=0}"
+}
+
+# Divide unsigned digit string A by unsigned digit string B.
+# Long division, one digit at a time. Division is inherently sequential
+# (each step depends on the previous remainder), so it stays per-digit.
+# The trial-multiply and subtract steps use chunked strMulSmall/strSub.
+__Math.strDiv() {
+  local __div_a="$1" __div_b="$2"
+  local -n __div_quotient="$3"
+  local -i __div_maxdigits="${4:-$__Math_precision}"
+  local -n __div_qscale="$5"
+
+  [[ "$__div_b" == "0" ]] && __bashClass.crash "Math: division by zero"
+  [[ "$__div_a" == "0" ]] && { __div_quotient="0"; __div_qscale=0; return; }
+
+  local __div_remainder="0"
+  local -i __div_alen=${#__div_a} __div_pos=0 __div_qdigits=0
+  local -i __div_past_decimal=0
+  __div_quotient=""
+  __div_qscale=0
+
+  while (( __div_qdigits < __div_maxdigits )); do
+    if (( __div_pos < __div_alen )); then
+      __div_remainder="${__div_remainder}${__div_a:__div_pos:1}"
+      (( __div_pos++ ))
+    else
+      __div_remainder="${__div_remainder}0"
+      (( __div_past_decimal++ ))
+    fi
+
+    local __div_rem_stripped="${__div_remainder#"${__div_remainder%%[!0]*}"}"
+    : "${__div_rem_stripped:=0}"
+    __div_remainder="$__div_rem_stripped"
+
+    # Binary search for quotient digit (0-9)
+    local -i __div_lo=0 __div_hi=9 __div_mid __div_qd=0
+    while (( __div_lo <= __div_hi )); do
+      __div_mid=$(( (__div_lo + __div_hi) / 2 ))
+      local __div_trial
+      __Math.strMulSmall "$__div_b" $__div_mid __div_trial
+      __Math.strCmp "$__div_trial" "$__div_remainder"
+      local -i __div_cmprc=$?
+      if (( __div_cmprc == 0 )); then __div_qd=$__div_mid; break
+      elif (( __div_cmprc == 2 )); then __div_qd=$__div_mid; __div_lo=$(( __div_mid + 1 ))
+      else __div_hi=$(( __div_mid - 1 ))
+      fi
+    done
+
+    if (( __div_qd == 0 && __div_qdigits == 0 && __div_past_decimal == 0 )); then
+      :
+    else
+      __div_quotient="${__div_quotient}${__div_qd}"
+      (( __div_qdigits++ ))
+      (( __div_past_decimal > 0 )) && (( __div_qscale++ ))
+    fi
+
+    if (( __div_qd > 0 )); then
+      local __div_sub_val
+      __Math.strMulSmall "$__div_b" $__div_qd __div_sub_val
+      __Math.strSub "$__div_remainder" "$__div_sub_val" __div_remainder
+    fi
+
+    [[ "$__div_remainder" == "0" ]] && (( __div_pos >= __div_alen )) && break
+  done
+
+  : "${__div_quotient:=0}"
+}
+
+
+# ============================================================================
+# Helpers for Math objects
+# ============================================================================
+
+# Strip leading zeros from a digit string, preserving at least "0".
+__Math.stripLeading() {
+  local __sl_val="$1"
+  __sl_val="${__sl_val#"${__sl_val%%[!0]*}"}"
+  printf '%s' "${__sl_val:-0}"
+}
+
+# Resolve a Math argument: object ID → extract digits/scale/neg from
+# descriptor. Literal string → parse it. Sets caller's namerefs.
+__Math.resolve() {
+  local __res_input="$1"
+  local -n __res_digits="$2" __res_scale="$3" __res_neg="$4"
+
+  if [[ "$__res_input" == _* && -n "${__bashClass_registry[$__res_input]:-}" ]]; then
+    __bashClass.parse "$__res_input" "digits" __res_digits
+    __bashClass.parse "$__res_input" "scale" __res_scale
+    __bashClass.parse "$__res_input" "neg" __res_neg
+    return
+  fi
+
+  # Parse literal
+  __res_neg=0
+  [[ "$__res_input" == -* ]] && { __res_neg=1; __res_input="${__res_input#-}"; }
+
+  if [[ "$__res_input" == *.* ]]; then
+    local __res_int="${__res_input%%.*}"
+    local __res_frac="${__res_input#*.}"
+    __res_int="$(__Math.stripLeading "$__res_int")"
+    __res_digits="${__res_int}${__res_frac}"
+    __res_scale=${#__res_frac}
+  else
+    __res_digits="$(__Math.stripLeading "$__res_input")"
+    __res_scale=0
+  fi
+
+  # Normalize: strip leading zeros from digits but keep at least "0"
+  __res_digits="$(__Math.stripLeading "$__res_digits")"
+  # If digits is "0", force neg=0 (no negative zero)
+  [[ "$__res_digits" == "0" ]] && __res_neg=0
+}
+
+# Align two numbers to the same scale by padding the shorter one with
+# trailing zeros on the digit string. This makes the digit strings
+# directly comparable and addable/subtractable.
+__Math.alignScale() {
+  local -n __as_dA="$1" __as_sA="$2" __as_dB="$3" __as_sB="$4"
+  while (( __as_sA < __as_sB )); do
+    __as_dA="${__as_dA}0"
+    (( __as_sA++ ))
+  done
+  while (( __as_sB < __as_sA )); do
+    __as_dB="${__as_dB}0"
+    (( __as_sB++ ))
+  done
+}
+
+# Build a Math object from raw components. Strips leading zeros,
+# normalizes negative zero, registers in boop.
+__Math.fromParts() {
+  local __fp_digits="$1"
+  local -i __fp_scale="$2" __fp_neg="$3"
+
+  # Strip leading zeros
+  __fp_digits="$(__Math.stripLeading "$__fp_digits")"
+
+  # Strip trailing zeros past the decimal point
+  if (( __fp_scale > 0 )); then
+    while (( __fp_scale > 0 )) && [[ "$__fp_digits" == *0 ]]; do
+      __fp_digits="${__fp_digits%0}"
+      (( __fp_scale-- ))
+    done
+    : "${__fp_digits:=0}"
+  fi
+
+  # No negative zero
+  [[ "$__fp_digits" == "0" ]] && __fp_neg=0
+
+  local __fp_self
+  into=__fp_self class=Math __bashClass.new "digits=$__fp_digits" "scale=$__fp_scale" "neg=$__fp_neg"
+  __bashClass.return "$__fp_self" "${4:-}"
+}
+
+# ============================================================================
+# Constructor
+# ============================================================================
+
+# Create a new Math number from a string.
+#
+# Usage: into=m Math 3.14159
+#        into=m Math -42
+#        into=m Math 0.001
+Math.new() {
+  local -I class
+  : "${class:=Math}"
+
+  local __Math_new_input="${1:-0}"
+  # Skip key=value args that aren't the value itself
+  [[ "$__Math_new_input" == *=* ]] && __Math_new_input="0"
+
+  local __Math_new_digits __Math_new_neg
+  local -i __Math_new_scale
+  __Math.resolve "$__Math_new_input" __Math_new_digits __Math_new_scale __Math_new_neg
+  __Math.fromParts "$__Math_new_digits" $__Math_new_scale $__Math_new_neg ${into:-}
+}
+
+
+# ============================================================================
+# Arithmetic operations
+# ============================================================================
+
+# Add: self + arg. Handles sign logic, delegates to strAdd/strSub.
+Math.add() {
+  local -I self class
+  local __add_dA __add_dB
+  local -i __add_sA __add_sB __add_nA __add_nB
+  __Math.resolve "$self" __add_dA __add_sA __add_nA
+  __Math.resolve "$1" __add_dB __add_sB __add_nB
+  __Math.alignScale __add_dA __add_sA __add_dB __add_sB
+
+  local __add_rd
+  local -i __add_rn
+
+  if (( __add_nA == __add_nB )); then
+    # Same sign: add magnitudes, keep sign
+    __Math.strAdd "$__add_dA" "$__add_dB" __add_rd
+    __add_rn=$__add_nA
+  else
+    # Different signs: subtract smaller from larger
+    __Math.strCmp "$__add_dA" "$__add_dB"
+    local -i __add_cmp=$?
+    if (( __add_cmp == 0 )); then
+      __Math.fromParts "0" $__add_sA 0 ${into:-}; return
+    elif (( __add_cmp == 1 )); then
+      __Math.strSub "$__add_dA" "$__add_dB" __add_rd
+      __add_rn=$__add_nA
+    else
+      __Math.strSub "$__add_dB" "$__add_dA" __add_rd
+      __add_rn=$__add_nB
+    fi
+  fi
+
+  __Math.fromParts "$__add_rd" $__add_sA $__add_rn ${into:-}
+}
+
+# Subtract: self - arg. Flip sign of arg and add.
+Math.sub() {
+  local -I self class
+  local __sub_dB
+  local -i __sub_sB __sub_nB
+  __Math.resolve "$1" __sub_dB __sub_sB __sub_nB
+
+  # Flip sign and add
+  (( __sub_nB = !__sub_nB ))
+  [[ "$__sub_dB" == "0" ]] && __sub_nB=0
+
+  # Build a temporary negated value and add
+  local __sub_tmp
+  __Math.fromParts "$__sub_dB" $__sub_sB $__sub_nB __sub_tmp
+  self="$self" class=Math Math.add "$__sub_tmp"
+}
+
+# Multiply: self * arg.
+# Digit strings are multiplied directly. Result scale = scaleA + scaleB.
+# Result sign = XOR of input signs.
+Math.mul() {
+  local -I self class
+  local __mul_dA __mul_dB
+  local -i __mul_sA __mul_sB __mul_nA __mul_nB
+  __Math.resolve "$self" __mul_dA __mul_sA __mul_nA
+  __Math.resolve "$1" __mul_dB __mul_sB __mul_nB
+
+  local __mul_rd
+  __Math.strMul "$__mul_dA" "$__mul_dB" __mul_rd
+  local -i __mul_rn=$(( __mul_nA != __mul_nB ? 1 : 0 ))
+  __Math.fromParts "$__mul_rd" $(( __mul_sA + __mul_sB )) $__mul_rn ${into:-}
+}
+
+# Divide: self / arg.
+# Respects precision= typecast or global __Math_precision.
+# Respects round= typecast or global __Math_round.
+Math.div() {
+  local -I self class
+  local -i precision; : "${precision:=$__Math_precision}"
+  local -i round; : "${round:=$__Math_round}"
+
+  local __div_dA __div_dB
+  local -i __div_sA __div_sB __div_nA __div_nB
+  __Math.resolve "$self" __div_dA __div_sA __div_nA
+  __Math.resolve "$1" __div_dB __div_sB __div_nB
+
+  [[ "$__div_dB" == "0" ]] && __bashClass.crash "Math: division by zero"
+
+  # Align scales so we're dividing integers of the same magnitude
+  __Math.alignScale __div_dA __div_sA __div_dB __div_sB
+
+  # Perform string division — operates on pure digit strings, returns
+  # quotient digits and how many of them are past the decimal point
+  local __div_q
+  local -i __div_qs
+  __Math.strDiv "$__div_dA" "$__div_dB" __div_q $((precision + 2)) __div_qs
+
+  local -i __div_rn=$(( __div_nA != __div_nB ? 1 : 0 ))
+
+  # Round or truncate to requested precision
+  if (( ${#__div_q} > precision )); then
+    local -i __div_removed=$(( ${#__div_q} - precision ))
+    if (( round )); then
+      # Check the digit just past precision for rounding
+      local -i __div_check=${__div_q:precision:1}
+      __div_q="${__div_q:0:precision}"
+      (( __div_qs -= __div_removed ))
+      if (( __div_check >= 5 )); then
+        local __div_one="1"
+        local -i __div_pad=$(( ${#__div_q} - 1 ))
+        while (( __div_pad > 0 )); do __div_one="0${__div_one}"; (( __div_pad-- )); done
+        __Math.strAdd "$__div_q" "$__div_one" __div_q
+        # If carry extended the length, the integer part grew by one digit
+        (( ${#__div_q} > precision )) && (( __div_qs-- ))
+      fi
+    else
+      __div_q="${__div_q:0:precision}"
+      (( __div_qs -= __div_removed ))
+    fi
+    (( __div_qs < 0 )) && __div_qs=0
+  fi
+
+  __Math.fromParts "$__div_q" $__div_qs $__div_rn ${into:-}
+}
+
+
+# ============================================================================
+# Comparison operations — exit codes (bash boolean convention)
+# ============================================================================
+
+# Compare self to arg. Returns 0 (equal), 1 (self > arg), 2 (self < arg).
+# This is the workhorse — eq/lt/gt/le/ge are wrappers.
+Math.cmp() {
+  local -I self class
+  local __cmp_dA __cmp_dB
+  local -i __cmp_sA __cmp_sB __cmp_nA __cmp_nB
+  __Math.resolve "$self" __cmp_dA __cmp_sA __cmp_nA
+  __Math.resolve "$1" __cmp_dB __cmp_sB __cmp_nB
+
+  # Different signs: negative < positive
+  if (( __cmp_nA != __cmp_nB )); then
+    # Both zero check
+    [[ "$__cmp_dA" == "0" && "$__cmp_dB" == "0" ]] && return 0
+    (( __cmp_nA )) && return 2 || return 1
+  fi
+
+  __Math.alignScale __cmp_dA __cmp_sA __cmp_dB __cmp_sB
+  __Math.strCmp "$__cmp_dA" "$__cmp_dB"
+  local -i __cmp_rc=$?
+
+  # If negative, flip the comparison (larger magnitude = smaller value)
+  if (( __cmp_nA )); then
+    (( __cmp_rc == 1 )) && return 2
+    (( __cmp_rc == 2 )) && return 1
+  fi
+  return $__cmp_rc
+}
+
+Math.eq() { local -I self class; self="$self" class="$class" Math.cmp "$1"; (( $? == 0 )); }
+Math.lt() { local -I self class; self="$self" class="$class" Math.cmp "$1"; (( $? == 2 )); }
+Math.gt() { local -I self class; self="$self" class="$class" Math.cmp "$1"; (( $? == 1 )); }
+Math.le() { local -I self class; self="$self" class="$class" Math.cmp "$1"; local -i rc=$?; (( rc == 0 || rc == 2 )); }
+Math.ge() { local -I self class; self="$self" class="$class" Math.cmp "$1"; local -i rc=$?; (( rc == 0 || rc == 1 )); }
+
+# ============================================================================
+# Utility methods
+# ============================================================================
+
+Math.isZero() {
+  local -I self class
+  local __iz_d; local -i __iz_s __iz_n
+  __Math.resolve "$self" __iz_d __iz_s __iz_n
+  [[ "$__iz_d" == "0" ]]
+}
+
+Math.abs() {
+  local -I self class
+  local __abs_d; local -i __abs_s __abs_n
+  __Math.resolve "$self" __abs_d __abs_s __abs_n
+  __Math.fromParts "$__abs_d" $__abs_s 0 ${into:-}
+}
+
+Math.neg() {
+  local -I self class
+  local __neg_d; local -i __neg_s __neg_n
+  __Math.resolve "$self" __neg_d __neg_s __neg_n
+  [[ "$__neg_d" == "0" ]] && __neg_n=0 || (( __neg_n = !__neg_n ))
+  __Math.fromParts "$__neg_d" $__neg_s $__neg_n ${into:-}
+}
+
+# Round to N significant digits. Returns a new Math object.
+Math.round() {
+  local -I self class
+  local -i __rnd_prec="${1:-$__Math_precision}"
+  local __rnd_d; local -i __rnd_s __rnd_n
+  __Math.resolve "$self" __rnd_d __rnd_s __rnd_n
+
+  local -i __rnd_len=${#__rnd_d}
+  (( __rnd_len <= __rnd_prec )) && { __Math.fromParts "$__rnd_d" $__rnd_s $__rnd_n ${into:-}; return; }
+
+  # Check rounding digit
+  local -i __rnd_check=${__rnd_d:__rnd_prec:1}
+  __rnd_d="${__rnd_d:0:__rnd_prec}"
+
+  if (( __rnd_check >= 5 )); then
+    local __rnd_one="1"
+    local -i __rnd_pad=$(( __rnd_prec - 1 ))
+    while (( __rnd_pad > 0 )); do __rnd_one="0${__rnd_one}"; (( __rnd_pad-- )); done
+    __Math.strAdd "$__rnd_d" "$__rnd_one" __rnd_d
+  fi
+
+  # Adjust scale: we removed (__rnd_len - __rnd_prec) digits from the end
+  local -i __rnd_removed=$(( __rnd_len - __rnd_prec ))
+  (( __rnd_s = __rnd_s - __rnd_removed ))
+  (( __rnd_s < 0 )) && __rnd_s=0
+
+  __Math.fromParts "$__rnd_d" $__rnd_s $__rnd_n ${into:-}
+}
+
+# Truncate to integer string.
+Math.toInt() {
+  local -I self class
+  local __ti_d; local -i __ti_s __ti_n
+  __Math.resolve "$self" __ti_d __ti_s __ti_n
+
+  if (( __ti_s >= ${#__ti_d} )); then
+    __bashClass.return "0" ${into:-}; return
+  fi
+
+  local __ti_int="${__ti_d:0:${#__ti_d}-__ti_s}"
+  __ti_int="$(__Math.stripLeading "$__ti_int")"
+  (( __ti_n )) && [[ "$__ti_int" != "0" ]] && __ti_int="-${__ti_int}"
+  __bashClass.return "$__ti_int" ${into:-}
+}
+
+# Return the decimal string representation. "3.14", "-0.5", "42", etc.
+Math.val() {
+  local -I self class
+  local __val_d; local -i __val_s __val_n
+  __Math.resolve "$self" __val_d __val_s __val_n
+
+  local __val_result
+  if (( __val_s == 0 )); then
+    __val_result="$__val_d"
+  elif (( __val_s >= ${#__val_d} )); then
+    # All digits are fractional — pad with leading zeros
+    local __val_pad="$__val_d"
+    while (( ${#__val_pad} < __val_s )); do __val_pad="0${__val_pad}"; done
+    __val_result="0.${__val_pad}"
+  else
+    local -i __val_split=$(( ${#__val_d} - __val_s ))
+    __val_result="${__val_d:0:__val_split}.${__val_d:__val_split}"
+  fi
+
+  (( __val_n )) && [[ "$__val_result" != "0" ]] && __val_result="-${__val_result}"
+  __bashClass.return "$__val_result" ${into:-}
+}
+
+Math.toString() {
+  local -I self class
+  local __ts_val
+  self="$self" class="$class" Math.val
+  __ts_val="$__bashClass_RETURN"
+  __bashClass.return "Math($self){ $__ts_val }" ${into:-}
+}
+
+
+# ============================================================================
+# Higher-level math functions
+# ============================================================================
+
+# ============================================================================
+# Raw arithmetic on digit/scale/neg triples
+# ============================================================================
+# These bypass the object system entirely. No IDs, no descriptors, no
+# registry, no stubs, no encoding. Just local variables in, local
+# variables out. Used by the hot inner loops of series expansions
+# (arctan, pi) where object overhead dominates runtime.
+#
+# Convention: result is returned via three namerefs passed as the last
+# three arguments: out_digits, out_scale, out_neg.
+
+# Raw add: (dA,sA,nA) + (dB,sB,nB) → (dR,sR,nR)
+__Math.rawAdd() {
+  local __ra_dA="$1" __ra_dB="$4"
+  local -i __ra_sA="$2" __ra_nA="$3" __ra_sB="$5" __ra_nB="$6"
+  local -n __ra_od="$7" __ra_os="$8" __ra_on="$9"
+
+  __Math.alignScale __ra_dA __ra_sA __ra_dB __ra_sB
+
+  if (( __ra_nA == __ra_nB )); then
+    __Math.strAdd "$__ra_dA" "$__ra_dB" __ra_od
+    __ra_on=$__ra_nA
+  else
+    __Math.strCmp "$__ra_dA" "$__ra_dB"
+    local -i __ra_cmp=$?
+    if (( __ra_cmp == 0 )); then
+      __ra_od="0"; __ra_os=$__ra_sA; __ra_on=0; return
+    elif (( __ra_cmp == 1 )); then
+      __Math.strSub "$__ra_dA" "$__ra_dB" __ra_od
+      __ra_on=$__ra_nA
+    else
+      __Math.strSub "$__ra_dB" "$__ra_dA" __ra_od
+      __ra_on=$__ra_nB
+    fi
+  fi
+  __ra_os=$__ra_sA
+  # Strip leading zeros
+  __ra_od="${__ra_od#"${__ra_od%%[!0]*}"}"
+  : "${__ra_od:=0}"
+  [[ "$__ra_od" == "0" ]] && __ra_on=0
+}
+
+# Raw sub: (dA,sA,nA) - (dB,sB,nB) → flip sign of B and rawAdd
+__Math.rawSub() {
+  local -i __rs_nB="$6"
+  (( __rs_nB = !__rs_nB ))
+  [[ "$4" == "0" ]] && __rs_nB=0
+  __Math.rawAdd "$1" "$2" "$3" "$4" "$5" $__rs_nB "$7" "$8" "$9"
+}
+
+# Raw mul: (dA,sA,nA) * (dB,sB,nB) → (dR,sR,nR)
+__Math.rawMul() {
+  local __rm_dA="$1" __rm_dB="$4"
+  local -i __rm_sA="$2" __rm_nA="$3" __rm_sB="$5" __rm_nB="$6"
+  local -n __rm_od="$7" __rm_os="$8" __rm_on="$9"
+
+  __Math.strMul "$__rm_dA" "$__rm_dB" __rm_od
+  __rm_os=$(( __rm_sA + __rm_sB ))
+  __rm_on=$(( __rm_nA != __rm_nB ? 1 : 0 ))
+  [[ "$__rm_od" == "0" ]] && __rm_on=0
+}
+
+# Raw mul by small integer: (dA,sA,nA) * int → (dR,sR,nR)
+__Math.rawMulSmall() {
+  local __rms_dA="$1"
+  local -i __rms_sA="$2" __rms_nA="$3" __rms_n="$4"
+  local -n __rms_od="$5" __rms_os="$6" __rms_on="$7"
+
+  local -i __rms_abs_n=${__rms_n#-}
+  __Math.strMulSmall "$__rms_dA" $__rms_abs_n __rms_od
+  __rms_os=$__rms_sA
+  __rms_on=$(( (__rms_n < 0) != __rms_nA ? 1 : 0 ))
+  [[ "$__rms_od" == "0" ]] && __rms_on=0
+}
+
+# Raw div: (dA,sA,nA) / (dB,sB,nB) → (dR,sR,nR) with precision+rounding
+__Math.rawDiv() {
+  local __rd_dA="$1" __rd_dB="$4"
+  local -i __rd_sA="$2" __rd_nA="$3" __rd_sB="$5" __rd_nB="$6"
+  local -n __rd_od="${7}" __rd_os="${8}" __rd_on="${9}"
+  local -i __rd_prec="${10:-$__Math_precision}"
+  local -i __rd_round="${11:-$__Math_round}"
+
+  [[ "$__rd_dB" == "0" ]] && __bashClass.crash "Math: division by zero"
+
+  __Math.alignScale __rd_dA __rd_sA __rd_dB __rd_sB
+
+  local -i __rd_qs
+  __Math.strDiv "$__rd_dA" "$__rd_dB" __rd_od $((__rd_prec + 2)) __rd_qs
+
+  __rd_on=$(( __rd_nA != __rd_nB ? 1 : 0 ))
+
+  if (( ${#__rd_od} > __rd_prec )); then
+    local -i __rd_removed=$(( ${#__rd_od} - __rd_prec ))
+    if (( __rd_round )); then
+      local -i __rd_check=${__rd_od:__rd_prec:1}
+      __rd_od="${__rd_od:0:__rd_prec}"
+      (( __rd_qs -= __rd_removed ))
+      if (( __rd_check >= 5 )); then
+        local __rd_one="1"
+        local -i __rd_pad=$(( ${#__rd_od} - 1 ))
+        while (( __rd_pad > 0 )); do __rd_one="0${__rd_one}"; (( __rd_pad-- )); done
+        __Math.strAdd "$__rd_od" "$__rd_one" __rd_od
+        (( ${#__rd_od} > __rd_prec )) && (( __rd_qs-- ))
+      fi
+    else
+      __rd_od="${__rd_od:0:__rd_prec}"
+      (( __rd_qs -= __rd_removed ))
+    fi
+    (( __rd_qs < 0 )) && __rd_qs=0
+  fi
+
+  __rd_os=$__rd_qs
+  [[ "$__rd_od" == "0" ]] && __rd_on=0
+}
+
+# Raw div by small integer: (dA,sA,nA) / int → (dR,sR,nR)
+# Converts the small int to a triple and delegates to rawDiv.
+__Math.rawDivSmall() {
+  local -i __rds_n="${4}"
+  local -i __rds_nB=0
+  (( __rds_n < 0 )) && { __rds_nB=1; __rds_n=$(( -__rds_n )); }
+  __Math.rawDiv "$1" "$2" "$3" "$__rds_n" 0 $__rds_nB "$5" "$6" "$7" "${8:-}" "${9:-}"
+}
+
+# ============================================================================
+# Higher-level math functions
+# ============================================================================
+
+# arctan(1/n) via Taylor series: 1/n - 1/(3n³) + 1/(5n⁵) - 1/(7n⁷) + ...
+#
+# This is the building block for Machin-like pi formulas. We compute
+# arctan of the reciprocal of a small integer, which keeps the series
+# converging fast (each term shrinks by a factor of n²).
+#
+# PERFORMANCE: operates entirely on raw digit/scale/neg triples. No Math
+# objects are created during the loop — only one object is built at the
+# end to wrap the result. This eliminates all object overhead (ID gen,
+# descriptor encoding, registry writes, stub eval) from the hot path.
+#
+# Uses __bashClass_static to cache results at a given precision so
+# repeated calls (e.g., from pi at the same precision) don't recompute.
+#
+# $1 = integer n (compute arctan(1/n))
+# $2 = optional precision override
+# $3 = optional nameref target for result (object ID)
+__Math.arctan_recip() {
+  local -i __at_n="$1"
+  local -i __at_prec="${2:-$__Math_precision}"
+  local -i __at_workprec=$(( __at_prec + 15 ))
+
+  # Check cache
+  local __at_cachekey="Math.arctan_recip.${__at_n}.${__at_prec}"
+  if [[ -n "${__bashClass_static[$__at_cachekey]:-}" ]]; then
+    __bashClass.return "${__bashClass_static[$__at_cachekey]}" "${3:-}"
+    return
+  fi
+
+  # All work done on raw triples: digits, scale, neg
+  # term = power = 1/n
+  local __at_pd __at_td __at_sd __at_dd
+  local -i __at_ps __at_ts __at_ss __at_ds
+  local -i __at_pn __at_tn __at_sn __at_dn
+
+  # 1/n → power triple
+  __Math.rawDiv "1" 0 0 "$__at_n" 0 0 __at_pd __at_ps __at_pn $__at_workprec
+
+  # sum = power (copy)
+  __at_sd="$__at_pd"; __at_ss=$__at_ps; __at_sn=$__at_pn
+
+  # inv_nsq = 1/n² — precomputed multiplier for stepping power
+  local __at_id
+  local -i __at_is __at_in
+  local -i __at_nsq=$(( __at_n * __at_n ))
+  __Math.rawDiv "1" 0 0 "$__at_nsq" 0 0 __at_id __at_is __at_in $__at_workprec
+
+  local -i __at_k=1 __at_sign=-1
+
+  while true; do
+    # power *= inv_nsq
+    __Math.rawMul "$__at_pd" $__at_ps $__at_pn "$__at_id" $__at_is $__at_in __at_pd __at_ps __at_pn
+
+    # Trim power to working precision to prevent digit string bloat.
+    # Multiplication doubles the digit count each time; without trimming,
+    # strings grow without bound and strMul becomes O(n²) on length.
+    if (( ${#__at_pd} > __at_workprec )); then
+      local -i __at_trim=$(( ${#__at_pd} - __at_workprec ))
+      __at_pd="${__at_pd:0:__at_workprec}"
+      (( __at_ps -= __at_trim ))
+      (( __at_ps < 0 )) && __at_ps=0
+    fi
+
+    # term = power / (2k+1)
+    local -i __at_divisor=$(( 2 * __at_k + 1 ))
+    __Math.rawDivSmall "$__at_pd" $__at_ps $__at_pn $__at_divisor __at_td __at_ts __at_tn $__at_workprec
+
+    # Convergence check: if all significant digits of term are beyond
+    # our precision, the term won't affect the sum. Check by comparing
+    # the number of leading zeros in the fractional part.
+    local -i __at_intdigits=$(( ${#__at_td} - __at_ts ))
+    (( __at_intdigits < 0 )) && __at_intdigits=0
+    # If the term has no integer part and enough leading fractional zeros, stop
+    if (( __at_intdigits == 0 )); then
+      # Count leading zeros: pad digits to scale length, count prefix zeros
+      local __at_padded="$__at_td"
+      while (( ${#__at_padded} < __at_ts )); do __at_padded="0${__at_padded}"; done
+      local __at_lz="${__at_padded%%[!0]*}"
+      if (( ${#__at_lz} >= __at_prec )); then
+        break
+      fi
+    fi
+
+    # Alternating sign: subtract odd terms, add even terms
+    if (( __at_sign < 0 )); then
+      __Math.rawSub "$__at_sd" $__at_ss $__at_sn "$__at_td" $__at_ts $__at_tn __at_sd __at_ss __at_sn
+    else
+      __Math.rawAdd "$__at_sd" $__at_ss $__at_sn "$__at_td" $__at_ts $__at_tn __at_sd __at_ss __at_sn
+    fi
+
+    (( __at_sign = -__at_sign ))
+    (( __at_k++ ))
+  done
+
+  # Wrap final result in a Math object for the public API
+  local __at_result
+  __Math.fromParts "$__at_sd" $__at_ss $__at_sn __at_result
+
+  __bashClass_static[$__at_cachekey]="$__at_result"
+  __bashClass.return "$__at_result" "${3:-}"
+}
+
+# Calculate pi to the specified precision using Machin's formula:
+#   π/4 = 4·arctan(1/5) - arctan(1/239)
+#   π = 16·arctan(1/5) - 4·arctan(1/239)
+#
+# This converges fast — arctan(1/5) needs about N/1.4 terms for N digits,
+# and arctan(1/239) needs about N/4.8 terms. For 1000 digits, that's
+# roughly 700 + 200 = 900 iterations total.
+#
+# The arctan calls use raw triple arithmetic internally (no object churn).
+# Only the final multiply/subtract/round steps create objects, since
+# there are only a handful of those.
+#
+# Usage: into=pi Math.pi           # default precision
+#        into=pi Math.pi 100       # 100 significant digits
+#        into=pi Math.pi 1000      # go big
+Math.pi() {
+  local -i __pi_prec="${1:-$__Math_precision}"
+
+  # Check cache
+  local __pi_cachekey="Math.pi.${__pi_prec}"
+  if [[ -n "${__bashClass_static[$__pi_cachekey]:-}" ]]; then
+    __bashClass.return "${__bashClass_static[$__pi_cachekey]}" ${into:-}
+    return
+  fi
+
+  local -i __pi_workprec=$(( __pi_prec + 10 ))
+
+  # arctan(1/5) and arctan(1/239) — raw triple loops internally
+  local __pi_at5 __pi_at239
+  __Math.arctan_recip 5 $__pi_workprec __pi_at5
+  __Math.arctan_recip 239 $__pi_workprec __pi_at239
+
+  # Extract raw triples from the arctan results for final arithmetic
+  local __pi_d5 __pi_d239
+  local -i __pi_s5 __pi_n5 __pi_s239 __pi_n239
+  __Math.resolve "$__pi_at5" __pi_d5 __pi_s5 __pi_n5
+  __Math.resolve "$__pi_at239" __pi_d239 __pi_s239 __pi_n239
+
+  # 16 * arctan(1/5)
+  local __pi_rd1
+  local -i __pi_rs1 __pi_rn1
+  __Math.rawMulSmall "$__pi_d5" $__pi_s5 $__pi_n5 16 __pi_rd1 __pi_rs1 __pi_rn1
+
+  # 4 * arctan(1/239)
+  local __pi_rd2
+  local -i __pi_rs2 __pi_rn2
+  __Math.rawMulSmall "$__pi_d239" $__pi_s239 $__pi_n239 4 __pi_rd2 __pi_rs2 __pi_rn2
+
+  # pi = 16*arctan(1/5) - 4*arctan(1/239)
+  local __pi_rd
+  local -i __pi_rs __pi_rn
+  __Math.rawSub "$__pi_rd1" $__pi_rs1 $__pi_rn1 "$__pi_rd2" $__pi_rs2 $__pi_rn2 __pi_rd __pi_rs __pi_rn
+
+  # Build object and round to requested precision
+  local __pi_result
+  __Math.fromParts "$__pi_rd" $__pi_rs $__pi_rn __pi_result
+
+  local __pi_rounded
+  into=__pi_rounded self="$__pi_result" class=Math Math.round $__pi_prec
+
+  __bashClass_static[$__pi_cachekey]="$__pi_rounded"
+  __bashClass.return "$__pi_rounded" ${into:-}
+}
+
+
+# ============================================================================
+# Register Methods & Finalize
+# ============================================================================
+
+__bashClass.registerMethod Math new Math.new
+__bashClass.registerMethod Math add Math.add
+__bashClass.registerMethod Math sub Math.sub
+__bashClass.registerMethod Math mul Math.mul
+__bashClass.registerMethod Math div Math.div
+__bashClass.registerMethod Math abs Math.abs
+__bashClass.registerMethod Math neg Math.neg
+__bashClass.registerMethod Math eq Math.eq
+__bashClass.registerMethod Math lt Math.lt
+__bashClass.registerMethod Math gt Math.gt
+__bashClass.registerMethod Math le Math.le
+__bashClass.registerMethod Math ge Math.ge
+__bashClass.registerMethod Math cmp Math.cmp
+__bashClass.registerMethod Math round Math.round
+__bashClass.registerMethod Math toInt Math.toInt
+__bashClass.registerMethod Math val Math.val
+__bashClass.registerMethod Math toString Math.toString
+__bashClass.registerMethod Math isZero Math.isZero
+__bashClass.registerClass Math
