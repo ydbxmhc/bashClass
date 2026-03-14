@@ -53,7 +53,7 @@ __Math.setRound() { __Math_round=$1; }
 # Math Class Descriptor
 # ============================================================================
 
-__bashClass_registry["Math"]="|class=Math|parent=bashClass|methods=new,add,sub,mul,div,mod,pow,square,abs,neg,eq,lt,gt,le,ge,cmp,round,toInt,val,toString,isZero|properties=digits,scale,neg"
+__bashClass_registry["Math"]="|class=Math|parent=bashClass|methods=new,add,sub,subtract,mul,multiply,div,divide,square,abs,neg,eq,lt,gt,le,ge,cmp,round,toInt,val,toString,isZero|properties=digits,scale,neg"
 
 
 # ============================================================================
@@ -411,7 +411,7 @@ Math.new() {
 # ============================================================================
 
 # Add: self + arg. Handles sign logic, delegates to strAdd/strSub.
-Math.add() {
+__Math.i_add() {
   local -I self class
   local __add_dA __add_dB
   local -i __add_sA __add_sB __add_nA __add_nB
@@ -445,7 +445,7 @@ Math.add() {
 }
 
 # Subtract: self - arg. Flip sign of arg and add.
-Math.sub() {
+__Math.i_sub() {
   local -I self class
   local __sub_dB
   local -i __sub_sB __sub_nB
@@ -458,13 +458,13 @@ Math.sub() {
   # Build a temporary negated value and add
   local __sub_tmp
   __Math.fromParts "$__sub_dB" $__sub_sB $__sub_nB __sub_tmp
-  self="$self" class=Math Math.add "$__sub_tmp"
+  self="$self" class=Math __Math.i_add "$__sub_tmp"
 }
 
 # Multiply: self * arg.
 # Digit strings are multiplied directly. Result scale = scaleA + scaleB.
 # Result sign = XOR of input signs.
-Math.mul() {
+__Math.i_mul() {
   local -I self class
   local __mul_dA __mul_dB
   local -i __mul_sA __mul_sB __mul_nA __mul_nB
@@ -480,7 +480,7 @@ Math.mul() {
 # Divide: self / arg.
 # Respects precision= typecast or global __Math_precision.
 # Respects round= typecast or global __Math_round.
-Math.div() {
+__Math.i_div() {
   local -I self class
   local -i precision; : "${precision:=$__Math_precision}"
   local -i round; : "${round:=$__Math_round}"
@@ -530,9 +530,9 @@ Math.div() {
 }
 
 # Square: self * self. Convenience wrapper — same as mul with self as arg.
-Math.square() {
+__Math.i_square() {
   local -I self class
-  self="$self" class="$class" into=${into:-} Math.mul "$self"
+  self="$self" class="$class" into=${into:-} __Math.i_mul "$self"
 }
 
 
@@ -585,14 +585,14 @@ Math.isZero() {
   [[ "$__iz_d" == "0" ]]
 }
 
-Math.abs() {
+__Math.i_abs() {
   local -I self class
   local __abs_d; local -i __abs_s __abs_n
   __Math.resolve "$self" __abs_d __abs_s __abs_n
   __Math.fromParts "$__abs_d" $__abs_s 0 ${into:-}
 }
 
-Math.neg() {
+__Math.i_neg() {
   local -I self class
   local __neg_d; local -i __neg_s __neg_n
   __Math.resolve "$self" __neg_d __neg_s __neg_n
@@ -1009,13 +1009,16 @@ Math.pi() {
 # ============================================================================
 
 __bashClass.registerMethod Math new Math.new
-__bashClass.registerMethod Math add Math.add
-__bashClass.registerMethod Math sub Math.sub
-__bashClass.registerMethod Math mul Math.mul
-__bashClass.registerMethod Math div Math.div
-__bashClass.registerMethod Math square Math.square
-__bashClass.registerMethod Math abs Math.abs
-__bashClass.registerMethod Math neg Math.neg
+__bashClass.registerMethod Math add __Math.i_add
+__bashClass.registerMethod Math sub __Math.i_sub
+__bashClass.registerMethod Math subtract __Math.i_sub
+__bashClass.registerMethod Math mul __Math.i_mul
+__bashClass.registerMethod Math multiply __Math.i_mul
+__bashClass.registerMethod Math div __Math.i_div
+__bashClass.registerMethod Math divide __Math.i_div
+__bashClass.registerMethod Math square __Math.i_square
+__bashClass.registerMethod Math abs __Math.i_abs
+__bashClass.registerMethod Math neg __Math.i_neg
 __bashClass.registerMethod Math eq Math.eq
 __bashClass.registerMethod Math lt Math.lt
 __bashClass.registerMethod Math gt Math.gt
@@ -1028,3 +1031,301 @@ __bashClass.registerMethod Math val Math.val
 __bashClass.registerMethod Math toString Math.toString
 __bashClass.registerMethod Math isZero Math.isZero
 __bashClass.registerClass Math
+
+# ============================================================================
+# Static API — class-level functions that return plain value strings
+# ============================================================================
+# These overwrite the dispatch wrappers created by registerClass. They
+# provide a dual-mode API:
+#
+#   Static (no self):  into=v Math.add 1.5 2.3     → v="3.8"
+#   Instance (self):   into=r $obj.add 2.3          → r=object_id
+#
+# Static calls resolve literal arguments through the raw string engine,
+# compute the result, and return a formatted decimal string — no objects
+# created. Instance calls delegate to the registered __Math.i_* impl
+# which returns a Math object as before.
+#
+# Full-word names are the primary API. Short aliases are defined below.
+#
+# Naming:
+#   Math.add / Math.subtract / Math.multiply / Math.divide / Math.square
+#   Math.abs / Math.neg
+#   Math.+ / Math.- / Math.x / Math.* / Math./    (symbol aliases)
+#   Math.DO   — infix expression evaluator with precedence and parens
+#   Math.RPN  — reverse Polish notation evaluator
+
+# Format a raw digit/scale/neg triple as a decimal value string.
+# Same logic as Math.val but operates on raw components, no object needed.
+# Strips trailing zeros past the decimal point for clean output.
+__Math.formatVal() {
+  local __fv_d="$1"
+  local -i __fv_s="$2" __fv_n="$3"
+
+  # Strip leading zeros from digits
+  __fv_d="${__fv_d#"${__fv_d%%[!0]*}"}"
+  : "${__fv_d:=0}"
+
+  # Strip trailing zeros past decimal
+  if (( __fv_s > 0 )); then
+    while (( __fv_s > 0 )) && [[ "$__fv_d" == *0 ]]; do
+      __fv_d="${__fv_d%0}"
+      (( __fv_s-- ))
+    done
+    : "${__fv_d:=0}"
+  fi
+
+  local __fv_result
+  if (( __fv_s == 0 )); then
+    __fv_result="$__fv_d"
+  elif (( __fv_s >= ${#__fv_d} )); then
+    local __fv_pad="$__fv_d"
+    while (( ${#__fv_pad} < __fv_s )); do __fv_pad="0${__fv_pad}"; done
+    __fv_result="0.${__fv_pad}"
+  else
+    local -i __fv_split=$(( ${#__fv_d} - __fv_s ))
+    __fv_result="${__fv_d:0:__fv_split}.${__fv_d:__fv_split}"
+  fi
+
+  (( __fv_n )) && [[ "$__fv_result" != "0" ]] && __fv_result="-${__fv_result}"
+  __bashClass.return "$__fv_result" "${4:-}"
+}
+
+# Internal: static binary op. Returns plain value string via __bashClass.return.
+__Math.staticBinOp() {
+  local __sbo_op="$1"
+  local __sbo_dA __sbo_dB
+  local -i __sbo_sA __sbo_sB __sbo_nA __sbo_nB
+  __Math.resolve "$2" __sbo_dA __sbo_sA __sbo_nA
+  __Math.resolve "$3" __sbo_dB __sbo_sB __sbo_nB
+
+  local __sbo_rd
+  local -i __sbo_rs __sbo_rn
+
+  case "$__sbo_op" in
+    add) __Math.alignScale __sbo_dA __sbo_sA __sbo_dB __sbo_sB
+         __Math.rawAdd "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn ;;
+    sub) __Math.alignScale __sbo_dA __sbo_sA __sbo_dB __sbo_sB
+         __Math.rawSub "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn ;;
+    mul) __Math.rawMul "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn ;;
+    div) local -i __sbo_prec=${precision:-$__Math_precision}
+         local -i __sbo_round=${round:-$__Math_round}
+         __Math.rawDiv "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn $__sbo_prec $__sbo_round ;;
+  esac
+
+  __Math.formatVal "$__sbo_rd" $__sbo_rs $__sbo_rn ${into:-}
+}
+
+# Internal: static unary op. Returns plain value string.
+__Math.staticUnaryOp() {
+  local __suo_op="$1"
+  local __suo_d
+  local -i __suo_s __suo_n
+  __Math.resolve "$2" __suo_d __suo_s __suo_n
+
+  case "$__suo_op" in
+    abs)    __suo_n=0 ;;
+    neg)    [[ "$__suo_d" == "0" ]] && __suo_n=0 || (( __suo_n = !__suo_n )) ;;
+    square) local __suo_rd; local -i __suo_rs __suo_rn
+            __Math.rawMul "$__suo_d" $__suo_s $__suo_n "$__suo_d" $__suo_s $__suo_n __suo_rd __suo_rs __suo_rn
+            __Math.formatVal "$__suo_rd" $__suo_rs 0 ${into:-}
+            return ;;
+  esac
+
+  __Math.formatVal "$__suo_d" $__suo_s $__suo_n ${into:-}
+}
+
+# Dual-mode wrappers: static (no self) returns value string,
+# instance (self set) delegates to __Math.i_* which returns object.
+
+Math.add()      { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_add "$@"; else __Math.staticBinOp add "$@"; fi; }
+Math.subtract() { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_sub "$@"; else __Math.staticBinOp sub "$@"; fi; }
+Math.multiply() { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_mul "$@"; else __Math.staticBinOp mul "$@"; fi; }
+Math.divide()   { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_div "$@"; else __Math.staticBinOp div "$@"; fi; }
+Math.square()   { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_square "$@"; else __Math.staticUnaryOp square "$1"; fi; }
+Math.abs()      { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_abs "$@"; else __Math.staticUnaryOp abs "$1"; fi; }
+Math.neg()      { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_neg "$@"; else __Math.staticUnaryOp neg "$1"; fi; }
+
+# Symbol aliases — same functions, shorter names.
+# Math.+ Math.- Math.x Math.* Math./
+Math.+() { Math.add "$@"; }
+Math.-() { Math.subtract "$@"; }
+Math.x() { Math.multiply "$@"; }
+Math.*() { Math.multiply "$@"; }
+Math./() { Math.divide "$@"; }
+
+# ============================================================================
+# Expression Evaluators — Math.DO (infix) and Math.RPN (postfix)
+# ============================================================================
+
+# Classify a token as operator, paren, or operand.
+# Sets the nameref $2 to: "op", "lparen", "rparen", or "num".
+__Math.tokenType() {
+  local -n __tt_out="$2"
+  case "$1" in
+    +|-|x|'*'|/) __tt_out="op" ;;
+    '(') __tt_out="lparen" ;;
+    ')') __tt_out="rparen" ;;
+    *) __tt_out="num" ;;
+  esac
+}
+
+# Operator precedence: + and - are 1, x and / are 2.
+# Sets nameref $2 to the precedence level.
+__Math.precedence() {
+  local -n __prec_out="$2"
+  case "$1" in
+    +|-) __prec_out=1 ;;
+    x|'*'|/) __prec_out=2 ;;
+    *) __prec_out=0 ;;
+  esac
+}
+
+# Apply a binary operator to two value strings. Returns value string via nameref $4.
+__Math.applyOp() {
+  local __ao_op="$1" __ao_a="$2" __ao_b="$3"
+  local -n __ao_out="$4"
+  case "$__ao_op" in
+    +)     into=__ao_out __Math.staticBinOp add "$__ao_a" "$__ao_b" ;;
+    -)     into=__ao_out __Math.staticBinOp sub "$__ao_a" "$__ao_b" ;;
+    x|'*') into=__ao_out __Math.staticBinOp mul "$__ao_a" "$__ao_b" ;;
+    /)     into=__ao_out __Math.staticBinOp div "$__ao_a" "$__ao_b" ;;
+  esac
+}
+
+# Math.DO — infix expression evaluator with operator precedence and parens.
+#
+# Implements the shunting-yard algorithm (Dijkstra). Converts infix to
+# RPN internally, evaluating as it goes. Handles +, -, x (or *), /,
+# and parentheses. Standard precedence: x and / bind tighter than + and -.
+# Left-to-right associativity for equal precedence.
+#
+# Input: separate args or a single quoted string (split on whitespace).
+# Every token must be whitespace-separated: "( 1 + 2 ) x 3", not "(1+2)x3".
+#
+# Uses plain bash arrays as stacks — no Stack class dependency.
+#
+# Usage:
+#   into=v Math.DO 1.5 + 2.3                    # 3.8
+#   into=v Math.DO 1.5 + 2.3 x 4                # 10.7 (precedence)
+#   into=v Math.DO '(' 1.5 + 2.3 ')' x 4        # 15.2 (parens)
+#   into=v Math.DO "( 1.5 + 2.3 ) x 4"          # 15.2 (string mode)
+Math.DO() {
+  # Tokenize: if single arg with spaces, split it; otherwise use args as-is
+  local -a __do_tokens
+  if (( $# == 1 )) && [[ "$1" == *" "* ]]; then
+    read -ra __do_tokens <<< "$1"
+  else
+    __do_tokens=("$@")
+  fi
+
+  # Shunting-yard: operator stack and output (value) stack
+  local -a __do_ops=() __do_vals=()
+  local -i __do_osp=0 __do_vsp=0
+  local __do_tok __do_type
+
+  # Helper: pop operator, pop two values, apply, push result
+  __Math.DO_reduce() {
+    (( __do_osp-- ))
+    local __reduce_op="${__do_ops[$__do_osp]}"
+    (( __do_vsp-- ))
+    local __reduce_b="${__do_vals[$__do_vsp]}"
+    (( __do_vsp-- ))
+    local __reduce_a="${__do_vals[$__do_vsp]}"
+    local __reduce_r
+    __Math.applyOp "$__reduce_op" "$__reduce_a" "$__reduce_b" __reduce_r
+    __do_vals[$__do_vsp]="$__reduce_r"
+    (( __do_vsp++ ))
+  }
+
+  local __do_prec __do_top_prec
+  for __do_tok in "${__do_tokens[@]}"; do
+    __Math.tokenType "$__do_tok" __do_type
+
+    case "$__do_type" in
+      num)
+        __do_vals[$__do_vsp]="$__do_tok"
+        (( __do_vsp++ ))
+        ;;
+      op)
+        __Math.precedence "$__do_tok" __do_prec
+        while (( __do_osp > 0 )); do
+          local __do_top="${__do_ops[$(( __do_osp - 1 ))]}"
+          [[ "$__do_top" == "(" ]] && break
+          __Math.precedence "$__do_top" __do_top_prec
+          (( __do_top_prec < __do_prec )) && break
+          __Math.DO_reduce
+        done
+        __do_ops[$__do_osp]="$__do_tok"
+        (( __do_osp++ ))
+        ;;
+      lparen)
+        __do_ops[$__do_osp]="("
+        (( __do_osp++ ))
+        ;;
+      rparen)
+        while (( __do_osp > 0 )) && [[ "${__do_ops[$(( __do_osp - 1 ))]}" != "(" ]]; do
+          __Math.DO_reduce
+        done
+        (( __do_osp > 0 )) && (( __do_osp-- ))  # discard the "("
+        ;;
+    esac
+  done
+
+  # Drain remaining operators
+  while (( __do_osp > 0 )); do
+    __Math.DO_reduce
+  done
+
+  # Result is the single value left on the stack
+  __bashClass.return "${__do_vals[0]:-0}" ${into:-}
+}
+
+# Math.RPN — reverse Polish notation evaluator.
+#
+# Operands are pushed onto a stack. When an operator is encountered,
+# it pops two operands, applies the operation, and pushes the result.
+# No precedence rules needed — the order of operations is explicit
+# in the token sequence.
+#
+# Input: separate args or a single quoted string (split on whitespace).
+#
+# Usage:
+#   into=v Math.RPN 1.5 2.3 +                   # 3.8
+#   into=v Math.RPN 1.5 2.3 + 4 x               # 15.2
+#   into=v Math.RPN "3 4 + 2 x"                  # 14
+#   into=v Math.RPN 10 3 /                        # 3.33333...
+Math.RPN() {
+  local -a __rpn_tokens
+  if (( $# == 1 )) && [[ "$1" == *" "* ]]; then
+    read -ra __rpn_tokens <<< "$1"
+  else
+    __rpn_tokens=("$@")
+  fi
+
+  local -a __rpn_stack=()
+  local -i __rpn_sp=0
+  local __rpn_tok __rpn_type
+
+  for __rpn_tok in "${__rpn_tokens[@]}"; do
+    __Math.tokenType "$__rpn_tok" __rpn_type
+
+    if [[ "$__rpn_type" == "num" ]]; then
+      __rpn_stack[$__rpn_sp]="$__rpn_tok"
+      (( __rpn_sp++ ))
+    elif [[ "$__rpn_type" == "op" ]]; then
+      (( __rpn_sp < 2 )) && __bashClass.crash "Math.RPN: not enough operands for '$__rpn_tok'"
+      (( __rpn_sp-- ))
+      local __rpn_b="${__rpn_stack[$__rpn_sp]}"
+      (( __rpn_sp-- ))
+      local __rpn_a="${__rpn_stack[$__rpn_sp]}"
+      local __rpn_r
+      __Math.applyOp "$__rpn_tok" "$__rpn_a" "$__rpn_b" __rpn_r
+      __rpn_stack[$__rpn_sp]="$__rpn_r"
+      (( __rpn_sp++ ))
+    fi
+  done
+
+  (( __rpn_sp != 1 )) && __bashClass.crash "Math.RPN: invalid expression (${__rpn_sp} values remain)"
+  __bashClass.return "${__rpn_stack[0]}" ${into:-}
+}

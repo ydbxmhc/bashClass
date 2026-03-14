@@ -279,6 +279,138 @@ for __sq_x in 1 2 3 4 5; do
 done
 
 # ============================================================================
+# Full-word instance methods (backward compat + new names)
+# ============================================================================
+
+printf "\n--- Full-word instance methods ---\n"
+
+into=fw1 Math 10
+into=fw2 Math 3
+
+into=fw3 $fw1.subtract $fw2
+expect_val "10.subtract(3) = 7" "7" "$fw3"
+
+into=fw4 $fw1.multiply $fw2
+expect_val "10.multiply(3) = 30" "30" "$fw4"
+
+into=fw5 $fw1.divide $fw2
+into=fw5v $fw5.val
+if [[ "$fw5v" == 3.333333333* ]]; then
+  printf "  PASS: 10.divide(3) ≈ 3.333...\n"; (( passed++ ))
+else
+  printf "  FAIL: 10.divide(3) expected 3.333... got '%s'\n" "$fw5v"; (( failed++ ))
+fi
+
+# ============================================================================
+# Static API — class-level functions returning plain value strings
+# ============================================================================
+
+printf "\n--- Static API ---\n"
+
+expect_str() {
+  local __desc="$1" __expected="$2" __got="$3"
+  if [[ "$__got" == "$__expected" ]]; then
+    printf "  PASS: %s\n" "$__desc"
+    (( passed++ ))
+  else
+    printf "  FAIL: %s expected '%s' got '%s'\n" "$__desc" "$__expected" "$__got"
+    (( failed++ ))
+  fi
+}
+
+into=sa1 Math.add 1.5 2.3
+expect_str "Math.add 1.5 2.3 = 3.8" "3.8" "$sa1"
+
+into=sa2 Math.subtract 10 3.5
+expect_str "Math.subtract 10 3.5 = 6.5" "6.5" "$sa2"
+
+into=sa3 Math.multiply 2.5 4
+expect_str "Math.multiply 2.5 4 = 10" "10" "$sa3"
+
+into=sa4 Math.divide 10 4
+expect_str "Math.divide 10 4 = 2.5" "2.5" "$sa4"
+
+into=sa5 Math.square 7
+expect_str "Math.square 7 = 49" "49" "$sa5"
+
+into=sa6 Math.abs -42.5
+expect_str "Math.abs -42.5 = 42.5" "42.5" "$sa6"
+
+into=sa7 Math.neg 3.14
+expect_str "Math.neg 3.14 = -3.14" "-3.14" "$sa7"
+
+# ============================================================================
+# Symbol aliases
+# ============================================================================
+
+printf "\n--- Symbol aliases ---\n"
+
+into=sy1 Math.+ 1.5 2.3
+expect_str "Math.+ 1.5 2.3 = 3.8" "3.8" "$sy1"
+
+into=sy2 Math.- 10 3.5
+expect_str "Math.- 10 3.5 = 6.5" "6.5" "$sy2"
+
+into=sy3 Math.x 2.5 4
+expect_str "Math.x 2.5 4 = 10" "10" "$sy3"
+
+into=sy4 Math./ 10 4
+expect_str "Math./ 10 4 = 2.5" "2.5" "$sy4"
+
+# ============================================================================
+# Math.DO — infix expression evaluator
+# ============================================================================
+
+printf "\n--- Math.DO (infix) ---\n"
+
+into=do1 Math.DO 1.5 + 2.3
+expect_str "Math.DO 1.5 + 2.3 = 3.8" "3.8" "$do1"
+
+into=do2 Math.DO 2 + 3 x 4
+expect_str "Math.DO 2 + 3 x 4 = 14 (precedence)" "14" "$do2"
+
+into=do3 Math.DO "( 2 + 3 ) x 4"
+expect_str "Math.DO (2+3) x 4 = 20 (parens)" "20" "$do3"
+
+into=do4 Math.DO 10 - 2 - 3
+expect_str "Math.DO 10 - 2 - 3 = 5 (left assoc)" "5" "$do4"
+
+into=do5 Math.DO 100 / 4 / 5
+expect_str "Math.DO 100 / 4 / 5 = 5" "5" "$do5"
+
+into=do6 Math.DO "( 1.5 + 2.5 ) x ( 3 - 1 )"
+expect_str "Math.DO (1.5+2.5)x(3-1) = 8" "8" "$do6"
+
+# ============================================================================
+# Math.RPN — reverse Polish notation evaluator
+# ============================================================================
+
+printf "\n--- Math.RPN (postfix) ---\n"
+
+into=rp1 Math.RPN 1.5 2.3 +
+expect_str "Math.RPN 1.5 2.3 + = 3.8" "3.8" "$rp1"
+
+into=rp2 Math.RPN 3 4 + 2 x
+expect_str "Math.RPN 3 4 + 2 x = 14" "14" "$rp2"
+
+into=rp3 Math.RPN "10 3 /"
+expect_str "Math.RPN 10 3 / starts with 3.33" "3.33" "${rp3:0:4}"
+
+into=rp4 Math.RPN 5 3 - 2 x 1 +
+expect_str "Math.RPN 5 3 - 2 x 1 + = 5" "5" "$rp4"
+
+# ============================================================================
+# Static square loop (user's original request)
+# ============================================================================
+
+printf "\n--- Static square loop ---\n"
+
+for __ssq_x in 1 2 3 4 5; do
+  into=__ssq_v Math.square $__ssq_x
+  expect_str "Math.square $__ssq_x = $(( __ssq_x * __ssq_x ))" "$(( __ssq_x * __ssq_x ))" "$__ssq_v"
+done
+
+# ============================================================================
 # SUMMARY
 # ============================================================================
 

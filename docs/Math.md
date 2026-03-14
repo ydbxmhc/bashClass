@@ -28,18 +28,81 @@ __Math.setRound 0           # 0 = truncate, 1 = round half-up (default: 1)
 ```
 
 Precision affects division, pi, and other operations that can produce
-infinite results. Exact operations (add, sub, mul) are not affected.
+infinite results. Exact operations (add, subtract, multiply) are not affected.
 
-## Methods
+## Static API — Class-Level Functions
+
+The most common use case: do some math, get a value string back. No
+objects created, no cleanup needed.
+
+```bash
+into=v Math.add 1.5 2.3          # v="3.8"
+into=v Math.subtract 10 3.5      # v="6.5"
+into=v Math.multiply 2.5 4       # v="10"
+into=v Math.divide 10 3          # v="3.333333333..."
+into=v Math.square 7              # v="49"
+into=v Math.abs -42.5             # v="42.5"
+into=v Math.neg 3.14              # v="-3.14"
+```
+
+### Symbol Aliases
+
+```bash
+into=v Math.+ 1.5 2.3            # add
+into=v Math.- 10 3.5              # subtract
+into=v Math.x 2.5 4              # multiply
+into=v Math.'*' 2.5 4            # multiply (quoted asterisk)
+into=v Math./ 10 4                # divide
+```
+
+### Math.DO — Infix Expression Evaluator
+
+Shunting-yard algorithm with operator precedence and parentheses.
+Every token must be whitespace-separated.
+
+```bash
+into=v Math.DO 1.5 + 2.3                    # 3.8
+into=v Math.DO 2 + 3 x 4                    # 14 (precedence: x before +)
+into=v Math.DO '(' 2 + 3 ')' x 4            # 20 (parens override)
+into=v Math.DO "( 1.5 + 2.5 ) / 2"          # 2 (string mode)
+```
+
+Operators: `+`, `-`, `x` (or quoted `*`), `/`
+Precedence: `x` and `/` bind tighter than `+` and `-`.
+Left-to-right associativity for equal precedence.
+
+### Math.RPN — Reverse Polish Notation Evaluator
+
+Operands first, then operators. No precedence rules needed — order is
+explicit in the token sequence.
+
+```bash
+into=v Math.RPN 1.5 2.3 +                   # 3.8
+into=v Math.RPN 3 4 + 2 x                   # 14
+into=v Math.RPN "10 3 /"                     # 3.333...
+into=v Math.RPN 5 3 - 2 x 1 +              # 5
+```
+
+Both `Math.DO` and `Math.RPN` use internal bash arrays as stacks — no
+dependency on the Stack or Container class.
+
+## Instance Methods
+
+Create an object, call methods on it. Instance methods return Math
+objects (chainable).
 
 ### Arithmetic
 
+Full-word names are the primary API. Short aliases (`sub`, `mul`, `div`)
+are kept for backward compatibility.
+
 ```bash
 into=r $m.add $n            # m + n
-into=r $m.sub $n            # m - n
-into=r $m.mul $n            # m × n
+into=r $m.subtract $n       # m - n       (also: $m.sub)
+into=r $m.multiply $n       # m × n       (also: $m.mul)
+into=r $m.divide $n         # m ÷ n       (also: $m.div)
 into=r $m.square            # m²
-into=r precision=30 $m.div $n   # m ÷ n (with precision override)
+into=r precision=30 $m.divide $n   # with precision override
 ```
 
 Arguments can be Math object IDs or literal decimal strings.
@@ -93,9 +156,9 @@ Approximate timings (varies by hardware):
 
 | Operation  | Time       |
 |------------|------------|
-| pi(10)     | ~3 sec     |
-| pi(20)     | ~6 sec     |
-| pi(50)     | ~25 sec    |
+| pi(10)     | ~1.5 sec   |
+| pi(20)     | ~3 sec     |
+| pi(50)     | ~12 sec    |
 
 ## Internal Representation
 
@@ -109,14 +172,32 @@ Numbers are stored in the descriptor as three fields:
 
 Example: `3.14` → digits="314", scale=2, neg=0
 
-## Example
+## Examples
 
 ```bash
 . boop Math
 
+# Static API — quick math, plain value strings
+into=v Math.add 1.5 2.3
+echo "$v"                    # 3.8
+
+into=v Math.DO "( 10 + 5 ) / 3"
+echo "$v"                    # 5
+
+into=v Math.RPN 3 4 + 2 x
+echo "$v"                    # 14
+
+# Static square loop
+for x in 1 2 3 4 5; do
+  into=v Math.square $x
+  echo "$x² = $v"
+done
+# 1² = 1  ...  5² = 25
+
+# Object API — when you need state
 into=a Math 1
 into=b Math 3
-into=r precision=50 $a.div $b
+into=r precision=50 $a.divide $b
 into=v $r.val
 echo "$v"
 # 0.33333333333333333333333333333333333333333333333333
@@ -125,16 +206,4 @@ into=pi Math.pi 30
 into=v $pi.val
 echo "pi = $v"
 # pi = 3.14159265358979323846264338328
-
-for x in 1 2 3 4 5; do
-  into=m Math $x
-  into=sq $m.square
-  into=v $sq.val
-  echo "$x² = $v"
-done
-# 1² = 1
-# 2² = 4
-# 3² = 9
-# 4² = 16
-# 5² = 25
 ```
