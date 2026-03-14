@@ -959,15 +959,34 @@ Math.pi() {
   local -i __pi_rs __pi_rn
   __Math.rawSub "$__pi_rd1" $__pi_rs1 $__pi_rn1 "$__pi_rd2" $__pi_rs2 $__pi_rn2 __pi_rd __pi_rs __pi_rn
 
-  # Build object and round to requested precision
+  # Build object, round or truncate to requested precision
   local __pi_result
   __Math.fromParts "$__pi_rd" $__pi_rs $__pi_rn __pi_result
 
-  local __pi_rounded
-  into=__pi_rounded self="$__pi_result" class=Math Math.round $__pi_prec
+  # Math.round does half-up rounding. When rounding is disabled globally,
+  # we still truncate to the requested precision for clean output — just
+  # without the round-up step. Math.round always rounds, so we only call
+  # it when __Math_round is on; otherwise truncate by re-extracting and
+  # trimming the digit string.
+  if (( __Math_round )); then
+    local __pi_rounded
+    into=__pi_rounded self="$__pi_result" class=Math Math.round $__pi_prec
+    __pi_result="$__pi_rounded"
+  else
+    # Truncate to precision significant digits (no rounding)
+    local __pi_td; local -i __pi_ts __pi_tn
+    __Math.resolve "$__pi_result" __pi_td __pi_ts __pi_tn
+    if (( ${#__pi_td} > __pi_prec )); then
+      local -i __pi_cut=$(( ${#__pi_td} - __pi_prec ))
+      __pi_td="${__pi_td:0:__pi_prec}"
+      (( __pi_ts -= __pi_cut ))
+      (( __pi_ts < 0 )) && __pi_ts=0
+    fi
+    __Math.fromParts "$__pi_td" $__pi_ts $__pi_tn __pi_result
+  fi
 
-  __bashClass_static[$__pi_cachekey]="$__pi_rounded"
-  __bashClass.return "$__pi_rounded" ${into:-}
+  __bashClass_static[$__pi_cachekey]="$__pi_result"
+  __bashClass.return "$__pi_result" ${into:-}
 }
 
 

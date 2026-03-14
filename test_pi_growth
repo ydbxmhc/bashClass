@@ -11,6 +11,10 @@ set -u
 printf "=== PI GROWTH TEST ===\n"
 printf "  Computing pi one digit at a time until a single digit takes >10s...\n\n"
 
+# Disable rounding so each precision step shows a new digit rather than
+# occasionally repeating the previous value due to round-up.
+__Math.setRound 0
+
 # Start at a reasonable base so the first few aren't trivially instant
 prec=5
 max_time=10
