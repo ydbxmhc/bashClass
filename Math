@@ -1195,18 +1195,84 @@ __Math.applyOp() {
   esac
 }
 
+# Tokenize an expression string into an array of tokens.
+#
+# Uses BASH_REMATCH to chomp whole tokens at once — a number (possibly
+# multi-digit with decimals) is one match, not one iteration per char.
+# Splits on operator and paren boundaries. Whitespace is skipped.
+#
+# Leading minus is treated as part of a number (negative sign) when it
+# appears at the start of the expression, after an operator, or after
+# an open paren. Otherwise it's the subtraction operator.
+#
+# $1 = input string
+# $2 = nameref to output array
+__Math.tokenize() {
+  local __tz_str="$1"
+  local -n __tz_out="$2"
+  __tz_out=()
+  local -i __tz_osp=0
+  local __tz_prev=""
+
+  while [[ -n "$__tz_str" ]]; do
+    # Skip whitespace
+    if [[ "$__tz_str" =~ ^[[:space:]]+ ]]; then
+      __tz_str="${__tz_str:${#BASH_REMATCH[0]}}"
+      continue
+    fi
+
+    # Number with leading minus (negative) — only when prev is empty, op, or (
+    if [[ ( -z "$__tz_prev" || "$__tz_prev" == "op" || "$__tz_prev" == "(" ) \
+          && "$__tz_str" =~ ^-[0-9.]+ ]]; then
+      __tz_out[$__tz_osp]="${BASH_REMATCH[0]}"; (( __tz_osp++ ))
+      __tz_str="${__tz_str:${#BASH_REMATCH[0]}}"
+      __tz_prev="num"
+
+    # Positive number
+    elif [[ "$__tz_str" =~ ^[0-9.]+ ]]; then
+      __tz_out[$__tz_osp]="${BASH_REMATCH[0]}"; (( __tz_osp++ ))
+      __tz_str="${__tz_str:${#BASH_REMATCH[0]}}"
+      __tz_prev="num"
+
+    # Open paren
+    elif [[ "${__tz_str:0:1}" == "(" ]]; then
+      __tz_out[$__tz_osp]="("; (( __tz_osp++ ))
+      __tz_str="${__tz_str:1}"
+      __tz_prev="("
+
+    # Close paren
+    elif [[ "${__tz_str:0:1}" == ")" ]]; then
+      __tz_out[$__tz_osp]=")"; (( __tz_osp++ ))
+      __tz_str="${__tz_str:1}"
+      __tz_prev=")"
+
+    # Operator: + - x * /
+    elif [[ "$__tz_str" =~ ^[+x*/-] ]]; then
+      __tz_out[$__tz_osp]="${BASH_REMATCH[0]}"; (( __tz_osp++ ))
+      __tz_str="${__tz_str:1}"
+      __tz_prev="op"
+
+    # Unknown character — skip it
+    else
+      __tz_str="${__tz_str:1}"
+    fi
+  done
+}
+
 # Math.RPN — reverse Polish notation evaluator.
 #
-# This is the single evaluation engine for all expression evaluation.
-# Math.DO converts infix to RPN tokens, then delegates here. Calling
-# Math.RPN directly skips the precedence pass — you supply the order.
+# The single evaluation engine for all expression evaluation. Math.DO
+# converts infix to RPN tokens, then delegates here. Calling Math.RPN
+# directly skips the precedence pass — you supply the order.
+#
+# All arguments are collapsed via "$*" into a single string, then split
+# on whitespace. This handles separate args, quoted strings, or any mix:
+#   Math.RPN 1.5 2.3 +          # separate args
+#   Math.RPN "1.5 2.3 +"        # single string
+#   Math.RPN "1.5 2.3" +        # mixed
 #
 # Operands are pushed onto a stack. When an operator is encountered,
 # it pops two operands, applies the operation, and pushes the result.
-# No precedence rules needed — the order of operations is explicit
-# in the token sequence.
-#
-# Input: separate args or a single quoted string (split on whitespace).
 # Uses plain bash arrays as stacks — no Stack class dependency.
 #
 # Usage:
@@ -1215,12 +1281,9 @@ __Math.applyOp() {
 #   into=v Math.RPN "3 4 + 2 x"                  # 14
 #   into=v Math.RPN 10 3 /                        # 3.33333...
 Math.RPN() {
+  local IFS=' '
   local -a __rpn_tokens
-  if (( $# == 1 )) && [[ "$1" == *" "* ]]; then
-    read -ra __rpn_tokens <<< "$1"
-  else
-    __rpn_tokens=("$@")
-  fi
+  read -ra __rpn_tokens <<< "$*"
 
   local -a __rpn_stack=()
   local -i __rpn_sp=0
@@ -1251,31 +1314,34 @@ Math.RPN() {
 
 # Math.DO — infix expression evaluator with operator precedence and parens.
 #
-# Implements the shunting-yard algorithm (Dijkstra) to convert infix
-# notation into an RPN token sequence, then delegates to Math.RPN for
-# evaluation. This keeps a single evaluation engine — Math.DO is purely
-# a precedence and parenthesis reordering pass.
+# All arguments are collapsed via "$*" into a single string, then run
+# through __Math.tokenize which splits on operator/paren boundaries.
+# This handles any input style:
+#   Math.DO 1.5 + 2.3              # separate args
+#   Math.DO "1.5 + 2.3"            # single string
+#   Math.DO "(1.5+2.3)x4"          # packed, no whitespace
+#   Math.DO "( 1.5 + 2.3 )" x 4   # mixed
+#
+# Implements the shunting-yard algorithm (Dijkstra) to convert the
+# tokenized infix expression into RPN, then delegates to Math.RPN
+# for evaluation. One evaluation engine, one precedence pass.
 #
 # Handles +, -, x (or *), /, and parentheses. Standard precedence:
 # x and / bind tighter than + and -. Left-to-right associativity for
-# equal precedence.
-#
-# Input: separate args or a single quoted string (split on whitespace).
-# Every token must be whitespace-separated: "( 1 + 2 ) x 3", not "(1+2)x3".
+# equal precedence. Leading minus is recognized as negative sign when
+# it appears at the start, after an operator, or after an open paren.
 #
 # Usage:
 #   into=v Math.DO 1.5 + 2.3                    # 3.8
-#   into=v Math.DO 1.5 + 2.3 x 4                # 10.7 (precedence)
-#   into=v Math.DO '(' 1.5 + 2.3 ')' x 4        # 15.2 (parens)
-#   into=v Math.DO "( 1.5 + 2.3 ) x 4"          # 15.2 (string mode)
+#   into=v Math.DO 2 + 3 x 4                    # 14 (precedence)
+#   into=v Math.DO '(' 2 + 3 ')' x 4            # 20 (parens)
+#   into=v Math.DO "(2+3)x4"                    # 20 (packed)
+#   into=v Math.DO "( 1.5 + 2.5 ) x 4"         # 16 (string mode)
 Math.DO() {
-  # Tokenize: if single arg with spaces, split it; otherwise use args as-is
+  # Collapse all args into one string, tokenize with boundary splitting
+  local IFS=' '
   local -a __do_tokens
-  if (( $# == 1 )) && [[ "$1" == *" "* ]]; then
-    read -ra __do_tokens <<< "$1"
-  else
-    __do_tokens=("$@")
-  fi
+  __Math.tokenize "$*" __do_tokens
 
   # Shunting-yard: convert infix tokens to RPN token array
   local -a __do_ops=() __do_rpn=()

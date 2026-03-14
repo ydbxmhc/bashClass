@@ -358,7 +358,7 @@ into=sy4 Math./ 10 4
 expect_str "Math./ 10 4 = 2.5" "2.5" "$sy4"
 
 # ============================================================================
-# Math.DO — infix expression evaluator
+# Math.DO (infix) — spaced, packed, mixed, negatives
 # ============================================================================
 
 printf "\n--- Math.DO (infix) ---\n"
@@ -381,8 +381,26 @@ expect_str "Math.DO 100 / 4 / 5 = 5" "5" "$do5"
 into=do6 Math.DO "( 1.5 + 2.5 ) x ( 3 - 1 )"
 expect_str "Math.DO (1.5+2.5)x(3-1) = 8" "8" "$do6"
 
+# Packed expressions — no whitespace
+into=do7 Math.DO "(2+3)x4"
+expect_str "Math.DO packed (2+3)x4 = 20" "20" "$do7"
+
+into=do8 Math.DO "10/2+3"
+expect_str "Math.DO packed 10/2+3 = 8" "8" "$do8"
+
+# Mixed: some quoted, some separate — "$*" flattens, precedence applies
+into=do9 Math.DO "3 + 4" x 2
+expect_str "Math.DO mixed '3 + 4' x 2 = 11 (precedence)" "11" "$do9"
+
+# Negative numbers
+into=do10 Math.DO "(-3)x4"
+expect_str "Math.DO (-3)x4 = -12" "-12" "$do10"
+
+into=do11 Math.DO -5 + 8
+expect_str "Math.DO -5 + 8 = 3" "3" "$do11"
+
 # ============================================================================
-# Math.RPN — reverse Polish notation evaluator
+# Math.RPN (postfix) — separate, string, mixed
 # ============================================================================
 
 printf "\n--- Math.RPN (postfix) ---\n"
@@ -398,6 +416,10 @@ expect_str "Math.RPN 10 3 / starts with 3.33" "3.33" "${rp3:0:4}"
 
 into=rp4 Math.RPN 5 3 - 2 x 1 +
 expect_str "Math.RPN 5 3 - 2 x 1 + = 5" "5" "$rp4"
+
+# Mixed input: some quoted, some separate
+into=rp5 Math.RPN "1.5 2.5" + "3" x
+expect_str "Math.RPN mixed '1.5 2.5' + '3' x = 12" "12" "$rp5"
 
 # ============================================================================
 # Static square loop (user's original request)
