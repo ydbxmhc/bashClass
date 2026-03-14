@@ -57,7 +57,10 @@ into=v Math./ 10 4                # divide
 
 ### Math.DO — Infix Expression Evaluator
 
-Shunting-yard algorithm with operator precedence and parentheses.
+Shunting-yard algorithm converts infix to RPN tokens, then delegates
+to `Math.RPN` for evaluation. One evaluation engine under the hood —
+`Math.DO` is purely a precedence and parenthesis reordering pass.
+
 Every token must be whitespace-separated.
 
 ```bash
@@ -73,8 +76,10 @@ Left-to-right associativity for equal precedence.
 
 ### Math.RPN — Reverse Polish Notation Evaluator
 
-Operands first, then operators. No precedence rules needed — order is
-explicit in the token sequence.
+The shared evaluation engine. Operands first, then operators. No
+precedence rules — order is explicit in the token sequence. `Math.DO`
+feeds into this after its shunting-yard pass; calling `Math.RPN`
+directly skips the precedence reordering.
 
 ```bash
 into=v Math.RPN 1.5 2.3 +                   # 3.8
@@ -83,8 +88,8 @@ into=v Math.RPN "10 3 /"                     # 3.333...
 into=v Math.RPN 5 3 - 2 x 1 +              # 5
 ```
 
-Both `Math.DO` and `Math.RPN` use internal bash arrays as stacks — no
-dependency on the Stack or Container class.
+Both use internal bash arrays as stacks — no dependency on the Stack
+or Container class.
 
 ## Instance Methods
 

@@ -1195,95 +1195,11 @@ __Math.applyOp() {
   esac
 }
 
-# Math.DO — infix expression evaluator with operator precedence and parens.
-#
-# Implements the shunting-yard algorithm (Dijkstra). Converts infix to
-# RPN internally, evaluating as it goes. Handles +, -, x (or *), /,
-# and parentheses. Standard precedence: x and / bind tighter than + and -.
-# Left-to-right associativity for equal precedence.
-#
-# Input: separate args or a single quoted string (split on whitespace).
-# Every token must be whitespace-separated: "( 1 + 2 ) x 3", not "(1+2)x3".
-#
-# Uses plain bash arrays as stacks — no Stack class dependency.
-#
-# Usage:
-#   into=v Math.DO 1.5 + 2.3                    # 3.8
-#   into=v Math.DO 1.5 + 2.3 x 4                # 10.7 (precedence)
-#   into=v Math.DO '(' 1.5 + 2.3 ')' x 4        # 15.2 (parens)
-#   into=v Math.DO "( 1.5 + 2.3 ) x 4"          # 15.2 (string mode)
-Math.DO() {
-  # Tokenize: if single arg with spaces, split it; otherwise use args as-is
-  local -a __do_tokens
-  if (( $# == 1 )) && [[ "$1" == *" "* ]]; then
-    read -ra __do_tokens <<< "$1"
-  else
-    __do_tokens=("$@")
-  fi
-
-  # Shunting-yard: operator stack and output (value) stack
-  local -a __do_ops=() __do_vals=()
-  local -i __do_osp=0 __do_vsp=0
-  local __do_tok __do_type
-
-  # Helper: pop operator, pop two values, apply, push result
-  __Math.DO_reduce() {
-    (( __do_osp-- ))
-    local __reduce_op="${__do_ops[$__do_osp]}"
-    (( __do_vsp-- ))
-    local __reduce_b="${__do_vals[$__do_vsp]}"
-    (( __do_vsp-- ))
-    local __reduce_a="${__do_vals[$__do_vsp]}"
-    local __reduce_r
-    __Math.applyOp "$__reduce_op" "$__reduce_a" "$__reduce_b" __reduce_r
-    __do_vals[$__do_vsp]="$__reduce_r"
-    (( __do_vsp++ ))
-  }
-
-  local __do_prec __do_top_prec
-  for __do_tok in "${__do_tokens[@]}"; do
-    __Math.tokenType "$__do_tok" __do_type
-
-    case "$__do_type" in
-      num)
-        __do_vals[$__do_vsp]="$__do_tok"
-        (( __do_vsp++ ))
-        ;;
-      op)
-        __Math.precedence "$__do_tok" __do_prec
-        while (( __do_osp > 0 )); do
-          local __do_top="${__do_ops[$(( __do_osp - 1 ))]}"
-          [[ "$__do_top" == "(" ]] && break
-          __Math.precedence "$__do_top" __do_top_prec
-          (( __do_top_prec < __do_prec )) && break
-          __Math.DO_reduce
-        done
-        __do_ops[$__do_osp]="$__do_tok"
-        (( __do_osp++ ))
-        ;;
-      lparen)
-        __do_ops[$__do_osp]="("
-        (( __do_osp++ ))
-        ;;
-      rparen)
-        while (( __do_osp > 0 )) && [[ "${__do_ops[$(( __do_osp - 1 ))]}" != "(" ]]; do
-          __Math.DO_reduce
-        done
-        (( __do_osp > 0 )) && (( __do_osp-- ))  # discard the "("
-        ;;
-    esac
-  done
-
-  # Drain remaining operators
-  while (( __do_osp > 0 )); do
-    __Math.DO_reduce
-  done
-
-  # Result is the single value left on the stack
-  __bashClass.return "${__do_vals[0]:-0}" ${into:-}
-}
-
 # Math.RPN — reverse Polish notation evaluator.
+#
+# This is the single evaluation engine for all expression evaluation.
+# Math.DO converts infix to RPN tokens, then delegates here. Calling
+# Math.RPN directly skips the precedence pass — you supply the order.
 #
 # Operands are pushed onto a stack. When an operator is encountered,
 # it pops two operands, applies the operation, and pushes the result.
@@ -1291,6 +1207,7 @@ Math.DO() {
 # in the token sequence.
 #
 # Input: separate args or a single quoted string (split on whitespace).
+# Uses plain bash arrays as stacks — no Stack class dependency.
 #
 # Usage:
 #   into=v Math.RPN 1.5 2.3 +                   # 3.8
@@ -1330,4 +1247,85 @@ Math.RPN() {
 
   (( __rpn_sp != 1 )) && __bashClass.crash "Math.RPN: invalid expression (${__rpn_sp} values remain)"
   __bashClass.return "${__rpn_stack[0]}" ${into:-}
+}
+
+# Math.DO — infix expression evaluator with operator precedence and parens.
+#
+# Implements the shunting-yard algorithm (Dijkstra) to convert infix
+# notation into an RPN token sequence, then delegates to Math.RPN for
+# evaluation. This keeps a single evaluation engine — Math.DO is purely
+# a precedence and parenthesis reordering pass.
+#
+# Handles +, -, x (or *), /, and parentheses. Standard precedence:
+# x and / bind tighter than + and -. Left-to-right associativity for
+# equal precedence.
+#
+# Input: separate args or a single quoted string (split on whitespace).
+# Every token must be whitespace-separated: "( 1 + 2 ) x 3", not "(1+2)x3".
+#
+# Usage:
+#   into=v Math.DO 1.5 + 2.3                    # 3.8
+#   into=v Math.DO 1.5 + 2.3 x 4                # 10.7 (precedence)
+#   into=v Math.DO '(' 1.5 + 2.3 ')' x 4        # 15.2 (parens)
+#   into=v Math.DO "( 1.5 + 2.3 ) x 4"          # 15.2 (string mode)
+Math.DO() {
+  # Tokenize: if single arg with spaces, split it; otherwise use args as-is
+  local -a __do_tokens
+  if (( $# == 1 )) && [[ "$1" == *" "* ]]; then
+    read -ra __do_tokens <<< "$1"
+  else
+    __do_tokens=("$@")
+  fi
+
+  # Shunting-yard: convert infix tokens to RPN token array
+  local -a __do_ops=() __do_rpn=()
+  local -i __do_osp=0 __do_rsp=0
+  local __do_tok __do_type __do_prec __do_top_prec
+
+  for __do_tok in "${__do_tokens[@]}"; do
+    __Math.tokenType "$__do_tok" __do_type
+
+    case "$__do_type" in
+      num)
+        __do_rpn[$__do_rsp]="$__do_tok"
+        (( __do_rsp++ ))
+        ;;
+      op)
+        __Math.precedence "$__do_tok" __do_prec
+        while (( __do_osp > 0 )); do
+          local __do_top="${__do_ops[$(( __do_osp - 1 ))]}"
+          [[ "$__do_top" == "(" ]] && break
+          __Math.precedence "$__do_top" __do_top_prec
+          (( __do_top_prec < __do_prec )) && break
+          (( __do_osp-- ))
+          __do_rpn[$__do_rsp]="$__do_top"
+          (( __do_rsp++ ))
+        done
+        __do_ops[$__do_osp]="$__do_tok"
+        (( __do_osp++ ))
+        ;;
+      lparen)
+        __do_ops[$__do_osp]="("
+        (( __do_osp++ ))
+        ;;
+      rparen)
+        while (( __do_osp > 0 )) && [[ "${__do_ops[$(( __do_osp - 1 ))]}" != "(" ]]; do
+          (( __do_osp-- ))
+          __do_rpn[$__do_rsp]="${__do_ops[$__do_osp]}"
+          (( __do_rsp++ ))
+        done
+        (( __do_osp > 0 )) && (( __do_osp-- ))  # discard the "("
+        ;;
+    esac
+  done
+
+  # Drain remaining operators onto the RPN output
+  while (( __do_osp > 0 )); do
+    (( __do_osp-- ))
+    __do_rpn[$__do_rsp]="${__do_ops[$__do_osp]}"
+    (( __do_rsp++ ))
+  done
+
+  # Evaluate via the shared RPN engine
+  Math.RPN "${__do_rpn[@]}"
 }
