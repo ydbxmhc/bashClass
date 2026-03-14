@@ -29,8 +29,8 @@ Cube.new() {
   done
 
   # Delegate to base constructor with derived dimensions
-  __return=__Cube_new_self __bashClass.new "$@" length=$__Cube_new_size width=$__Cube_new_size height=$__Cube_new_size
-  __bashClass.return "$__Cube_new_self" ${__return:-}
+  into=__Cube_new_self __bashClass.new "$@" length=$__Cube_new_size width=$__Cube_new_size height=$__Cube_new_size
+  __bashClass.return "$__Cube_new_self" ${into:-}
 }
 
 # Calculate side face area (all faces equal for cube)
@@ -38,32 +38,32 @@ Cube.side() {
   local -I self class
   local __Cube_side_size __Cube_side_val
   __bashClass.parse "$self" "size" __Cube_side_size
-  __return=__Cube_side_val self="$self" class=Box __bashClass.dispatch area "$__Cube_side_size" "$__Cube_side_size"
-  __bashClass.return "$__Cube_side_val" ${__return:-}
+  into=__Cube_side_val self="$self" class=Box __bashClass.dispatch area "$__Cube_side_size" "$__Cube_side_size"
+  __bashClass.return "$__Cube_side_val" ${into:-}
 }
 
 # Top face (same as side for cube)
 Cube.top() {
   local -I self class
   local __Cube_top_val
-  __return=__Cube_top_val self="$self" class="$class" __bashClass.dispatch side
-  __bashClass.return "$__Cube_top_val" ${__return:-}
+  into=__Cube_top_val self="$self" class="$class" __bashClass.dispatch side
+  __bashClass.return "$__Cube_top_val" ${into:-}
 }
 
 # End face (same as side for cube)
 Cube.end() {
   local -I self class
   local __Cube_end_val
-  __return=__Cube_end_val self="$self" class="$class" __bashClass.dispatch side
-  __bashClass.return "$__Cube_end_val" ${__return:-}
+  into=__Cube_end_val self="$self" class="$class" __bashClass.dispatch side
+  __bashClass.return "$__Cube_end_val" ${into:-}
 }
 
 # Bottom face (same as side for cube)
 Cube.bottom() {
   local -I self class
   local __Cube_bottom_val
-  __return=__Cube_bottom_val self="$self" class="$class" __bashClass.dispatch side
-  __bashClass.return "$__Cube_bottom_val" ${__return:-}
+  into=__Cube_bottom_val self="$self" class="$class" __bashClass.dispatch side
+  __bashClass.return "$__Cube_bottom_val" ${into:-}
 }
 
 # Calculate volume
@@ -71,8 +71,8 @@ Cube.volume() {
   local -I self class
   local __Cube_volume_size __Cube_volume_vol
   __bashClass.parse "$self" "size" __Cube_volume_size
-  __return=__Cube_volume_vol required=3 Box.calc "$__Cube_volume_size" "$__Cube_volume_size" "$__Cube_volume_size"
-  __bashClass.return "$__Cube_volume_vol" ${__return:-}
+  into=__Cube_volume_vol required=3 Box.calc "$__Cube_volume_size" "$__Cube_volume_size" "$__Cube_volume_size"
+  __bashClass.return "$__Cube_volume_vol" ${into:-}
 }
 
 # ============================================================================

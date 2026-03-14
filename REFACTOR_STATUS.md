@@ -31,15 +31,15 @@ by their `type` field. The framework file is named `boop` — the internal names
   caller's `value`. User class methods follow the same convention: `Box.volume` uses
   `__Box_volume_l`, `__Box_volume_vol`, etc. If users don't follow this convention and
   get nameref collisions, that's on them.
-- **`__return` typecast for named returns**: Any value-producing method can accept a
-  `__return=varname` typecast prefix. The method passes `${__return:-}` (unquoted) as the
+- **`into` typecast for named returns**: Any value-producing method can accept a
+  `into=varname` typecast prefix. The method passes `${into:-}` (unquoted) as the
   second argument to `__bashClass.return`, which writes directly into the caller's named
-  variable via nameref. When `__return` is unset, the expansion vanishes (no empty arg
+  variable via nameref. When `into` is unset, the expansion vanishes (no empty arg
   passed) and the global return mode governs. This enables zero-copy delegation chains:
-  `__return=__Box_volume_vol required=3 Box.calc "$l" "$h" "$w"` writes the result
+  `into=__Box_volume_vol required=3 Box.calc "$l" "$h" "$w"` writes the result
   straight into `volume`'s local without touching `__bashClass_RETURN`. Thin wrappers
-  like `Box.area` can pass through the caller's `__return` directly:
-  `required=2 __return=${__return:-} Box.calc "$@"`.
+  like `Box.area` can pass through the caller's `into` directly:
+  `required=2 into=${into:-} Box.calc "$@"`.
 - **Dots in names**: Method and property names use dots (`Box.volume`, `$obj.length`) as a
   deliberate safety feature. `$obj.foo=123` fails because it's not a valid variable name.
   With underscores, `$obj_foo=123` would silently create a useless variable.
@@ -201,10 +201,10 @@ follow this convention and get nameref collisions, that's your problem.
 Every method that produces a value must end with:
 
 ```bash
-__bashClass.return "$result" ${__return:-}
+__bashClass.return "$result" ${into:-}
 ```
 
-The `${__return:-}` is intentionally unquoted. When `__return` is unset, it expands to
+The `${into:-}` is intentionally unquoted. When `into` is unset, it expands to
 nothing and disappears — no empty argument is passed. When set to a valid identifier,
 it passes through as the nameref target. Invalid identifiers crash at the nameref
 assignment, which is correct behavior.
@@ -212,7 +212,7 @@ assignment, which is correct behavior.
 ### Delegating to Other Methods
 
 When calling another value-producing method, declare a prefixed local and pass its name
-via the `__return` typecast:
+via the `into` typecast:
 
 ```bash
 Box.volume() {
@@ -221,17 +221,17 @@ Box.volume() {
   __bashClass.parse "$self" "length" __Box_volume_l
   __bashClass.parse "$self" "height" __Box_volume_h
   __bashClass.parse "$self" "width" __Box_volume_w
-  __return=__Box_volume_vol required=3 Box.calc "$__Box_volume_l" "$__Box_volume_h" "$__Box_volume_w"
-  __bashClass.return "$__Box_volume_vol" ${__return:-}
+  into=__Box_volume_vol required=3 Box.calc "$__Box_volume_l" "$__Box_volume_h" "$__Box_volume_w"
+  __bashClass.return "$__Box_volume_vol" ${into:-}
 }
 ```
 
-For thin wrappers that don't need to inspect the result, pass `__return` through:
+For thin wrappers that don't need to inspect the result, pass `into` through:
 
 ```bash
 Box.area() {
   local -I self class
-  required=2 __return=${__return:-} Box.calc "$@"
+  required=2 into=${into:-} Box.calc "$@"
 }
 ```
 

@@ -914,113 +914,113 @@ printf "  [%ss]\n" "$__timer_elapsed"
 
 
 # ============================================================================
-# SECTION 24: __return typecast — named return through the full stack
+# SECTION 24: into typecast — named return through the full stack
 # ============================================================================
-__section "__return typecast"
+__section "into typecast"
 
 new Box length=5 width=3 height=7
 __rt_box="$__bashClass_RETURN"
 
-# __return on a leaf method (calc via volume)
+# into on a leaf method (calc via volume)
 __rt_vol=""
-__return=__rt_vol $__rt_box.volume
+into=__rt_vol $__rt_box.volume
 if [[ "$__rt_vol" == "105" ]]; then
-  printf "  PASS: __return on volume = 105\n"; (( passed++ ))
+  printf "  PASS: into on volume = 105\n"; (( passed++ ))
 else
-  printf "  FAIL: __return on volume got '%s'\n" "$__rt_vol"; (( failed++ ))
+  printf "  FAIL: into on volume got '%s'\n" "$__rt_vol"; (( failed++ ))
 fi
 
-# __return on get (leaf, through dispatch)
+# into on get (leaf, through dispatch)
 __rt_len=""
-__return=__rt_len $__rt_box.get length
+into=__rt_len $__rt_box.get length
 if [[ "$__rt_len" == "5" ]]; then
-  printf "  PASS: __return on get length = 5\n"; (( passed++ ))
+  printf "  PASS: into on get length = 5\n"; (( passed++ ))
 else
-  printf "  FAIL: __return on get length got '%s'\n" "$__rt_len"; (( failed++ ))
+  printf "  FAIL: into on get length got '%s'\n" "$__rt_len"; (( failed++ ))
 fi
 
-# __return on property shorthand accessor
+# into on property shorthand accessor
 __rt_width=""
-__return=__rt_width $__rt_box.width
+into=__rt_width $__rt_box.width
 if [[ "$__rt_width" == "3" ]]; then
-  printf "  PASS: __return on shorthand width = 3\n"; (( passed++ ))
+  printf "  PASS: into on shorthand width = 3\n"; (( passed++ ))
 else
-  printf "  FAIL: __return on shorthand width got '%s'\n" "$__rt_width"; (( failed++ ))
+  printf "  FAIL: into on shorthand width got '%s'\n" "$__rt_width"; (( failed++ ))
 fi
 
-# __return on isa (no-arg, returns class name)
+# into on isa (no-arg, returns class name)
 __rt_class=""
-__return=__rt_class $__rt_box.isa
+into=__rt_class $__rt_box.isa
 if [[ "$__rt_class" == "Box" ]]; then
-  printf "  PASS: __return on isa = Box\n"; (( passed++ ))
+  printf "  PASS: into on isa = Box\n"; (( passed++ ))
 else
-  printf "  FAIL: __return on isa got '%s'\n" "$__rt_class"; (( failed++ ))
+  printf "  FAIL: into on isa got '%s'\n" "$__rt_class"; (( failed++ ))
 fi
 
-# __return on toString (compact)
+# into on toString (compact)
 __rt_str=""
-__return=__rt_str $__rt_box.toString
+into=__rt_str $__rt_box.toString
 if [[ "$__rt_str" == *"Box("* ]]; then
-  printf "  PASS: __return on toString contains Box(\n"; (( passed++ ))
+  printf "  PASS: into on toString contains Box(\n"; (( passed++ ))
 else
-  printf "  FAIL: __return on toString got '%s'\n" "$__rt_str"; (( failed++ ))
+  printf "  FAIL: into on toString got '%s'\n" "$__rt_str"; (( failed++ ))
 fi
 
-# __return on toString pretty
+# into on toString pretty
 __rt_pretty=""
-__return=__rt_pretty $__rt_box.toString pretty
+into=__rt_pretty $__rt_box.toString pretty
 if [[ "$__rt_pretty" == *$'\n'* ]]; then
-  printf "  PASS: __return on toString pretty contains newlines\n"; (( passed++ ))
+  printf "  PASS: into on toString pretty contains newlines\n"; (( passed++ ))
 else
-  printf "  FAIL: __return on toString pretty got '%s'\n" "$__rt_pretty"; (( failed++ ))
+  printf "  FAIL: into on toString pretty got '%s'\n" "$__rt_pretty"; (( failed++ ))
 fi
 
-# __return through delegation chain: Cube.top → Cube.side → Box.area → Box.calc
+# into through delegation chain: Cube.top → Cube.side → Box.area → Box.calc
 new Cube size=4
 __rt_cube="$__bashClass_RETURN"
 __rt_top=""
-__return=__rt_top $__rt_cube.top
+into=__rt_top $__rt_cube.top
 if [[ "$__rt_top" == "16" ]]; then
-  printf "  PASS: __return through Cube.top chain = 16\n"; (( passed++ ))
+  printf "  PASS: into through Cube.top chain = 16\n"; (( passed++ ))
 else
-  printf "  FAIL: __return through Cube.top chain got '%s'\n" "$__rt_top"; (( failed++ ))
+  printf "  FAIL: into through Cube.top chain got '%s'\n" "$__rt_top"; (( failed++ ))
 fi
 
-# __return on bottom (delegates to top)
+# into on bottom (delegates to top)
 __rt_bottom=""
-__return=__rt_bottom $__rt_cube.bottom
+into=__rt_bottom $__rt_cube.bottom
 if [[ "$__rt_bottom" == "16" ]]; then
-  printf "  PASS: __return through Cube.bottom → side = 16\n"; (( passed++ ))
+  printf "  PASS: into through Cube.bottom → side = 16\n"; (( passed++ ))
 else
-  printf "  FAIL: __return through Cube.bottom got '%s'\n" "$__rt_bottom"; (( failed++ ))
+  printf "  FAIL: into through Cube.bottom got '%s'\n" "$__rt_bottom"; (( failed++ ))
 fi
 
-# __return on new (constructor returns object ID)
+# into on new (constructor returns object ID)
 __rt_newobj=""
-__return=__rt_newobj new Box length=1 width=1 height=1
+into=__rt_newobj new Box length=1 width=1 height=1
 if [[ "$__rt_newobj" =~ ^_[0-9a-f]+$ ]]; then
-  printf "  PASS: __return on new returns valid object ID\n"; (( passed++ ))
+  printf "  PASS: into on new returns valid object ID\n"; (( passed++ ))
 else
-  printf "  FAIL: __return on new got '%s'\n" "$__rt_newobj"; (( failed++ ))
+  printf "  FAIL: into on new got '%s'\n" "$__rt_newobj"; (( failed++ ))
 fi
 
-# __return does NOT pollute __bashClass_RETURN when used
+# into does NOT pollute __bashClass_RETURN when used
 __bashClass_RETURN="sentinel"
 __rt_check=""
-__return=__rt_check $__rt_box.volume
+into=__rt_check $__rt_box.volume
 if [[ "$__bashClass_RETURN" == "sentinel" ]]; then
-  printf "  PASS: __return bypasses __bashClass_RETURN\n"; (( passed++ ))
+  printf "  PASS: into bypasses __bashClass_RETURN\n"; (( passed++ ))
 else
-  printf "  FAIL: __return leaked to __bashClass_RETURN: '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+  printf "  FAIL: into leaked to __bashClass_RETURN: '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
 fi
 
-# __return with typecast to parent class
+# into with typecast to parent class
 __rt_tc=""
-__return=__rt_tc class=Box $__rt_cube.volume
+into=__rt_tc class=Box $__rt_cube.volume
 if [[ "$__rt_tc" == "64" ]]; then
-  printf "  PASS: __return with typecast to Box = 64\n"; (( passed++ ))
+  printf "  PASS: into with typecast to Box = 64\n"; (( passed++ ))
 else
-  printf "  FAIL: __return with typecast got '%s'\n" "$__rt_tc"; (( failed++ ))
+  printf "  FAIL: into with typecast got '%s'\n" "$__rt_tc"; (( failed++ ))
 fi
 
 
@@ -1070,55 +1070,55 @@ expect_fail "volume after setting dimension to 0" \
 
 
 # ============================================================================
-# SECTION 26: __return edge cases
+# SECTION 26: into edge cases
 # ============================================================================
-__section "__return edge cases"
+__section "into edge cases"
 
-# __return in a subshell — nameref writes into subshell's local
+# into in a subshell — nameref writes into subshell's local
 __rt_sub=$( 
   __bashClass_rootPID=$BASHPID  # so auto mode uses global inside this subshell
   new Box length=2 width=3 height=4
   __rt_sub_b="$__bashClass_RETURN"
   __rt_sub_vol=""
-  __return=__rt_sub_vol $__rt_sub_b.volume
+  into=__rt_sub_vol $__rt_sub_b.volume
   printf "%s" "$__rt_sub_vol"
 )
 if [[ "$__rt_sub" == "24" ]]; then
-  printf "  PASS: __return in subshell = 24\n"; (( passed++ ))
+  printf "  PASS: into in subshell = 24\n"; (( passed++ ))
 else
-  printf "  FAIL: __return in subshell got '%s'\n" "$__rt_sub"; (( failed++ ))
+  printf "  FAIL: into in subshell got '%s'\n" "$__rt_sub"; (( failed++ ))
 fi
 
-# __return unset — falls through to global mode (existing behavior)
+# into unset — falls through to global mode (existing behavior)
 new Box length=2 width=5 height=3
 __rt_fb="$__bashClass_RETURN"
 $__rt_fb.volume
 if [[ "$__bashClass_RETURN" == "30" ]]; then
-  printf "  PASS: no __return falls through to global = 30\n"; (( passed++ ))
+  printf "  PASS: no into falls through to global = 30\n"; (( passed++ ))
 else
-  printf "  FAIL: no __return fallthrough got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
+  printf "  FAIL: no into fallthrough got '%s'\n" "$__bashClass_RETURN"; (( failed++ ))
 fi
 
-# __return with same var name at two levels doesn't collide
+# into with same var name at two levels doesn't collide
 # (because each method uses __ClassName_method_ prefix)
 new Cube size=3
 __rt_nest="$__bashClass_RETURN"
 __rt_nest_vol=""
-__return=__rt_nest_vol $__rt_nest.volume
+into=__rt_nest_vol $__rt_nest.volume
 if [[ "$__rt_nest_vol" == "27" ]]; then
-  printf "  PASS: nested __return chain no collision = 27\n"; (( passed++ ))
+  printf "  PASS: nested into chain no collision = 27\n"; (( passed++ ))
 else
-  printf "  FAIL: nested __return chain got '%s'\n" "$__rt_nest_vol"; (( failed++ ))
+  printf "  FAIL: nested into chain got '%s'\n" "$__rt_nest_vol"; (( failed++ ))
 fi
 
-# Multiple sequential __return calls don't leak between calls
+# Multiple sequential into calls don't leak between calls
 __rt_a="" __rt_b=""
-__return=__rt_a $__rt_box.top
-__return=__rt_b $__rt_box.side
+into=__rt_a $__rt_box.top
+into=__rt_b $__rt_box.side
 if [[ "$__rt_a" == "15" && "$__rt_b" == "35" ]]; then
-  printf "  PASS: sequential __return: top=%s side=%s\n" "$__rt_a" "$__rt_b"; (( passed++ ))
+  printf "  PASS: sequential into: top=%s side=%s\n" "$__rt_a" "$__rt_b"; (( passed++ ))
 else
-  printf "  FAIL: sequential __return: top=%s side=%s\n" "$__rt_a" "$__rt_b"; (( failed++ ))
+  printf "  FAIL: sequential into: top=%s side=%s\n" "$__rt_a" "$__rt_b"; (( failed++ ))
 fi
 
 

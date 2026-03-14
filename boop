@@ -325,7 +325,7 @@ __bashClass.deserialize() {
 # Default get - retrieve a property value
 __bashClass.get() {
   local -I self class
-  __bashClass.parse "$self" "$1" ${__return:-}
+  __bashClass.parse "$self" "$1" ${into:-}
 }
 
 # Default set - update a property value (encodes automatically)
@@ -352,7 +352,7 @@ __bashClass.isa() {
   local __isa_query="${1:-}"
 
   if [[ -z "$__isa_query" ]]; then
-    __bashClass.return "$class" ${__return:-}
+    __bashClass.return "$class" ${into:-}
     return 0
   fi
 
@@ -389,7 +389,7 @@ __bashClass.toString() {
       esac
       __ts_descriptor="${__ts_descriptor#*"${BASH_REMATCH[0]}"}"
     done
-    __bashClass.return "$__ts_output }" ${__return:-}
+    __bashClass.return "$__ts_output }" ${into:-}
     return
   fi
 
@@ -419,7 +419,7 @@ __bashClass.toString() {
   done
   __ts_output="$__ts_output}"
 
-  __bashClass.return "$__ts_output" ${__return:-}
+  __bashClass.return "$__ts_output" ${into:-}
 }
 
 # Default new - object constructor
@@ -449,7 +449,7 @@ __bashClass.new() {
   # Generate lazy stubs for all methods (walk inheritance chain)
   __bashClass.stubAll "$self" "$class"
 
-  __bashClass.return "$self" ${__return:-}
+  __bashClass.return "$self" ${into:-}
 }
 
 # Default super - call parent class method

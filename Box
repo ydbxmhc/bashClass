@@ -31,13 +31,13 @@ Box.calc() {
     (( __Box_calc_tot *= __Box_calc_arg ))
   done
 
-  __bashClass.return "$__Box_calc_tot" ${__return:-}
+  __bashClass.return "$__Box_calc_tot" ${into:-}
 }
 
-# Calculate area (2D) — thin wrapper, passes __return through
+# Calculate area (2D) — thin wrapper, passes into through
 Box.area() {
   local -I self class
-  required=2 __return=${__return:-} Box.calc "$@"
+  required=2 into=${into:-} Box.calc "$@"
 }
 
 # Calculate top face area
@@ -46,8 +46,8 @@ Box.top() {
   local __Box_top_l __Box_top_w __Box_top_val
   __bashClass.parse "$self" "length" __Box_top_l
   __bashClass.parse "$self" "width" __Box_top_w
-  __return=__Box_top_val self="$self" class="$class" __bashClass.dispatch area "$__Box_top_l" "$__Box_top_w"
-  __bashClass.return "$__Box_top_val" ${__return:-}
+  into=__Box_top_val self="$self" class="$class" __bashClass.dispatch area "$__Box_top_l" "$__Box_top_w"
+  __bashClass.return "$__Box_top_val" ${into:-}
 }
 
 # Calculate end face area
@@ -56,8 +56,8 @@ Box.end() {
   local __Box_end_h __Box_end_w __Box_end_val
   __bashClass.parse "$self" "height" __Box_end_h
   __bashClass.parse "$self" "width" __Box_end_w
-  __return=__Box_end_val self="$self" class="$class" __bashClass.dispatch area "$__Box_end_h" "$__Box_end_w"
-  __bashClass.return "$__Box_end_val" ${__return:-}
+  into=__Box_end_val self="$self" class="$class" __bashClass.dispatch area "$__Box_end_h" "$__Box_end_w"
+  __bashClass.return "$__Box_end_val" ${into:-}
 }
 
 # Calculate side face area
@@ -66,16 +66,16 @@ Box.side() {
   local __Box_side_h __Box_side_l __Box_side_val
   __bashClass.parse "$self" "height" __Box_side_h
   __bashClass.parse "$self" "length" __Box_side_l
-  __return=__Box_side_val self="$self" class="$class" __bashClass.dispatch area "$__Box_side_h" "$__Box_side_l"
-  __bashClass.return "$__Box_side_val" ${__return:-}
+  into=__Box_side_val self="$self" class="$class" __bashClass.dispatch area "$__Box_side_h" "$__Box_side_l"
+  __bashClass.return "$__Box_side_val" ${into:-}
 }
 
 # Calculate bottom face area (same as top)
 Box.bottom() {
   local -I self class
   local __Box_bottom_val
-  __return=__Box_bottom_val self="$self" class="$class" __bashClass.dispatch top
-  __bashClass.return "$__Box_bottom_val" ${__return:-}
+  into=__Box_bottom_val self="$self" class="$class" __bashClass.dispatch top
+  __bashClass.return "$__Box_bottom_val" ${into:-}
 }
 
 # Calculate volume (3D)
@@ -85,8 +85,8 @@ Box.volume() {
   __bashClass.parse "$self" "length" __Box_volume_l
   __bashClass.parse "$self" "height" __Box_volume_h
   __bashClass.parse "$self" "width" __Box_volume_w
-  __return=__Box_volume_vol required=3 Box.calc "$__Box_volume_l" "$__Box_volume_h" "$__Box_volume_w"
-  __bashClass.return "$__Box_volume_vol" ${__return:-}
+  into=__Box_volume_vol required=3 Box.calc "$__Box_volume_l" "$__Box_volume_h" "$__Box_volume_w"
+  __bashClass.return "$__Box_volume_vol" ${into:-}
 }
 
 # Box constructor - delegates to base, adds defaults
@@ -94,8 +94,8 @@ Box.new() {
   local -I class
   : "${class:=Box}"
   local __Box_new_self
-  __return=__Box_new_self __bashClass.new "$@"
-  __bashClass.return "$__Box_new_self" ${__return:-}
+  into=__Box_new_self __bashClass.new "$@"
+  __bashClass.return "$__Box_new_self" ${into:-}
 }
 
 # ============================================================================

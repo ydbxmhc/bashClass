@@ -6,7 +6,8 @@ A thought exercise on creating a useful OOP-like paradigm for Bash programming.
 
 An OOP dispatch framework for bash. Classes, objects, inheritance, method resolution,
 property accessors, type checking — all built on associative arrays and naming conventions.
-No external dependencies beyond bash 5+ and coreutils `base64`.
+No external dependencies beyond bash 5+. The `bencode`/`bdecode` convenience wrappers
+use coreutils `base64` if available, but the framework itself doesn't require it.
 
 The framework file is called `boop` because fun is a feature. The internal namespace
 remains `__bashClass_*` — the filename is the personality, the internals are the plumbing.
@@ -16,29 +17,26 @@ remains `__bashClass_*` — the filename is the personality, the internals are t
 ```bash
 . boop Cube
 
-# Three ways to create objects
-new Cube size=4 unit=cm              # global convenience function
-cube="$__bashClass_RETURN"
+# Create a cube
+into=cube Cube size=4 unit=cm
+$cube.volume                         # __bashClass_RETURN = 64
 
-Cube size=4 unit=cm                  # class-as-constructor
-cube="$__bashClass_RETURN"
+# Named return — no global side-channel
+into=vol $cube.volume
+printf "Volume: %s\n" "$vol"         # Volume: 64
 
-class=Cube __bashClass.dispatch new size=4 unit=cm   # explicit dispatch
-cube="$__bashClass_RETURN"
+# Type checking
+$cube.isa Cube                       # returns 0 (true)
+$cube.isa Box                        # returns 0 (true — inherits)
 
-# Use dotted method syntax
-$cube.volume    # __bashClass_RETURN = 64
-$cube.size      # __bashClass_RETURN = 4
-$cube.isa Cube  # returns 0 (true)
-$cube.isa Box   # returns 0 (true — Cube inherits from Box)
+# Display
+$cube.toString                       # Cube(_a1b2c3){ size=4 ... }
+$cube.toString pretty                # columnar with newlines
 
-# toString: compact or pretty
-$cube.toString          # Cube(_a1b2c3){ size=4 unit=cm ... }
-$cube.toString pretty   # columnar format with newlines
-
-# Named return via __return typecast (no global side-channel)
-__return=my_vol $cube.volume
-printf "Volume: %s\n" "$my_vol"
+# Three constructor styles
+into=c1 new Cube size=4              # global convenience function
+into=c2 Cube size=4                  # class-as-constructor
+into=c3 class=Cube __bashClass.dispatch new size=4  # explicit dispatch
 ```
 
 ## Import System
@@ -61,8 +59,8 @@ import chains.
 ## Conventions
 
 - All local variables in methods must be prefixed: `__ClassName_methodName_varname`
-- Every value-producing method ends with: `__bashClass.return "$val" ${__return:-}`
-- Delegating methods pass `__return=localvar` as a typecast to capture results
+- Every value-producing method ends with: `__bashClass.return "$val" ${into:-}`
+- Delegating methods pass `into=localvar` as a typecast to capture results
 - `printf` everywhere, never `echo`
 - Two-space indentation, no tabs (literal `$'\t'` in code is fine)
 - Leading `__` prefix is reserved for framework internals
