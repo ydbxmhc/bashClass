@@ -18,20 +18,52 @@ if (( ! ${__bashClass_loaded:-0} )); then
 # ============================================================================
 # GLOBALS - Process State
 # ============================================================================
+
+# Captured at load time so __bashClass.return can detect subshells later.
+# If BASHPID != this value at call time, we're in a subshell and auto mode
+# switches to stdout (since globals can't escape a subshell boundary).
 declare -gi __bashClass_rootPID=$BASHPID
 
 # ============================================================================
 # GLOBALS - Registries
 # ============================================================================
+
+# Master object/class store. Keys are object IDs (_a1b2c3) or class names (Box).
+# Values are pipe-delimited descriptors: |class=Box|parent=bashClass|length=%33|...
+# Classes and objects share this registry — distinguished by context, not type field.
 declare -gA __bashClass_registry
+
+# Method resolution cache. Keys are "ClassName.methodName", values are the
+# implementing function name (e.g., "Box.volume" → "Box.volume" the function).
+# Populated on first dispatch; inherited methods get cached under the calling
+# class so the MRO walk only happens once per class+method pair.
 declare -gA __bashClass_methodRegistry
+
+# Explicit path overrides for class file resolution. If a class is registered
+# here, __bashClass.import skips directory and PATH searches entirely.
+# Usage: __bashClass_classPath["MyClass"]="/opt/lib/MyClass"
 declare -gA __bashClass_classPath
+
+# In-progress load tracker. Set to 1 while a class file is being sourced,
+# cleared when done. Prevents circular recursion when a class file sources
+# boop as part of its own dependency chain (e.g., Cube sources boop Box,
+# Box sources boop — without this flag, boop would try to re-import Box
+# mid-load and recurse until bash gives up).
 declare -gA __bashClass_loading
 
 # ============================================================================
 # GLOBALS - Configuration
 # ============================================================================
+
+# Controls how __bashClass.return delivers values when no explicit nameref
+# target is provided. Modes: auto (global in main shell, stdout in subshell),
+# nameref (requires target — crashes without one), stdout, global, filesystem.
+# Can be overridden per-call via environment: __bashClass_returnMode=stdout $obj.volume
 declare -g  __bashClass_returnMode="${__bashClass_returnMode:-auto}"
+
+# Absolute path to the directory containing this framework file. Used as the
+# second-priority search location for class imports (after __bashClass_classPath,
+# before PATH). Resolved once at load time via realpath so symlinks don't fool it.
 declare -g  __bashClass_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # TODO: Typecast interface variables (input, type, self, class) use short names
 # that may collide with user locals. Evaluate convention: _Input, _Type, etc.
@@ -40,18 +72,32 @@ declare -g  __bashClass_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # ============================================================================
 # GLOBALS - Return Values
 # ============================================================================
+
+# Side-channel for global return mode. When __bashClass.return is called
+# without a nameref target and the mode resolves to "global", the value
+# lands here. Callers read it after the call: $obj.volume; printf "%s" "$__bashClass_RETURN"
+# Intentionally a single flat global — keeps the API simple. If you need
+# to capture a value without clobbering this, use into=varname instead.
 declare -g  __bashClass_RETURN=""
 
 # ============================================================================
 # GLOBALS - Initialization Flags
 # ============================================================================
+
+# Set to 1 at the bottom of this block. The outer guard (( ! __bashClass_loaded ))
+# checks this so re-sourcing boop (e.g., from a class file's `. boop`) skips
+# all definitions and jumps straight to the import-arguments section at the end.
 declare -gi __bashClass_loaded=0
 
 # ============================================================================
 # UTILITY
 # ============================================================================
 
-# Crash with error message
+# Crash with error message. All output goes to stderr; exit code defaults to 1.
+# If the first argument is a bare integer, it becomes the exit code and is
+# shifted off before printing. Remaining arguments are printed one per line.
+# Usage: __bashClass.crash "something broke"
+#        __bashClass.crash 42 "custom exit code" "additional context"
 __bashClass.crash() {
   local -i __crash_err=1
   if [[ "${1:-}" =~ ^[0-9]+$ ]]; then __crash_err=$1; shift; fi
@@ -59,7 +105,8 @@ __bashClass.crash() {
   exit $__crash_err
 }
 
-# Check if in subshell
+# Returns 0 if the current execution context is a subshell (BASHPID differs
+# from the root PID captured at framework load time). Used by auto return mode.
 __bashClass.inSubshell() { [[ $BASHPID != $__bashClass_rootPID ]]; }
 
 # ============================================================================
@@ -67,10 +114,24 @@ __bashClass.inSubshell() { [[ $BASHPID != $__bashClass_rootPID ]]; }
 # ============================================================================
 
 # Every function that produces a value calls this as its last act.
+# This is the single choke point for all value delivery in the framework.
 # Respects __bashClass_returnMode globally; auto mode uses context clues.
+#
+# When a nameref target ($2) is provided, it ALWAYS wins — the value is
+# written directly into the caller's named variable via bash nameref,
+# regardless of the global mode setting. This is the zero-copy fast path
+# used by into=varname delegation chains.
+#
+# When no target is provided, the global mode governs:
+#   auto       → global in main shell, stdout in subshell (detected via BASHPID)
+#   global     → writes to __bashClass_RETURN
+#   stdout     → printf to stdout (natural for $() capture)
+#   nameref    → crashes (target is required — this is intentional)
+#   filesystem → writes to a temp file keyed by caller function name + PID
+#
 # Usage:
 #   __bashClass.return "$value"              # uses global mode (auto default)
-#   __bashClass.return "$value" target_var   # nameref hint (auto mode uses it)
+#   __bashClass.return "$value" target_var   # nameref — always direct write
 __bashClass.return() {
   local __return_val="$1" __return_target="${2:-}"
   local __return_mode="$__bashClass_returnMode"
@@ -105,7 +166,13 @@ __bashClass.return() {
 # VALUE ENCODING/DECODING
 # ============================================================================
 
-# Fast encode: escapes characters that break pipe-delimited descriptors
+# Fast encode: escapes the five characters that would break pipe-delimited
+# descriptor storage. Uses bash parameter expansion (no subshell, no fork).
+#
+# ORDER MATTERS: percent must be encoded FIRST. If pipes were encoded first,
+# the literal "|" becomes "%7C" — then the percent pass would re-encode the
+# "%" in "%7C" to "%257C", corrupting the value. Percent-first ensures the
+# escape character itself is safe before anything else touches it.
 # Handles: % | = newline tab
 __bashClass.encode() {
   local __encode_val="$1"
@@ -117,7 +184,13 @@ __bashClass.encode() {
   __bashClass.return "$__encode_val" "${2:-}"
 }
 
-# Fast decode: reverses encode
+# Fast decode: reverses encode. Uses bash parameter expansion (no subshell).
+#
+# ORDER MATTERS: percent must be decoded LAST — the mirror image of encode.
+# If percent were decoded first, "%257C" would become "%7C", and then the
+# pipe pass would decode that to "|", producing a value that was never there.
+# By decoding percent last, we guarantee that only sequences we encoded are
+# restored, and user data containing literal "%7C" survives the round-trip.
 __bashClass.decode() {
   local __decode_val="$1"
   __decode_val="${__decode_val//%09/$'\t'}"
@@ -128,8 +201,17 @@ __bashClass.decode() {
   __bashClass.return "$__decode_val" "${2:-}"
 }
 
-# Binary-safe encode: base64 via external tool (requires subshell)
-# Use for values that may contain null bytes or arbitrary binary data
+# Binary-safe encode: base64 via external tool.
+# Unlike encode/decode, this requires a subshell (command substitution for
+# base64), so it's slower — use only when values may contain null bytes or
+# arbitrary binary data that bash variables can't hold natively.
+# The -w0 flag disables line wrapping so the output is a single token.
+#
+# Accepts a typecast prefix to select input source:
+#   input=string (default) — encode the first positional argument
+#   input=file             — encode the contents of the file at $1
+#   input=-                — encode from stdin (pipe-friendly)
+#
 # Usage: __bashClass.bencode "string"                  # encode string
 #        input=file __bashClass.bencode /path/to/file  # encode file contents
 #        input=- __bashClass.bencode                   # encode from stdin
@@ -145,8 +227,12 @@ __bashClass.bencode() {
   __bashClass.return "$__bencode_val" "${2:-}"
 }
 
-# Binary-safe decode: base64 via external tool (requires subshell)
-# TODO: output=file support for binary-safe round-trip (bash can't hold nulls in vars)
+# Binary-safe decode: base64 via external tool.
+# Mirror of bencode — same subshell cost, same typecast interface.
+# TODO: output=file support for binary-safe round-trip. Bash variables
+# silently drop null bytes, so decoded binary data must go straight to a
+# file to survive intact. Until then, bdecode is only lossless for text.
+#
 # Usage: __bashClass.bdecode "encoded_string"                  # decode string
 #        input=file __bashClass.bdecode /path/to/encoded.dat   # decode from file
 #        input=- __bashClass.bdecode                           # decode from stdin
@@ -166,9 +252,23 @@ __bashClass.bdecode() {
 # VALIDATION
 # ============================================================================
 
-# Polymorphic validator - defaults to identifier, override with type= prefix
-# Usage: __bashClass.validate "Box"                    # identifier (default)
-#        type=function __bashClass.validate "__Box.calc" # function name
+# Polymorphic input validator. Rejects anything that isn't a safe identifier
+# or function name, depending on the type= typecast. This is the front door
+# for every user-supplied name that touches eval, registries, or dispatch.
+# Validate and reject — never sanitize and proceed.
+#
+# In identifier mode (default): allows [A-Za-z_][A-Za-z0-9_]* — no dots.
+# In function mode: allows dots in the name (e.g., "Box.calc", "__bashClass.return")
+# because bash functions can contain dots, and our dispatch system relies on them.
+#
+# The type= typecast uses `local -l` for case-insensitive matching, so
+# type=Function, type=FUNCTION, and type=function all work. A misspelled
+# typecast (e.g., typ=function) silently falls through to identifier mode
+# because the unrecognized variable doesn't set `type` — this is correct
+# behavior (strictest validation wins by default).
+#
+# Usage: __bashClass.validate "Box"                     # identifier (default)
+#        type=function __bashClass.validate "Box.calc"  # function name (dots ok)
 __bashClass.validate() {
   local __validate_pat; local -l type; : "${type:=identifier}"
   case $type in
@@ -182,7 +282,9 @@ __bashClass.validate() {
 # CONFIGURATION
 # ============================================================================
 
-# Set global default return mode
+# Set global default return mode. Affects all subsequent calls to
+# __bashClass.return that don't have an explicit nameref target.
+# This is a process-wide setting — use with intention.
 __bashClass.setDefaultMode() {
   case "$1" in
     auto|nameref|stdout|global|filesystem) __bashClass_returnMode="$1" ;;
@@ -194,7 +296,19 @@ __bashClass.setDefaultMode() {
 # PARSING & DATA ACCESS
 # ============================================================================
 
-# Parse a field from a descriptor with polymorphic return
+# Extract a single field from a pipe-delimited descriptor string.
+# The descriptor format is: |field1=value1|field2=value2|...
+# Values are stored encoded (via __bashClass.encode); this function
+# decodes them before returning.
+#
+# Accepts an optional $3 nameref target for zero-copy extraction.
+# If the field doesn't exist, returns empty string (not an error —
+# missing properties are a normal condition, not a crash).
+#
+# The regex pattern anchors on the leading pipe to avoid partial matches:
+# searching for "id" won't accidentally match "grid" because the pipe
+# delimiter guarantees field-name boundaries.
+#
 # Usage:
 #   value=$(__bashClass.parse "Box" "parent")           # stdout (subshell)
 #   __bashClass.parse "Box" "parent" my_var             # nameref (no subshell)
@@ -218,7 +332,14 @@ __bashClass.parse() {
 # METHOD REGISTRY
 # ============================================================================
 
-# Register a method implementation
+# Register a method implementation in the method registry.
+# Maps "ClassName.methodName" → "implementingFunctionName" so dispatch
+# can resolve calls. The implementing function must already exist (declared
+# via `declare -f`) at registration time — no forward declarations.
+#
+# All three names are validated: class as identifier, method as identifier,
+# impl as function (dots allowed). This is the only way methods enter the
+# registry, so validation here protects every downstream dispatch.
 __bashClass.registerMethod() {
   local __regmethod_class="$1" __regmethod_method="$2" __regmethod_impl="$3"
 
@@ -235,11 +356,20 @@ __bashClass.registerMethod() {
 # METHOD DISPATCH
 # ============================================================================
 
-# Unified dispatcher with inheritance support, MRO caching, and lazy baking
-# When called with __init=true (typecast), resolves the method via MRO and
-# evals a baked wrapper on $self that bypasses dispatch on subsequent calls.
-# The baked wrapper detects typecasting (class override) and falls back to
-# dispatch when needed, so typecasting always works but pays the MRO cost.
+# Unified dispatcher with inheritance support, MRO caching, and lazy baking.
+#
+# Resolution: checks __bashClass_methodRegistry for "class.method" first (O(1)).
+# On cache miss, walks the parent chain via descriptor "parent" fields until
+# it finds a registered implementation, then caches the result under the
+# original class so the walk never happens again for that pair.
+#
+# Lazy baking: when called with __init=true (set by stub functions), dispatch
+# evals a baked wrapper onto $self that calls the resolved implementation
+# directly on all future invocations — no dispatch overhead after first call.
+# The baked wrapper includes a typecast guard: if the caller overrides class=
+# (e.g., class=Box $cube.volume), the wrapper detects the mismatch and falls
+# back to full dispatch so the typecast resolves correctly. This means normal
+# calls are fast (direct function call) and typecasts always work (dispatch).
 __bashClass.dispatch() {
   local self="${self:-${class:-bashClass}}" class="${class:-bashClass}"
   local -l __init; : "${__init:=false}"
@@ -249,11 +379,13 @@ __bashClass.dispatch() {
   __bashClass.validate "$class"
   __bashClass.validate "$__dispatch_method"
 
-  # Check cache first (direct lookup)
+  # Check cache first (direct lookup — O(1) in the common case)
   local __dispatch_cachekey="$class.$__dispatch_method"
   local __dispatch_impl="${__bashClass_methodRegistry[$__dispatch_cachekey]:-}"
 
-  # Cache miss? Walk inheritance chain
+  # Cache miss: walk the inheritance chain (parent → grandparent → ...).
+  # When found in an ancestor, cache it under the calling class so this
+  # walk only happens once per class+method combination.
   if [[ -z "$__dispatch_impl" ]]; then
     local __dispatch_current="$class"
     while [[ -n "$__dispatch_current" ]]; do
@@ -268,7 +400,12 @@ __bashClass.dispatch() {
 
   [[ -n "$__dispatch_impl" ]] || __bashClass.crash "Method not found: $class.$__dispatch_method"
 
-  # If called from a stub (__init=true), bake a direct wrapper that replaces it
+  # If called from a stub (__init=true), bake a direct wrapper that replaces
+  # the stub function. The baked wrapper hardcodes self, class, and the
+  # resolved impl — no dispatch overhead on subsequent calls.
+  # The if/else inside the wrapper checks for typecasting: if someone calls
+  # class=OtherClass $obj.method, the baked class won't match, so it falls
+  # back to dispatch to resolve the typecast correctly.
   if [[ "$__init" == "true" ]]; then
     eval "$self.$__dispatch_method() {
       if [[ \${class:-$class} != '$class' ]]; then
@@ -286,6 +423,12 @@ __bashClass.dispatch() {
 # SERIALIZATION
 # ============================================================================
 
+# Dump the entire registry to a tab-delimited file. Each line is:
+#   key<TAB>descriptor
+# where key is an object ID or class name and descriptor is the raw
+# pipe-delimited string. This captures the full state of all objects
+# and class definitions. Does NOT serialize baked wrapper functions —
+# those are regenerated on next access via the stub/bake mechanism.
 __bashClass.serialize() {
   local __serialize_file="${1:-objects.dat}"
   for __serialize_key in "${!__bashClass_registry[@]}"; do
@@ -293,6 +436,14 @@ __bashClass.serialize() {
   done > "$__serialize_file"
 }
 
+# Load a previously serialized registry from a tab-delimited file.
+# Each key is validated before insertion to prevent injection from
+# tampered data files. Existing registry entries with the same key
+# are overwritten — last write wins.
+# NOTE: This restores descriptor data only. Object wrapper functions
+# (stubs/baked) are NOT recreated — call __bashClass.stubAll or
+# __bashClass.refresh on each object after deserializing if you need
+# to call methods on them.
 __bashClass.deserialize() {
   local __deserialize_file="${1:-objects.dat}"
   [[ -f "$__deserialize_file" ]] || __bashClass.crash "File not found: $__deserialize_file"
@@ -307,13 +458,23 @@ __bashClass.deserialize() {
 # STANDARD INTERFACE METHODS (inherited by all classes)
 # ============================================================================
 
-# Default get - retrieve a property value
+# Retrieve a property value from the object's descriptor.
+# Delegates to parse, which handles decoding and return routing.
+# The ${into:-} passes through the caller's nameref target (if any)
+# so the value lands directly in their variable without touching the global.
 __bashClass.get() {
   local -I self class
   __bashClass.parse "$self" "$1" ${into:-}
 }
 
-# Default set - update a property value (encodes automatically)
+# Update a property value in the object's descriptor.
+# The new value is encoded before storage (pipes, equals, percents, etc.
+# are escaped so they don't corrupt the delimiter structure).
+#
+# If the property already exists, its value is replaced in-place via
+# regex match + string substitution on the descriptor. If it doesn't
+# exist, it's appended to the end. This means property order in the
+# descriptor reflects insertion order, with mutations preserving position.
 __bashClass.set() {
   local -I self class
   local __set_prop="$1" __set_encoded
@@ -329,9 +490,16 @@ __bashClass.set() {
   fi
 }
 
-# Default isa - type checking with ancestry support
-# No args: return class name
-# With arg: return 0 if object is or inherits from that class
+# Type checking with ancestry walk.
+# No args: returns the object's class name (via __bashClass.return).
+# With arg: walks the inheritance chain and returns 0 (true) if the
+# object's class matches or inherits from the queried class, 1 (false)
+# otherwise. The walk follows "parent" fields in class descriptors
+# up to the root (bashClass, whose parent is empty string).
+#
+# Note: isa with a query does NOT call __bashClass.return — it
+# communicates via exit code only (0/1), which is the bash convention
+# for boolean checks: `$obj.isa Box && printf "it's a box"`
 __bashClass.isa() {
   local -I self class
   local __isa_query="${1:-}"
@@ -349,7 +517,21 @@ __bashClass.isa() {
   return 1
 }
 
-# Default toString - format descriptor for display
+# Format an object's descriptor for human-readable display.
+# Skips internal metadata fields (class, parent, methods, properties)
+# and shows only user-defined properties.
+#
+# Compact mode (default): single-line format
+#   Box(_a1b2c3){ length=5 width=3 height=7 }
+#
+# Pretty mode: columnar with newlines, field names right-padded for
+# alignment. Two-pass: first pass measures max field name length,
+# second pass formats with printf %-Ns alignment.
+#
+# Pretty mode is activated by either:
+#   $obj.toString pretty          # positional argument
+#   prettyPrint=true $obj.toString # typecast (uses local -l for case-insensitive match)
+#
 # Usage: $obj.toString                    # compact one-liner
 #        $obj.toString pretty             # columnar with newlines
 #        prettyPrint=true $obj.toString    # same, via environment
@@ -359,6 +541,10 @@ __bashClass.toString() {
   [[ "${1:-}" == "pretty" ]] && prettyPrint=true
   local __ts_descriptor="${__bashClass_registry[$self]:-}"
   local __ts_field __ts_value __ts_decoded __ts_output
+
+  # Both modes iterate the descriptor by matching "|key=value" segments,
+  # then advancing past the match with ${__ts_descriptor#*"${BASH_REMATCH[0]}"}
+  # to consume the string left-to-right without a second regex pass.
 
   if [[ "$prettyPrint" != "true" ]]; then
     __ts_output="$class($self){"
@@ -407,10 +593,21 @@ __bashClass.toString() {
   __bashClass.return "$__ts_output" ${into:-}
 }
 
-# Default new - object constructor
-# Generates lazy stubs for all methods and property accessors.
-# Stubs call dispatch with __init=true on first use, which bakes a direct
-# wrapper that replaces the stub. Subsequent calls skip dispatch entirely.
+# Object constructor. This is the beating heart of object creation.
+#
+# 1. Generates a unique object ID from EPOCHREALTIME (hex-encoded
+#    microseconds — fast, no subshell, monotonically increasing).
+# 2. Builds a pipe-delimited descriptor from the class name and any
+#    key=value arguments, encoding values for safe storage.
+# 3. Registers the descriptor in __bashClass_registry.
+# 4. Generates lazy stubs for all methods and property accessors via
+#    __bashClass.stubAll. Stubs are tiny eval'd functions that call
+#    dispatch with __init=true on first use, triggering the bake
+#    mechanism that replaces them with direct wrappers.
+#
+# Arguments are key=value pairs. Duplicate keys are allowed — both
+# end up in the descriptor, but get/parse will match the first one.
+# (This is documented behavior, not a bug.)
 __bashClass.new() {
   local -I class; : "${class:=bashClass}"
 
@@ -437,7 +634,10 @@ __bashClass.new() {
   __bashClass.return "$self" ${into:-}
 }
 
-# Default super - call parent class method
+# Call a method on the parent class. Looks up the current class's parent
+# from its descriptor and re-dispatches with the parent as the class context.
+# Crashes if the class has no parent (you're already at the root — nowhere to go).
+# Usage: self=$obj class=Cube __bashClass.dispatch super volume
 __bashClass.super() {
   local -I self class
   local __super_parent; __bashClass.parse "$class" "parent" __super_parent
@@ -450,9 +650,20 @@ __bashClass.super() {
 # ============================================================================
 
 # Generate lazy stubs for all methods and property accessors on an object.
-# Each stub calls dispatch with __init=true on first invocation, which
-# bakes a direct wrapper replacing the stub. Dirt cheap to create.
-# Pass "force" as $3 to overwrite existing functions (used by refresh).
+# Walks the full inheritance chain so inherited methods get stubs too.
+#
+# Method stubs: tiny eval'd functions that call dispatch with __init=true.
+# On first invocation, dispatch resolves the method via MRO and bakes a
+# direct wrapper that replaces the stub. Cost: one eval per method at
+# object creation time, one dispatch on first call, then zero overhead.
+#
+# Property stubs: dual-purpose get/set accessors. Called with no args,
+# they dispatch to "get" with the property name. Called with one arg,
+# they dispatch to "set". This gives you $obj.length (get) and
+# $obj.length 42 (set) syntax.
+#
+# Pass "force" as $3 to overwrite existing functions — used by refresh
+# to tear down baked wrappers and re-stub everything.
 __bashClass.stubAll() {
   local __stub_self="$1" __stub_class="$2" __stub_force="${3:-}"
   local __stub_current="$__stub_class" __stub_method __stub_methods
@@ -483,8 +694,10 @@ __bashClass.stubAll() {
   done
 }
 
-# Re-stub all methods on an object. Tears down baked wrappers and replaces
-# them with fresh stubs. Next call re-resolves via dispatch.
+# Re-stub all methods on an existing object. Tears down baked wrappers
+# and replaces them with fresh stubs. The next call to any method will
+# re-resolve via dispatch and re-bake. Useful after modifying the method
+# registry at runtime (e.g., monkey-patching a method implementation).
 __bashClass.refresh() {
   local __refresh_self="$1"
   local __refresh_class; __bashClass.parse "$__refresh_self" "class" __refresh_class
@@ -492,10 +705,23 @@ __bashClass.refresh() {
   __bashClass.stubAll "$__refresh_self" "$__refresh_class" force
 }
 
-# Finalize a class definition. Call at the bottom of a class file after all
-# methods are defined. Reads the descriptor, walks the inheritance chain,
-# and generates ClassName.method wrappers for the class itself.
-# Methods already defined (by the class author) take priority — no overwrite.
+# Finalize a class definition. Call this at the bottom of a class file
+# after all method functions are defined and registered.
+#
+# What it does:
+# 1. Walks the inheritance chain collecting all method names.
+# 2. For each method, creates a ClassName.method() wrapper that dispatches
+#    with the class hardcoded. These wrappers let you call Box.volume()
+#    as a class-level method (useful for static-style calls and as the
+#    target of __bashClass.registerMethod).
+# 3. If the class name itself isn't already a function, creates a
+#    constructor shorthand: Box() { class=Box __bashClass.dispatch new "$@"; }
+#    This enables the clean `Box length=5 width=3 height=7` syntax.
+#
+# Methods already defined by the class author (e.g., Box.calc as a real
+# function) take priority — registerClass will NOT overwrite them. This
+# lets class authors provide custom implementations that bypass dispatch
+# when called directly.
 __bashClass.registerClass() {
   local __regclass_class="$1"
   __bashClass.validate "$__regclass_class"
@@ -523,9 +749,11 @@ __bashClass.registerClass() {
     eval "$__regclass_class() { class='$__regclass_class' __bashClass.dispatch new \"\$@\"; }"
 }
 
-# Global convenience constructor
+# Global convenience constructor. Slightly friendlier than the class-as-
+# constructor syntax for people who prefer explicit "new" semantics.
+# Validates the class name, then delegates to dispatch.
 # Usage: new Box length=5 width=3 height=7
-#        new Box length=5 width=3 height=7 self=mybox
+#        into=mybox new Cube size=4
 new() {
   local __new_class="$1"; shift
   __bashClass.validate "$__new_class"
@@ -536,11 +764,23 @@ new() {
 # CLASS IMPORT
 # ============================================================================
 
-# Resolve and source a class file. Searches:
-#   1. __bashClass_classPath registry (explicit path overrides)
-#   2. __bashClass_dir (where boop itself lives)
-#   3. PATH (via . command)
-# Classes already in __bashClass_registry are skipped (load guard).
+# Resolve and source a class file. Iterates each argument as a class name
+# and sources the corresponding file into the current shell.
+#
+# Resolution order (first match wins):
+#   1. __bashClass_classPath registry — explicit path overrides set by the user
+#   2. __bashClass_dir — the directory where boop itself lives (co-located classes)
+#   3. PATH — via the . (source) builtin's native search behavior
+#
+# Load guards (two layers):
+#   - __bashClass_registry[ClassName]+set — class already fully loaded, skip entirely.
+#   - __bashClass_loading[ClassName] — class is mid-load (its file is currently being
+#     sourced). This prevents circular recursion: Cube's file sources `. boop Box`,
+#     Box's file sources `. boop`, boop re-enters import for Box — the loading flag
+#     catches this and skips, letting the original load complete.
+#
+# The loading flag is unset after each successful source. If the source fails
+# (exit code != 0), we crash — a half-loaded class is worse than no class.
 __bashClass.import() {
   local __import_class
   for __import_class in "$@"; do
@@ -579,6 +819,10 @@ __bashClass.import() {
 # REGISTER BASE CLASS
 # ============================================================================
 
+# bashClass is the root of all inheritance. Every class ultimately inherits
+# from it (parent chain terminates at bashClass's empty parent field).
+# The standard methods registered here (get, set, isa, toString, new, super)
+# are available to all objects unless overridden by a subclass.
 __bashClass_registry["bashClass"]="|class=bashClass|parent=|methods=new,get,set,isa,toString,super|properties="
 __bashClass.registerMethod bashClass get __bashClass.get
 __bashClass.registerMethod bashClass set __bashClass.set
@@ -598,8 +842,10 @@ fi  # end of (( ! __bashClass_loaded ))
 # ============================================================================
 # IMPORT ARGUMENTS — always processed, even on subsequent sources
 # ============================================================================
-# Usage: . boop Box Cube
-# Each argument is a class name to import via __bashClass.import
+# This block runs OUTSIDE the __bashClass_loaded guard. When a class file
+# does `. boop Box`, the framework definitions are skipped (already loaded),
+# but this block still runs and imports Box. This is the mechanism that lets
+# class files declare dependencies via their source line.
 if (( $# )); then
   __bashClass.import "$@"
 fi

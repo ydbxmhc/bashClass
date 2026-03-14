@@ -15,6 +15,7 @@ remains `__bashClass_*` — the filename is the personality, the internals are t
 ## Quick Example
 
 ```bash
+# Load the framework and import classes
 . boop Cube
 
 # Create a cube
@@ -33,10 +34,8 @@ $cube.isa Box                        # returns 0 (true — inherits)
 $cube.toString                       # Cube(_a1b2c3){ size=4 ... }
 $cube.toString pretty                # columnar with newlines
 
-# Three constructor styles
-into=c1 new Cube size=4              # global convenience function
-into=c2 Cube size=4                  # class-as-constructor
-into=c3 class=Cube __bashClass.dispatch new size=4  # explicit dispatch
+# Also works with `new`
+into=c2 new Cube size=4
 ```
 
 ## Import System
@@ -55,8 +54,12 @@ import chains.
 
 ## Conventions
 
-- All local variables in methods must be prefixed: `__ClassName_methodName_varname`
-- Every value-producing method ends with: `__bashClass.return "$val" ${into:-}`
+The framework follows these conventions internally. We recommend class authors
+do the same — it prevents real bugs (especially nameref collisions) and keeps
+things predictable across the call stack.
+
+- Local variables in methods are prefixed: `__ClassName_methodName_varname`
+- Value-producing methods end with: `__bashClass.return "$val" ${into:-}`
 - Delegating methods pass `into=localvar` as a typecast to capture results
 - `printf` everywhere, never `echo`
 - Two-space indentation, no tabs (literal `$'\t'` in code is fine)
