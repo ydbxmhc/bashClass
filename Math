@@ -1147,12 +1147,13 @@ Math.abs()      { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_ab
 Math.neg()      { if [[ -n "${self:-}" ]]; then local -I self class; __Math.i_neg "$@"; else __Math.staticUnaryOp neg "$1"; fi; }
 
 # Symbol aliases — same functions, shorter names.
-# Math.+ Math.- Math.x Math.* Math./
-Math.+() { Math.add "$@"; }
-Math.-() { Math.subtract "$@"; }
+# Defined via eval because +, -, *, / are special characters that bash
+# won't accept in a bare function declaration.
 Math.x() { Math.multiply "$@"; }
-Math.*() { Math.multiply "$@"; }
-Math./() { Math.divide "$@"; }
+eval 'Math.+() { Math.add "$@"; }'
+eval 'Math.-() { Math.subtract "$@"; }'
+eval 'Math.*() { Math.multiply "$@"; }'
+eval 'Math./() { Math.divide "$@"; }'
 
 # ============================================================================
 # Expression Evaluators — Math.DO (infix) and Math.RPN (postfix)
