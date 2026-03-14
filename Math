@@ -965,7 +965,21 @@ Math.toScale() {
     (( __tsc_sigdigits < 1 )) && __tsc_sigdigits=1
     local __tsc_tmp
     __Math.fromParts "$__tsc_d" $__tsc_s $__tsc_n __tsc_tmp
-    into=${into:-} self="$__tsc_tmp" class=Math Math.round $__tsc_sigdigits
+    local __tsc_rounded
+    into=__tsc_rounded self="$__tsc_tmp" class=Math Math.round $__tsc_sigdigits
+    # Rounding carry (e.g., 999.999 → 1000) can reduce scale below target.
+    # If that happened, pad back up to the requested scale.
+    local __tsc_rd; local -i __tsc_rs __tsc_rn
+    __Math.resolve "$__tsc_rounded" __tsc_rd __tsc_rs __tsc_rn
+    if (( __tsc_rs < __tsc_target )); then
+      local -i __tsc_pad2=$(( __tsc_target - __tsc_rs ))
+      local __tsc_zeros2
+      printf -v __tsc_zeros2 "%0${__tsc_pad2}d" 0
+      __tsc_rd="${__tsc_rd}${__tsc_zeros2}"
+      into=${into:-} class=Math __bashClass.new "digits=$__tsc_rd" "scale=$__tsc_target" "neg=$__tsc_rn"
+    else
+      __bashClass.return "$__tsc_rounded" ${into:-}
+    fi
   else
     __Math.fromParts "$__tsc_d" $__tsc_s $__tsc_n ${into:-}
   fi
