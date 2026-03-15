@@ -182,3 +182,4 @@ Post it with a straight face and let the thread do the work.
 - Clean up `REFACTOR_STATUS.md` — largely superseded by this file @@
 - Clean up stale log files (`math_out.log`, `pi_growth.log`, `tc_debug.log`) @@
 - `test_matrix` — not in the test count table; verify it still runs @@
+

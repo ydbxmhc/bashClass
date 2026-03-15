@@ -276,3 +276,4 @@ Box.area() {
 
 The `&&` chain validates: (1) it's a digit string, AND (2) it's nonzero. If either
 fails, the `||` fires the crash. A box with a zero dimension is nonsensical.
+

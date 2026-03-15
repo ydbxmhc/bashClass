@@ -75,3 +75,4 @@ bashClass → Container → List  (indexed array)
                       → Map   (associative array)
                       → Stack, Queue, etc. (future)
 ```
+

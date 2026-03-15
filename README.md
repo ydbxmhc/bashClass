@@ -136,3 +136,4 @@ Active development on `refactor-dispatcher` branch. See `REFACTOR_STATUS.md` for
 - `test_containers` — Container/List/Map test suite (66 tests)
 - `test_matrix` — Matrix benchmark (nested Lists, transpose, flip)
 - `test_stress` — Adversarial stress test suite (132 assertions + benchmark)
+

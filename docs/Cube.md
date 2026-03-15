@@ -59,3 +59,4 @@ echo "Volume: $v"          # Volume: 125
 
 $c.isa Box && echo "yes"   # yes — Cube inherits from Box
 ```
+
