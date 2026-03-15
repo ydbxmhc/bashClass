@@ -1,0 +1,108 @@
+#!/bin/bash
+set -u
+
+# TestSuite tests itself — the ultimate dogfood
+
+. boop TestSuite
+
+into=t TestSuite name="TestSuite Self-Test"
+
+# ============================================================================
+# Basic Assertions
+# ============================================================================
+
+$t.section "assert_eq"
+$t.assert_eq "same strings" "hello" "hello"
+$t.assert_eq "same numbers" "42" "42"
+$t.assert_eq "empty strings" "" ""
+
+$t.section "assert_ne"
+$t.assert_ne "different strings" "hello" "world"
+$t.assert_ne "different numbers" "1" "2"
+$t.assert_ne "empty vs non-empty" "" "x"
+
+$t.section "assert_ok"
+$t.assert_ok "true returns 0" true
+$t.assert_ok "test expression" test 1 -eq 1
+$t.assert_ok "bracket expression" [ "a" = "a" ]
+
+$t.section "assert_fail"
+$t.assert_fail "false returns 1" false
+$t.assert_fail "bad test" test 1 -eq 2
+$t.assert_fail "bad bracket" [ "a" = "b" ]
+
+$t.section "assert_match"
+$t.assert_match "glob star" "hello world" "hello*"
+$t.assert_match "glob question" "cat" "c?t"
+$t.assert_match "exact match" "foo" "foo"
+
+$t.section "assert_contains"
+$t.assert_contains "substring" "hello world" "lo wo"
+$t.assert_contains "prefix" "foobar" "foo"
+$t.assert_contains "suffix" "foobar" "bar"
+$t.assert_contains "whole string" "abc" "abc"
+
+# ============================================================================
+# Edge Cases
+# ============================================================================
+
+$t.section "Edge Cases"
+$t.assert_eq "spaces preserved" "a b c" "a b c"
+$t.assert_eq "special chars" "hello|world=foo" "hello|world=foo"
+$t.assert_eq "percent signs" "100%" "100%"
+$t.assert_contains "newline in value" "line1
+line2" "line1"
+$t.assert_match "tab in value" "col1	col2" "col1*col2"
+
+# ============================================================================
+# info (no pass/fail, just output)
+# ============================================================================
+
+$t.section "info"
+$t.info "This line should appear but not affect counts"
+
+# ============================================================================
+# TestSuite as an object (introspection)
+# ============================================================================
+
+$t.section "TestSuite Introspection"
+$t.assert_ok "suite isa TestSuite" $t.isa TestSuite
+$t.assert_ok "suite isa bashClass" $t.isa bashClass
+into=v $t.get "name"; $t.assert_eq "suite name" "$v" "TestSuite Self-Test"
+into=v $t.get "mode"; $t.assert_eq "suite mode" "$v" "immediate"
+
+# ============================================================================
+# Queue Mode
+# ============================================================================
+
+# Spin up a second suite in queue mode to test batching
+into=q TestSuite name="Queue Subtest" mode=queue
+
+$q.section "Queued Assertions"
+$q.assert_eq "queued eq" "a" "a"
+$q.assert_ne "queued ne" "a" "b"
+$q.assert_ok "queued ok" true
+$q.assert_fail "queued fail" false
+$q.assert_match "queued match" "foo" "f*"
+$q.assert_contains "queued contains" "foobar" "oba"
+
+# Nothing should have printed yet — run the batch
+$q.run
+$q.summary
+
+# Verify the queue suite's counts
+into=v $q.get "passed"; $t.assert_eq "queue passed count" "$v" "6"
+into=v $q.get "failed"; $t.assert_eq "queue failed count" "$v" "0"
+
+# ============================================================================
+# Multiple Suites Don't Interfere
+# ============================================================================
+
+$t.section "Suite Isolation"
+# Our main suite's counts should not include the queue suite's assertions
+into=p $t.get "passed"
+# We've run a bunch — just make sure it's a reasonable number and not inflated
+# by the queue suite's 6
+$t.assert_ok "main suite count independent" test "$p" -lt 50
+
+$t.summary

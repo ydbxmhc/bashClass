@@ -1,0 +1,211 @@
+#!/bin/bash
+set -u
+
+# Math tests — TestSuite version
+
+. boop TestSuite Math
+
+into=t TestSuite name="Math Tests"
+
+# Use low precision for fast tests
+__Math.setPrecision 10
+
+# ============================================================================
+# Construction
+# ============================================================================
+
+$t.section "Construction"
+into=m1 Math 3.14;  into=v $m1.val; $t.assert_eq "3.14" "$v" "3.14"
+into=m2 Math 42;    into=v $m2.val; $t.assert_eq "integer 42" "$v" "42"
+into=m3 Math -7.5;  into=v $m3.val; $t.assert_eq "-7.5" "$v" "-7.5"
+into=m4 Math 0;     into=v $m4.val; $t.assert_eq "zero" "$v" "0"
+into=m5 Math 0.001; into=v $m5.val; $t.assert_eq "0.001" "$v" "0.001"
+into=m6 Math -0;    into=v $m6.val; $t.assert_eq "negative zero normalizes" "$v" "0"
+
+# ============================================================================
+# Addition
+# ============================================================================
+
+$t.section "Addition"
+into=a1 Math 1.5; into=a2 Math 2.3
+into=r $a1.add $a2; into=v $r.val; $t.assert_eq "1.5 + 2.3 = 3.8" "$v" "3.8"
+into=r $a1.add -1.5; into=v $r.val; $t.assert_eq "1.5 + (-1.5) = 0" "$v" "0"
+into=a5 Math -3.0; into=a6 Math -2.0
+into=r $a5.add $a6; into=v $r.val; $t.assert_eq "-3 + (-2) = -5" "$v" "-5"
+into=a8 Math 999; into=a9 Math 1
+into=r $a8.add $a9; into=v $r.val; $t.assert_eq "999 + 1 = 1000" "$v" "1000"
+into=a11 Math 0.1; into=a12 Math 0.2
+into=r $a11.add $a12; into=v $r.val; $t.assert_eq "0.1 + 0.2 = 0.3 (exact)" "$v" "0.3"
+
+# ============================================================================
+# Subtraction
+# ============================================================================
+
+$t.section "Subtraction"
+into=s1 Math 5.0; into=s2 Math 3.2
+into=r $s1.sub $s2; into=v $r.val; $t.assert_eq "5 - 3.2 = 1.8" "$v" "1.8"
+into=r $s2.sub $s1; into=v $r.val; $t.assert_eq "3.2 - 5 = -1.8" "$v" "-1.8"
+into=s5 Math 100; into=s6 Math 100
+into=r $s5.sub $s6; into=v $r.val; $t.assert_eq "100 - 100 = 0" "$v" "0"
+
+# ============================================================================
+# Multiplication
+# ============================================================================
+
+$t.section "Multiplication"
+into=mu1 Math 2.5; into=mu2 Math 4
+into=r $mu1.mul $mu2; into=v $r.val; $t.assert_eq "2.5 * 4 = 10" "$v" "10"
+into=mu4 Math -3; into=mu5 Math 7
+into=r $mu4.mul $mu5; into=v $r.val; $t.assert_eq "-3 * 7 = -21" "$v" "-21"
+into=mu7 Math 0.1; into=mu8 Math 0.1
+into=r $mu7.mul $mu8; into=v $r.val; $t.assert_eq "0.1 * 0.1 = 0.01" "$v" "0.01"
+into=mu10 Math 12345; into=mu11 Math 67890
+into=r $mu10.mul $mu11; into=v $r.val; $t.assert_eq "12345 * 67890 = 838102050" "$v" "838102050"
+
+# ============================================================================
+# Division
+# ============================================================================
+
+$t.section "Division"
+into=d1 Math 10; into=d2 Math 4
+into=r precision=10 $d1.div $d2; into=v $r.val
+$t.assert_eq "10 / 4 = 2.5" "$v" "2.5"
+into=d4 Math 1; into=d5 Math 3
+into=r precision=10 $d4.div $d5; into=v $r.val
+$t.assert_match "1 / 3 ≈ 0.333..." "$v" "0.333333333*"
+into=d7 Math 22; into=d8 Math 7
+into=r precision=15 $d7.div $d8; into=v $r.val
+$t.assert_match "22 / 7 ≈ 3.14285714..." "$v" "3.14285714*"
+
+# ============================================================================
+# Comparisons
+# ============================================================================
+
+$t.section "Comparisons"
+into=c1 Math 3.14; into=c2 Math 2.71; into=c3 Math 3.14
+$t.assert_ok "3.14 eq 3.14" $c1.eq $c3
+$t.assert_fail "3.14 eq 2.71" $c1.eq $c2
+$t.assert_ok "3.14 gt 2.71" $c1.gt $c2
+$t.assert_ok "2.71 lt 3.14" $c2.lt $c1
+$t.assert_ok "3.14 ge 3.14" $c1.ge $c3
+$t.assert_ok "3.14 le 3.14" $c1.le $c3
+into=c4 Math -5; into=c5 Math 3
+$t.assert_ok "-5 lt 3" $c4.lt $c5
+$t.assert_ok "3 gt -5" $c5.gt $c4
+
+# ============================================================================
+# Utilities
+# ============================================================================
+
+$t.section "Utilities"
+into=u1 Math -42.5
+into=r $u1.abs; into=v $r.val; $t.assert_eq "abs(-42.5) = 42.5" "$v" "42.5"
+into=u3 Math 7.7
+into=r $u3.neg; into=v $r.val; $t.assert_eq "neg(7.7) = -7.7" "$v" "-7.7"
+into=u5 Math 3.14159
+into=u6 $u5.toInt; $t.assert_eq "toInt(3.14159) = 3" "$u6" "3"
+
+# ============================================================================
+# Pi calculation
+# ============================================================================
+
+$t.section "Pi (10 digits)"
+into=pi10 Math.pi 10
+into=v $pi10.val
+$t.assert_match "pi(10) starts with 3.14159265" "$v" "3.14159265*"
+
+$t.section "Pi (20 digits)"
+into=pi20 Math.pi 20
+into=v $pi20.val
+$t.assert_match "pi(20) starts with 3.141592653589793238" "$v" "3.141592653589793238*"
+
+$t.section "Pi (50 digits)"
+into=pi50 Math.pi 50
+into=v $pi50.val
+$t.assert_match "pi(50) matches known value" "$v" "3.141592653589793238462643383279502884197169399375*"
+
+# ============================================================================
+# Square (loop)
+# ============================================================================
+
+$t.section "Square (loop)"
+for __sq_x in 1 2 3 4 5; do
+  into=__sq_m Math $__sq_x
+  into=__sq_r $__sq_m.square
+  into=v $__sq_r.val
+  $t.assert_eq "${__sq_x}² = $(( __sq_x * __sq_x ))" "$v" "$(( __sq_x * __sq_x ))"
+done
+
+# ============================================================================
+# Full-word instance methods
+# ============================================================================
+
+$t.section "Full-word instance methods"
+into=fw1 Math 10; into=fw2 Math 3
+into=r $fw1.subtract $fw2; into=v $r.val; $t.assert_eq "10.subtract(3) = 7" "$v" "7"
+into=r $fw1.multiply $fw2; into=v $r.val; $t.assert_eq "10.multiply(3) = 30" "$v" "30"
+into=r $fw1.divide $fw2; into=v $r.val
+$t.assert_match "10.divide(3) ≈ 3.333..." "$v" "3.333333333*"
+
+# ============================================================================
+# Static API
+# ============================================================================
+
+$t.section "Static API"
+into=v Math.add 1.5 2.3;      $t.assert_eq "Math.add 1.5 2.3 = 3.8" "$v" "3.8"
+into=v Math.subtract 10 3.5;  $t.assert_eq "Math.subtract 10 3.5 = 6.5" "$v" "6.5"
+into=v Math.multiply 2.5 4;   $t.assert_eq "Math.multiply 2.5 4 = 10" "$v" "10"
+into=v Math.divide 10 4;      $t.assert_eq "Math.divide 10 4 = 2.5" "$v" "2.5"
+into=v Math.square 7;         $t.assert_eq "Math.square 7 = 49" "$v" "49"
+into=v Math.abs -42.5;        $t.assert_eq "Math.abs -42.5 = 42.5" "$v" "42.5"
+into=v Math.neg 3.14;         $t.assert_eq "Math.neg 3.14 = -3.14" "$v" "-3.14"
+
+# ============================================================================
+# Symbol aliases
+# ============================================================================
+
+$t.section "Symbol aliases"
+into=v Math.+ 1.5 2.3; $t.assert_eq "Math.+ = 3.8" "$v" "3.8"
+into=v Math.- 10 3.5;  $t.assert_eq "Math.- = 6.5" "$v" "6.5"
+into=v Math.x 2.5 4;   $t.assert_eq "Math.x = 10" "$v" "10"
+into=v Math./ 10 4;    $t.assert_eq "Math./ = 2.5" "$v" "2.5"
+
+# ============================================================================
+# Math.DO (infix)
+# ============================================================================
+
+$t.section "Math.DO (infix)"
+into=v Math.DO 1.5 + 2.3;                    $t.assert_eq "1.5 + 2.3 = 3.8" "$v" "3.8"
+into=v Math.DO 2 + 3 x 4;                    $t.assert_eq "2 + 3 x 4 = 14 (precedence)" "$v" "14"
+into=v Math.DO "( 2 + 3 ) x 4";              $t.assert_eq "(2+3) x 4 = 20 (parens)" "$v" "20"
+into=v Math.DO 10 - 2 - 3;                   $t.assert_eq "10 - 2 - 3 = 5 (left assoc)" "$v" "5"
+into=v Math.DO 100 / 4 / 5;                  $t.assert_eq "100 / 4 / 5 = 5" "$v" "5"
+into=v Math.DO "( 1.5 + 2.5 ) x ( 3 - 1 )"; $t.assert_eq "(1.5+2.5)x(3-1) = 8" "$v" "8"
+into=v Math.DO "(2+3)x4";                    $t.assert_eq "packed (2+3)x4 = 20" "$v" "20"
+into=v Math.DO "10/2+3";                     $t.assert_eq "packed 10/2+3 = 8" "$v" "8"
+into=v Math.DO "3 + 4" x 2;                  $t.assert_eq "mixed '3 + 4' x 2 = 11" "$v" "11"
+into=v Math.DO "(-3)x4";                     $t.assert_eq "(-3)x4 = -12" "$v" "-12"
+into=v Math.DO -5 + 8;                       $t.assert_eq "-5 + 8 = 3" "$v" "3"
+
+# ============================================================================
+# Math.RPN (postfix)
+# ============================================================================
+
+$t.section "Math.RPN (postfix)"
+into=v Math.RPN 1.5 2.3 +;       $t.assert_eq "1.5 2.3 + = 3.8" "$v" "3.8"
+into=v Math.RPN 3 4 + 2 x;       $t.assert_eq "3 4 + 2 x = 14" "$v" "14"
+into=v Math.RPN "10 3 /";        $t.assert_match "10 3 / starts with 3.33" "$v" "3.33*"
+into=v Math.RPN 5 3 - 2 x 1 +;  $t.assert_eq "5 3 - 2 x 1 + = 5" "$v" "5"
+into=v Math.RPN "1.5 2.5" + "3" x; $t.assert_eq "mixed '1.5 2.5' + '3' x = 12" "$v" "12"
+
+# ============================================================================
+# Static square loop
+# ============================================================================
+
+$t.section "Static square loop"
+for __ssq_x in 1 2 3 4 5; do
+  into=v Math.square $__ssq_x
+  $t.assert_eq "Math.square $__ssq_x = $(( __ssq_x * __ssq_x ))" "$v" "$(( __ssq_x * __ssq_x ))"
+done
+
+$t.summary

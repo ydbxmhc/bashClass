@@ -1,0 +1,357 @@
+#!/bin/bash
+
+# TestSuite — structured test harness for boop
+#
+# Provides consistent assertion syntax, section grouping with timing,
+# pass/fail accumulation, and a clean summary. Tests boop with boop.
+#
+# Modes:
+#   immediate (default) — assertions execute and report as called
+#   queue               — assertions are registered, then run as a batch via $t.run
+#
+# Usage:
+#   . boop TestSuite
+#   into=t TestSuite name="My Tests"
+#   $t.section "Basics"
+#   $t.assert_eq "one is one" "1" "1"
+#   $t.assert_ok "true is true" true
+#   $t.summary
+
+# Load guard
+[[ -n "${__bashClass_registry[TestSuite]+set}" ]] && return 2>/dev/null
+
+. boop List Map
+
+# ============================================================================
+# TestSuite Class Descriptor
+# ============================================================================
+
+__bashClass_registry["TestSuite"]="|class=TestSuite|parent=bashClass\
+|methods=new,section,run,summary,assert_eq,assert_ne,assert_ok,assert_fail,assert_match,assert_contains,info\
+|properties=name,mode"
+
+# ============================================================================
+# Internal helpers — not methods, just functions
+# ============================================================================
+
+# Print a PASS line and increment the pass counter on the suite object.
+__TestSuite._pass() {
+  local __tsp_self="$1" __tsp_desc="$2"
+  printf "  PASS: %s\n" "$__tsp_desc"
+  local __tsp_p
+  __bashClass.parse "$__tsp_self" "passed" __tsp_p
+  : "${__tsp_p:=0}"
+  (( __tsp_p++ ))
+  self="$__tsp_self" class=TestSuite __bashClass.dispatch set passed "$__tsp_p"
+}
+
+# Print a FAIL line and increment the fail counter.
+__TestSuite._fail() {
+  local __tsf_self="$1" __tsf_desc="$2" __tsf_detail="${3:-}"
+  if [[ -n "$__tsf_detail" ]]; then
+    printf "  FAIL: %s — %s\n" "$__tsf_desc" "$__tsf_detail"
+  else
+    printf "  FAIL: %s\n" "$__tsf_desc"
+  fi
+  local __tsf_f
+  __bashClass.parse "$__tsf_self" "failed" __tsf_f
+  : "${__tsf_f:=0}"
+  (( __tsf_f++ ))
+  self="$__tsf_self" class=TestSuite __bashClass.dispatch set failed "$__tsf_f"
+}
+
+# ============================================================================
+# Constructor
+# ============================================================================
+
+TestSuite.new() {
+  local -I class
+  : "${class:=TestSuite}"
+  local __TS_new_self __TS_new_name="" __TS_new_mode="immediate"
+
+  for __TS_new_arg in "$@"; do
+    case "$__TS_new_arg" in
+      name=*)  __TS_new_name="${__TS_new_arg#name=}" ;;
+      mode=*)  __TS_new_mode="${__TS_new_arg#mode=}" ;;
+    esac
+  done
+
+  [[ -n "$__TS_new_name" ]] || __bashClass.crash "TestSuite: name is required"
+  [[ "$__TS_new_mode" == "immediate" || "$__TS_new_mode" == "queue" ]] || \
+    __bashClass.crash "TestSuite: mode must be 'immediate' or 'queue', got '$__TS_new_mode'"
+
+  into=__TS_new_self __bashClass.new \
+    name="$__TS_new_name" mode="$__TS_new_mode" passed=0 failed=0 \
+    section_name="" section_start="" suite_start="$EPOCHREALTIME" queue=""
+
+  # Create the queue List (only used in queue mode, but always available)
+  local __TS_new_queue
+  into=__TS_new_queue List
+  self="$__TS_new_self" class=TestSuite __bashClass.dispatch set queue "$__TS_new_queue"
+
+  printf "=== %s ===\n" "$__TS_new_name"
+
+  __bashClass.return "$__TS_new_self" ${into:-}
+}
+
+# ============================================================================
+# Section management
+# ============================================================================
+
+TestSuite.section() {
+  local -I self class
+  local __TS_sec_name="$1"
+
+  # If there was a previous section in immediate mode, print its elapsed time
+  local __TS_sec_prev_start
+  __bashClass.parse "$self" "section_start" __TS_sec_prev_start
+  if [[ -n "$__TS_sec_prev_start" ]]; then
+    local __TS_sec_mode
+    __bashClass.parse "$self" "mode" __TS_sec_mode
+    if [[ "$__TS_sec_mode" == "immediate" ]]; then
+      printf "  [%.3fs]\n" "$(( ${EPOCHREALTIME//.} - ${__TS_sec_prev_start//.} ))e-6"
+    fi
+  fi
+
+  printf "\n--- %s ---\n" "$__TS_sec_name"
+  self="$self" class="$class" __bashClass.dispatch set section_name "$__TS_sec_name"
+  self="$self" class="$class" __bashClass.dispatch set section_start "$EPOCHREALTIME"
+}
+
+# ============================================================================
+# Core assertion execution
+# ============================================================================
+
+# Execute a single assertion. Called directly in immediate mode,
+# or by $t.run for each queued assertion in queue mode.
+# Args: self type desc [arg1 arg2 ...]
+__TestSuite._exec() {
+  local __tsx_self="$1" __tsx_type="$2" __tsx_desc="$3"; shift 3
+
+  case "$__tsx_type" in
+    eq)
+      local __tsx_actual="$1" __tsx_expected="$2"
+      if [[ "$__tsx_actual" == "$__tsx_expected" ]]; then
+        __TestSuite._pass "$__tsx_self" "$__tsx_desc"
+      else
+        __TestSuite._fail "$__tsx_self" "$__tsx_desc" "expected '$__tsx_expected' got '$__tsx_actual'"
+      fi
+      ;;
+    ne)
+      local __tsx_actual="$1" __tsx_expected="$2"
+      if [[ "$__tsx_actual" != "$__tsx_expected" ]]; then
+        __TestSuite._pass "$__tsx_self" "$__tsx_desc"
+      else
+        __TestSuite._fail "$__tsx_self" "$__tsx_desc" "expected not '$__tsx_expected'"
+      fi
+      ;;
+    ok)
+      # Clear self/class so the user's command doesn't see TestSuite's
+      # identity leaking through the local -I chain. The baked wrappers
+      # on user objects hardcode their own self/class, but the typecast
+      # guard checks ${class:-...} which would pick up our leaked value.
+      self="" class="" "$@" 2>/dev/null
+      local -i __tsx_rc=$?
+      if (( __tsx_rc == 0 )); then
+        __TestSuite._pass "$__tsx_self" "$__tsx_desc"
+      else
+        __TestSuite._fail "$__tsx_self" "$__tsx_desc" "exit code $__tsx_rc"
+      fi
+      ;;
+    fail)
+      ( self="" class="" "$@" ) 2>/dev/null
+      local -i __tsx_rc=$?
+      if (( __tsx_rc != 0 )); then
+        __TestSuite._pass "$__tsx_self" "$__tsx_desc"
+      else
+        __TestSuite._fail "$__tsx_self" "$__tsx_desc" "expected non-zero exit, got 0"
+      fi
+      ;;
+    match)
+      local __tsx_value="$1" __tsx_pattern="$2"
+      if [[ "$__tsx_value" == $__tsx_pattern ]]; then
+        __TestSuite._pass "$__tsx_self" "$__tsx_desc"
+      else
+        __TestSuite._fail "$__tsx_self" "$__tsx_desc" "'$__tsx_value' doesn't match '$__tsx_pattern'"
+      fi
+      ;;
+    contains)
+      local __tsx_haystack="$1" __tsx_needle="$2"
+      if [[ "$__tsx_haystack" == *"$__tsx_needle"* ]]; then
+        __TestSuite._pass "$__tsx_self" "$__tsx_desc"
+      else
+        __TestSuite._fail "$__tsx_self" "$__tsx_desc" "'$__tsx_haystack' doesn't contain '$__tsx_needle'"
+      fi
+      ;;
+    info)
+      printf "  INFO: %s\n" "$__tsx_desc"
+      ;;
+  esac
+}
+
+# ============================================================================
+# Assertion routing — immediate or queue
+# ============================================================================
+
+# Route an assertion: execute immediately or queue it.
+# Args: self type desc [arg1 arg2 ...]
+__TestSuite._route() {
+  local __tsr_self="$1" __tsr_type="$2"
+  local __tsr_mode
+  __bashClass.parse "$__tsr_self" "mode" __tsr_mode
+
+  if [[ "$__tsr_mode" == "immediate" ]]; then
+    __TestSuite._exec "$@"
+  else
+    # Queue mode: store assertion as a Map in the queue List
+    local __tsr_map __tsr_queue
+    into=__tsr_map Map
+    self="" class="" $__tsr_map.set "type" "$__tsr_type"
+    self="" class="" $__tsr_map.set "desc" "$3"
+    # Store remaining args as pipe-delimited (they're already simple strings)
+    shift 3
+    local __tsr_args=""
+    local __tsr_i
+    for __tsr_i in "$@"; do
+      [[ -n "$__tsr_args" ]] && __tsr_args="$__tsr_args|$__tsr_i" || __tsr_args="$__tsr_i"
+    done
+    self="" class="" $__tsr_map.set "args" "$__tsr_args"
+    __bashClass.parse "$__tsr_self" "queue" __tsr_queue
+    self="" class="" $__tsr_queue.push "$__tsr_map"
+  fi
+}
+
+# ============================================================================
+# Public assertion methods
+# ============================================================================
+
+TestSuite.assert_eq() {
+  local -I self class
+  __TestSuite._route "$self" eq "$@"
+}
+
+TestSuite.assert_ne() {
+  local -I self class
+  __TestSuite._route "$self" ne "$@"
+}
+
+TestSuite.assert_ok() {
+  local -I self class
+  __TestSuite._route "$self" ok "$@"
+}
+
+TestSuite.assert_fail() {
+  local -I self class
+  __TestSuite._route "$self" fail "$@"
+}
+
+TestSuite.assert_match() {
+  local -I self class
+  __TestSuite._route "$self" match "$@"
+}
+
+TestSuite.assert_contains() {
+  local -I self class
+  __TestSuite._route "$self" contains "$@"
+}
+
+TestSuite.info() {
+  local -I self class
+  printf "  INFO: %s\n" "$1"
+}
+
+# ============================================================================
+# Queue execution (queue mode only)
+# ============================================================================
+
+TestSuite.run() {
+  local -I self class
+  local __TS_run_self="$self"
+  local __TS_run_queue __TS_run_len
+  __bashClass.parse "$__TS_run_self" "queue" __TS_run_queue
+  self="" class="" into=__TS_run_len $__TS_run_queue.length
+
+  local -i __TS_run_i
+  for (( __TS_run_i=0; __TS_run_i < __TS_run_len; __TS_run_i++ )); do
+    local __TS_run_map
+    self="" class="" into=__TS_run_map $__TS_run_queue.get $__TS_run_i
+
+    local __TS_run_type __TS_run_desc __TS_run_args_str
+    self="" class="" into=__TS_run_type $__TS_run_map.get "type"
+    self="" class="" into=__TS_run_desc $__TS_run_map.get "desc"
+    self="" class="" into=__TS_run_args_str $__TS_run_map.get "args"
+
+    # Split pipe-delimited args back into an array
+    local -a __TS_run_args=()
+    if [[ -n "$__TS_run_args_str" ]]; then
+      IFS='|' read -ra __TS_run_args <<< "$__TS_run_args_str"
+    fi
+
+    __TestSuite._exec "$__TS_run_self" "$__TS_run_type" "$__TS_run_desc" "${__TS_run_args[@]}"
+  done
+
+  # Clear the queue
+  self="" class="" $__TS_run_queue.clear
+
+  # Print section timing
+  local __TS_run_sec_start
+  __bashClass.parse "$__TS_run_self" "section_start" __TS_run_sec_start
+  if [[ -n "$__TS_run_sec_start" ]]; then
+    printf "  [%.3fs]\n" "$(( ${EPOCHREALTIME//.} - ${__TS_run_sec_start//.} ))e-6"
+  fi
+}
+
+# ============================================================================
+# Summary
+# ============================================================================
+
+TestSuite.summary() {
+  local -I self class
+
+  # Print final section timing if in immediate mode
+  local __TS_sum_mode __TS_sum_sec_start
+  __bashClass.parse "$self" "mode" __TS_sum_mode
+  __bashClass.parse "$self" "section_start" __TS_sum_sec_start
+  if [[ "$__TS_sum_mode" == "immediate" && -n "$__TS_sum_sec_start" ]]; then
+    printf "  [%.3fs]\n" "$(( ${EPOCHREALTIME//.} - ${__TS_sum_sec_start//.} ))e-6"
+  fi
+
+  local __TS_sum_name __TS_sum_p __TS_sum_f __TS_sum_start
+  __bashClass.parse "$self" "name" __TS_sum_name
+  __bashClass.parse "$self" "passed" __TS_sum_p
+  __bashClass.parse "$self" "failed" __TS_sum_f
+  __bashClass.parse "$self" "suite_start" __TS_sum_start
+  : "${__TS_sum_p:=0}" "${__TS_sum_f:=0}"
+  local -i __TS_sum_total=$(( __TS_sum_p + __TS_sum_f ))
+
+  printf "\n=== %s RESULTS ===\n" "$__TS_sum_name"
+  printf "  Passed: %d\n" "$__TS_sum_p"
+  printf "  Failed: %d\n" "$__TS_sum_f"
+  printf "  Total:  %d\n" "$__TS_sum_total"
+  printf "  Time:   %.3fs\n" "$(( ${EPOCHREALTIME//.} - ${__TS_sum_start//.} ))e-6"
+
+  if (( __TS_sum_f > 0 )); then
+    printf "\n  *** %d FAILURES ***\n" "$__TS_sum_f"
+    return 1
+  fi
+
+  printf "\n  All tests passed.\n"
+  return 0
+}
+
+# ============================================================================
+# Register Methods & Finalize
+# ============================================================================
+
+__bashClass.registerMethod TestSuite new             TestSuite.new
+__bashClass.registerMethod TestSuite section         TestSuite.section
+__bashClass.registerMethod TestSuite run             TestSuite.run
+__bashClass.registerMethod TestSuite summary         TestSuite.summary
+__bashClass.registerMethod TestSuite assert_eq       TestSuite.assert_eq
+__bashClass.registerMethod TestSuite assert_ne       TestSuite.assert_ne
+__bashClass.registerMethod TestSuite assert_ok       TestSuite.assert_ok
+__bashClass.registerMethod TestSuite assert_fail     TestSuite.assert_fail
+__bashClass.registerMethod TestSuite assert_match    TestSuite.assert_match
+__bashClass.registerMethod TestSuite assert_contains TestSuite.assert_contains
+__bashClass.registerMethod TestSuite info            TestSuite.info
+__bashClass.registerClass TestSuite

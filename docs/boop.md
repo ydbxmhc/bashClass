@@ -55,13 +55,13 @@ into=vol $c.volume              # vol="64"
 into=v $m.val                   # v="3.14"
 
 # Type checking walks the inheritance chain
-$c.isa Cube && echo "yes"      # yes
-$c.isa Box  && echo "yes"      # yes (Cube inherits Box)
-$c.isa Map  && echo "nope"     # (silence — returns 1)
+$c.isa Cube && printf "yes\n"   # yes
+$c.isa Box  && printf "yes\n"   # yes (Cube inherits Box)
+$c.isa Map  && printf "nope\n"  # (silence — returns 1)
 
 # Display
 into=s $c.toString pretty
-echo "$s"
+printf "%s\n" "$s"
 # Cube(_64d...) {
 #   size   = 4
 #   unit   = cm
@@ -128,11 +128,11 @@ Sometimes you just want the value on stdout. A few ways to get there:
 ```bash
 # Grab it, then print it
 into=vol $cube.volume
-echo "$vol"                     # 64
+printf "%s\n" "$vol"            # 64
 
 # Force stdout mode for one call — prints directly, no variable needed
 __bashClass_returnMode=stdout $cube.volume
-echo                            # (add a newline if you want one)
+printf "\n"                     # (add a newline if you want one)
 
 # That's a mouthful. Consider an alias:
 alias show='__bashClass_returnMode=stdout'
@@ -140,10 +140,10 @@ show $cube.volume               # same thing, less typing
 
 # Or use the global side-channel and print that
 $cube.volume
-echo "$__bashClass_RETURN"      # 64
+printf "%s\n" "$__bashClass_RETURN"  # 64
 
 # Subshell capture — classic bash, works anywhere
-echo "Volume: $( $cube.volume )"  # Volume: 64
+printf "Volume: %s\n" "$( $cube.volume )"  # Volume: 64
 ```
 
 The first two avoid subshells entirely. The `__bashClass_returnMode=stdout`
@@ -182,7 +182,7 @@ into=val $matrix.itemAt 0 1           # "2"
 
 ```bash
 $cube.volume
-echo "$__bashClass_RETURN"      # "64"
+printf "%s\n" "$__bashClass_RETURN"  # "64"
 ```
 
 When no `into=` is provided and you're in the main shell, the value
@@ -263,10 +263,10 @@ slower — use only when you actually need binary safety.
 ## Type Checking: `isa`
 
 ```bash
-$cube.isa Cube      && echo "yes"   # 0 (true)
-$cube.isa Box       && echo "yes"   # 0 (true — inherits)
-$cube.isa bashClass && echo "yes"   # 0 (true — everything does)
-$cube.isa Map       || echo "nope"  # 1 (false)
+$cube.isa Cube      && printf "yes\n"   # 0 (true)
+$cube.isa Box       && printf "yes\n"   # 0 (true — inherits)
+$cube.isa bashClass && printf "yes\n"   # 0 (true — everything does)
+$cube.isa Map       || printf "nope\n"  # 1 (false)
 
 # No argument = return the class name
 into=cls $cube.isa                  # cls="Cube"

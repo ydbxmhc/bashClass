@@ -1,0 +1,168 @@
+#!/bin/bash
+set -u
+
+# Box and Cube tests — TestSuite version
+
+. boop TestSuite Cube
+
+into=t TestSuite name="Box and Cube Tests"
+
+# ============================================================================
+# Setup
+# ============================================================================
+
+into=box Box length=5 width=3 height=7
+into=cube Cube size=4 unit=cm
+
+# ============================================================================
+# Box Geometry
+# ============================================================================
+
+$t.section "Box Geometry"
+into=v $box.top;     $t.assert_eq "top area 5x3" "$v" "15"
+into=v $box.end;     $t.assert_eq "end area 3x7" "$v" "21"
+into=v $box.side;    $t.assert_eq "side area 5x7" "$v" "35"
+into=v $box.bottom;  $t.assert_eq "bottom = top" "$v" "15"
+into=v $box.volume;  $t.assert_eq "volume 5x3x7" "$v" "105"
+
+# ============================================================================
+# Cube Geometry
+# ============================================================================
+
+$t.section "Cube Geometry"
+into=v $cube.get "size"; $t.assert_eq "size" "$v" "4"
+into=v $cube.get "unit"; $t.assert_eq "unit" "$v" "cm"
+into=v $cube.side;       $t.assert_eq "side area 4x4" "$v" "16"
+into=v $cube.top;        $t.assert_eq "top area 4x4" "$v" "16"
+into=v $cube.volume;     $t.assert_eq "volume 4x4x4" "$v" "64"
+
+# ============================================================================
+# Type Checking
+# ============================================================================
+
+$t.section "Type Checking"
+$t.assert_ok "cube isa Cube" $cube.isa Cube
+$t.assert_ok "cube isa Box" $cube.isa Box
+$t.assert_ok "cube isa bashClass" $cube.isa bashClass
+$t.assert_fail "cube not a String" $cube.isa String
+
+# ============================================================================
+# Property Mutation
+# ============================================================================
+
+$t.section "Property Mutation"
+into=v $box.get "length"; $t.assert_eq "length before" "$v" "5"
+$box.set "length" "10"
+into=v $box.get "length"; $t.assert_eq "length after set" "$v" "10"
+into=v $box.volume;       $t.assert_eq "volume after mutation" "$v" "210"
+
+# ============================================================================
+# toString
+# ============================================================================
+
+$t.section "toString"
+into=s $cube.toString
+$t.assert_contains "compact has class" "$s" "Cube("
+$t.assert_contains "compact has size" "$s" "size=4"
+into=s $cube.toString pretty
+$t.assert_contains "pretty has newlines" "$s" $'\n'
+
+# ============================================================================
+# Inheritance
+# ============================================================================
+
+$t.section "Inheritance"
+into=v $cube.get "size"; $t.assert_eq "inherited get works" "$v" "4"
+
+# ============================================================================
+# Multiple Objects
+# ============================================================================
+
+$t.section "Multiple Objects"
+into=b1 Box length=2 width=2 height=2
+into=b2 Box length=10 width=5 height=3
+into=c1 Cube size=3
+into=v $b1.volume;  $t.assert_eq "box1 volume" "$v" "8"
+into=v $b2.volume;  $t.assert_eq "box2 volume" "$v" "150"
+into=v $c1.volume;  $t.assert_eq "cube1 volume" "$v" "27"
+
+# ============================================================================
+# Typecasting
+# ============================================================================
+
+$t.section "Typecasting"
+into=v $cube.volume;          $t.assert_eq "cube as Cube" "$v" "64"
+into=v class=Box $cube.volume; $t.assert_eq "cube as Box" "$v" "64"
+
+# ============================================================================
+# Value Encoding
+# ============================================================================
+
+$t.section "Value Encoding"
+into=enc Box length=1 width=1 height=1
+$enc.set "color" "red|green=blue"
+into=v $enc.get "color"; $t.assert_eq "pipes and equals" "$v" "red|green=blue"
+$enc.set "color" "100%"
+into=v $enc.get "color"; $t.assert_eq "single percent" "$v" "100%"
+$enc.set "color" "100%%"
+into=v $enc.get "color"; $t.assert_eq "double percent" "$v" "100%%"
+$enc.set "color" "line1
+line2"
+into=v $enc.get "color"; $t.assert_eq "newlines" "$v" "line1
+line2"
+$enc.set "color" "col1	col2"
+into=v $enc.get "color"; $t.assert_eq "tabs" "$v" "col1	col2"
+
+# ============================================================================
+# Binary-safe Encoding
+# ============================================================================
+
+$t.section "Binary-safe Encoding"
+into=enc_val __bashClass.bencode "hello|world=foo%bar"
+into=dec_val __bashClass.bdecode "$enc_val"
+$t.assert_eq "bencode/bdecode round-trip" "$dec_val" "hello|world=foo%bar"
+
+# ============================================================================
+# Global new Function
+# ============================================================================
+
+$t.section "Global new"
+into=nb new Box length=6 width=4 height=2
+into=v $nb.volume; $t.assert_eq "new Box volume" "$v" "48"
+into=v $nb.get "length"; $t.assert_eq "new Box length" "$v" "6"
+into=nc new Cube size=5
+into=v $nc.volume; $t.assert_eq "new Cube volume" "$v" "125"
+$t.assert_ok "new Cube isa Cube" $nc.isa Cube
+
+# ============================================================================
+# Class-as-Constructor
+# ============================================================================
+
+$t.section "Class-as-Constructor"
+into=cb Box length=8 width=2 height=3
+into=v $cb.volume; $t.assert_eq "Box() volume" "$v" "48"
+into=cc Cube size=7
+into=v $cc.volume; $t.assert_eq "Cube() volume" "$v" "343"
+$t.assert_ok "Cube() isa Box" $cc.isa Box
+
+# ============================================================================
+# Lazy Stub Baking
+# ============================================================================
+
+$t.section "Lazy Stub Baking"
+into=sb new Box length=3 width=3 height=3
+into=v $sb.volume; $t.assert_eq "first call (stub)" "$v" "27"
+into=v $sb.volume; $t.assert_eq "second call (baked)" "$v" "27"
+$t.assert_ok "baked wrapper exists" declare -f "$sb.volume"
+
+# ============================================================================
+# Typecast with Baked Wrapper
+# ============================================================================
+
+$t.section "Typecast with Baked Wrapper"
+into=tc new Cube size=3
+into=v $tc.volume;          $t.assert_eq "as Cube" "$v" "27"
+into=v class=Box $tc.volume; $t.assert_eq "typecast to Box" "$v" "27"
+into=v $tc.volume;          $t.assert_eq "back to Cube" "$v" "27"
+
+$t.summary

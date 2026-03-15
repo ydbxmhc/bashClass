@@ -241,7 +241,7 @@ __bashClass.bencode() {
     -)    __bencode_val=$(base64 -w0) ;;
     *)    __bencode_val=$(printf '%s' "$1" | base64 -w0) ;;
   esac
-  __bashClass.return "$__bencode_val" "${2:-}"
+  __bashClass.return "$__bencode_val" ${into:-}
 }
 
 # Binary-safe decode: base64 via external tool.
@@ -262,7 +262,7 @@ __bashClass.bdecode() {
     -)    __bdecode_val=$(base64 -d) ;;
     *)    __bdecode_val=$(printf '%s' "$1" | base64 -d) ;;
   esac
-  __bashClass.return "$__bdecode_val" "${2:-}"
+  __bashClass.return "$__bdecode_val" ${into:-}
 }
 
 # ============================================================================
