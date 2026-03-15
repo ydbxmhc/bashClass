@@ -40,14 +40,8 @@
 # not affected unless explicitly rounded via $m.round.
 declare -gi __Math_precision=20
 
-# Default rounding behavior. 1 = round last digit (half-up), 0 = truncate.
-declare -gi __Math_round=1
-
 # Set global precision. Affects all subsequent inexact operations.
 __Math.setPrecision() { __Math_precision=$1; }
-
-# Set global rounding. 0 = truncate, 1 = round half-up.
-__Math.setRound() { __Math_round=$1; }
 
 # ============================================================================
 # Math Class Descriptor
@@ -378,8 +372,10 @@ __Math.strDiv() {
       fi
     done
 
-    if (( __div_qd == 0 && __div_qdigits == 0 && __div_past_decimal == 0 )); then
-      :
+    if (( __div_qd == 0 && __div_qdigits == 0 )); then
+      # Leading zero — don't count as a quotient digit, but track
+      # fractional position so the scale stays correct.
+      (( __div_past_decimal > 0 )) && (( __div_qscale++ ))
     else
       __div_quotient="${__div_quotient}${__div_qd}"
       (( __div_qdigits++ ))
@@ -630,12 +626,11 @@ __Math.i_mul() {
 
 # Divide: self / arg.
 # Respects precision= typecast or global __Math_precision.
-# Respects round= typecast or global __Math_round.
+# Always truncates to precision. Use $result.round N to round afterward.
 # Fast path: if dividend (after scale padding) fits in 64-bit, uses $(( )).
 __Math.i_div() {
   local -I self class
   local -i precision; : "${precision:=$__Math_precision}"
-  local -i round; : "${round:=$__Math_round}"
 
   local __div_dA __div_dB
   local -i __div_sA __div_sB __div_nA __div_nB
@@ -682,36 +677,11 @@ __Math.i_div() {
   local -i __div_rn=$(( __div_nA != __div_nB ? 1 : 0 ))
 
   # Round or truncate to requested precision
+  # Truncate to requested precision
   if (( ${#__div_q} > precision )); then
     local -i __div_removed=$(( ${#__div_q} - precision ))
-    if (( round )); then
-      # Round half-up via printf on the last 2 digits at the cut point.
-      # printf '%.0f' with a synthetic decimal handles the rounding natively.
-      local __div_end="${__div_q:precision-1:2}"
-      __div_q="${__div_q:0:precision-1}"
-      (( __div_qs -= __div_removed ))
-      local __div_rounded
-      printf -v __div_rounded '%.0f' "${__div_end/%?/.&}"
-      if (( ${#__div_rounded} > 1 )); then
-        # Rounded "X9.5+" → carry. Propagate through trailing 9s.
-        if [[ "$__div_q" == *[!9]* ]]; then
-          local __div_nines="${__div_q##*[!9]}"
-          local -i __div_hlen=$(( ${#__div_q} - ${#__div_nines} ))
-          local -i __div_bump=$(( ${__div_q:__div_hlen-1:1} + 1 ))
-          printf -v __div_q '%s%d%0*d' "${__div_q:0:__div_hlen-1}" $__div_bump ${#__div_nines} 0
-        else
-          # Entire prefix is 9s — carry extends the number
-          printf -v __div_q '1%0*d' ${#__div_q} 0
-          (( __div_qs-- ))
-        fi
-        __div_q="${__div_q}0"
-      else
-        __div_q="${__div_q}${__div_rounded}"
-      fi
-    else
-      __div_q="${__div_q:0:precision}"
-      (( __div_qs -= __div_removed ))
-    fi
+    __div_q="${__div_q:0:precision}"
+    (( __div_qs -= __div_removed ))
     (( __div_qs < 0 )) && __div_qs=0
   fi
 
@@ -843,6 +813,7 @@ __Math.i_neg() {
 }
 
 # Round to N significant digits. Returns a new Math object.
+# Uses round-half-up: if the digit past the cut point is >= 5, bump up.
 Math.round() {
   local -I self class
   local -i __rnd_prec="${1:-$__Math_precision}"
@@ -852,29 +823,29 @@ Math.round() {
   local -i __rnd_len=${#__rnd_d}
   (( __rnd_len <= __rnd_prec )) && { __Math.fromParts "$__rnd_d" $__rnd_s $__rnd_n ${into:-}; return; }
 
-  # Check rounding digit
+  # Digit just past the cut point decides rounding
   local -i __rnd_check=${__rnd_d:__rnd_prec:1}
   __rnd_d="${__rnd_d:0:__rnd_prec}"
 
   if (( __rnd_check >= 5 )); then
-    # Round half-up via printf on the last 2 digits at the cut point.
-    local __rnd_end="${__rnd_d: -1}${__rnd_check}"
-    __rnd_d="${__rnd_d:0:${#__rnd_d}-1}"
-    local __rnd_rounded
-    printf -v __rnd_rounded '%.0f' "${__rnd_end/%?/.&}"
-    if (( ${#__rnd_rounded} > 1 )); then
-      # Carry — propagate through trailing 9s
+    # Increment the last kept digit. If it's 9, carry propagates.
+    local -i __rnd_last=${__rnd_d: -1}
+    if (( __rnd_last < 9 )); then
+      # Simple case: just bump the last digit
+      __rnd_d="${__rnd_d:0:${#__rnd_d}-1}$(( __rnd_last + 1 ))"
+    else
+      # Last digit is 9 — need to propagate carry through trailing 9s
+      __rnd_d="${__rnd_d:0:${#__rnd_d}-1}"
       if [[ "$__rnd_d" == *[!9]* ]]; then
         local __rnd_nines="${__rnd_d##*[!9]}"
         local -i __rnd_hlen=$(( ${#__rnd_d} - ${#__rnd_nines} ))
         local -i __rnd_bump=$(( ${__rnd_d:__rnd_hlen-1:1} + 1 ))
         printf -v __rnd_d '%s%d%0*d' "${__rnd_d:0:__rnd_hlen-1}" $__rnd_bump ${#__rnd_nines} 0
       else
+        # Entire prefix is 9s — carry extends the number
         printf -v __rnd_d '1%0*d' ${#__rnd_d} 0
       fi
       __rnd_d="${__rnd_d}0"
-    else
-      __rnd_d="${__rnd_d}${__rnd_rounded}"
     fi
   fi
 
@@ -1084,15 +1055,14 @@ __Math.rawMulSmall() {
 }
 
 # Raw div: (dA,sA,nA) / (dB,sB,nB) → (dR,sR,nR)
-# Aligns scales, performs string division, then rounds or truncates to
+# Aligns scales, performs string division, then truncates to
 # the requested precision. Same logic as Math.div but without objects.
-# $10 = precision (default __Math_precision), $11 = round flag (default __Math_round).
+# $10 = precision (default __Math_precision).
 __Math.rawDiv() {
   local __rd_dA="$1" __rd_dB="$4"
   local -i __rd_sA="$2" __rd_nA="$3" __rd_sB="$5" __rd_nB="$6"
   local -n __rd_od="${7}" __rd_os="${8}" __rd_on="${9}"
   local -i __rd_prec="${10:-$__Math_precision}"
-  local -i __rd_round="${11:-$__Math_round}"
 
   [[ "$__rd_dB" == "0" ]] && __bashClass.crash "Math: division by zero"
 
@@ -1103,33 +1073,11 @@ __Math.rawDiv() {
 
   __rd_on=$(( __rd_nA != __rd_nB ? 1 : 0 ))
 
+  # Truncate to requested precision
   if (( ${#__rd_od} > __rd_prec )); then
     local -i __rd_removed=$(( ${#__rd_od} - __rd_prec ))
-    if (( __rd_round )); then
-      local __rd_end="${__rd_od:__rd_prec-1:2}"
-      __rd_od="${__rd_od:0:__rd_prec-1}"
-      (( __rd_qs -= __rd_removed ))
-      local __rd_rounded
-      printf -v __rd_rounded '%.0f' "${__rd_end/%?/.&}"
-      if (( ${#__rd_rounded} > 1 )); then
-        # Carry — propagate through trailing 9s
-        if [[ "$__rd_od" == *[!9]* ]]; then
-          local __rd_nines="${__rd_od##*[!9]}"
-          local -i __rd_hlen=$(( ${#__rd_od} - ${#__rd_nines} ))
-          local -i __rd_bump=$(( ${__rd_od:__rd_hlen-1:1} + 1 ))
-          printf -v __rd_od '%s%d%0*d' "${__rd_od:0:__rd_hlen-1}" $__rd_bump ${#__rd_nines} 0
-        else
-          printf -v __rd_od '1%0*d' ${#__rd_od} 0
-          (( __rd_qs-- ))
-        fi
-        __rd_od="${__rd_od}0"
-      else
-        __rd_od="${__rd_od}${__rd_rounded}"
-      fi
-    else
-      __rd_od="${__rd_od:0:__rd_prec}"
-      (( __rd_qs -= __rd_removed ))
-    fi
+    __rd_od="${__rd_od:0:__rd_prec}"
+    (( __rd_qs -= __rd_removed ))
     (( __rd_qs < 0 )) && __rd_qs=0
   fi
 
@@ -1139,12 +1087,12 @@ __Math.rawDiv() {
 
 # Raw div by small integer: (dA,sA,nA) / int → (dR,sR,nR)
 # Converts the small int to a triple and delegates to rawDiv.
-# $8 = precision override, $9 = round flag override.
+# $8 = precision override.
 __Math.rawDivSmall() {
   local -i __rds_n="${4}"
   local -i __rds_nB=0
   (( __rds_n < 0 )) && { __rds_nB=1; __rds_n=$(( -__rds_n )); }
-  __Math.rawDiv "$1" "$2" "$3" "$__rds_n" 0 $__rds_nB "$5" "$6" "$7" "${8:-}" "${9:-}"
+  __Math.rawDiv "$1" "$2" "$3" "$__rds_n" 0 $__rds_nB "$5" "$6" "$7" "${8:-}"
 }
 
 # ============================================================================
@@ -1189,6 +1137,18 @@ __Math.arctan_recip() {
   # 1/n → power triple
   __Math.rawDiv "1" 0 0 "$__at_n" 0 0 __at_pd __at_ps __at_pn $__at_workprec
 
+  # Pad to working precision — exact divisions like 1/5 = 0.2 return
+  # minimal digit strings. Without padding, the power accumulator
+  # carries only 1 significant digit through every multiply, and
+  # precision is lost catastrophically.
+  if (( ${#__at_pd} < __at_workprec )); then
+    local -i __at_padneed=$(( __at_workprec - ${#__at_pd} ))
+    local __at_padzeros
+    printf -v __at_padzeros "%0${__at_padneed}d" 0
+    __at_pd="${__at_pd}${__at_padzeros}"
+    (( __at_ps += __at_padneed ))
+  fi
+
   # sum = power (copy)
   __at_sd="$__at_pd"; __at_ss=$__at_ps; __at_sn=$__at_pn
 
@@ -1197,6 +1157,15 @@ __Math.arctan_recip() {
   local -i __at_is __at_in
   local -i __at_nsq=$(( __at_n * __at_n ))
   __Math.rawDiv "1" 0 0 "$__at_nsq" 0 0 __at_id __at_is __at_in $__at_workprec
+
+  # Same padding for inv_nsq
+  if (( ${#__at_id} < __at_workprec )); then
+    local -i __at_idpadneed=$(( __at_workprec - ${#__at_id} ))
+    local __at_idpadzeros
+    printf -v __at_idpadzeros "%0${__at_idpadneed}d" 0
+    __at_id="${__at_id}${__at_idpadzeros}"
+    (( __at_is += __at_idpadneed ))
+  fi
 
   local -i __at_k=1 __at_sign=-1
 
@@ -1283,7 +1252,7 @@ Math.pi() {
     return
   fi
 
-  local -i __pi_workprec=$(( __pi_prec + 10 ))
+  local -i __pi_workprec=$(( __pi_prec + 15 ))
 
   # arctan(1/5) and arctan(1/239) — raw triple loops internally
   local __pi_at5 __pi_at239
@@ -1311,31 +1280,19 @@ Math.pi() {
   local -i __pi_rs __pi_rn
   __Math.rawSub "$__pi_rd1" $__pi_rs1 $__pi_rn1 "$__pi_rd2" $__pi_rs2 $__pi_rn2 __pi_rd __pi_rs __pi_rn
 
-  # Build object, round or truncate to requested precision
+  # Build object, truncate to requested precision
   local __pi_result
   __Math.fromParts "$__pi_rd" $__pi_rs $__pi_rn __pi_result
 
-  # Math.round does half-up rounding. When rounding is disabled globally,
-  # we still truncate to the requested precision for clean output — just
-  # without the round-up step. Math.round always rounds, so we only call
-  # it when __Math_round is on; otherwise truncate by re-extracting and
-  # trimming the digit string.
-  if (( __Math_round )); then
-    local __pi_rounded
-    into=__pi_rounded self="$__pi_result" class=Math Math.round $__pi_prec
-    __pi_result="$__pi_rounded"
-  else
-    # Truncate to precision significant digits (no rounding)
-    local __pi_td; local -i __pi_ts __pi_tn
-    __Math.resolve "$__pi_result" __pi_td __pi_ts __pi_tn
-    if (( ${#__pi_td} > __pi_prec )); then
-      local -i __pi_cut=$(( ${#__pi_td} - __pi_prec ))
-      __pi_td="${__pi_td:0:__pi_prec}"
-      (( __pi_ts -= __pi_cut ))
-      (( __pi_ts < 0 )) && __pi_ts=0
-    fi
-    __Math.fromParts "$__pi_td" $__pi_ts $__pi_tn __pi_result
+  local __pi_td; local -i __pi_ts __pi_tn
+  __Math.resolve "$__pi_result" __pi_td __pi_ts __pi_tn
+  if (( ${#__pi_td} > __pi_prec )); then
+    local -i __pi_cut=$(( ${#__pi_td} - __pi_prec ))
+    __pi_td="${__pi_td:0:__pi_prec}"
+    (( __pi_ts -= __pi_cut ))
+    (( __pi_ts < 0 )) && __pi_ts=0
   fi
+  __Math.fromParts "$__pi_td" $__pi_ts $__pi_tn __pi_result
 
   __bashClass_static[$__pi_cachekey]="$__pi_result"
   __bashClass.return "$__pi_result" ${into:-}
@@ -1495,8 +1452,7 @@ __Math.staticBinOp() {
          __Math.rawSub "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn ;;
     mul) __Math.rawMul "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn ;;
     div) local -i __sbo_prec=${precision:-$__Math_precision}
-         local -i __sbo_round=${round:-$__Math_round}
-         __Math.rawDiv "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn $__sbo_prec $__sbo_round ;;
+         __Math.rawDiv "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn $__sbo_prec ;;
     mod) [[ "$__sbo_dB" == "0" ]] && __bashClass.crash "Math: modulo by zero"
          __Math.alignScale __sbo_dA __sbo_sA __sbo_dB __sbo_sB
          local -i __sbo_iA __sbo_iB

@@ -24,11 +24,12 @@ into=m Math 0.001
 
 ```bash
 __Math.setPrecision 50      # significant digits for inexact ops (default: 20)
-__Math.setRound 0           # 0 = truncate, 1 = round half-up (default: 1)
 ```
 
 Precision affects division, pi, and other operations that can produce
 infinite results. Exact operations (add, subtract, multiply) are not affected.
+All operations truncate by default. Use `Math.round` or `$obj.round N` to
+round a result explicitly.
 
 ## Static API — Class-Level Functions
 
