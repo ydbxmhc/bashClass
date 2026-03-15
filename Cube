@@ -21,15 +21,21 @@ __bashClass_registry["Cube"]="|class=Cube|parent=Box|methods=new,side,top,end,bo
 Cube.new() {
   local -I class
   : "${class:=Cube}"
-  local __Cube_new_size=1 __Cube_new_self
+  local __Cube_new_size="" __Cube_new_self
 
   # Extract size from arguments
   for __Cube_new_arg in "$@"; do
-    [[ "$__Cube_new_arg" =~ ^size=([0-9]+)$ ]] && __Cube_new_size="${BASH_REMATCH[1]}"
+    if [[ "$__Cube_new_arg" =~ ^size= ]]; then
+      [[ "$__Cube_new_arg" =~ ^size=([0-9]+)$ ]] || \
+        __bashClass.crash "Cube: size requires a positive integer, got '$__Cube_new_arg'"
+      __Cube_new_size="${BASH_REMATCH[1]}"
+    fi
   done
 
+  [[ -n "$__Cube_new_size" ]] || __bashClass.crash "Cube: size is required"
+
   # Delegate to base constructor with derived dimensions
-  into=__Cube_new_self __bashClass.new "$@" length=$__Cube_new_size width=$__Cube_new_size height=$__Cube_new_size
+  into=__Cube_new_self __bashClass.new "$@" size=$__Cube_new_size length=$__Cube_new_size width=$__Cube_new_size height=$__Cube_new_size
   __bashClass.return "$__Cube_new_self" ${into:-}
 }
 

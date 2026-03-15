@@ -43,6 +43,9 @@
 - **toScale carry fix** — rounding carry (e.g., 999.999→1000) now preserves requested decimal places
 - **Box.new comment lie** fixed
 - **docs/** created for all classes (Box, Cube, Container, List, Map, Math)
+- **docs/boop.md** — comprehensive framework reference (return system, class authoring, naming conventions, internals, gotchas)
+- **README.md** rewritten — bash 5+ requirement, quick start, class walkthrough, doc links, current test counts
+- **REFACTOR_STATUS.md** replaced with redirect — content migrated to PLAN.md and docs/boop.md
 
 ### Known Bugs — None Currently
 
@@ -128,12 +131,10 @@ declare -gr __bashClass_version="0.1.0"
 No enforcement needed yet. Lets downstream scripts check compatibility.
 Semantic versioning from the start — worth the five seconds it takes.
 
-### README Expansion
-Current README is good. Needs:
-- Explicit bash 5+ requirement *and why* (macOS ships 3.2, GPL3 issue)
-- Known performance characteristics (Math/pi digits-per-second ballpark)
-- BOOP_CLASSPATH documentation once it exists
-- Brief "how to write a class" walkthrough beyond the quick example
+### README Expansion ✓ DONE
+README rewritten with bash 5+ requirement, quick start, class authoring
+walkthrough, and links to detailed docs. Full framework reference in
+`docs/boop.md`. BOOP_CLASSPATH docs deferred until implemented.
 
 ---
 
@@ -179,7 +180,7 @@ Post it with a straight face and let the thread do the work.
 - `__bashClass.return` filesystem mode: `__bashClass.returnPath` from call stack introspection
 - `boop` TODO: typecast interface variable naming convention (`_Input` vs `_input` etc.)
 - Doubly-linked List: decide before implementing LinkedList @@
-- Clean up `REFACTOR_STATUS.md` — largely superseded by this file @@
+- ~~Clean up `REFACTOR_STATUS.md`~~ — replaced with redirect to PLAN.md and docs/boop.md
 - Clean up stale log files (`math_out.log`, `pi_growth.log`, `tc_debug.log`) @@
 - `test_matrix` — not in the test count table; verify it still runs @@
 

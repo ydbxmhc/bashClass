@@ -634,12 +634,19 @@ __bashClass.new() {
   # Build descriptor
   local __new_descriptor="|class=$class"
 
-  # Parse arguments and encode values
+  # Parse arguments and encode values.
+  # If a key already exists in the descriptor (e.g., a subclass passes
+  # length= after the caller already passed length=), replace in-place
+  # so parse always finds the correct value. Same logic as set().
   local __new_encoded __new_prop __new_val
   for __new_arg in "$@"; do
     IFS='=' read -r __new_prop __new_val <<< "$__new_arg"
     __bashClass.encode "$__new_val" __new_encoded
-    __new_descriptor="$__new_descriptor|$__new_prop=$__new_encoded"
+    if [[ "$__new_descriptor" =~ \|${__new_prop}=[^|]* ]]; then
+      __new_descriptor="${__new_descriptor/${BASH_REMATCH[0]}/|${__new_prop}=${__new_encoded}}"
+    else
+      __new_descriptor="$__new_descriptor|$__new_prop=$__new_encoded"
+    fi
   done
 
   # Register object
