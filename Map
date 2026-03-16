@@ -44,8 +44,8 @@ __bashClass_registry["Map"]="|class=Map|parent=Container|methods=new,get,set,del
 #
 # Usage: into=mymap Map
 Map.new() {
-  local -I class
-  : "${class:=Map}"
+  local -I _Class
+  : "${_Class:=Map}"
   local __Map_new_self
   into=__Map_new_self __bashClass.new type=associative "$@"
   declare -gA "__bashClass_data_${__Map_new_self}"
@@ -61,9 +61,9 @@ Map.new() {
 #
 # Usage: into=val $map.get "host"
 Map.get() {
-  local -I self class
+  local -I _Self _Class
   local __Map_get_key="$1"
-  local -n __Map_get_arr="__bashClass_data_${self}"
+  local -n __Map_get_arr="__bashClass_data_${_Self}"
   __bashClass.return "${__Map_get_arr[$__Map_get_key]:-}" ${into:-}
 }
 
@@ -75,10 +75,10 @@ Map.get() {
 #
 # Usage: $map.set "host" "localhost"
 Map.set() {
-  local -I self class
+  local -I _Self _Class
   local __Map_set_key="$1" __Map_set_val="$2"
-  local -n __Map_set_arr="__bashClass_data_${self}"
-  local -n __Map_set_keys="__bashClass_keys_${self}"
+  local -n __Map_set_arr="__bashClass_data_${_Self}"
+  local -n __Map_set_keys="__bashClass_keys_${_Self}"
 
   # If key is new, append to ordered key list
   if [[ -z "${__Map_set_arr[$__Map_set_key]+set}" ]]; then
@@ -95,10 +95,10 @@ Map.set() {
 #
 # Usage: $map.delete "debug"
 Map.delete() {
-  local -I self class
+  local -I _Self _Class
   local __Map_del_key="$1"
-  local -n __Map_del_arr="__bashClass_data_${self}"
-  local -n __Map_del_keys="__bashClass_keys_${self}"
+  local -n __Map_del_arr="__bashClass_data_${_Self}"
+  local -n __Map_del_keys="__bashClass_keys_${_Self}"
 
   unset "__Map_del_arr[$__Map_del_key]"
 
@@ -117,8 +117,8 @@ Map.delete() {
 #
 # Usage: into=len $map.length
 Map.length() {
-  local -I self class
-  local -n __Map_length_arr="__bashClass_data_${self}"
+  local -I _Self _Class
+  local -n __Map_length_arr="__bashClass_data_${_Self}"
   local -i __Map_length_len=0; [[ -n "${!__Map_length_arr[@]}" ]] && __Map_length_len=${#__Map_length_arr[@]}
   __bashClass.return "$__Map_length_len" ${into:-}
 }
@@ -127,9 +127,9 @@ Map.length() {
 #
 # Usage: $map.clear
 Map.clear() {
-  local -I self class
-  local -n __Map_clear_arr="__bashClass_data_${self}"
-  local -n __Map_clear_keys="__bashClass_keys_${self}"
+  local -I _Self _Class
+  local -n __Map_clear_arr="__bashClass_data_${_Self}"
+  local -n __Map_clear_keys="__bashClass_keys_${_Self}"
   __Map_clear_arr=()
   __Map_clear_keys=()
 }
@@ -138,9 +138,9 @@ Map.clear() {
 #
 # Usage: $map.has "host" && printf "host is configured"
 Map.has() {
-  local -I self class
+  local -I _Self _Class
   local __Map_has_key="$1"
-  local -n __Map_has_arr="__bashClass_data_${self}"
+  local -n __Map_has_arr="__bashClass_data_${_Self}"
   [[ -n "${__Map_has_arr[$__Map_has_key]+set}" ]] && return 0 || return 1
 }
 
@@ -148,8 +148,8 @@ Map.has() {
 #
 # Usage: into=k $map.keys
 Map.keys() {
-  local -I self class
-  local -n __Map_keys_keys="__bashClass_keys_${self}"
+  local -I _Self _Class
+  local -n __Map_keys_keys="__bashClass_keys_${_Self}"
   local __Map_keys_out
   if ! [[ -n "${!__Map_keys_keys[@]}" ]] || (( ${#__Map_keys_keys[@]} == 0 )); then
     __bashClass.return "" ${into:-}
@@ -167,9 +167,9 @@ Map.keys() {
 #
 # Usage: into=v $map.values
 Map.values() {
-  local -I self class
-  local -n __Map_values_arr="__bashClass_data_${self}"
-  local -n __Map_values_keys="__bashClass_keys_${self}"
+  local -I _Self _Class
+  local -n __Map_values_arr="__bashClass_data_${_Self}"
+  local -n __Map_values_keys="__bashClass_keys_${_Self}"
   local __Map_values_out=""
   if ! [[ -n "${!__Map_values_keys[@]}" ]] || (( ${#__Map_values_keys[@]} == 0 )); then
     __bashClass.return "" ${into:-}
@@ -189,9 +189,9 @@ Map.values() {
 #
 # Usage: into=entries $map.toArray
 Map.toArray() {
-  local -I self class
-  local -n __Map_toArray_arr="__bashClass_data_${self}"
-  local -n __Map_toArray_keys="__bashClass_keys_${self}"
+  local -I _Self _Class
+  local -n __Map_toArray_arr="__bashClass_data_${_Self}"
+  local -n __Map_toArray_keys="__bashClass_keys_${_Self}"
   local __Map_toArray_out="" __Map_toArray_key __Map_toArray_first=1
   if [[ -n "${!__Map_toArray_keys[@]}" ]]; then
     for __Map_toArray_key in "${__Map_toArray_keys[@]}"; do
@@ -210,10 +210,10 @@ Map.toArray() {
 #
 # Usage: $map.toString
 Map.toString() {
-  local -I self class
-  local -n __Map_ts_arr="__bashClass_data_${self}"
-  local -n __Map_ts_keys="__bashClass_keys_${self}"
-  local __Map_ts_out="Map($self){ " __Map_ts_key __Map_ts_first=1
+  local -I _Self _Class
+  local -n __Map_ts_arr="__bashClass_data_${_Self}"
+  local -n __Map_ts_keys="__bashClass_keys_${_Self}"
+  local __Map_ts_out="Map($_Self){ " __Map_ts_key __Map_ts_first=1
   if [[ -n "${!__Map_ts_keys[@]}" ]]; then
     for __Map_ts_key in "${__Map_ts_keys[@]}"; do
       (( __Map_ts_first )) || __Map_ts_out="$__Map_ts_out, "
@@ -232,10 +232,10 @@ Map.toString() {
 #
 # Usage: $map.each my_callback
 Map.each() {
-  local -I self class
+  local -I _Self _Class
   local __Map_each_fn="$1"
-  local -n __Map_each_arr="__bashClass_data_${self}"
-  local -n __Map_each_keys="__bashClass_keys_${self}"
+  local -n __Map_each_arr="__bashClass_data_${_Self}"
+  local -n __Map_each_keys="__bashClass_keys_${_Self}"
   [[ -n "${!__Map_each_keys[@]}" ]] || return 0
   local __Map_each_key
   for __Map_each_key in "${__Map_each_keys[@]}"; do

@@ -15,7 +15,7 @@ __bashClass_registry["Card"]="|class=Card|parent=bashClass\
 |properties=suit,rank,faceUp"
 
 Card.new() {
-  local -I class; : "${class:=Card}"
+  local -I _Class; : "${_Class:=Card}"
   local __Card_new_self __Card_new_suit="" __Card_new_rank="" __Card_new_faceUp=0
   for __Card_new_arg in "$@"; do
     case "$__Card_new_arg" in
@@ -31,18 +31,18 @@ Card.new() {
 }
 
 Card.flip() {
-  local -I self class
-  local __Card_flip_fu; __bashClass.parse "$self" "faceUp" __Card_flip_fu
+  local -I _Self _Class
+  local __Card_flip_fu; __bashClass.parse "$_Self" "faceUp" __Card_flip_fu
   if [[ "$__Card_flip_fu" == "1" ]]; then
-    $self.set faceUp 0
+    $_Self.set faceUp 0
   else
-    $self.set faceUp 1
+    $_Self.set faceUp 1
   fi
 }
 
 Card.val() {
-  local -I self class
-  local __Card_val_rank; __bashClass.parse "$self" "rank" __Card_val_rank
+  local -I _Self _Class
+  local __Card_val_rank; __bashClass.parse "$_Self" "rank" __Card_val_rank
   case "$__Card_val_rank" in
     [2-9]) __bashClass.return "$__Card_val_rank" ${into:-} ;;
     10)    __bashClass.return "10" ${into:-} ;;
@@ -51,15 +51,15 @@ Card.val() {
 }
 
 Card.toString() {
-  local -I self class
-  local __Card_ts_fu; __bashClass.parse "$self" "faceUp" __Card_ts_fu
+  local -I _Self _Class
+  local __Card_ts_fu; __bashClass.parse "$_Self" "faceUp" __Card_ts_fu
   if [[ "$__Card_ts_fu" != "1" ]]; then
     __bashClass.return "[?]" ${into:-}
     return
   fi
   local __Card_ts_rank __Card_ts_suit
-  __bashClass.parse "$self" "rank" __Card_ts_rank
-  __bashClass.parse "$self" "suit" __Card_ts_suit
+  __bashClass.parse "$_Self" "rank" __Card_ts_rank
+  __bashClass.parse "$_Self" "suit" __Card_ts_suit
   __bashClass.return "${__Card_ts_rank}${__Card_ts_suit}" ${into:-}
 }
 
@@ -78,11 +78,11 @@ __bashClass_registry["FaceCard"]="|class=FaceCard|parent=Card\
 |properties=suit,rank,faceUp"
 
 FaceCard.new() {
-  local -I class; class=FaceCard; Card.new "$@"
+  local -I _Class; _Class=FaceCard; Card.new "$@"
 }
 
 FaceCard.val() {
-  local -I self class
+  local -I _Self _Class
   __bashClass.return "10" ${into:-}
 }
 
@@ -99,11 +99,11 @@ __bashClass_registry["Ace"]="|class=Ace|parent=Card\
 |properties=suit,rank,faceUp"
 
 Ace.new() {
-  local -I class; class=Ace; Card.new "$@"
+  local -I _Class; _Class=Ace; Card.new "$@"
 }
 
 Ace.val() {
-  local -I self class
+  local -I _Self _Class
   __bashClass.return "11" ${into:-}
 }
 

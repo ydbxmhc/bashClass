@@ -138,11 +138,11 @@ $t.assert_eq "parse unregistered key returns empty" "$__pval" ""
 # ============================================================================
 
 $t.section "dispatch"
-$t.assert_fail "dispatch nonexistent method" bash -c '. boop Cube; new Box length=1 width=1 height=1; class=Box __bashClass.dispatch explode'
-$t.assert_fail "dispatch with invalid class (has dash)" bash -c '. boop Cube; class=my-class __bashClass.dispatch new'
-$t.assert_fail "dispatch with empty method" bash -c '. boop Cube; class=Box __bashClass.dispatch ""'
-$t.assert_fail "dispatch method injection: volume;ls" bash -c '. boop Cube; class=Box __bashClass.dispatch "volume;ls"'
-$t.assert_fail "dispatch to unregistered class" bash -c '. boop Cube; class=Sphere __bashClass.dispatch new'
+$t.assert_fail "dispatch nonexistent method" bash -c '. boop Cube; new Box length=1 width=1 height=1; _Class=Box __bashClass.dispatch explode'
+$t.assert_fail "dispatch with invalid class (has dash)" bash -c '. boop Cube; _Class=my-class __bashClass.dispatch new'
+$t.assert_fail "dispatch with empty method" bash -c '. boop Cube; _Class=Box __bashClass.dispatch ""'
+$t.assert_fail "dispatch method injection: volume;ls" bash -c '. boop Cube; _Class=Box __bashClass.dispatch "volume;ls"'
+$t.assert_fail "dispatch to unregistered class" bash -c '. boop Cube; _Class=Sphere __bashClass.dispatch new'
 
 # ============================================================================
 # SECTION 6: registerMethod — bad inputs
@@ -182,11 +182,11 @@ $__ccube.volume
 $t.assert_eq "Cube class-as-constructor" "$__bashClass_RETURN" "27"
 
 # Explicit dispatch constructor
-class=Box __bashClass.dispatch new length=2 width=3 height=4; __dbox="$__bashClass_RETURN"
+_Class=Box __bashClass.dispatch new length=2 width=3 height=4; __dbox="$__bashClass_RETURN"
 $__dbox.volume
 $t.assert_eq "explicit dispatch constructor Box" "$__bashClass_RETURN" "24"
 
-class=Cube __bashClass.dispatch new size=5; __dcube="$__bashClass_RETURN"
+_Class=Cube __bashClass.dispatch new size=5; __dcube="$__bashClass_RETURN"
 $__dcube.volume
 $t.assert_eq "explicit dispatch constructor Cube" "$__bashClass_RETURN" "125"
 
@@ -287,15 +287,15 @@ $t.section "typecasting"
 new Cube size=5; __tc="$__bashClass_RETURN"
 $__tc.volume
 $t.assert_eq "Cube volume normal" "$__bashClass_RETURN" "125"
-class=Box $__tc.volume
+_Class=Box $__tc.volume
 $t.assert_eq "Cube volume typecast to Box" "$__bashClass_RETURN" "125"
 # Typecast to nonexistent class — tier 3 (unrelated class) silently ignores
 # the bogus class and uses the baked class instead. This is correct behavior:
 # leakage/bogus typecasts don't crash, they just get ignored.
-class=Sphere $__tc.volume
+_Class=Sphere $__tc.volume
 $t.assert_eq "typecast to nonexistent class uses baked class" "$__bashClass_RETURN" "125"
 
-class=Box $__tc.side; __tc_side="$__bashClass_RETURN"
+_Class=Box $__tc.side; __tc_side="$__bashClass_RETURN"
 $__tc.side; __tc_side2="$__bashClass_RETURN"
 $t.assert_eq "typecast to Box.side" "$__tc_side" "25"
 $t.assert_eq "normal Cube.side after typecast" "$__tc_side2" "25"
@@ -306,7 +306,7 @@ $t.assert_eq "normal Cube.side after typecast" "$__tc_side2" "25"
 
 $t.section "super"
 $t.assert_fail "super from root class" bash -c '. boop Cube; new bashClass; obj=$__bashClass_RETURN; $obj.super volume'
-$t.assert_fail "super volume from Box (bashClass has no volume)" bash -c '. boop Cube; new Box length=1 width=1 height=1; obj=$__bashClass_RETURN; self=$obj class=Box __bashClass.dispatch super volume'
+$t.assert_fail "super volume from Box (bashClass has no volume)" bash -c '. boop Cube; new Box length=1 width=1 height=1; obj=$__bashClass_RETURN; _Self=$obj _Class=Box __bashClass.dispatch super volume'
 
 # ============================================================================
 # SECTION 15: bencode/bdecode — bad inputs
@@ -479,7 +479,7 @@ into=__rt_check $__rt_box.volume
 $t.assert_eq "into bypasses __bashClass_RETURN" "$__bashClass_RETURN" "sentinel"
 
 # into with typecast to parent class
-into=__rt_tc class=Box $__rt_cube.volume
+into=__rt_tc _Class=Box $__rt_cube.volume
 $t.assert_eq "into with typecast to Box = 64" "$__rt_tc" "64"
 
 # ============================================================================

@@ -92,7 +92,7 @@ into=v $c1.volume;  $t.assert_eq "cube1 volume" "$v" "27"
 
 $t.section "Typecasting"
 into=v $cube.volume;          $t.assert_eq "cube as Cube" "$v" "64"
-into=v class=Box $cube.volume; $t.assert_eq "cube as Box" "$v" "64"
+into=v _Class=Box $cube.volume; $t.assert_eq "cube as Box" "$v" "64"
 
 # ============================================================================
 # Value Encoding
@@ -163,7 +163,7 @@ $t.assert_ok "baked wrapper exists" test $? -eq 0
 $t.section "Typecast with Baked Wrapper"
 into=tc new Cube size=3
 into=v $tc.volume;          $t.assert_eq "as Cube" "$v" "27"
-into=v class=Box $tc.volume; $t.assert_eq "typecast to Box" "$v" "27"
+into=v _Class=Box $tc.volume; $t.assert_eq "typecast to Box" "$v" "27"
 into=v $tc.volume;          $t.assert_eq "back to Cube" "$v" "27"
 
 $t.summary

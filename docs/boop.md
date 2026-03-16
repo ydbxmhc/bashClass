@@ -87,7 +87,7 @@ into=b Box length=5 width=3 height=7
 into=b new Box length=5 width=3 height=7
 
 # Full dispatch (you'll never need this, but it exists)
-into=b class=Box __bashClass.dispatch new length=5 width=3 height=7
+into=b _Class=Box __bashClass.dispatch new length=5 width=3 height=7
 ```
 
 Constructor arguments are `key=value` pairs. They land in the object's
@@ -347,7 +347,7 @@ inheritance chain:
 into=v $cube.volume
 
 # Typecast: dispatches to Box.volume instead
-into=v class=Box $cube.volume
+into=v _Class=Box $cube.volume
 ```
 
 The baked wrapper detects the class mismatch and falls back to full
@@ -359,7 +359,7 @@ Call the parent class's implementation of a method:
 
 ```bash
 # Inside a class method:
-self=$self class=$class __bashClass.dispatch super volume
+_Self=$_Self _Class=$_Class __bashClass.dispatch super volume
 ```
 
 Crashes if you're already at the root (`bashClass` has no parent).
@@ -390,19 +390,19 @@ __bashClass_registry["Box"]="|class=Box|parent=bashClass\
 # Convention: ClassName.methodName() { ... }
 
 Box.volume() {
-  local -I self class
+  local -I _Self _Class
   local __Box_volume_l __Box_volume_h __Box_volume_w __Box_volume_vol
-  __bashClass.parse "$self" "length" __Box_volume_l
-  __bashClass.parse "$self" "height" __Box_volume_h
-  __bashClass.parse "$self" "width"  __Box_volume_w
+  __bashClass.parse "$_Self" "length" __Box_volume_l
+  __bashClass.parse "$_Self" "height" __Box_volume_h
+  __bashClass.parse "$_Self" "width"  __Box_volume_w
   into=__Box_volume_vol required=3 Box.calc \
     "$__Box_volume_l" "$__Box_volume_h" "$__Box_volume_w"
   __bashClass.return "$__Box_volume_vol" ${into:-}
 }
 
 Box.new() {
-  local -I class
-  : "${class:=Box}"
+  local -I _Class
+  : "${_Class:=Box}"
   local __Box_new_self
   into=__Box_new_self __bashClass.new "$@"
   __bashClass.return "$__Box_new_self" ${into:-}
@@ -431,13 +431,13 @@ __bashClass.registerClass Box
 
 3. **Descriptor**: Register a pipe-delimited string in
    `__bashClass_registry["ClassName"]`. Fields:
-   - `class=` — the class name
+   - `class=` — the class name (in the descriptor string)
    - `parent=` — the parent class (use `bashClass` for root)
    - `methods=` — comma-separated list of method names
    - `properties=` — comma-separated list of property names
 
 4. **Method functions**: Name them `ClassName.methodName`. Start with
-   `local -I self class` to inherit the calling object's identity.
+   `local -I _Self _Class` to inherit the calling object's identity.
    End value-producing methods with `__bashClass.return "$val" ${into:-}`.
 
 5. **Register methods**: `__bashClass.registerMethod ClassName method ClassName.method`
@@ -462,8 +462,8 @@ __bashClass_registry["Cube"]="|class=Cube|parent=Box\
 |properties=size,length,width,height,unit"
 
 Cube.new() {
-  local -I class
-  : "${class:=Cube}"
+  local -I _Class
+  : "${_Class:=Cube}"
   local __Cube_new_size=1 __Cube_new_self
 
   for __Cube_new_arg in "$@"; do
@@ -479,9 +479,9 @@ Cube.new() {
 
 # Override methods as needed...
 Cube.volume() {
-  local -I self class
+  local -I _Self _Class
   local __Cube_volume_size __Cube_volume_vol
-  __bashClass.parse "$self" "size" __Cube_volume_size
+  __bashClass.parse "$_Self" "size" __Cube_volume_size
   into=__Cube_volume_vol required=3 Box.calc \
     "$__Cube_volume_size" "$__Cube_volume_size" "$__Cube_volume_size"
   __bashClass.return "$__Cube_volume_vol" ${into:-}
@@ -515,18 +515,18 @@ These aren't suggestions — they prevent real bugs.
 Most methods start with:
 
 ```bash
-local -I self class
+local -I _Self _Class
 ```
 
 `local -I` (bash 5.1+) creates inherited locals — the variable is
 local to this function but initialized with the value from the calling
-scope. This is how `self` and `class` flow through the dispatch chain
+scope. This is how `_Self` and `_Class` flow through the dispatch chain
 without being passed as explicit arguments.
 
 One gotcha: `local -I` variables are writable by callees in the same
 scope chain. This matters for deep traversal methods (like `itemAt`)
 where the cursor changes class on every step. Those methods use explicit
-`self=` and `class=` environment prefixes on each dispatch call to
+`_Self=` and `_Class=` environment prefixes on each dispatch call to
 prevent leakage. See the Container source for the full explanation.
 
 ---
@@ -671,7 +671,7 @@ for every method:
 ```bash
 # What stubAll generates (conceptually):
 _64d0895be1590.volume() {
-  __init=true self='_64d0895be1590' class='Box' \
+  __init=true _Self='_64d0895be1590' _Class='Box' \
     __bashClass.dispatch volume "$@"
 }
 ```
@@ -681,17 +681,17 @@ On first call, `__init=true` tells dispatch to bake a direct wrapper:
 ```bash
 # What dispatch bakes (conceptually):
 _64d0895be1590.volume() {
-  if [[ ${class:-Box} != 'Box' ]]; then
-    self='_64d0895be1590' __bashClass.dispatch volume "$@"
+  if [[ ${_Class:-Box} != 'Box' ]]; then
+    _Self='_64d0895be1590' __bashClass.dispatch volume "$@"
   else
-    self='_64d0895be1590' class='Box' Box.volume "$@"
+    _Self='_64d0895be1590' _Class='Box' Box.volume "$@"
   fi
 }
 ```
 
 The baked wrapper calls `Box.volume` directly — no dispatch, no MRO
 walk, no registry lookup. The `if` guard handles typecasting: if someone
-calls `class=OtherClass $obj.volume`, the baked class won't match, so
+calls `_Class=OtherClass $obj.volume`, the baked class won't match, so
 it falls back to dispatch for correct resolution.
 
 Cost: one `eval` per method at object creation, one dispatch on first
@@ -768,12 +768,12 @@ For Map iterators, the ordered key list is snapshotted at creation time.
 Mutations to the Map after the iterator is created don't affect the
 snapshot — predictable traversal over live-view consistency.
 
-Subclasses that don't want iterators call `$self.noIterators` in their
+Subclasses that don't want iterators call `$_Self.noIterators` in their
 constructor:
 
 ```bash
 MyStack.new() {
-  local -I class; : "${class:=MyStack}"
+  local -I _Class; : "${_Class:=MyStack}"
   local __MyStack_new_self
   into=__MyStack_new_self __bashClass.new "$@"
   declare -ga "__bashClass_data_${__MyStack_new_self}"
@@ -909,8 +909,8 @@ probably not what you want. Don't pass the same key twice.
 In deep traversal methods (`itemAt`, `setAt`, `itemFrom`, `setOn`),
 the cursor changes identity and class on every step. Because `local -I`
 creates shared bindings up the call stack, dispatching to one object
-can leak its `class` value into the next iteration. These methods use
-explicit `self=`/`class=` environment prefixes on every dispatch call
+can leak its `_Class` value into the next iteration. These methods use
+explicit `_Self=`/`_Class=` environment prefixes on every dispatch call
 to prevent this. If you write your own traversal code that dispatches
 to multiple different objects in sequence, you'll need the same pattern.
 The Container source has a detailed block comment explaining this.

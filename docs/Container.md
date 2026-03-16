@@ -189,13 +189,13 @@ printf "%d\n" "$__count"        # 2 (not 3 — snapshot has a, b only)
 
 ### Opting Out: `noIterators`
 
-Subclasses that don't want iterator support call `$self.noIterators`
+Subclasses that don't want iterator support call `$_Self.noIterators`
 in their constructor. This replaces all iterator methods with stubs
 that crash with a clear message:
 
 ```bash
 MyStack.new() {
-  local -I class; : "${class:=MyStack}"
+  local -I _Class; : "${_Class:=MyStack}"
   local __MyStack_new_self
   into=__MyStack_new_self __bashClass.new "$@"
   declare -ga "__bashClass_data_${__MyStack_new_self}"

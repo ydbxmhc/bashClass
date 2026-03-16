@@ -187,16 +187,16 @@ __bashClass_registry["MyClass"]="|class=MyClass|parent=bashClass\
 |methods=new,greet|properties=name"
 
 MyClass.new() {
-  local -I class; : "${class:=MyClass}"
+  local -I _Class; : "${_Class:=MyClass}"
   local __MyClass_new_self
   into=__MyClass_new_self __bashClass.new "$@"
   __bashClass.return "$__MyClass_new_self" ${into:-}
 }
 
 MyClass.greet() {
-  local -I self class
+  local -I _Self _Class
   local __MyClass_greet_name
-  __bashClass.parse "$self" "name" __MyClass_greet_name
+  __bashClass.parse "$_Self" "name" __MyClass_greet_name
   __bashClass.return "Hello, $__MyClass_greet_name" ${into:-}
 }
 

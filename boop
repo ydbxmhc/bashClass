@@ -82,7 +82,7 @@ declare -g  __bashClass_returnMode="${__bashClass_returnMode:-auto}"
 # second-priority search location for class imports (after __bashClass_classPath,
 # before PATH). Resolved once at load time via realpath so symlinks don't fool it.
 declare -g  __bashClass_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
-# TODO: See TODO.md "Typecast Interface Variables"
+# TODO: See TODO.md "Reserved Variable Names & Inheritance Hygiene"
 
 # TODO: See TODO.md "Configurable Baked-Wrapper Typecast Behavior"
 # TODO: See TODO.md "Framework-Wide LOGLEVEL System"
@@ -383,39 +383,39 @@ __bashClass.registerMethod() {
 # Lazy baking: when called with __init=true (set by stub functions), dispatch
 # evals a baked wrapper onto $self that calls the resolved implementation
 # directly on all future invocations — no dispatch overhead after first call.
-# The baked wrapper includes a typecast guard: if the caller overrides class=
-# (e.g., class=Box $cube.volume), the wrapper detects the mismatch and falls
+# The baked wrapper includes a typecast guard: if the caller overrides _Class=
+# (e.g., _Class=Box $cube.volume), the wrapper detects the mismatch and falls
 # back to full dispatch so the typecast resolves correctly. This means normal
 # calls are fast (direct function call) and typecasts always work (dispatch).
 __bashClass.dispatch() {
-  local self="${self:-${class:-bashClass}}" class="${class:-bashClass}"
+  local _Self="${_Self:-${_Class:-bashClass}}" _Class="${_Class:-bashClass}"
   local -l __init; : "${__init:=false}"
   local __dispatch_method="$1"; shift
 
-  __bashClass.validate "$self"
-  __bashClass.validate "$class"
+  __bashClass.validate "$_Self"
+  __bashClass.validate "$_Class"
   __bashClass.validate "$__dispatch_method"
 
   # Check cache first (direct lookup — O(1) in the common case)
-  local __dispatch_cachekey="$class.$__dispatch_method"
+  local __dispatch_cachekey="$_Class.$__dispatch_method"
   local __dispatch_impl="${__bashClass_methodRegistry[$__dispatch_cachekey]:-}"
 
   # Cache miss: walk the inheritance chain (parent → grandparent → ...).
   # When found in an ancestor, cache it under the calling class so this
   # walk only happens once per class+method combination.
   if [[ -z "$__dispatch_impl" ]]; then
-    local __dispatch_current="$class"
+    local __dispatch_current="$_Class"
     while [[ -n "$__dispatch_current" ]]; do
       __dispatch_impl="${__bashClass_methodRegistry[$__dispatch_current.$__dispatch_method]:-}"
       if [[ -n "$__dispatch_impl" ]]; then
-        [[ "$__dispatch_current" != "$class" ]] && __bashClass_methodRegistry[$__dispatch_cachekey]="$__dispatch_impl"
+        [[ "$__dispatch_current" != "$_Class" ]] && __bashClass_methodRegistry[$__dispatch_cachekey]="$__dispatch_impl"
         break
       fi
       __bashClass.parse "$__dispatch_current" "parent" __dispatch_current
     done
   fi
 
-  [[ -n "$__dispatch_impl" ]] || __bashClass.crash "Method not found: $class.$__dispatch_method"
+  [[ -n "$__dispatch_impl" ]] || __bashClass.crash "Method not found: $_Class.$__dispatch_method"
 
   # If called from a stub (__init=true), bake a direct wrapper that replaces
   # the stub function. The baked wrapper hardcodes self, class, and the
@@ -431,41 +431,41 @@ __bashClass.dispatch() {
   #      with hardcoded self/class/impl. Zero dispatch overhead.
   #
   #   2. Family member: ambient class is in the baked class's inheritance
-  #      chain (e.g., class=FaceCard on a Card object). This is a
+  #      chain (e.g., _Class=FaceCard on a Card object). This is a
   #      legitimate typecast — let dispatch resolve the method via MRO
   #      starting from the ambient class.
   #
   #   3. Unrelated class: ambient class is NOT in the family tree (e.g.,
-  #      class=Hand leaking into a Card method via local -I in a Hand
+  #      _Class=Hand leaking into a Card method via local -I in a Hand
   #      method). This is leakage — ignore it and use the fast path.
   #      See TODO above for future configurable behavior (warn/strict).
   #
   # EVAL ESCAPING NOTES:
   #
-  # At eval time, $self, $class, $__dispatch_impl, and $__dispatch_method
+  # At eval time, $_Self, $_Class, $__dispatch_impl, and $__dispatch_method
   # expand to their current values and get hardcoded into the wrapper.
   # \$ and \"-quoted expansions survive eval and expand at runtime instead.
   #
-  #   "${class:-Card}".isa Card
-  #    ^^^^^^^^^^^^^^^ — runtime expansion: ambient class, defaulting to baked
+  #   "${_Class:-Card}".isa Card
+  #    ^^^^^^^^^^^^^^^^ — runtime expansion: ambient class, defaulting to baked
   #                    — quotes force word boundary so .isa isn't swallowed
-  #                        ^^^^ — hardcoded at eval time
+  #                         ^^^^ — hardcoded at eval time
   if [[ "$__init" == "true" ]]; then
-    eval "$self.$__dispatch_method() {
+    eval "$_Self.$__dispatch_method() {
       # Tier 1: exact match or no ambient class — fast path (common case)
-      if [[ \"\${class:-$class}\" == '$class' ]]; then
-        self='$self' class='$class' $__dispatch_impl \"\$@\"
+      if [[ \"\${_Class:-$_Class}\" == '$_Class' ]]; then
+        _Self='$_Self' _Class='$_Class' $__dispatch_impl \"\$@\"
       # Tier 2: ambient class is in the family — legitimate typecast
-      elif \"\${class:-$class}\".isa $class; then
-        self='$self' class=\"\${class:-$class}\" __bashClass.dispatch $__dispatch_method \"\$@\"
+      elif \"\${_Class:-$_Class}\".isa $_Class; then
+        _Self='$_Self' _Class=\"\${_Class:-$_Class}\" __bashClass.dispatch $__dispatch_method \"\$@\"
       # Tier 3: unrelated class (leakage) — ignore, use fast path
       else
-        self='$self' class='$class' $__dispatch_impl \"\$@\"
+        _Self='$_Self' _Class='$_Class' $__dispatch_impl \"\$@\"
       fi
     }"
   fi
 
-  self="$self" class="$class" "$__dispatch_impl" "$@"
+  _Self="$_Self" _Class="$_Class" "$__dispatch_impl" "$@"
 }
 
 # ============================================================================
@@ -512,8 +512,8 @@ __bashClass.deserialize() {
 # The ${into:-} passes through the caller's nameref target (if any)
 # so the value lands directly in their variable without touching the global.
 __bashClass.get() {
-  local -I self class
-  __bashClass.parse "$self" "$1" ${into:-}
+  local -I _Self _Class
+  __bashClass.parse "$_Self" "$1" ${into:-}
 }
 
 # Update a property value in the object's descriptor.
@@ -525,17 +525,17 @@ __bashClass.get() {
 # exist, it's appended to the end. This means property order in the
 # descriptor reflects insertion order, with mutations preserving position.
 __bashClass.set() {
-  local -I self class
+  local -I _Self _Class
   local __set_prop="$1" __set_encoded
   __bashClass.encode "$2" __set_encoded
 
-  local __set_descriptor="${__bashClass_registry[$self]:-}"
+  local __set_descriptor="${__bashClass_registry[$_Self]:-}"
 
   if [[ "$__set_descriptor" =~ \|${__set_prop}=[^|]* ]]; then
     local __set_old="${BASH_REMATCH[0]}"
-    __bashClass_registry[$self]="${__set_descriptor/${__set_old}/|${__set_prop}=${__set_encoded}}"
+    __bashClass_registry[$_Self]="${__set_descriptor/${__set_old}/|${__set_prop}=${__set_encoded}}"
   else
-    __bashClass_registry[$self]="$__set_descriptor|$__set_prop=$__set_encoded"
+    __bashClass_registry[$_Self]="$__set_descriptor|$__set_prop=$__set_encoded"
   fi
 }
 
@@ -550,15 +550,15 @@ __bashClass.set() {
 # communicates via exit code only (0/1), which is the bash convention
 # for boolean checks: `$obj.isa Box && printf "it's a box"`
 __bashClass.isa() {
-  local -I self class
+  local -I _Self _Class
   local __isa_query="${1:-}"
 
   if [[ -z "$__isa_query" ]]; then
-    __bashClass.return "$class" ${into:-}
+    __bashClass.return "$_Class" ${into:-}
     return 0
   fi
 
-  local __isa_current="$class"
+  local __isa_current="$_Class"
   while [[ -n "$__isa_current" ]]; do
     [[ "$__isa_current" == "$__isa_query" ]] && return 0
     __bashClass.parse "$__isa_current" "parent" __isa_current
@@ -585,10 +585,10 @@ __bashClass.isa() {
 #        $obj.toString pretty             # columnar with newlines
 #        prettyPrint=true $obj.toString    # same, via environment
 __bashClass.toString() {
-  local -I self class
+  local -I _Self _Class
   local -l prettyPrint; : "${prettyPrint:=false}"
   [[ "${1:-}" == "pretty" ]] && prettyPrint=true
-  local __ts_descriptor="${__bashClass_registry[$self]:-}"
+  local __ts_descriptor="${__bashClass_registry[$_Self]:-}"
   local __ts_field __ts_value __ts_decoded __ts_output
 
   # Both modes iterate the descriptor by matching "|key=value" segments,
@@ -596,7 +596,7 @@ __bashClass.toString() {
   # to consume the string left-to-right without a second regex pass.
 
   if [[ "$prettyPrint" != "true" ]]; then
-    __ts_output="$class($self){"
+    __ts_output="$_Class($_Self){"
     while [[ "$__ts_descriptor" =~ \|([^=]+)=([^|]*) ]]; do
       __ts_field="${BASH_REMATCH[1]}"
       __ts_value="${BASH_REMATCH[2]}"
@@ -632,7 +632,7 @@ __bashClass.toString() {
   done
 
   local -i __ts_i
-  printf -v __ts_output "%s(%s) {\n" "$class" "$self"
+  printf -v __ts_output "%s(%s) {\n" "$_Class" "$_Self"
   for (( __ts_i=0; __ts_i < ${#__ts_keys[@]}; __ts_i++ )); do
     printf -v __ts_field "  %-${__ts_maxlen}s = %s\n" "${__ts_keys[$__ts_i]}" "${__ts_vals[$__ts_i]}"
     __ts_output="$__ts_output$__ts_field"
@@ -658,13 +658,13 @@ __bashClass.toString() {
 # end up in the descriptor, but get/parse will match the first one.
 # (This is documented behavior, not a bug.)
 __bashClass.new() {
-  local -I class; : "${class:=bashClass}"
+  local -I _Class; : "${_Class:=bashClass}"
 
   # Generate unique object ID
-  local self; printf -v self "_%x" "${EPOCHREALTIME//.}"
+  local _Self; printf -v _Self "_%x" "${EPOCHREALTIME//.}"
 
   # Build descriptor
-  local __new_descriptor="|class=$class"
+  local __new_descriptor="|class=$_Class"
 
   # Parse arguments and encode values.
   # If a key already exists in the descriptor (e.g., a subclass passes
@@ -682,23 +682,23 @@ __bashClass.new() {
   done
 
   # Register object
-  __bashClass_registry[$self]="$__new_descriptor"
+  __bashClass_registry[$_Self]="$__new_descriptor"
 
   # Generate lazy stubs for all methods (walk inheritance chain)
-  __bashClass.stubAll "$self" "$class"
+  __bashClass.stubAll "$_Self" "$_Class"
 
-  __bashClass.return "$self" ${into:-}
+  __bashClass.return "$_Self" ${into:-}
 }
 
 # Call a method on the parent class. Looks up the current class's parent
 # from its descriptor and re-dispatches with the parent as the class context.
 # Crashes if the class has no parent (you're already at the root — nowhere to go).
-# Usage: self=$obj class=Cube __bashClass.dispatch super volume
+# Usage: _Self=$obj _Class=Cube __bashClass.dispatch super volume
 __bashClass.super() {
-  local -I self class
-  local __super_parent; __bashClass.parse "$class" "parent" __super_parent
-  [[ -n "$__super_parent" ]] || __bashClass.crash "$class has no parent"
-  self="$self" class="$__super_parent" __bashClass.dispatch "$@"
+  local -I _Self _Class
+  local __super_parent; __bashClass.parse "$_Class" "parent" __super_parent
+  [[ -n "$__super_parent" ]] || __bashClass.crash "$_Class has no parent"
+  _Self="$_Self" _Class="$__super_parent" __bashClass.dispatch "$@"
 }
 
 # ============================================================================
@@ -731,7 +731,7 @@ __bashClass.stubAll() {
     for __stub_method in "${__stub_method_list[@]}"; do
       [[ -n "$__stub_method" ]] || continue
       [[ "$__stub_force" != "force" ]] && declare -f "$__stub_self.$__stub_method" >/dev/null && continue
-      eval "$__stub_self.$__stub_method() { __init=true self='$__stub_self' class='$__stub_class' __bashClass.dispatch $__stub_method \"\$@\"; }"
+      eval "$__stub_self.$__stub_method() { __init=true _Self='$__stub_self' _Class='$__stub_class' __bashClass.dispatch $__stub_method \"\$@\"; }"
     done
     __bashClass.parse "$__stub_current" "parent" __stub_current
   done
@@ -744,8 +744,8 @@ __bashClass.stubAll() {
     [[ -n "$__stub_prop" ]] || continue
     [[ "$__stub_force" != "force" ]] && declare -f "$__stub_self.$__stub_prop" >/dev/null && continue
     eval "$__stub_self.$__stub_prop() {
-      if ((\$#)); then self='$__stub_self' class='$__stub_class' __bashClass.dispatch set '$__stub_prop' \"\$1\"
-      else self='$__stub_self' class='$__stub_class' __bashClass.dispatch get '$__stub_prop'; fi
+      if ((\$#)); then _Self='$__stub_self' _Class='$__stub_class' __bashClass.dispatch set '$__stub_prop' \"\$1\"
+      else _Self='$__stub_self' _Class='$__stub_class' __bashClass.dispatch get '$__stub_prop'; fi
     }"
   done
 }
@@ -771,7 +771,7 @@ __bashClass.refresh() {
 #    as a class-level method (useful for static-style calls and as the
 #    target of __bashClass.registerMethod).
 # 3. If the class name itself isn't already a function, creates a
-#    constructor shorthand: Box() { class=Box __bashClass.dispatch new "$@"; }
+#    constructor shorthand: Box() { _Class=Box __bashClass.dispatch new "$@"; }
 #    This enables the clean `Box length=5 width=3 height=7` syntax.
 #
 # Methods already defined by the class author (e.g., Box.calc as a real
@@ -795,14 +795,14 @@ __bashClass.registerClass() {
       [[ -n "$__regclass_method" ]] || continue
       # Don't overwrite — class author's definitions take priority
       declare -f "$__regclass_class.$__regclass_method" >/dev/null && continue
-      eval "$__regclass_class.$__regclass_method() { class='$__regclass_class' __bashClass.dispatch $__regclass_method \"\$@\"; }"
+      eval "$__regclass_class.$__regclass_method() { _Class='$__regclass_class' __bashClass.dispatch $__regclass_method \"\$@\"; }"
     done
     __bashClass.parse "$__regclass_current" "parent" __regclass_current
   done
 
   # Make the class name itself a constructor
   declare -f "$__regclass_class" >/dev/null || \
-    eval "$__regclass_class() { class='$__regclass_class' __bashClass.dispatch new \"\$@\"; }"
+    eval "$__regclass_class() { _Class='$__regclass_class' __bashClass.dispatch new \"\$@\"; }"
 }
 
 # Global convenience constructor. Slightly friendlier than the class-as-
@@ -813,7 +813,7 @@ __bashClass.registerClass() {
 new() {
   local __new_class="$1"; shift
   __bashClass.validate "$__new_class"
-  class="$__new_class" __bashClass.dispatch new "$@"
+  _Class="$__new_class" __bashClass.dispatch new "$@"
 }
 
 # ============================================================================

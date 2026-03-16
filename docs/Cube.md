@@ -45,7 +45,7 @@ into=a $c.bottom           # size² (delegates to side)
 Cube inherits from Box, so you can call Box methods via typecast:
 
 ```bash
-class=Box $c.volume        # dispatches to Box.volume
+_Class=Box $c.volume        # dispatches to Box.volume
 ```
 
 ## Example

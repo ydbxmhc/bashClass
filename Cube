@@ -19,8 +19,8 @@ __bashClass_registry["Cube"]="|class=Cube|parent=Box|methods=new,side,top,end,bo
 
 # Cube constructor - sets all dimensions equal to size
 Cube.new() {
-  local -I class
-  : "${class:=Cube}"
+  local -I _Class
+  : "${_Class:=Cube}"
   local __Cube_new_size="" __Cube_new_self
 
   # Extract size from arguments
@@ -41,42 +41,42 @@ Cube.new() {
 
 # Calculate side face area (all faces equal for cube)
 Cube.side() {
-  local -I self class
+  local -I _Self _Class
   local __Cube_side_size __Cube_side_val
-  __bashClass.parse "$self" "size" __Cube_side_size
-  into=__Cube_side_val self="$self" class=Box __bashClass.dispatch area "$__Cube_side_size" "$__Cube_side_size"
+  __bashClass.parse "$_Self" "size" __Cube_side_size
+  into=__Cube_side_val _Self="$_Self" _Class=Box __bashClass.dispatch area "$__Cube_side_size" "$__Cube_side_size"
   __bashClass.return "$__Cube_side_val" ${into:-}
 }
 
 # Top face (same as side for cube)
 Cube.top() {
-  local -I self class
+  local -I _Self _Class
   local __Cube_top_val
-  into=__Cube_top_val self="$self" class="$class" __bashClass.dispatch side
+  into=__Cube_top_val _Self="$_Self" _Class="$_Class" __bashClass.dispatch side
   __bashClass.return "$__Cube_top_val" ${into:-}
 }
 
 # End face (same as side for cube)
 Cube.end() {
-  local -I self class
+  local -I _Self _Class
   local __Cube_end_val
-  into=__Cube_end_val self="$self" class="$class" __bashClass.dispatch side
+  into=__Cube_end_val _Self="$_Self" _Class="$_Class" __bashClass.dispatch side
   __bashClass.return "$__Cube_end_val" ${into:-}
 }
 
 # Bottom face (same as side for cube)
 Cube.bottom() {
-  local -I self class
+  local -I _Self _Class
   local __Cube_bottom_val
-  into=__Cube_bottom_val self="$self" class="$class" __bashClass.dispatch side
+  into=__Cube_bottom_val _Self="$_Self" _Class="$_Class" __bashClass.dispatch side
   __bashClass.return "$__Cube_bottom_val" ${into:-}
 }
 
 # Calculate volume
 Cube.volume() {
-  local -I self class
+  local -I _Self _Class
   local __Cube_volume_size __Cube_volume_vol
-  __bashClass.parse "$self" "size" __Cube_volume_size
+  __bashClass.parse "$_Self" "size" __Cube_volume_size
   into=__Cube_volume_vol required=3 Box.calc "$__Cube_volume_size" "$__Cube_volume_size" "$__Cube_volume_size"
   __bashClass.return "$__Cube_volume_vol" ${into:-}
 }

@@ -363,7 +363,7 @@ $t.assert_eq "no total when hidden" "$_has_total" "0"
 $t.section "Cross-Object Dispatch"
 
 # This is the scenario that was failing before the bake fix:
-# Hand.total calls $card.val on each card while class=Hand is in scope.
+# Hand.total calls $card.val on each card while _Class=Hand is in scope.
 # The baked wrapper must not misinterpret this as a typecast.
 
 into=h Hand

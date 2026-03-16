@@ -52,7 +52,7 @@ __TestSuite._pass() {
   __bashClass.parse "$__tsp_self" "passed" __tsp_p
   : "${__tsp_p:=0}"
   (( __tsp_p++ ))
-  self="$__tsp_self" class=TestSuite __bashClass.dispatch set passed "$__tsp_p"
+  _Self="$__tsp_self" _Class=TestSuite __bashClass.dispatch set passed "$__tsp_p"
 }
 
 # Print a FAIL line and increment the fail counter.
@@ -67,7 +67,7 @@ __TestSuite._fail() {
   __bashClass.parse "$__tsf_self" "failed" __tsf_f
   : "${__tsf_f:=0}"
   (( __tsf_f++ ))
-  self="$__tsf_self" class=TestSuite __bashClass.dispatch set failed "$__tsf_f"
+  _Self="$__tsf_self" _Class=TestSuite __bashClass.dispatch set failed "$__tsf_f"
 }
 
 # ============================================================================
@@ -75,8 +75,8 @@ __TestSuite._fail() {
 # ============================================================================
 
 TestSuite.new() {
-  local -I class
-  : "${class:=TestSuite}"
+  local -I _Class
+  : "${_Class:=TestSuite}"
   local __TS_new_self __TS_new_name="" __TS_new_mode="immediate"
   local __TS_new_verbose="${TESTSUITE_VERBOSE:-0}"
 
@@ -100,7 +100,7 @@ TestSuite.new() {
   # Create the queue List (only used in queue mode, but always available)
   local __TS_new_queue
   into=__TS_new_queue List
-  self="$__TS_new_self" class=TestSuite __bashClass.dispatch set queue "$__TS_new_queue"
+  _Self="$__TS_new_self" _Class=TestSuite __bashClass.dispatch set queue "$__TS_new_queue"
 
   printf "=== %s ===\n" "$__TS_new_name"
 
@@ -112,26 +112,26 @@ TestSuite.new() {
 # ============================================================================
 
 TestSuite.section() {
-  local -I self class
+  local -I _Self _Class
   local __TS_sec_name="$1"
 
   local __TS_sec_verbose
-  __bashClass.parse "$self" "verbose" __TS_sec_verbose
+  __bashClass.parse "$_Self" "verbose" __TS_sec_verbose
 
   # If there was a previous section in immediate mode, print its elapsed time
   local __TS_sec_prev_start
-  __bashClass.parse "$self" "section_start" __TS_sec_prev_start
+  __bashClass.parse "$_Self" "section_start" __TS_sec_prev_start
   if [[ -n "$__TS_sec_prev_start" && "$__TS_sec_verbose" == "1" ]]; then
     local __TS_sec_mode
-    __bashClass.parse "$self" "mode" __TS_sec_mode
+    __bashClass.parse "$_Self" "mode" __TS_sec_mode
     if [[ "$__TS_sec_mode" == "immediate" ]]; then
       printf "  [%.3fs]\n" "$(( ${EPOCHREALTIME//.} - ${__TS_sec_prev_start//.} ))e-6"
     fi
   fi
 
   [[ "$__TS_sec_verbose" == "1" ]] && printf "\n--- %s ---\n" "$__TS_sec_name"
-  self="$self" class="$class" __bashClass.dispatch set section_name "$__TS_sec_name"
-  self="$self" class="$class" __bashClass.dispatch set section_start "$EPOCHREALTIME"
+  _Self="$_Self" _Class="$_Class" __bashClass.dispatch set section_name "$__TS_sec_name"
+  _Self="$_Self" _Class="$_Class" __bashClass.dispatch set section_start "$EPOCHREALTIME"
 }
 
 # ============================================================================
@@ -162,13 +162,13 @@ __TestSuite._exec() {
       fi
       ;;
     ok)
-      # Clear self/class so the user's command doesn't see TestSuite's
+      # Clear _Self/_Class so the user's command doesn't see TestSuite's
       # identity leaking through the local -I chain. The baked wrappers
-      # on user objects hardcode their own self/class, but the typecast
-      # guard checks ${class:-...} which would pick up our leaked value.
+      # on user objects hardcode their own _Self/_Class, but the typecast
+      # guard checks ${_Class:-...} which would pick up our leaked value.
       # The if/else structure ensures set -e callers survive non-zero exits.
       local -i __tsx_rc=0
-      if self="" class="" "$@" 2>/dev/null; then
+      if _Self="" _Class="" "$@" 2>/dev/null; then
         __tsx_rc=0
       else
         __tsx_rc=$?
@@ -181,7 +181,7 @@ __TestSuite._exec() {
       ;;
     fail)
       local -i __tsx_rc=0
-      if ( self="" class="" "$@" ) 2>/dev/null; then
+      if ( _Self="" _Class="" "$@" ) 2>/dev/null; then
         __tsx_rc=0
       else
         __tsx_rc=$?
@@ -233,8 +233,8 @@ __TestSuite._route() {
     # Queue mode: store assertion as a Map in the queue List
     local __tsr_map __tsr_queue
     into=__tsr_map Map
-    self="" class="" $__tsr_map.set "type" "$__tsr_type"
-    self="" class="" $__tsr_map.set "desc" "$3"
+    _Self="" _Class="" $__tsr_map.set "type" "$__tsr_type"
+    _Self="" _Class="" $__tsr_map.set "desc" "$3"
     # Store remaining args as pipe-delimited (they're already simple strings)
     shift 3
     local __tsr_args=""
@@ -242,9 +242,9 @@ __TestSuite._route() {
     for __tsr_i in "$@"; do
       [[ -n "$__tsr_args" ]] && __tsr_args="$__tsr_args|$__tsr_i" || __tsr_args="$__tsr_i"
     done
-    self="" class="" $__tsr_map.set "args" "$__tsr_args"
+    _Self="" _Class="" $__tsr_map.set "args" "$__tsr_args"
     __bashClass.parse "$__tsr_self" "queue" __tsr_queue
-    self="" class="" $__tsr_queue.push "$__tsr_map"
+    _Self="" _Class="" $__tsr_queue.push "$__tsr_map"
   fi
 }
 
@@ -253,39 +253,39 @@ __TestSuite._route() {
 # ============================================================================
 
 TestSuite.assert_eq() {
-  local -I self class
-  __TestSuite._route "$self" eq "$@"
+  local -I _Self _Class
+  __TestSuite._route "$_Self" eq "$@"
 }
 
 TestSuite.assert_ne() {
-  local -I self class
-  __TestSuite._route "$self" ne "$@"
+  local -I _Self _Class
+  __TestSuite._route "$_Self" ne "$@"
 }
 
 TestSuite.assert_ok() {
-  local -I self class
-  __TestSuite._route "$self" ok "$@"
+  local -I _Self _Class
+  __TestSuite._route "$_Self" ok "$@"
 }
 
 TestSuite.assert_fail() {
-  local -I self class
-  __TestSuite._route "$self" fail "$@"
+  local -I _Self _Class
+  __TestSuite._route "$_Self" fail "$@"
 }
 
 TestSuite.assert_match() {
-  local -I self class
-  __TestSuite._route "$self" match "$@"
+  local -I _Self _Class
+  __TestSuite._route "$_Self" match "$@"
 }
 
 TestSuite.assert_contains() {
-  local -I self class
-  __TestSuite._route "$self" contains "$@"
+  local -I _Self _Class
+  __TestSuite._route "$_Self" contains "$@"
 }
 
 TestSuite.info() {
-  local -I self class
+  local -I _Self _Class
   local __TS_info_verbose
-  __bashClass.parse "$self" "verbose" __TS_info_verbose
+  __bashClass.parse "$_Self" "verbose" __TS_info_verbose
   [[ "$__TS_info_verbose" == "1" ]] && printf "  INFO: %s\n" "$1"
 }
 
@@ -294,21 +294,21 @@ TestSuite.info() {
 # ============================================================================
 
 TestSuite.run() {
-  local -I self class
-  local __TS_run_self="$self"
+  local -I _Self _Class
+  local __TS_run_self="$_Self"
   local __TS_run_queue __TS_run_len
   __bashClass.parse "$__TS_run_self" "queue" __TS_run_queue
-  self="" class="" into=__TS_run_len $__TS_run_queue.length
+  _Self="" _Class="" into=__TS_run_len $__TS_run_queue.length
 
   local -i __TS_run_i
   for (( __TS_run_i=0; __TS_run_i < __TS_run_len; __TS_run_i++ )); do
     local __TS_run_map
-    self="" class="" into=__TS_run_map $__TS_run_queue.get $__TS_run_i
+    _Self="" _Class="" into=__TS_run_map $__TS_run_queue.get $__TS_run_i
 
     local __TS_run_type __TS_run_desc __TS_run_args_str
-    self="" class="" into=__TS_run_type $__TS_run_map.get "type"
-    self="" class="" into=__TS_run_desc $__TS_run_map.get "desc"
-    self="" class="" into=__TS_run_args_str $__TS_run_map.get "args"
+    _Self="" _Class="" into=__TS_run_type $__TS_run_map.get "type"
+    _Self="" _Class="" into=__TS_run_desc $__TS_run_map.get "desc"
+    _Self="" _Class="" into=__TS_run_args_str $__TS_run_map.get "args"
 
     # Split pipe-delimited args back into an array
     local -a __TS_run_args=()
@@ -320,7 +320,7 @@ TestSuite.run() {
   done
 
   # Clear the queue
-  self="" class="" $__TS_run_queue.clear
+  _Self="" _Class="" $__TS_run_queue.clear
 
   # Print section timing
   local __TS_run_sec_start __TS_run_verbose
@@ -336,24 +336,24 @@ TestSuite.run() {
 # ============================================================================
 
 TestSuite.summary() {
-  local -I self class
+  local -I _Self _Class
 
   local __TS_sum_verbose
-  __bashClass.parse "$self" "verbose" __TS_sum_verbose
+  __bashClass.parse "$_Self" "verbose" __TS_sum_verbose
 
   # Print final section timing if in immediate mode and verbose
   local __TS_sum_mode __TS_sum_sec_start
-  __bashClass.parse "$self" "mode" __TS_sum_mode
-  __bashClass.parse "$self" "section_start" __TS_sum_sec_start
+  __bashClass.parse "$_Self" "mode" __TS_sum_mode
+  __bashClass.parse "$_Self" "section_start" __TS_sum_sec_start
   if [[ "$__TS_sum_mode" == "immediate" && -n "$__TS_sum_sec_start" && "$__TS_sum_verbose" == "1" ]]; then
     printf "  [%.3fs]\n" "$(( ${EPOCHREALTIME//.} - ${__TS_sum_sec_start//.} ))e-6"
   fi
 
   local __TS_sum_name __TS_sum_p __TS_sum_f __TS_sum_start
-  __bashClass.parse "$self" "name" __TS_sum_name
-  __bashClass.parse "$self" "passed" __TS_sum_p
-  __bashClass.parse "$self" "failed" __TS_sum_f
-  __bashClass.parse "$self" "suite_start" __TS_sum_start
+  __bashClass.parse "$_Self" "name" __TS_sum_name
+  __bashClass.parse "$_Self" "passed" __TS_sum_p
+  __bashClass.parse "$_Self" "failed" __TS_sum_f
+  __bashClass.parse "$_Self" "suite_start" __TS_sum_start
   : "${__TS_sum_p:=0}" "${__TS_sum_f:=0}"
   local -i __TS_sum_total=$(( __TS_sum_p + __TS_sum_f ))
 

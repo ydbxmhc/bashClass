@@ -15,19 +15,19 @@ __bashClass_registry["Hand"]="|class=Hand|parent=List\
 |properties=type"
 
 Hand.new() {
-  local -I class; class=Hand
+  local -I _Class; _Class=Hand
   local __Hand_new_self
   into=__Hand_new_self List.new
   __bashClass.return "$__Hand_new_self" ${into:-}
 }
 
 Hand.total() {
-  local -I self class
+  local -I _Self _Class
   local -i __Hand_total_sum=0 __Hand_total_aces=0 __Hand_total_i __Hand_total_len
   local __Hand_total_card __Hand_total_v
-  into=__Hand_total_len $self.length
+  into=__Hand_total_len $_Self.length
   for (( __Hand_total_i=0; __Hand_total_i < __Hand_total_len; __Hand_total_i++ )); do
-    into=__Hand_total_card $self.get $__Hand_total_i
+    into=__Hand_total_card $_Self.get $__Hand_total_i
     into=__Hand_total_v $__Hand_total_card.val
     (( __Hand_total_sum += __Hand_total_v ))
     $__Hand_total_card.isa Ace && (( __Hand_total_aces++ )) || true
@@ -39,28 +39,28 @@ Hand.total() {
 }
 
 Hand.isBust() {
-  local -I self class
+  local -I _Self _Class
   local -i __Hand_isBust_total
-  into=__Hand_isBust_total self="$self" class=Hand Hand.total
+  into=__Hand_isBust_total _Self="$_Self" _Class=Hand Hand.total
   (( __Hand_isBust_total > 21 )) && return 0 || return 1
 }
 
 Hand.isBlackjack() {
-  local -I self class
+  local -I _Self _Class
   local -i __Hand_isBJ_len __Hand_isBJ_total
-  into=__Hand_isBJ_len $self.length
+  into=__Hand_isBJ_len $_Self.length
   (( __Hand_isBJ_len != 2 )) && return 1
-  into=__Hand_isBJ_total self="$self" class=Hand Hand.total
+  into=__Hand_isBJ_total _Self="$_Self" _Class=Hand Hand.total
   (( __Hand_isBJ_total == 21 )) && return 0 || return 1
 }
 
 Hand.show() {
-  local -I self class
+  local -I _Self _Class
   local __Hand_show_label="${1:-Hand}" __Hand_show_out="" __Hand_show_card __Hand_show_str
   local -i __Hand_show_i __Hand_show_len __Hand_show_total __Hand_show_hidden=0
-  into=__Hand_show_len $self.length
+  into=__Hand_show_len $_Self.length
   for (( __Hand_show_i=0; __Hand_show_i < __Hand_show_len; __Hand_show_i++ )); do
-    into=__Hand_show_card $self.get $__Hand_show_i
+    into=__Hand_show_card $_Self.get $__Hand_show_i
     into=__Hand_show_str $__Hand_show_card.toString
     [[ "$__Hand_show_str" == "[?]" ]] && __Hand_show_hidden=1
     (( __Hand_show_i > 0 )) && __Hand_show_out="$__Hand_show_out "
@@ -69,7 +69,7 @@ Hand.show() {
   if (( __Hand_show_hidden )); then
     __Hand_show_out="$__Hand_show_label: $__Hand_show_out"
   else
-    into=__Hand_show_total self="$self" class=Hand Hand.total
+    into=__Hand_show_total _Self="$_Self" _Class=Hand Hand.total
     __Hand_show_out="$__Hand_show_label: $__Hand_show_out  [$__Hand_show_total]"
   fi
   __bashClass.return "$__Hand_show_out" ${into:-}

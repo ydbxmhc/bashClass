@@ -5,21 +5,50 @@ reference entries here by section name.
 
 ---
 
-## Typecast Interface Variables
+## Reserved Variable Names & Inheritance Hygiene ✓ DONE
 
-Short names (`input`, `type`, `self`, `class`) used for typecast
-interface variables may collide with user locals. Evaluate naming
-convention: `_Input`, `_Type`, leading underscore + mixed case,
-all caps, etc. Needs ergonomic + safe balance.
+The framework inherits exactly two names via `local -I`: `_Self` and
+`_Class`. Every method in every class uses one or both. These are
+effectively reserved words — user code must not use them unlocalized.
 
-Source: `boop` globals section.
+The rename from `self`/`class` to `_Self`/`_Class` was completed across
+the entire codebase: framework (`boop`), all class files, all test files,
+and all documentation. The mixed-case single-underscore convention was
+chosen to be semi-private (unlikely to collide with user variables) while
+still being usable when needed for inline typecasts.
+
+Beyond `-I`, any variable a function references without `local` will
+resolve up the call stack. The baked wrappers in `boop` set `_Self`
+and `_Class` as plain (non-local) assignments intentionally — they're
+dispatch glue. But this means any unlocalized variable in any method
+silently inherits from its caller, which is a latent collision risk.
+
+The `__ClassName_methodName_varname` convention exists to prevent
+this, but compliance isn't audited.
+
+The silent-correction behavior in dispatch is the sharpest edge here.
+When a method is delegated from a class that doesn't have it to one
+that does, the baked wrapper silently adopts the target class's
+identity. That's great when intentional, but a nightmare to debug
+when it isn't — the call succeeds with the wrong `_Self`/`_Class` and
+nothing complains.
+
+Policy — refactor as we go:
+- Every file we touch for other work gets scanned for unlocalized
+  variables that could inherit unexpected values. Sanitize on sight.
+- Every internal call in `boop` should be explicit about setting
+  `_Self`/`_Class`, or explicitly occluding them (clearing to empty),
+  unless we intentionally want inheritance (as in baked wrappers).
+- Priority: `boop` itself, then class files in order of complexity.
+
+Source: `boop` dispatch/bake section, all class files.
 
 ---
 
 ## Configurable Baked-Wrapper Typecast Behavior
 
 When a baked wrapper detects an ambient class that is neither an exact
-match nor in the baked class's inheritance chain (e.g., `class=Hand`
+match nor in the baked class's inheritance chain (e.g., `_Class=Hand`
 leaking into a Card method via `local -I`), the current behavior
 silently ignores it and uses the baked class (fast path). This is safe
 but hides potential user errors.
@@ -195,3 +224,109 @@ subclasses:
 - `PlayingDeck extends Deck` — fills with 52 PlayingCards
 - `Hand` — generic scored collection
 - `BlackjackHand extends Hand` — ace adjustment, bust/blackjack logic
+
+---
+
+## Stack Class (Phase 2)
+
+Classic LIFO collection. Constrain List: expose `push`, `pop`, `peek`,
+`isEmpty`. Hide `shift`, `unshift`, `get`-by-index.
+
+Source: PLAN.md Phase 2.
+
+---
+
+## Queue Class (Phase 2)
+
+Classic FIFO collection. Expose `enqueue` (push), `dequeue` (shift),
+`peek`, `isEmpty`. Possibly `size`.
+
+Source: PLAN.md Phase 2.
+
+---
+
+## LinkedList Class (Phase 2)
+
+Each node is itself an object (or a Map entry). Requires `insertAt`,
+`removeAt`, `next`/`prev` traversal. Decide whether doubly-linked is
+worth the complexity at this stage. @@
+
+Source: PLAN.md Phase 2.
+
+---
+
+## Set Class (Phase 2)
+
+Unique unordered collection. Implement on top of Map keys — values are
+irrelevant, keys are the members. Expose `add`, `has`, `remove`,
+`toArray`, `union`, `intersect`. Arguably simpler than LinkedList.
+
+Source: PLAN.md Phase 2.
+
+---
+
+## String Class (Phase 3)
+
+Heavy string work is happening natively everywhere. A proper wrapper
+would clean up downstream code and give callers a consistent interface.
+
+Minimum useful interface: `trim`, `split`, `join`, `contains`,
+`startsWith`, `endsWith`, `replace`, `length`, `toUpper`, `toLower`,
+`substring`.
+
+All implementable in pure bash parameter expansion — no forks, no
+subshells. Fits the no-external-dependencies philosophy.
+
+Source: PLAN.md Phase 3.
+
+---
+
+## BOOP_CLASSPATH (Phase 4)
+
+Colon-delimited environment variable for class file search paths.
+Current resolution order: classPath registry → `__bashClass_dir` → PATH.
+Add BOOP_CLASSPATH between classPath registry and `__bashClass_dir`.
+Enables separate-repo class libraries without hand-registration.
+
+Source: PLAN.md Phase 4.
+
+---
+
+## Version Declaration (Phase 4)
+
+```bash
+declare -gr __bashClass_version="0.1.0"
+```
+
+No enforcement needed yet. Lets downstream scripts check compatibility.
+Semantic versioning from the start.
+
+Source: PLAN.md Phase 4.
+
+---
+
+## I/O Classes (Phase 5 — Deferred)
+
+Potential I/O class layer. `read` has real limitations for
+high-record-count streams. No use-case pressure yet — revisit when
+something concrete drives the need. @@
+
+Source: PLAN.md Phase 5.
+
+---
+
+## Return System Filesystem Mode
+
+`__bashClass.returnPath` — use call stack introspection to determine a
+filesystem-backed return path. Would allow returning data via temp files
+instead of variables, useful for large payloads.
+
+Source: PLAN.md Running Notes.
+
+---
+
+## Housekeeping
+
+- Clean up stale log files (`math_out.log`, `pi_growth.log`,
+  `tc_debug.log`) @@
+- `test_matrix` — not in the test count table; verify it still runs @@
