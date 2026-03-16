@@ -85,8 +85,52 @@ declare -g  __bashClass_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # TODO: See TODO.md "Reserved Variable Names & Inheritance Hygiene"
 
 # TODO: See TODO.md "Configurable Baked-Wrapper Typecast Behavior"
-# TODO: See TODO.md "Framework-Wide LOGLEVEL System"
 # TODO: See TODO.md "Argument-Parsing Object"
+
+# ============================================================================
+# GLOBALS - Log Levels
+# ============================================================================
+
+# Numeric log levels. Higher = more verbose.
+# silent=0: suppress everything (even errors — use with care)
+# error=1:  fatal or near-fatal conditions
+# warn=2:   unexpected but recoverable situations (default)
+# info=3:   notable lifecycle events (object creation, class loading)
+# debug=4:  detailed internal state for troubleshooting
+# trace=5:  finest grain — descriptor dumps, dispatch steps, etc.
+declare -gi __bashClass_LOG_SILENT=0
+declare -gi __bashClass_LOG_ERROR=1
+declare -gi __bashClass_LOG_WARN=2
+declare -gi __bashClass_LOG_INFO=3
+declare -gi __bashClass_LOG_DEBUG=4
+declare -gi __bashClass_LOG_TRACE=5
+
+# Global default log level. Controls what gets emitted when no per-class
+# override exists. Default is warn — errors and warnings show, info and
+# below are silent.
+declare -gi __bashClass_logLevel=$__bashClass_LOG_WARN
+
+# Per-class log level overrides. Keyed by class name, values are numeric
+# levels. When a class has an entry here, it (and its descendants, unless
+# they have their own override) use this level instead of the global.
+declare -gA __bashClass_classLogLevel
+
+# Resolved log level cache. Keyed by class name, values are the numeric
+# level that was resolved by walking the inheritance chain. Populated on
+# first log call for a given class, cleared when setLogLevel changes
+# anything in the chain.
+declare -gA __bashClass_resolvedLogLevel
+
+# Human-readable level names for output formatting.
+declare -gA __bashClass_logLevelName=(
+  [0]="SILENT" [1]="ERROR" [2]="WARN"
+  [3]="INFO"   [4]="DEBUG" [5]="TRACE"
+)
+
+# Fallback log file. If stderr is unavailable (redirected to /dev/null,
+# closed, etc.), log output goes here instead. Per-process PID suffix
+# prevents concurrent sessions from stomping each other.
+declare -g __bashClass_logFile="${TMPDIR:-/tmp}/boop_${$}.log"
 
 # ============================================================================
 # GLOBALS - Return Values
@@ -120,13 +164,158 @@ declare -gi __bashClass_loaded=0
 __bashClass.crash() {
   local -i __crash_err=1
   if [[ "${1:-}" =~ ^[0-9]+$ ]]; then __crash_err=$1; shift; fi
-  printf "%s\n" "$@" >&2
+  { printf "%s\n" "$@" >&2; } 2>/dev/null || \
+    printf "%s\n" "$@" >> "$__bashClass_logFile" 2>/dev/null
   exit $__crash_err
 }
 
 # Returns 0 if the current execution context is a subshell (BASHPID differs
 # from the root PID captured at framework load time). Used by auto return mode.
 __bashClass.inSubshell() { [[ $BASHPID != $__bashClass_rootPID ]]; }
+
+# ============================================================================
+# LOGGING
+# ============================================================================
+
+# Resolve the effective log level for a class. Walks the inheritance chain
+# looking for the first class with an explicit override in
+# __bashClass_classLogLevel, falling back to the global default.
+# Result is cached in __bashClass_resolvedLogLevel so the walk happens
+# at most once per class (until invalidated by setLogLevel).
+#
+# Usage: __bashClass.resolveLogLevel "Math" __result_var
+__bashClass.resolveLogLevel() {
+  local __rlvl_class="$1" __rlvl_target="${2:-}"
+  local __rlvl_result
+
+  # Check cache first
+  if [[ -n "${__bashClass_resolvedLogLevel[$__rlvl_class]+set}" ]]; then
+    __rlvl_result="${__bashClass_resolvedLogLevel[$__rlvl_class]}"
+  else
+    # Walk inheritance chain
+    local __rlvl_cursor="$__rlvl_class"
+    __rlvl_result=""
+    while [[ -n "$__rlvl_cursor" ]]; do
+      if [[ -n "${__bashClass_classLogLevel[$__rlvl_cursor]+set}" ]]; then
+        __rlvl_result="${__bashClass_classLogLevel[$__rlvl_cursor]}"
+        break
+      fi
+      # Move to parent
+      local __rlvl_parent=""
+      if [[ -n "${__bashClass_registry[$__rlvl_cursor]+set}" ]]; then
+        [[ "${__bashClass_registry[$__rlvl_cursor]}" =~ \|parent=([^|]*)\| ]] && \
+          __rlvl_parent="${BASH_REMATCH[1]}"
+      fi
+      __rlvl_cursor="$__rlvl_parent"
+    done
+    # Fall back to global default
+    [[ -z "$__rlvl_result" ]] && __rlvl_result=$__bashClass_logLevel
+    # Cache it
+    __bashClass_resolvedLogLevel[$__rlvl_class]=$__rlvl_result
+  fi
+
+  if [[ -n "$__rlvl_target" ]]; then
+    printf -v "$__rlvl_target" '%s' "$__rlvl_result"
+  else
+    printf '%s' "$__rlvl_result"
+  fi
+}
+
+# Core log function. Checks the resolved level for the current class
+# (via inherited _Class) and emits to stderr if the message level is
+# at or below the threshold. Bails immediately on cache hit when the
+# level is too verbose — the hot path is one hash lookup + one compare.
+#
+# Usage (internal): __bashClass.log 2 "something unexpected"
+# Users should use the public wrappers: _Warn, _Debug, etc.
+__bashClass.log() {
+  local -i __log_level=$1; shift
+  local -I _Class
+
+  # Resolve effective level for this class context
+  local __log_class="${_Class:-bashClass}"
+  local -i __log_threshold
+
+  # Hot path: cached lookup + integer compare
+  if [[ -n "${__bashClass_resolvedLogLevel[$__log_class]+set}" ]]; then
+    __log_threshold=${__bashClass_resolvedLogLevel[$__log_class]}
+  else
+    __bashClass.resolveLogLevel "$__log_class" __log_threshold
+  fi
+
+  # Below threshold? Bail.
+  (( __log_level > __log_threshold )) && return 0
+
+  # Build context from call stack. Walk past internal wrappers
+  # (_Warn, _Debug, etc.) to find the real caller.
+  local __log_caller="${FUNCNAME[2]:-main}"
+  [[ "$__log_caller" =~ ^_ && ! "$__log_caller" =~ \. ]] && \
+    __log_caller="${FUNCNAME[3]:-main}"
+
+  local __log_label="${__bashClass_logLevelName[$__log_level]:-LOG}"
+  local __log_msg
+  printf -v __log_msg "[%s] %s: %s" "$__log_label" "$__log_caller" "$*"
+
+  # Try stderr first; fall back to log file if stderr write fails
+  printf "%s\n" "$__log_msg" >&2 2>/dev/null || \
+    printf "%s\n" "$__log_msg" >> "$__bashClass_logFile" 2>/dev/null
+}
+
+# Set log level. With one argument, sets the global default.
+# With two arguments, sets a per-class override and invalidates
+# the resolved cache for that class and all its descendants.
+#
+# Usage: __bashClass.setLogLevel warn          # global
+#        __bashClass.setLogLevel debug Math     # per-class
+__bashClass.setLogLevel() {
+  local __slvl_name="$1" __slvl_class="${2:-}"
+  local -i __slvl_num
+
+  # Resolve name to number
+  case "${__slvl_name,,}" in
+    silent|0) __slvl_num=0 ;; error|1)  __slvl_num=1 ;;
+    warn|2)   __slvl_num=2 ;; info|3)   __slvl_num=3 ;;
+    debug|4)  __slvl_num=4 ;; trace|5)  __slvl_num=5 ;;
+    *) __bashClass.crash "Invalid log level: $__slvl_name (use: silent, error, warn, info, debug, trace)" ;;
+  esac
+
+  if [[ -z "$__slvl_class" ]]; then
+    # Global default — clear entire resolved cache
+    __bashClass_logLevel=$__slvl_num
+    __bashClass_resolvedLogLevel=()
+  else
+    # Per-class override — set it and invalidate cache for this class
+    # and any class whose resolved level might have been inherited from it
+    __bashClass_classLogLevel[$__slvl_class]=$__slvl_num
+    # Simple invalidation: clear the whole resolved cache. The walks
+    # are cheap and only happen once after a level change.
+    __bashClass_resolvedLogLevel=()
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Public convenience wrappers — the user-facing API
+# ---------------------------------------------------------------------------
+
+_Trace() { __bashClass.log $__bashClass_LOG_TRACE "$@"; }
+_Debug() { __bashClass.log $__bashClass_LOG_DEBUG "$@"; }
+_Info()  { __bashClass.log $__bashClass_LOG_INFO  "$@"; }
+_Warn()  { __bashClass.log $__bashClass_LOG_WARN  "$@"; }
+_Error() { __bashClass.log $__bashClass_LOG_ERROR "$@"; }
+
+# _Crash: logs as error, then exits. The message always prints
+# regardless of log level (it's fatal — you need to see it).
+# Falls back to log file if stderr is unavailable.
+_Crash() {
+  local __crash_msg
+  printf -v __crash_msg "[CRASH] %s: %s" "${FUNCNAME[1]:-main}" "$*"
+  printf "%s\n" "$__crash_msg" >&2 2>/dev/null || \
+    printf "%s\n" "$__crash_msg" >> "$__bashClass_logFile" 2>/dev/null
+  exit 1
+}
+
+# _LogLevel: convenience wrapper for __bashClass.setLogLevel
+_LogLevel() { __bashClass.setLogLevel "$@"; }
 
 # ============================================================================
 # UNIVERSAL RETURN HANDLER
@@ -456,10 +645,15 @@ __bashClass.dispatch() {
       if [[ \"\${_Class:-$_Class}\" == '$_Class' ]]; then
         _Self='$_Self' _Class='$_Class' $__dispatch_impl \"\$@\"
       # Tier 2: ambient class is in the family — legitimate typecast
-      elif \"\${_Class:-$_Class}\".isa $_Class; then
+      #   Check: is this object an instance of the ambient class?
+      #   Covers both upcasts (_Class=Box on a Cube) and downcasts.
+      #   Uses __bashClass.isa directly to avoid triggering dispatch
+      #   recursion through the baked wrapper system.
+      elif _Self='$_Self' _Class='$_Class' __bashClass.isa \"\${_Class:-$_Class}\"; then
         _Self='$_Self' _Class=\"\${_Class:-$_Class}\" __bashClass.dispatch $__dispatch_method \"\$@\"
-      # Tier 3: unrelated class (leakage) — ignore, use fast path
+      # Tier 3: unrelated class (leakage) — warn and use fast path
       else
+        _Class='$_Class' _Warn \"class leakage: \\\"\${_Class}\\\" is unrelated to $_Class in $_Self.$__dispatch_method — using $_Class\"
         _Self='$_Self' _Class='$_Class' $__dispatch_impl \"\$@\"
       fi
     }"

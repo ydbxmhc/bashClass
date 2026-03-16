@@ -350,8 +350,15 @@ into=v $cube.volume
 into=v _Class=Box $cube.volume
 ```
 
-The baked wrapper detects the class mismatch and falls back to full
-dispatch, so typecasts always resolve correctly even after baking.
+The baked wrapper detects the class mismatch and handles three cases:
+
+1. Exact match (or no ambient class) — fast path, direct call.
+2. Family member (ambient class is an ancestor) — legitimate typecast,
+   falls back to full dispatch for correct MRO resolution.
+3. Unrelated class (leakage from `local -I`) — emits a `_Warn`
+   diagnostic and uses the baked class. The warning is controlled by
+   the logging system's per-class level, so users can silence it or
+   (when the fatality threshold is implemented) make it fatal.
 
 ### `super`
 
@@ -787,6 +794,82 @@ crashes with "ClassName does not support iterators".
 
 ---
 
+## Logging
+
+The framework includes a built-in logging system with six numeric levels,
+per-class overrides inherited via the class chain, and cached resolution.
+
+### Levels
+
+| Level   | Num | Purpose |
+|---------|-----|---------|
+| silent  | 0   | Suppress everything (even errors) |
+| error   | 1   | Fatal or near-fatal conditions |
+| warn    | 2   | Unexpected but recoverable (default) |
+| info    | 3   | Notable lifecycle events |
+| debug   | 4   | Detailed internal state |
+| trace   | 5   | Finest grain — descriptor dumps, dispatch steps |
+
+### Usage
+
+```bash
+# In any method or script:
+_Warn  "unexpected value: $foo"
+_Debug "entering loop with $count items"
+_Trace "descriptor: $desc"
+_Error "something broke"
+_Crash "fatal — cannot continue"    # always prints, then exits 1
+
+# Set levels:
+_LogLevel warn              # global default
+_LogLevel debug Math        # Math and descendants get debug
+_LogLevel trace             # everything at trace
+```
+
+### How It Works
+
+Log calls inherit `_Class` via `local -I`, so the framework knows which
+class context the call is in. The resolved level for each class is cached
+after the first lookup — subsequent calls are one hash lookup + one
+integer compare. The inheritance walk only happens once per class (until
+invalidated by `_LogLevel`).
+
+When a class has no explicit override, the walk continues up the parent
+chain until it finds one, falling back to the global default.
+
+```bash
+_LogLevel warn              # global = warn
+_LogLevel debug Box         # Box = debug
+# Cube inherits from Box, so Cube resolves to debug
+# Map has no override, resolves to global warn
+```
+
+### Unloaded Classes
+
+If `_Class` refers to a class that isn't in the registry (not loaded,
+or a typo), the resolution walk can't find a parent chain. It falls
+back to the global default. This is by design — logging should never
+crash because of a missing class.
+
+### Fallback Log File
+
+If stderr is unavailable (closed, redirected), log output falls back
+to `${TMPDIR:-/tmp}/boop_${PID}.log`. Per-process PID suffix prevents
+concurrent sessions from stomping each other. The fallback path is
+stored in `__bashClass_logFile` and can be overridden.
+
+### Output Format
+
+```
+[LEVEL] caller: message
+```
+
+Where `caller` is the function name from the call stack (e.g.,
+`Box.volume`, `main`). The log wrappers (`_Warn`, etc.) are
+automatically skipped in the stack walk.
+
+---
+
 ## Framework API Reference
 
 ### Core Functions
@@ -803,6 +886,21 @@ crashes with "ClassName does not support iterators".
 | `__bashClass.toString` | Human-readable object display (compact or pretty). |
 | `__bashClass.super` | Dispatch a method against the parent class. |
 | `__bashClass.crash` | Exit with error message(s) to stderr. Optional custom exit code. |
+
+### Logging
+
+| Function | Description |
+|----------|-------------|
+| `_Trace` | Log at trace level (5). |
+| `_Debug` | Log at debug level (4). |
+| `_Info` | Log at info level (3). |
+| `_Warn` | Log at warn level (2). |
+| `_Error` | Log at error level (1). |
+| `_Crash` | Log as error and exit 1. Always prints regardless of level. |
+| `_LogLevel` | Set global or per-class log level. |
+| `__bashClass.log` | Core log function (use the wrappers above instead). |
+| `__bashClass.resolveLogLevel` | Resolve effective level for a class with caching. |
+| `__bashClass.setLogLevel` | Set log level and invalidate cache. |
 
 ### Registration & Import
 
@@ -852,6 +950,10 @@ crashes with "ClassName does not support iterators".
 | `__bashClass_RETURN` | Side-channel for global return mode. |
 | `__bashClass_rootPID` | Root process PID (for subshell detection). |
 | `__bashClass_loaded` | Framework initialization flag. |
+| `__bashClass_logLevel` | Global default log level (default: 2/warn). |
+| `__bashClass_classLogLevel` | Per-class log level overrides (associative array). |
+| `__bashClass_resolvedLogLevel` | Cached resolved levels (associative array). |
+| `__bashClass_logFile` | Fallback log file path when stderr is unavailable. |
 
 ---
 
@@ -954,5 +1056,6 @@ its properties. It also registers the Iterator companion class.
 | `test_containers_ts` | 155 tests for Container, List, Map, Iterator, and delegation. |
 | `test_math_ts` | 75 tests for Math (including pi verification). |
 | `test_stress_ts` | 131 adversarial tests for the framework itself. |
+| `test_logging_ts` | 51 tests for the logging system. |
 | `test_pi_growth` | Incremental pi benchmark (not a TestSuite file). |
 | `test_matrix` | Matrix operations benchmark (not a TestSuite file). |

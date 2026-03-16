@@ -1,0 +1,394 @@
+#!/bin/bash
+set -uo pipefail
+
+# Logging system tests — TestSuite version
+#
+# Log output goes to stderr. We redirect stderr to a temp file for
+# each log call, then assert against the file contents using $(<file)
+# (zero-fork builtin read). Tests run in-process — no bash -c except
+# where we need isolation (crash/exit tests, invalid input).
+
+. boop TestSuite Cube
+
+into=t TestSuite name="Logging Tests"
+
+# Temp file for capturing stderr
+__lf=$(mktemp)
+trap 'rm -f "$__lf"' EXIT
+
+# Helper: clear the capture file before each log call
+_lc() { : > "$__lf"; }
+
+# ============================================================================
+# Level threshold: default is warn
+# ============================================================================
+
+$t.section "Default threshold (warn)"
+
+_LogLevel warn
+
+_lc; _Warn "warn msg" 2>"$__lf"
+$t.assert_contains "warn shows at default" "$(<"$__lf")" "warn msg"
+
+_lc; _Error "err msg" 2>"$__lf"
+$t.assert_contains "error shows at default" "$(<"$__lf")" "err msg"
+
+_lc; _Info "info msg" 2>"$__lf"
+$t.assert_eq "info silent at default" "$(<"$__lf")" ""
+
+_lc; _Debug "debug msg" 2>"$__lf"
+$t.assert_eq "debug silent at default" "$(<"$__lf")" ""
+
+_lc; _Trace "trace msg" 2>"$__lf"
+$t.assert_eq "trace silent at default" "$(<"$__lf")" ""
+
+# ============================================================================
+# Level threshold: each level
+# ============================================================================
+
+$t.section "Each threshold level"
+
+_LogLevel silent
+_lc; _Error "e" 2>"$__lf"
+$t.assert_eq "error silent at silent" "$(<"$__lf")" ""
+
+_LogLevel error
+_lc; _Error "e" 2>"$__lf"
+$t.assert_contains "error shows at error" "$(<"$__lf")" "e"
+_lc; _Warn "w" 2>"$__lf"
+$t.assert_eq "warn silent at error" "$(<"$__lf")" ""
+
+_LogLevel info
+_lc; _Info "i" 2>"$__lf"
+$t.assert_contains "info shows at info" "$(<"$__lf")" "i"
+_lc; _Debug "d" 2>"$__lf"
+$t.assert_eq "debug silent at info" "$(<"$__lf")" ""
+
+_LogLevel debug
+_lc; _Debug "d" 2>"$__lf"
+$t.assert_contains "debug shows at debug" "$(<"$__lf")" "d"
+_lc; _Trace "t" 2>"$__lf"
+$t.assert_eq "trace silent at debug" "$(<"$__lf")" ""
+
+_LogLevel trace
+_lc; _Trace "t" 2>"$__lf"
+$t.assert_contains "trace shows at trace" "$(<"$__lf")" "t"
+
+_LogLevel warn
+
+# ============================================================================
+# Output format: level labels
+# ============================================================================
+
+$t.section "Output format: labels"
+
+_lc; _Error "x" 2>"$__lf"
+$t.assert_contains "ERROR label" "$(<"$__lf")" "[ERROR]"
+
+_lc; _Warn "x" 2>"$__lf"
+$t.assert_contains "WARN label" "$(<"$__lf")" "[WARN]"
+
+_LogLevel info
+_lc; _Info "x" 2>"$__lf"
+$t.assert_contains "INFO label" "$(<"$__lf")" "[INFO]"
+
+_LogLevel debug
+_lc; _Debug "x" 2>"$__lf"
+$t.assert_contains "DEBUG label" "$(<"$__lf")" "[DEBUG]"
+
+_LogLevel trace
+_lc; _Trace "x" 2>"$__lf"
+$t.assert_contains "TRACE label" "$(<"$__lf")" "[TRACE]"
+
+_LogLevel warn
+
+# ============================================================================
+# Caller context inside class methods
+# ============================================================================
+
+$t.section "Caller context"
+
+# Define a temporary test method on Box
+Box.test_log() {
+  local -I _Self _Class
+  _Warn "from method"
+}
+
+into=__lt_box Box length=1 width=1 height=1
+_lc; _Self="$__lt_box" _Class=Box Box.test_log 2>"$__lf"
+$t.assert_contains "caller shows method name" "$(<"$__lf")" "Box.test_log"
+
+# Top-level call shows "main"
+_lc; _Warn "top level" 2>"$__lf"
+$t.assert_contains "top-level caller is main" "$(<"$__lf")" "main"
+
+# ============================================================================
+# Per-class override
+# ============================================================================
+
+$t.section "Per-class override"
+
+_LogLevel warn
+_LogLevel trace Box
+
+_lc; _Class=Box _Trace "box trace" 2>"$__lf"
+$t.assert_contains "per-class trace shows" "$(<"$__lf")" "box trace"
+
+# No class context — falls back to global (warn)
+_lc; _Trace "global trace" 2>"$__lf"
+$t.assert_eq "global trace hidden" "$(<"$__lf")" ""
+
+unset '__bashClass_classLogLevel[Box]'
+__bashClass_resolvedLogLevel=()
+_LogLevel warn
+
+# ============================================================================
+# Inheritance: child inherits parent override
+# ============================================================================
+
+$t.section "Inheritance resolution"
+
+_LogLevel warn
+_LogLevel debug Box
+
+_lc; _Class=Cube _Debug "cube debug" 2>"$__lf"
+$t.assert_contains "Cube inherits Box debug" "$(<"$__lf")" "cube debug"
+
+_lc; _Class=Cube _Trace "cube trace" 2>"$__lf"
+$t.assert_eq "Cube trace hidden at inherited debug" "$(<"$__lf")" ""
+
+unset '__bashClass_classLogLevel[Box]'
+__bashClass_resolvedLogLevel=()
+_LogLevel warn
+
+# ============================================================================
+# Child override beats parent
+# ============================================================================
+
+$t.section "Child override beats parent"
+
+_LogLevel warn
+_LogLevel trace Box
+_LogLevel error Cube
+
+_lc; _Class=Cube _Warn "cube warn" 2>"$__lf"
+$t.assert_eq "Cube warn hidden (own override=error)" "$(<"$__lf")" ""
+
+_lc; _Class=Cube _Error "cube error" 2>"$__lf"
+$t.assert_contains "Cube error shows" "$(<"$__lf")" "cube error"
+
+_lc; _Class=Box _Trace "box trace" 2>"$__lf"
+$t.assert_contains "Box still at trace" "$(<"$__lf")" "box trace"
+
+unset '__bashClass_classLogLevel[Box]'
+unset '__bashClass_classLogLevel[Cube]'
+__bashClass_resolvedLogLevel=()
+_LogLevel warn
+
+# ============================================================================
+# Cache invalidation on level change
+# ============================================================================
+
+$t.section "Cache invalidation"
+
+_LogLevel warn
+
+_lc; _Class=Box _Debug "before" 2>"$__lf"
+$t.assert_eq "debug hidden before change" "$(<"$__lf")" ""
+
+# Change Box to debug — cache should invalidate
+_LogLevel debug Box
+_lc; _Class=Box _Debug "after" 2>"$__lf"
+$t.assert_contains "debug shows after level change" "$(<"$__lf")" "after"
+
+# Global change tightens threshold for classes without per-class override
+unset '__bashClass_classLogLevel[Box]'
+__bashClass_resolvedLogLevel=()
+_LogLevel debug
+_lc; _Class=Box _Debug "first" 2>"$__lf"
+$t.assert_contains "first debug shows" "$(<"$__lf")" "first"
+
+_LogLevel error
+_lc; _Class=Box _Debug "second" 2>"$__lf"
+$t.assert_eq "debug hidden after global tightens" "$(<"$__lf")" ""
+
+_LogLevel warn
+
+# ============================================================================
+# Per-class override survives global change
+# ============================================================================
+
+$t.section "Per-class survives global change"
+
+_LogLevel warn
+_LogLevel debug Box
+_LogLevel error   # tighten global — Box should keep its own level
+
+_lc; _Class=Box _Debug "survives" 2>"$__lf"
+$t.assert_contains "per-class debug survives global error" "$(<"$__lf")" "survives"
+
+unset '__bashClass_classLogLevel[Box]'
+__bashClass_resolvedLogLevel=()
+_LogLevel warn
+
+# ============================================================================
+# Unloaded class falls back to global
+# ============================================================================
+
+$t.section "Unloaded class fallback"
+
+_LogLevel debug
+_lc; _Class=FakeClass _Debug "fake" 2>"$__lf"
+$t.assert_contains "unloaded class uses global" "$(<"$__lf")" "fake"
+
+_lc; _Class=FakeClass _Trace "fake trace" 2>"$__lf"
+$t.assert_eq "unloaded class respects threshold" "$(<"$__lf")" ""
+
+_LogLevel warn
+
+# ============================================================================
+# _Crash: always prints, exits nonzero (needs isolation)
+# ============================================================================
+
+$t.section "_Crash behavior"
+
+# _Crash at silent level — still prints (in subshell so we don't exit)
+__crash_out=$(bash -c '. boop; _LogLevel silent; _Crash "fatal"' 2>&1)
+$t.assert_contains "crash prints at silent" "$__crash_out" "fatal"
+$t.assert_contains "crash has CRASH label" "$__crash_out" "[CRASH]"
+
+$t.assert_fail "crash exits nonzero" bash -c '. boop; _Crash "die" 2>/dev/null'
+
+# ============================================================================
+# _LogLevel validation (needs isolation — crashes on bad input)
+# ============================================================================
+
+$t.section "_LogLevel validation"
+
+$t.assert_fail "invalid level crashes" bash -c '. boop; _LogLevel banana 2>/dev/null'
+
+# Numeric level names
+_LogLevel 4
+_lc; _Debug "numeric" 2>"$__lf"
+$t.assert_contains "numeric level 4 = debug" "$(<"$__lf")" "numeric"
+
+_LogLevel 2
+_lc; _Debug "hidden" 2>"$__lf"
+$t.assert_eq "numeric level 2 hides debug" "$(<"$__lf")" ""
+
+_LogLevel warn
+
+# ============================================================================
+# Multi-word and special character messages
+# ============================================================================
+
+$t.section "Message content"
+
+_lc; _Warn "multiple words in a message" 2>"$__lf"
+$t.assert_contains "multi-word" "$(<"$__lf")" "multiple words in a message"
+
+_lc; _Warn "pipes | and equals = here" 2>"$__lf"
+$t.assert_contains "special chars" "$(<"$__lf")" "pipes | and equals = here"
+
+# ============================================================================
+# Cache reuse (same class, multiple calls)
+# ============================================================================
+
+$t.section "Cache reuse"
+
+_LogLevel warn
+_LogLevel trace Box
+
+_lc; _Class=Box _Trace "call1" 2>"$__lf"
+$t.assert_contains "first cached call" "$(<"$__lf")" "call1"
+
+_lc; _Class=Box _Trace "call2" 2>"$__lf"
+$t.assert_contains "second cached call" "$(<"$__lf")" "call2"
+
+_lc; _Class=Box _Trace "call3" 2>"$__lf"
+$t.assert_contains "third cached call" "$(<"$__lf")" "call3"
+
+# Verify cache entry exists
+if [[ -n "${__bashClass_resolvedLogLevel[Box]+set}" ]]; then
+  $t.assert_ok "cache entry exists for Box" true
+else
+  $t.assert_ok "cache entry exists for Box" false
+fi
+
+unset '__bashClass_classLogLevel[Box]'
+__bashClass_resolvedLogLevel=()
+_LogLevel warn
+
+# ============================================================================
+# bashClass (root) uses global level
+# ============================================================================
+
+$t.section "Root class uses global"
+
+_LogLevel debug
+_lc; _Class=bashClass _Debug "root debug" 2>"$__lf"
+$t.assert_contains "bashClass uses global" "$(<"$__lf")" "root debug"
+_LogLevel warn
+
+# ============================================================================
+# Deep inheritance: Cube → Box → bashClass
+# ============================================================================
+
+$t.section "Deep inheritance chain"
+
+_LogLevel warn
+_LogLevel trace bashClass
+
+_lc; _Class=Cube _Trace "deep inherit" 2>"$__lf"
+$t.assert_contains "Cube inherits from bashClass" "$(<"$__lf")" "deep inherit"
+
+# Override at Box — Cube should pick up Box, not bashClass
+_LogLevel error Box
+_lc; _Class=Cube _Warn "should hide" 2>"$__lf"
+$t.assert_eq "Cube picks Box override over bashClass" "$(<"$__lf")" ""
+
+unset '__bashClass_classLogLevel[Box]'
+unset '__bashClass_classLogLevel[bashClass]'
+__bashClass_resolvedLogLevel=()
+_LogLevel warn
+
+# ============================================================================
+# Fallback log file when stderr is unavailable (needs isolation)
+# ============================================================================
+
+$t.section "Fallback log file"
+
+__fallback_logfile="${TMPDIR:-/tmp}/boop_test_fallback_$$.log"
+rm -f "$__fallback_logfile"
+
+# Warn with stderr closed — should fall back to file
+bash -c '
+  . boop
+  __bashClass_logFile="'"$__fallback_logfile"'"
+  exec 2>&-
+  _Warn "fallback message"
+' 2>/dev/null
+
+if [[ -f "$__fallback_logfile" ]]; then
+  $t.assert_contains "fallback file has message" "$(<"$__fallback_logfile")" "fallback message"
+  rm -f "$__fallback_logfile"
+else
+  $t.assert_ok "fallback file was created" false
+fi
+
+# _Crash with stderr closed — should also fall back to file
+bash -c '
+  . boop
+  __bashClass_logFile="'"$__fallback_logfile"'"
+  exec 2>&-
+  _Crash "crash fallback"
+' 2>/dev/null
+
+if [[ -f "$__fallback_logfile" ]]; then
+  $t.assert_contains "crash fallback has message" "$(<"$__fallback_logfile")" "crash fallback"
+  rm -f "$__fallback_logfile"
+else
+  $t.assert_ok "crash fallback file was created" false
+fi
+
+$t.summary

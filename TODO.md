@@ -45,42 +45,53 @@ Source: `boop` dispatch/bake section, all class files.
 
 ---
 
-## Configurable Baked-Wrapper Typecast Behavior
+## Configurable Baked-Wrapper Typecast Behavior ✓ DONE
 
-When a baked wrapper detects an ambient class that is neither an exact
-match nor in the baked class's inheritance chain (e.g., `_Class=Hand`
-leaking into a Card method via `local -I`), the current behavior
-silently ignores it and uses the baked class (fast path). This is safe
-but hides potential user errors.
-
-Desired: a per-class setting (inherited, with a global default) that
-controls the response to unrelated-class leakage in baked wrappers:
-
-- `silent` — ignore and use baked class (current behavior)
-- `warn` — use baked class but emit a diagnostic to stderr
-- `strict` — crash with an informative message
-
-The setting should be resolvable at bake time (not every call) so the
-behavior can be hardcoded into the wrapper. Needs a registry walk for
-the first class-specific value in the inheritance chain, falling back
-to the global default. Something like `__bashClass_typecastMode` or a
-class property like `implicitSelfTypecast`.
+Tier 3 (unrelated class leakage) now emits a `_Warn` diagnostic
+instead of silently ignoring. Tier 2 (legitimate typecast) fixed to
+use `__bashClass.isa` directly, correctly handling upcasts (e.g.,
+`_Class=Box` on a Cube). Users control visibility via `_LogLevel`.
 
 Source: `boop` dispatch/bake section.
 
 ---
 
-## Framework-Wide LOGLEVEL System
+## Framework-Wide LOGLEVEL System ✓ DONE
 
-A global default log level with per-class overrides (inherited via the
-class chain). Would support the typecast warning above and provide a
-general diagnostic facility for class authors.
+Implemented in `boop` as framework infrastructure. Six numeric levels:
+`silent(0)`, `error(1)`, `warn(2)`, `info(3)`, `debug(4)`, `trace(5)`.
+Global default is `warn`. Per-class overrides inherited via the class
+chain with cached resolution (one hash lookup + integer compare on the
+hot path). Fallback log file at `${TMPDIR:-/tmp}/boop_${PID}.log` when
+stderr is unavailable.
 
-Levels: `silent`, `warn`, `info`, `debug`, `trace`.
+Public API: `_Error`, `_Warn`, `_Info`, `_Debug`, `_Trace`, `_Crash`,
+`_LogLevel`. 51 tests in `test_logging_ts`.
 
-Output to stderr with structured prefix (class/method/object ID).
-Per-class overrides walk the inheritance chain for the first
-class-specific value, falling back to the global default.
+---
+
+## Fatality Threshold ("use strict" for boop)
+
+The logging system has a visibility threshold — what gets printed. A
+second threshold would control what becomes fatal: the "fatality level."
+
+If fatality is set to `warn`, any `_Warn` call prints AND crashes.
+Set to `error` and only `_Error` kills. Set to `silent` and nothing
+is auto-fatal (`_Crash` remains explicitly fatal regardless).
+
+This is the `use strict` / `set -e` equivalent for boop. The framework
+author writes `_Warn "leakage detected"` because it's recoverable from
+the framework's perspective. But a user debugging a subtle dispatch bug
+sets fatality to `warn` and the process stops right at the point of
+leakage instead of silently continuing.
+
+Implementation: a second per-class + global threshold
+(`__bashClass_fatalLevel`), checked in `__bashClass.log` after the
+visibility check. If the message level is at or below the fatality
+threshold, log it and then crash. Clean extension of the existing
+system.
+
+Source: `boop` logging section.
 
 ---
 
@@ -224,6 +235,24 @@ subclasses:
 - `PlayingDeck extends Deck` — fills with 52 PlayingCards
 - `Hand` — generic scored collection
 - `BlackjackHand extends Hand` — ace adjustment, bust/blackjack logic
+
+---
+
+## Signal Handler Class
+
+A class for registering at-exit and on-error callbacks into a managed
+stack. Bash's `trap` only allows one handler per signal — this class
+would layer a callback stack on top of it, so multiple components can
+register cleanup/error behaviors without stomping each other.
+
+Core interface:
+- `onExit callback` — push a function onto the EXIT handler stack
+- `onError callback` — push a function onto the ERR handler stack
+- `remove callback` — pull a specific callback off the stack
+- Stack executes LIFO on signal (last registered runs first)
+
+Natural consumer of the Stack class (Phase 2). Could also support
+arbitrary signals beyond EXIT/ERR if the design generalizes cleanly.
 
 ---
 

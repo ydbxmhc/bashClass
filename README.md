@@ -248,10 +248,11 @@ bash test_box_cube_ts                # 45 tests
 bash test_containers_ts              # 155 tests (List, Map, Iterator, delegation)
 bash test_math_ts                    # 75 tests (includes pi verification)
 bash test_stress_ts                  # 131 adversarial framework tests
+bash test_logging_ts                 # 51 tests (logging system)
 bash test_pi_growth                  # incremental pi benchmark (not TestSuite)
 ```
 
-437 assertions across 5 TestSuite files, all passing.
+488 assertions across 6 TestSuite files, all passing.
 
 ## Documentation
 
