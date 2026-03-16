@@ -354,8 +354,10 @@ Source: PLAN.md Running Notes.
 
 ---
 
-## Housekeeping
+## Housekeeping ✓ DONE
 
-- Clean up stale log files (`math_out.log`, `pi_growth.log`,
-  `tc_debug.log`) @@
-- `test_matrix` — not in the test count table; verify it still runs @@
+- Stale log files removed (`math_out.log`, `pi_growth.log`,
+  `tc_debug.log`, `bash.exe.stackdump`, `REFACTOR_STATUS.md`)
+- `test_matrix` verified — runs correctly, not a TestSuite file
+  (benchmark only, intentionally excluded from test count)
+- `.gitignore` already covers `*.log` and `*.stackdump`
