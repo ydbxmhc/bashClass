@@ -9,6 +9,11 @@
 #   immediate (default) — assertions execute and report as called
 #   queue               — assertions are registered, then run as a batch via $t.run
 #
+# Verbosity:
+#   Default is quiet — only failures and the summary are printed.
+#   Set verbose=1 on construction or TESTSUITE_VERBOSE=1 in the environment
+#   to see PASS lines, INFO lines, section headers, and section timing.
+#
 # Usage:
 #   . boop TestSuite
 #   into=t TestSuite name="My Tests"
@@ -16,6 +21,9 @@
 #   $t.assert_eq "one is one" "1" "1"
 #   $t.assert_ok "true is true" true
 #   $t.summary
+#
+#   # Verbose: TESTSUITE_VERBOSE=1 bash my_test
+#   # Or:     into=t TestSuite name="My Tests" verbose=1
 
 # Load guard
 [[ -n "${__bashClass_registry[TestSuite]+set}" ]] && return 2>/dev/null
@@ -28,16 +36,18 @@
 
 __bashClass_registry["TestSuite"]="|class=TestSuite|parent=bashClass\
 |methods=new,section,run,summary,assert_eq,assert_ne,assert_ok,assert_fail,assert_match,assert_contains,info\
-|properties=name,mode"
+|properties=name,mode,verbose"
 
 # ============================================================================
 # Internal helpers — not methods, just functions
 # ============================================================================
 
-# Print a PASS line and increment the pass counter on the suite object.
+# Print a PASS line (if verbose) and increment the pass counter.
 __TestSuite._pass() {
   local __tsp_self="$1" __tsp_desc="$2"
-  printf "  PASS: %s\n" "$__tsp_desc"
+  local __tsp_verbose
+  __bashClass.parse "$__tsp_self" "verbose" __tsp_verbose
+  [[ "$__tsp_verbose" == "1" ]] && printf "  PASS: %s\n" "$__tsp_desc"
   local __tsp_p
   __bashClass.parse "$__tsp_self" "passed" __tsp_p
   : "${__tsp_p:=0}"
@@ -68,11 +78,13 @@ TestSuite.new() {
   local -I class
   : "${class:=TestSuite}"
   local __TS_new_self __TS_new_name="" __TS_new_mode="immediate"
+  local __TS_new_verbose="${TESTSUITE_VERBOSE:-0}"
 
   for __TS_new_arg in "$@"; do
     case "$__TS_new_arg" in
-      name=*)  __TS_new_name="${__TS_new_arg#name=}" ;;
-      mode=*)  __TS_new_mode="${__TS_new_arg#mode=}" ;;
+      name=*)    __TS_new_name="${__TS_new_arg#name=}" ;;
+      mode=*)    __TS_new_mode="${__TS_new_arg#mode=}" ;;
+      verbose=*) __TS_new_verbose="${__TS_new_arg#verbose=}" ;;
     esac
   done
 
@@ -81,7 +93,8 @@ TestSuite.new() {
     __bashClass.crash "TestSuite: mode must be 'immediate' or 'queue', got '$__TS_new_mode'"
 
   into=__TS_new_self __bashClass.new \
-    name="$__TS_new_name" mode="$__TS_new_mode" passed=0 failed=0 \
+    name="$__TS_new_name" mode="$__TS_new_mode" verbose="$__TS_new_verbose" \
+    passed=0 failed=0 \
     section_name="" section_start="" suite_start="$EPOCHREALTIME" queue=""
 
   # Create the queue List (only used in queue mode, but always available)
@@ -102,10 +115,13 @@ TestSuite.section() {
   local -I self class
   local __TS_sec_name="$1"
 
+  local __TS_sec_verbose
+  __bashClass.parse "$self" "verbose" __TS_sec_verbose
+
   # If there was a previous section in immediate mode, print its elapsed time
   local __TS_sec_prev_start
   __bashClass.parse "$self" "section_start" __TS_sec_prev_start
-  if [[ -n "$__TS_sec_prev_start" ]]; then
+  if [[ -n "$__TS_sec_prev_start" && "$__TS_sec_verbose" == "1" ]]; then
     local __TS_sec_mode
     __bashClass.parse "$self" "mode" __TS_sec_mode
     if [[ "$__TS_sec_mode" == "immediate" ]]; then
@@ -113,7 +129,7 @@ TestSuite.section() {
     fi
   fi
 
-  printf "\n--- %s ---\n" "$__TS_sec_name"
+  [[ "$__TS_sec_verbose" == "1" ]] && printf "\n--- %s ---\n" "$__TS_sec_name"
   self="$self" class="$class" __bashClass.dispatch set section_name "$__TS_sec_name"
   self="$self" class="$class" __bashClass.dispatch set section_start "$EPOCHREALTIME"
 }
@@ -150,8 +166,13 @@ __TestSuite._exec() {
       # identity leaking through the local -I chain. The baked wrappers
       # on user objects hardcode their own self/class, but the typecast
       # guard checks ${class:-...} which would pick up our leaked value.
-      self="" class="" "$@" 2>/dev/null
-      local -i __tsx_rc=$?
+      # The if/else structure ensures set -e callers survive non-zero exits.
+      local -i __tsx_rc=0
+      if self="" class="" "$@" 2>/dev/null; then
+        __tsx_rc=0
+      else
+        __tsx_rc=$?
+      fi
       if (( __tsx_rc == 0 )); then
         __TestSuite._pass "$__tsx_self" "$__tsx_desc"
       else
@@ -159,8 +180,12 @@ __TestSuite._exec() {
       fi
       ;;
     fail)
-      ( self="" class="" "$@" ) 2>/dev/null
-      local -i __tsx_rc=$?
+      local -i __tsx_rc=0
+      if ( self="" class="" "$@" ) 2>/dev/null; then
+        __tsx_rc=0
+      else
+        __tsx_rc=$?
+      fi
       if (( __tsx_rc != 0 )); then
         __TestSuite._pass "$__tsx_self" "$__tsx_desc"
       else
@@ -184,7 +209,9 @@ __TestSuite._exec() {
       fi
       ;;
     info)
-      printf "  INFO: %s\n" "$__tsx_desc"
+      local __tsx_verbose
+      __bashClass.parse "$__tsx_self" "verbose" __tsx_verbose
+      [[ "$__tsx_verbose" == "1" ]] && printf "  INFO: %s\n" "$__tsx_desc"
       ;;
   esac
 }
@@ -257,7 +284,9 @@ TestSuite.assert_contains() {
 
 TestSuite.info() {
   local -I self class
-  printf "  INFO: %s\n" "$1"
+  local __TS_info_verbose
+  __bashClass.parse "$self" "verbose" __TS_info_verbose
+  [[ "$__TS_info_verbose" == "1" ]] && printf "  INFO: %s\n" "$1"
 }
 
 # ============================================================================
@@ -294,9 +323,10 @@ TestSuite.run() {
   self="" class="" $__TS_run_queue.clear
 
   # Print section timing
-  local __TS_run_sec_start
+  local __TS_run_sec_start __TS_run_verbose
   __bashClass.parse "$__TS_run_self" "section_start" __TS_run_sec_start
-  if [[ -n "$__TS_run_sec_start" ]]; then
+  __bashClass.parse "$__TS_run_self" "verbose" __TS_run_verbose
+  if [[ -n "$__TS_run_sec_start" && "$__TS_run_verbose" == "1" ]]; then
     printf "  [%.3fs]\n" "$(( ${EPOCHREALTIME//.} - ${__TS_run_sec_start//.} ))e-6"
   fi
 }
@@ -308,11 +338,14 @@ TestSuite.run() {
 TestSuite.summary() {
   local -I self class
 
-  # Print final section timing if in immediate mode
+  local __TS_sum_verbose
+  __bashClass.parse "$self" "verbose" __TS_sum_verbose
+
+  # Print final section timing if in immediate mode and verbose
   local __TS_sum_mode __TS_sum_sec_start
   __bashClass.parse "$self" "mode" __TS_sum_mode
   __bashClass.parse "$self" "section_start" __TS_sum_sec_start
-  if [[ "$__TS_sum_mode" == "immediate" && -n "$__TS_sum_sec_start" ]]; then
+  if [[ "$__TS_sum_mode" == "immediate" && -n "$__TS_sum_sec_start" && "$__TS_sum_verbose" == "1" ]]; then
     printf "  [%.3fs]\n" "$(( ${EPOCHREALTIME//.} - ${__TS_sum_sec_start//.} ))e-6"
   fi
 

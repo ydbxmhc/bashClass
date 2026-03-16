@@ -1,5 +1,5 @@
 #!/bin/bash
-set -u
+set -uo pipefail
 
 # Stress test / adversarial test suite — TestSuite version
 # Tests that should FAIL (and we catch the failure), tests that should
@@ -253,7 +253,7 @@ $t.assert_contains "misspelled prettyprint still works (compact)" "$__bashClass_
 
 $t.section "subshell traps"
 __bashClass_RETURN="before_subshell"
-( new Box length=99 width=99 height=99 )
+( new Box length=99 width=99 height=99 ) > /dev/null
 $t.assert_eq "subshell new doesn't leak to parent global" "$__bashClass_RETURN" "before_subshell"
 
 __sub_obj=$( new Box length=1 width=1 height=1; printf "%s" "$__bashClass_RETURN" )

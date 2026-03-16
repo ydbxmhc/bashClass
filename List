@@ -29,7 +29,7 @@
 # List Class Descriptor
 # ============================================================================
 
-__bashClass_registry["List"]="|class=List|parent=Container|methods=new,get,set,delete,length,clear,has,push,pop,shift,unshift,slice,toArray,toString|properties=type"
+__bashClass_registry["List"]="|class=List|parent=Container|methods=new,get,set,delete,length,clear,has,push,pop,shift,unshift,slice,toArray,toString,each|properties=type"
 
 # ============================================================================
 # List Implementation Functions
@@ -345,6 +345,29 @@ List.toString() {
   __bashClass.return "$__List_ts_out" ${into:-}
 }
 
+# Iterate over all elements, calling a user function for each.
+#
+# The callback receives two arguments: the index (integer) and the value.
+# Iteration proceeds in index order (0, 1, 2, ...). The callback runs
+# in the current shell — it can read/write variables in the caller's scope.
+#
+# No subshells, no forks. The callback is invoked directly via its name.
+# If the callback returns non-zero, iteration stops immediately (early exit).
+#
+# Usage: $list.each my_callback    # calls: my_callback 0 "alpha"
+#                                  #        my_callback 1 "beta"
+#                                  #        ...
+List.each() {
+  local -I self class
+  local __List_each_fn="$1"
+  local -n __List_each_arr="__bashClass_data_${self}"
+  [[ -v __List_each_arr[@] ]] || return 0
+  local -i __List_each_len=${#__List_each_arr[@]} __List_each_i
+  for (( __List_each_i=0; __List_each_i < __List_each_len; __List_each_i++ )); do
+    "$__List_each_fn" "$__List_each_i" "${__List_each_arr[$__List_each_i]}" || return
+  done
+}
+
 # ============================================================================
 # Register Methods & Finalize
 # ============================================================================
@@ -363,4 +386,5 @@ __bashClass.registerMethod List unshift List.unshift
 __bashClass.registerMethod List slice List.slice
 __bashClass.registerMethod List toArray List.toArray
 __bashClass.registerMethod List toString List.toString
+__bashClass.registerMethod List each List.each
 __bashClass.registerClass List

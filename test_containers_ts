@@ -1,5 +1,5 @@
 #!/bin/bash
-set -u
+set -uo pipefail
 
 # Container, List, and Map tests — TestSuite version
 
@@ -184,7 +184,56 @@ $map.set "key" "second"
 into=v $map.get "key"; $t.assert_eq "overwrite" "$v" "second"
 
 # ============================================================================
-# Container: virtual methods crash
+# List: each
+# ============================================================================
+
+$t.section "List: each"
+into=elist List
+$elist.push "alpha" "beta" "gamma"
+
+# Collect results via callback
+__each_result=""
+__test_list_cb() { __each_result="${__each_result}[$1]=$2 "; }
+$elist.each __test_list_cb
+$t.assert_eq "each visits all elements" "$__each_result" "[0]=alpha [1]=beta [2]=gamma "
+
+# Early exit — callback returns non-zero
+__each_count=0
+__test_list_stop() { (( __each_count++ )); [[ "$2" == "beta" ]] && return 1; return 0; }
+$elist.each __test_list_stop
+$t.assert_eq "each stops on non-zero return" "$__each_count" "2"
+
+# each on empty list — callback never called
+into=empty_list List
+__each_empty_called=0
+__test_list_empty() { (( __each_empty_called++ )); }
+$empty_list.each __test_list_empty
+$t.assert_eq "each on empty list" "$__each_empty_called" "0"
+
+# ============================================================================
+# Map: each
+# ============================================================================
+
+$t.section "Map: each"
+into=emap Map
+$emap.set "host" "localhost"
+$emap.set "port" "8080"
+
+# Collect results — order not guaranteed, so check contains
+__map_result=""
+__test_map_cb() { __map_result="${__map_result}$1=$2 "; }
+$emap.each __test_map_cb
+$t.assert_contains "map each has host" "$__map_result" "host=localhost"
+$t.assert_contains "map each has port" "$__map_result" "port=8080"
+
+# Early exit
+__map_stop_count=0
+__test_map_stop() { (( __map_stop_count++ )); return 1; }
+$emap.each __test_map_stop
+$t.assert_eq "map each stops on non-zero" "$__map_stop_count" "1"
+
+# ============================================================================
+# Container: virtual each crashes
 # ============================================================================
 
 $t.section "Container: virtual methods crash"
@@ -195,6 +244,7 @@ $t.assert_fail "Container.length crashes" bash -c '. boop Container; into=c Cont
 $t.assert_fail "Container.clear crashes" bash -c '. boop Container; into=c Container; $c.clear'
 $t.assert_fail "Container.has crashes" bash -c '. boop Container; into=c Container; $c.has 0'
 $t.assert_fail "Container.toArray crashes" bash -c '. boop Container; into=c Container; $c.toArray'
+$t.assert_fail "Container.each crashes" bash -c '. boop Container; into=c Container; $c.each my_fn'
 
 # ============================================================================
 # Composition: List on Cube
@@ -314,5 +364,185 @@ if [[ -z "${__bashClass_registry[$dlist]:-}" ]]; then
 else
   $t.assert_ok "destroy removes from registry" false
 fi
+
+# ============================================================================
+# Map: insertion order
+# ============================================================================
+
+$t.section "Map: insertion order"
+into=omap Map
+$omap.set "charlie" "3"
+$omap.set "alpha" "1"
+$omap.set "bravo" "2"
+
+into=k $omap.keys
+$t.assert_eq "keys in insertion order" "$k" "charlie
+alpha
+bravo"
+
+into=v $omap.values
+$t.assert_eq "values in insertion order" "$v" "3
+1
+2"
+
+into=entries $omap.toArray
+$t.assert_eq "toArray in insertion order" "$entries" "charlie=3
+alpha=1
+bravo=2"
+
+# Overwrite doesn't change order
+$omap.set "alpha" "99"
+into=k2 $omap.keys
+$t.assert_eq "overwrite preserves key order" "$k2" "charlie
+alpha
+bravo"
+into=v2 $omap.get "alpha"
+$t.assert_eq "overwrite updates value" "$v2" "99"
+
+# Delete removes from order; re-insert goes to end
+$omap.delete "alpha"
+into=k3 $omap.keys
+$t.assert_eq "delete removes from order" "$k3" "charlie
+bravo"
+$omap.set "alpha" "1"
+into=k4 $omap.keys
+$t.assert_eq "re-insert goes to end" "$k4" "charlie
+bravo
+alpha"
+
+# toString walks insertion order
+into=s $omap.toString
+$t.assert_contains "toString starts with charlie" "$s" 'charlie="3"'
+
+# each walks insertion order
+__omap_order=""
+__test_omap_cb() { __omap_order="${__omap_order}$1 "; }
+$omap.each __test_omap_cb
+$t.assert_eq "each walks insertion order" "$__omap_order" "charlie bravo alpha "
+
+# clear resets key order
+$omap.clear
+$omap.set "zulu" "26"
+$omap.set "alpha" "1"
+into=k5 $omap.keys
+$t.assert_eq "clear resets order" "$k5" "zulu
+alpha"
+
+# ============================================================================
+# List: iterator
+# ============================================================================
+
+$t.section "List: iterator"
+into=ilist List
+$ilist.push "a" "b" "c" "d"
+
+into=iter $ilist.iterator
+$t.assert_ok "iterator isa bashClass" $iter.isa bashClass
+$t.assert_ok "hasNext on fresh iterator" $iter.hasNext
+$t.assert_fail "hasPrev on fresh iterator" $iter.hasPrev
+
+# Walk forward
+into=v $iter.next; $t.assert_eq "next 1 = a" "$v" "a"
+into=idx $iter.index; $t.assert_eq "index after next 1 = 0" "$idx" "0"
+into=cur $iter.current; $t.assert_eq "current = a" "$cur" "a"
+
+into=v $iter.next; $t.assert_eq "next 2 = b" "$v" "b"
+into=v $iter.next; $t.assert_eq "next 3 = c" "$v" "c"
+into=v $iter.next; $t.assert_eq "next 4 = d" "$v" "d"
+$t.assert_fail "hasNext at end" $iter.hasNext
+$t.assert_ok "hasPrev at end" $iter.hasPrev
+
+# Walk backward
+into=v $iter.prev; $t.assert_eq "prev from d = c" "$v" "c"
+into=idx $iter.index; $t.assert_eq "index after prev = 2" "$idx" "2"
+into=v $iter.prev; $t.assert_eq "prev again = b" "$v" "b"
+into=v $iter.prev; $t.assert_eq "prev to start = a" "$v" "a"
+$t.assert_fail "hasPrev at start" $iter.hasPrev
+
+# Reset
+$iter.reset
+$t.assert_ok "hasNext after reset" $iter.hasNext
+$t.assert_fail "hasPrev after reset" $iter.hasPrev
+into=v $iter.next; $t.assert_eq "next after reset = a" "$v" "a"
+
+# Iterator on empty list
+into=elist2 List
+into=eiter $elist2.iterator
+$t.assert_fail "hasNext on empty" $eiter.hasNext
+$t.assert_fail "hasPrev on empty" $eiter.hasPrev
+
+# ============================================================================
+# Map: iterator (insertion order)
+# ============================================================================
+
+$t.section "Map: iterator"
+into=imap Map
+$imap.set "first" "100"
+$imap.set "second" "200"
+$imap.set "third" "300"
+
+into=miter $imap.iterator
+
+# Walk forward — should follow insertion order
+into=v $miter.next; $t.assert_eq "map iter next 1 = 100" "$v" "100"
+into=idx $miter.index; $t.assert_eq "map iter index 1 = first" "$idx" "first"
+
+into=v $miter.next; $t.assert_eq "map iter next 2 = 200" "$v" "200"
+into=idx $miter.index; $t.assert_eq "map iter index 2 = second" "$idx" "second"
+
+into=v $miter.next; $t.assert_eq "map iter next 3 = 300" "$v" "300"
+into=idx $miter.index; $t.assert_eq "map iter index 3 = third" "$idx" "third"
+
+$t.assert_fail "map iter hasNext at end" $miter.hasNext
+
+# Walk backward
+into=v $miter.prev; $t.assert_eq "map iter prev = 200" "$v" "200"
+into=idx $miter.index; $t.assert_eq "map iter prev index = second" "$idx" "second"
+
+# Reset and re-walk
+$miter.reset
+into=v $miter.next; $t.assert_eq "map iter reset+next = 100" "$v" "100"
+
+# Snapshot isolation — mutating map doesn't affect iterator
+$imap.set "fourth" "400"
+$miter.reset
+__miter_count=0
+while $miter.hasNext; do
+  into=__miter_v $miter.next
+  (( __miter_count++ ))
+done
+$t.assert_eq "snapshot has 3 (not 4)" "$__miter_count" "3"
+
+# Iterator crashes
+$t.assert_fail "next past end crashes" bash -c '. boop List; into=l List; $l.push x; into=i $l.iterator; $i.next; $i.next'
+$t.assert_fail "prev before start crashes" bash -c '. boop List; into=l List; $l.push x; into=i $l.iterator; $i.next; $i.prev'
+$t.assert_fail "current before first crashes" bash -c '. boop List; into=l List; $l.push x; into=i $l.iterator; $i.current'
+
+# ============================================================================
+# Container: lazy iterator delegation ($list.next etc.)
+# ============================================================================
+
+$t.section "Container: iterator delegation"
+into=dlist List
+$dlist.push "x" "y" "z"
+
+$t.assert_ok "delegation hasNext" $dlist.hasNext
+into=v $dlist.next; $t.assert_eq "delegation next 1 = x" "$v" "x"
+into=v $dlist.next; $t.assert_eq "delegation next 2 = y" "$v" "y"
+into=cur $dlist.current; $t.assert_eq "delegation current = y" "$cur" "y"
+into=idx $dlist.iterIndex; $t.assert_eq "delegation iterIndex = 1" "$idx" "1"
+$t.assert_ok "delegation hasPrev" $dlist.hasPrev
+into=v $dlist.prev; $t.assert_eq "delegation prev = x" "$v" "x"
+$dlist.iterReset
+into=v $dlist.next; $t.assert_eq "delegation after reset = x" "$v" "x"
+
+# Delegation and explicit iterator are independent
+into=dlist2 List
+$dlist2.push "a" "b" "c"
+into=exiter $dlist2.iterator
+into=v1 $dlist2.next;  $t.assert_eq "implicit next = a" "$v1" "a"
+into=v2 $exiter.next;  $t.assert_eq "explicit next = a" "$v2" "a"
+into=v3 $dlist2.next;  $t.assert_eq "implicit next 2 = b" "$v3" "b"
+into=v4 $exiter.next;  $t.assert_eq "explicit next 2 = b" "$v4" "b"
 
 $t.summary

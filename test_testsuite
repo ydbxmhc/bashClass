@@ -1,5 +1,5 @@
 #!/bin/bash
-set -u
+set -uo pipefail
 
 # TestSuite tests itself — the ultimate dogfood
 

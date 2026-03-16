@@ -25,8 +25,24 @@
 #                         → Map  (associative)
 #                         → Stack, Queue, etc. (future)
 #
+# Iterator (companion class, defined in this file):
+#   bashClass → Iterator
+#   Iterator is a standalone cursor object that holds a reference to a
+#   Container and a position. It is NOT a Container subclass — it doesn't
+#   hold data and doesn't fulfill the Container contract. It exists because
+#   of Container and is useless without one.
+#
+#   Every Container gets lazy iterator delegation: calling $list.next or
+#   $map.hasNext auto-creates an internal Iterator on first use and
+#   forwards to it. For independent cursors, create Iterators explicitly:
+#     into=iter Iterator target="$list" target_class="List"
+#
+#   Subclasses that don't want iterators call $self.noIterators in their
+#   constructor to wall off all iterator methods with a clear error.
+#
 # Virtual methods (child MUST override): get, set, delete, length, clear, has, toArray
 # Provided methods (inherited, work for all): isEmpty, new, destroy, toString
+# Iterator delegation (lazy): next, prev, hasNext, hasPrev, current, iterIndex, iterReset
 
 # Load guard — if already registered, nothing to do
 [[ -n "${__bashClass_registry[Container]+set}" ]] && return 2>/dev/null
@@ -37,9 +53,7 @@
 # Container Class Descriptor
 # ============================================================================
 
-# The "type" property records the storage flavor ("indexed" or "associative")
-# so toString and introspection can report it without checking the companion array.
-__bashClass_registry["Container"]="|class=Container|parent=bashClass|methods=new,destroy,length,clear,has,get,set,delete,isEmpty,toArray,toString,itemAt,setAt|properties=type"
+__bashClass_registry["Container"]="|class=Container|parent=bashClass|methods=new,destroy,length,clear,has,get,set,delete,isEmpty,toArray,toString,itemAt,setAt,each,iterator,next,prev,hasNext,hasPrev,current,iterIndex,iterReset,noIterators|properties=type"
 
 # ============================================================================
 # Virtual methods — child classes MUST override these.
@@ -48,57 +62,50 @@ __bashClass_registry["Container"]="|class=Container|parent=bashClass|methods=new
 # implement the method. This is the closest bash gets to a pure virtual.
 # ============================================================================
 
-# Retrieve an element by key (Map) or index (List).
 Container.get() {
   local -I self class
   __bashClass.crash "$class must implement 'get'"
 }
 
-# Store an element at a key (Map) or index (List).
 Container.set() {
   local -I self class
   __bashClass.crash "$class must implement 'set'"
 }
 
-# Remove an element by key (Map) or index (List).
 Container.delete() {
   local -I self class
   __bashClass.crash "$class must implement 'delete'"
 }
 
-# Return the number of elements in the container.
 Container.length() {
   local -I self class
   __bashClass.crash "$class must implement 'length'"
 }
 
-# Remove all elements from the container.
 Container.clear() {
   local -I self class
   __bashClass.crash "$class must implement 'clear'"
 }
 
-# Check if a key (Map) or index (List) exists in the container.
 Container.has() {
   local -I self class
   __bashClass.crash "$class must implement 'has'"
 }
 
-# Serialize all elements to a string. Format is child-defined:
-# List returns newline-delimited values, Map returns "key=value" lines.
 Container.toArray() {
   local -I self class
   __bashClass.crash "$class must implement 'toArray'"
+}
+
+Container.each() {
+  local -I self class
+  __bashClass.crash "$class must implement 'each'"
 }
 
 # ============================================================================
 # Provided methods — work for all containers via delegation.
 # ============================================================================
 
-# Returns 0 (true) if container has no elements, 1 (false) otherwise.
-# Delegates to the child's length implementation — works for any container
-# type without knowing the storage details. Uses exit code convention
-# for boolean: `$list.isEmpty && printf "nothing here"`
 Container.isEmpty() {
   local -I self class
   local __Container_isEmpty_len
@@ -106,10 +113,129 @@ Container.isEmpty() {
   (( __Container_isEmpty_len == 0 )) && return 0 || return 1
 }
 
-# Base constructor. Child classes override this to declare their companion
-# array type (indexed or associative) and pass type= to the descriptor.
-# The companion array is NOT created here — children own that responsibility
-# because only they know whether to declare -ga or -gA.
+# ============================================================================
+# Iterator delegation — lazy auto-creation of internal Iterator.
+#
+# Each Container instance can have an implicit Iterator stored in its
+# _iterator descriptor property. The first call to any delegation method
+# (next, prev, hasNext, etc.) creates the Iterator if it doesn't exist,
+# then forwards the call. This gives every container $list.next syntax
+# with zero cost if never used.
+#
+# For independent cursors, create Iterators explicitly via:
+#   into=iter Iterator target="$list" target_class="List"
+# ============================================================================
+
+# Internal helper — ensure the lazy iterator exists, store its ID in $3.
+# Uses __bashClass.set (descriptor property) not Container.set (data storage).
+__Container._ensureIterator() {
+  local __cei_self="$1" __cei_class="$2" __cei_target="$3"
+  local __cei_iter
+  __bashClass.parse "$__cei_self" "_iterator" __cei_iter
+  if [[ -z "$__cei_iter" ]]; then
+    into=__cei_iter Iterator target="$__cei_self" target_class="$__cei_class"
+    # Store in descriptor, not in container data
+    local __cei_encoded
+    __bashClass.encode "$__cei_iter" __cei_encoded
+    local __cei_desc="${__bashClass_registry[$__cei_self]:-}"
+    __bashClass_registry[$__cei_self]="$__cei_desc|_iterator=$__cei_encoded"
+  fi
+  local -n __cei_ref="$__cei_target"
+  __cei_ref="$__cei_iter"
+}
+
+# Create an explicit Iterator over this container.
+# Returns a new Iterator object every time — independent from the
+# lazy internal one. Callers manage its lifecycle.
+#
+# Usage: into=iter $list.iterator
+#        while $iter.hasNext; do
+#          into=val $iter.next
+#        done
+Container.iterator() {
+  local -I self class
+  local __Container_iter_obj
+  into=__Container_iter_obj Iterator target="$self" target_class="$class"
+  __bashClass.return "$__Container_iter_obj" ${into:-}
+}
+
+# Advance the internal iterator and return the next value.
+Container.next() {
+  local -I self class
+  local __Container_next_iter
+  __Container._ensureIterator "$self" "$class" __Container_next_iter
+  into=__Container_next_val self="$__Container_next_iter" class=Iterator __bashClass.dispatch next
+  __bashClass.return "$__Container_next_val" ${into:-}
+}
+
+# Move the internal iterator backward and return the value.
+Container.prev() {
+  local -I self class
+  local __Container_prev_iter
+  __Container._ensureIterator "$self" "$class" __Container_prev_iter
+  into=__Container_prev_val self="$__Container_prev_iter" class=Iterator __bashClass.dispatch prev
+  __bashClass.return "$__Container_prev_val" ${into:-}
+}
+
+# Check if the internal iterator has more elements ahead.
+Container.hasNext() {
+  local -I self class
+  local __Container_hn_iter
+  __Container._ensureIterator "$self" "$class" __Container_hn_iter
+  self="$__Container_hn_iter" class=Iterator __bashClass.dispatch hasNext
+}
+
+# Check if the internal iterator has elements behind.
+Container.hasPrev() {
+  local -I self class
+  local __Container_hp_iter
+  __Container._ensureIterator "$self" "$class" __Container_hp_iter
+  self="$__Container_hp_iter" class=Iterator __bashClass.dispatch hasPrev
+}
+
+# Return the value at the internal iterator's current position.
+Container.current() {
+  local -I self class
+  local __Container_cur_iter
+  __Container._ensureIterator "$self" "$class" __Container_cur_iter
+  into=__Container_cur_val self="$__Container_cur_iter" class=Iterator __bashClass.dispatch current
+  __bashClass.return "$__Container_cur_val" ${into:-}
+}
+
+# Return the key/index at the internal iterator's current position.
+Container.iterIndex() {
+  local -I self class
+  local __Container_idx_iter
+  __Container._ensureIterator "$self" "$class" __Container_idx_iter
+  into=__Container_idx_val self="$__Container_idx_iter" class=Iterator __bashClass.dispatch index
+  __bashClass.return "$__Container_idx_val" ${into:-}
+}
+
+# Reset the internal iterator to before the first element.
+Container.iterReset() {
+  local -I self class
+  local __Container_rst_iter
+  __Container._ensureIterator "$self" "$class" __Container_rst_iter
+  self="$__Container_rst_iter" class=Iterator __bashClass.dispatch reset
+}
+
+# Disable all iterator methods on this instance. Call from a subclass
+# constructor to opt out of iterator support entirely.
+#
+# Usage (in a subclass constructor):
+#   $self.noIterators
+Container.noIterators() {
+  local -I self class
+  local __noi_method
+  for __noi_method in iterator next prev hasNext hasPrev current iterIndex iterReset; do
+    eval "$self.$__noi_method() { __bashClass.crash '$class does not support iterators'; }"
+  done
+}
+
+# ============================================================================
+# Constructor / Destructor / toString
+# ============================================================================
+
 Container.new() {
   local -I class
   : "${class:=Container}"
@@ -118,21 +244,12 @@ Container.new() {
   __bashClass.return "$__Container_new_self" ${into:-}
 }
 
-# Destroy — clean up the companion array and remove the object from the
-# registry. After this call, the object ID is invalid and any stubs/baked
-# wrappers referencing it will crash on use (registry miss).
-# Child classes can override to add cleanup (e.g., destroying nested
-# objects in a tree structure), but should call super or replicate this.
 Container.destroy() {
   local -I self class
   unset "__bashClass_data_${self}"
   unset "__bashClass_registry[$self]"
 }
 
-# Container-aware toString override. Shows class name, object ID, storage
-# type, and element count. Child classes (List, Map) override this further
-# to show actual contents — this version is the fallback for any container
-# subclass that doesn't provide its own.
 Container.toString() {
   local -I self class
   local -l prettyPrint; : "${prettyPrint:=false}"
@@ -153,209 +270,309 @@ Container.toString() {
 }
 
 # ============================================================================
-# Deep Traversal — itemAt / setAt (Container methods)
+# Deep Traversal — itemAt / setAt
 #
 # IMPORTANT — why these methods use explicit dispatch instead of $cursor.get:
 #
-#   Most methods in this framework use `local -I self class` to inherit the
-#   calling object's identity, then call `$self.method` or `$other.method`
-#   and let the baked stubs handle dispatch. That works fine when every call
-#   in the function targets the SAME object type.
-#
-#   Traversal methods are different. The cursor changes identity AND class
-#   on every step — a List at level 0, a Map at level 1, a List again at
-#   level 2. The problem is `local -I`: it makes `self` and `class`
-#   inherited AND writable by callees. When we call `$cursor.get "$key"`,
-#   the dispatch machinery sets `self` and `class` to the cursor's values
-#   for that call — but those values LEAK BACK into our scope because
-#   `local -I` doesn't create a protective copy, it creates a shared
-#   binding up the call stack.
-#
-#   So after calling `$listCursor.get 0` (which sets class=List internally),
-#   our local `class` variable is now "List". If the next cursor is a Map
-#   and we call `$mapCursor.set "key" "val"`, the leaked class=List causes
-#   dispatch to route to List.set instead of Map.set. List.set expects an
-#   integer index, gets a string key, and crashes with "unbound variable".
-#
-#   The fix: we track the cursor's class explicitly in a local variable,
-#   look it up from the registry after each step via __bashClass.parse,
-#   and pass self= and class= as explicit environment prefixes on every
-#   dispatch call. This overrides whatever `local -I` leaked and ensures
-#   each step dispatches to the correct class implementation.
-#
-#   This is the ONLY place in the framework where this pattern is needed,
-#   because it's the only place where a single function dispatches to
-#   multiple different objects of potentially different classes in sequence.
+#   Traversal methods dispatch to multiple different objects of potentially
+#   different classes in sequence. `local -I` leaks class identity across
+#   calls, so we track the cursor's class explicitly and pass self=/class=
+#   as environment prefixes on every dispatch call.
 # ============================================================================
 
-# Walk nested containers by index/key path and return the leaf value.
-#
-# Each positional argument is a key (Map) or index (List) resolved in
-# sequence. The cursor starts as this container, and each step does a
-# .get to descend one level. If any intermediate resolves to empty
-# (missing key, out-of-range index), returns empty string immediately —
-# a read miss is not a crash.
-#
-# The final key's .get result is the return value. For a 2D matrix,
-# two args; for a Map-of-Lists, two args; for deeper nesting, more args.
-# The framework doesn't care about the mix of container types — each
-# step dispatches get on whatever the cursor points to.
-#
-# See the block comment above for why we use explicit self=/class=
-# dispatch instead of $cursor.get — `local -I` leaks class identity
-# across calls, which breaks mixed-type traversal.
-#
-# Usage: into=val $matrix.itemAt 1 2         # matrix[1][2]
-#        into=val $config.itemAt "db" "host"  # config["db"]["host"]
-#        into=val $deep.itemAt 0 "key" 3 1    # four levels deep
 Container.itemAt() {
   local -I self class
   local __Container_itemAt_cursor="$self" __Container_itemAt_class="$class"
   while (( $# > 1 )); do
-    # Explicit self=/class= prevents local -I leak from previous iteration
     into=__Container_itemAt_cursor self="$__Container_itemAt_cursor" class="$__Container_itemAt_class" __bashClass.dispatch get "$1"
     [[ -n "$__Container_itemAt_cursor" ]] || { __bashClass.return "" ${into:-}; return; }
-    # Cursor changed — resolve its actual class from the registry
     __bashClass.parse "$__Container_itemAt_cursor" "class" __Container_itemAt_class
     shift
   done
-  # Final get — same explicit dispatch pattern
   self="$__Container_itemAt_cursor" class="$__Container_itemAt_class" into=__Container_itemAt_cursor __bashClass.dispatch get "$1"
   __bashClass.return "$__Container_itemAt_cursor" ${into:-}
 }
 
-# Walk nested containers by index/key path and set the leaf value.
-#
-# First argument is the value to write. Remaining arguments are the
-# traversal path — all but the last key are resolved via .get (same
-# as itemAt), then the last key is passed to .set on the penultimate
-# container.
-#
-# Crashes if any intermediate resolves to empty — a write to a missing
-# path is a logic error, not a silent no-op. If you're not sure the
-# path exists, check with itemAt first.
-#
-# Same explicit self=/class= dispatch as itemAt — see the block comment
-# above itemAt for the full explanation of the local -I leak hazard.
-#
-# Usage: $matrix.setAt "99" 1 2              # matrix[1][2] = "99"
-#        $config.setAt "newhost" "db" "host"  # config["db"]["host"] = "newhost"
 Container.setAt() {
   local -I self class
   local __Container_setAt_val="$1"; shift
   local __Container_setAt_cursor="$self" __Container_setAt_class="$class"
   while (( $# > 1 )); do
-    # Explicit self=/class= prevents local -I leak from previous iteration
     into=__Container_setAt_cursor self="$__Container_setAt_cursor" class="$__Container_setAt_class" __bashClass.dispatch get "$1"
     [[ -n "$__Container_setAt_cursor" ]] || \
       __bashClass.crash "setAt: missing intermediate at '$1'"
-    # Cursor changed — resolve its actual class from the registry
     __bashClass.parse "$__Container_setAt_cursor" "class" __Container_setAt_class
     shift
   done
-  # Final set — explicit dispatch to the correct class at the leaf
   self="$__Container_setAt_cursor" class="$__Container_setAt_class" __bashClass.dispatch set "$1" "$__Container_setAt_val"
 }
 
 # ============================================================================
 # Deep Traversal — itemFrom / setOn (bashClass augmentation)
 #
-# These methods are registered on bashClass so ALL objects can use them,
-# but they only exist when Container is loaded. This is runtime augmentation:
-# loading Container adds container-awareness to the entire object system.
-#
-# itemFrom starts by reading a named property from the object's descriptor
-# (a bashClass .get via __bashClass.parse, not a Container .get), then
-# walks the resulting container with the remaining keys — same loop as
-# itemAt.
-#
-# setOn does the same walk but writes at the leaf.
-#
-# These methods use the same explicit self=/class= dispatch pattern as
-# itemAt/setAt. See the block comment above itemAt for the full
-# explanation of the local -I leak hazard that makes this necessary.
-# The short version: when a function dispatches to multiple different
-# objects in sequence, `local -I` leaks the class identity from one
-# call into the next, causing dispatch to route to the wrong class.
-# Explicit self=/class= on each dispatch call prevents this.
+# Registered on bashClass so ALL objects can use them. Loading Container
+# adds container-awareness to the entire object system.
 # ============================================================================
 
-# Read a value from a container stored in a named property.
-#
-# First argument is the property name on this object (resolved via
-# __bashClass.parse on the descriptor — NOT a Container .get). The
-# property's value is expected to be a container object ID. Remaining
-# arguments are the traversal path into that container, resolved the
-# same way as itemAt.
-#
-# Returns empty if the property is empty or any intermediate is missing.
-#
-# Usage: into=val $cube.itemFrom tags 0        # cube.tags → List → get 0
-#        into=val $cube.itemFrom tags 2 "name"  # cube.tags → List → Map → get "name"
 __bashClass.itemFrom() {
   local -I self class
   local __itemFrom_cursor __itemFrom_class
-  # First step: read the named property from the descriptor (bashClass get)
   __bashClass.parse "$self" "$1" __itemFrom_cursor
   [[ -n "$__itemFrom_cursor" ]] || { __bashClass.return "" ${into:-}; return; }
-  # Resolve the container's class for explicit dispatch
   __bashClass.parse "$__itemFrom_cursor" "class" __itemFrom_class
   shift
   while (( $# > 1 )); do
-    # Explicit self=/class= prevents local -I leak from previous iteration
     into=__itemFrom_cursor self="$__itemFrom_cursor" class="$__itemFrom_class" __bashClass.dispatch get "$1"
     [[ -n "$__itemFrom_cursor" ]] || { __bashClass.return "" ${into:-}; return; }
-    # Cursor changed — resolve its actual class from the registry
     __bashClass.parse "$__itemFrom_cursor" "class" __itemFrom_class
     shift
   done
-  # Final get — same explicit dispatch pattern
   self="$__itemFrom_cursor" class="$__itemFrom_class" into=__itemFrom_cursor __bashClass.dispatch get "$1"
   __bashClass.return "$__itemFrom_cursor" ${into:-}
 }
 
-# Write a value into a container stored in a named property.
-#
-# First argument is the property name (resolved via __bashClass.parse
-# on the descriptor). Second argument is the value to write. Remaining
-# arguments are the traversal path — same walk as itemFrom, but the
-# last key gets a .set.
-#
-# Crashes if the property is empty or any intermediate is missing.
-#
-# Same explicit self=/class= dispatch as itemFrom — see the block
-# comment above itemAt for the full explanation.
-#
-# Usage: $cube.setOn tags "urgent" 0            # cube.tags → List → set 0 "urgent"
-#        $cube.setOn tags "newval" 2 "name"      # cube.tags → List → Map → set "name" "newval"
 __bashClass.setOn() {
   local -I self class
   local __setOn_cursor __setOn_class
-  # First step: read the named property from the descriptor (bashClass get)
   __bashClass.parse "$self" "$1" __setOn_cursor
   [[ -n "$__setOn_cursor" ]] || __bashClass.crash "setOn: property '$1' is empty"
-  # Resolve the container's class for explicit dispatch
   __bashClass.parse "$__setOn_cursor" "class" __setOn_class
   shift
   local __setOn_val="$1"; shift
   while (( $# > 1 )); do
-    # Explicit self=/class= prevents local -I leak from previous iteration
     into=__setOn_cursor self="$__setOn_cursor" class="$__setOn_class" __bashClass.dispatch get "$1"
     [[ -n "$__setOn_cursor" ]] || \
       __bashClass.crash "setOn: missing intermediate at '$1'"
-    # Cursor changed — resolve its actual class from the registry
     __bashClass.parse "$__setOn_cursor" "class" __setOn_class
     shift
   done
-  # Final set — explicit dispatch to the correct class at the leaf
   self="$__setOn_cursor" class="$__setOn_class" __bashClass.dispatch set "$1" "$__setOn_val"
 }
 
 # ============================================================================
-# Register Methods & Finalize
+# Iterator — companion class (bashClass → Iterator)
+#
+# Stateful cursor for traversing Container subclasses. Holds a reference
+# to a container (target) and a position. NOT a Container subclass — it
+# doesn't hold data and doesn't fulfill the Container contract.
+#
+# Defined here because Iterator is useless without Container and Container
+# benefits from having it always available. No separate file to load.
+#
+# Position semantics:
+#   -1 = before first element (initial state)
+#   0..length-1 = on an element
+#
+# For List: walks elements in index order (0, 1, 2, ...).
+# For Map: snapshots the ordered key list at creation time and walks
+#   keys in insertion order. Mutations to the Map after creation don't
+#   affect the snapshot — predictable traversal over live-view.
+#
+# Usage (explicit):
+#   into=iter Iterator target="$list" target_class="List"
+#   while $iter.hasNext; do
+#     into=val $iter.next
+#     into=idx $iter.index
+#   done
+#
+# Usage (via Container delegation — lazy, auto-created):
+#   while $list.hasNext; do
+#     into=val $list.next
+#   done
 # ============================================================================
 
-# Container's own methods
+__bashClass_registry["Iterator"]="|class=Iterator|parent=bashClass|methods=new,hasNext,hasPrev,next,prev,current,index,reset|properties=target,target_class"
+
+# Constructor — creates an Iterator bound to a container.
+# Required args: target=<objectID> target_class=<className>
+Iterator.new() {
+  local -I class
+  : "${class:=Iterator}"
+
+  local __Iter_new_target="" __Iter_new_tclass=""
+  local __Iter_new_arg
+  for __Iter_new_arg in "$@"; do
+    case "$__Iter_new_arg" in
+      target=*)       __Iter_new_target="${__Iter_new_arg#target=}" ;;
+      target_class=*) __Iter_new_tclass="${__Iter_new_arg#target_class=}" ;;
+    esac
+  done
+
+  [[ -n "$__Iter_new_target" ]] || __bashClass.crash "Iterator: target is required"
+  [[ -n "$__Iter_new_tclass" ]] || __bashClass.crash "Iterator: target_class is required"
+
+  local __Iter_new_self
+  into=__Iter_new_self __bashClass.new target="$__Iter_new_target" target_class="$__Iter_new_tclass" position=-1
+
+  # For Map targets, snapshot the ordered key list
+  if [[ "$__Iter_new_tclass" == "Map" ]]; then
+    declare -ga "__bashClass_iterkeys_${__Iter_new_self}"
+    local -n __Iter_new_keys="__bashClass_keys_${__Iter_new_target}"
+    local -n __Iter_new_snap="__bashClass_iterkeys_${__Iter_new_self}"
+    if [[ -v __Iter_new_keys[@] ]] && (( ${#__Iter_new_keys[@]} > 0 )); then
+      __Iter_new_snap=("${__Iter_new_keys[@]}")
+    fi
+  fi
+
+  __bashClass.return "$__Iter_new_self" ${into:-}
+}
+
+# Internal helper — get the length of the target container into $2.
+__Iterator._targetLen() {
+  local __itl_self="$1"
+  local __itl_target __itl_tclass
+  __bashClass.parse "$__itl_self" "target" __itl_target
+  __bashClass.parse "$__itl_self" "target_class" __itl_tclass
+  local -n __itl_out="$2"
+
+  if [[ "$__itl_tclass" == "Map" ]]; then
+    local -n __itl_snap="__bashClass_iterkeys_${__itl_self}"
+    if [[ -v __itl_snap[@] ]]; then
+      __itl_out=${#__itl_snap[@]}
+    else
+      __itl_out=0
+    fi
+  else
+    local -n __itl_arr="__bashClass_data_${__itl_target}"
+    if [[ -v __itl_arr[@] ]]; then
+      __itl_out=${#__itl_arr[@]}
+    else
+      __itl_out=0
+    fi
+  fi
+}
+
+Iterator.hasNext() {
+  local -I self class
+  local __Iter_hn_pos
+  __bashClass.parse "$self" "position" __Iter_hn_pos
+  : "${__Iter_hn_pos:=-1}"
+  local -i __Iter_hn_len
+  __Iterator._targetLen "$self" __Iter_hn_len
+  (( __Iter_hn_pos + 1 < __Iter_hn_len )) && return 0 || return 1
+}
+
+Iterator.hasPrev() {
+  local -I self class
+  local __Iter_hp_pos
+  __bashClass.parse "$self" "position" __Iter_hp_pos
+  : "${__Iter_hp_pos:=-1}"
+  (( __Iter_hp_pos > 0 )) && return 0 || return 1
+}
+
+Iterator.next() {
+  local -I self class
+  local __Iter_next_pos
+  __bashClass.parse "$self" "position" __Iter_next_pos
+  : "${__Iter_next_pos:=-1}"
+  local -i __Iter_next_len
+  __Iterator._targetLen "$self" __Iter_next_len
+
+  (( __Iter_next_pos + 1 < __Iter_next_len )) || \
+    __bashClass.crash "Iterator: no more elements (next)"
+
+  (( __Iter_next_pos++ ))
+  self="$self" class=Iterator __bashClass.dispatch set position "$__Iter_next_pos"
+
+  local __Iter_next_target __Iter_next_tclass
+  __bashClass.parse "$self" "target" __Iter_next_target
+  __bashClass.parse "$self" "target_class" __Iter_next_tclass
+
+  if [[ "$__Iter_next_tclass" == "Map" ]]; then
+    local -n __Iter_next_snap="__bashClass_iterkeys_${self}"
+    local __Iter_next_key="${__Iter_next_snap[$__Iter_next_pos]}"
+    local -n __Iter_next_data="__bashClass_data_${__Iter_next_target}"
+    __bashClass.return "${__Iter_next_data[$__Iter_next_key]:-}" ${into:-}
+  else
+    local -n __Iter_next_arr="__bashClass_data_${__Iter_next_target}"
+    __bashClass.return "${__Iter_next_arr[$__Iter_next_pos]}" ${into:-}
+  fi
+}
+
+Iterator.prev() {
+  local -I self class
+  local __Iter_prev_pos
+  __bashClass.parse "$self" "position" __Iter_prev_pos
+  : "${__Iter_prev_pos:=-1}"
+
+  (( __Iter_prev_pos > 0 )) || \
+    __bashClass.crash "Iterator: no previous element (prev)"
+
+  (( __Iter_prev_pos-- ))
+  self="$self" class=Iterator __bashClass.dispatch set position "$__Iter_prev_pos"
+
+  local __Iter_prev_target __Iter_prev_tclass
+  __bashClass.parse "$self" "target" __Iter_prev_target
+  __bashClass.parse "$self" "target_class" __Iter_prev_tclass
+
+  if [[ "$__Iter_prev_tclass" == "Map" ]]; then
+    local -n __Iter_prev_snap="__bashClass_iterkeys_${self}"
+    local __Iter_prev_key="${__Iter_prev_snap[$__Iter_prev_pos]}"
+    local -n __Iter_prev_data="__bashClass_data_${__Iter_prev_target}"
+    __bashClass.return "${__Iter_prev_data[$__Iter_prev_key]:-}" ${into:-}
+  else
+    local -n __Iter_prev_arr="__bashClass_data_${__Iter_prev_target}"
+    __bashClass.return "${__Iter_prev_arr[$__Iter_prev_pos]}" ${into:-}
+  fi
+}
+
+Iterator.current() {
+  local -I self class
+  local __Iter_cur_pos
+  __bashClass.parse "$self" "position" __Iter_cur_pos
+  : "${__Iter_cur_pos:=-1}"
+  local -i __Iter_cur_len
+  __Iterator._targetLen "$self" __Iter_cur_len
+
+  (( __Iter_cur_pos >= 0 && __Iter_cur_pos < __Iter_cur_len )) || \
+    __bashClass.crash "Iterator: cursor not on an element"
+
+  local __Iter_cur_target __Iter_cur_tclass
+  __bashClass.parse "$self" "target" __Iter_cur_target
+  __bashClass.parse "$self" "target_class" __Iter_cur_tclass
+
+  if [[ "$__Iter_cur_tclass" == "Map" ]]; then
+    local -n __Iter_cur_snap="__bashClass_iterkeys_${self}"
+    local __Iter_cur_key="${__Iter_cur_snap[$__Iter_cur_pos]}"
+    local -n __Iter_cur_data="__bashClass_data_${__Iter_cur_target}"
+    __bashClass.return "${__Iter_cur_data[$__Iter_cur_key]:-}" ${into:-}
+  else
+    local -n __Iter_cur_arr="__bashClass_data_${__Iter_cur_target}"
+    __bashClass.return "${__Iter_cur_arr[$__Iter_cur_pos]}" ${into:-}
+  fi
+}
+
+Iterator.index() {
+  local -I self class
+  local __Iter_idx_pos
+  __bashClass.parse "$self" "position" __Iter_idx_pos
+  : "${__Iter_idx_pos:=-1}"
+  local -i __Iter_idx_len
+  __Iterator._targetLen "$self" __Iter_idx_len
+
+  (( __Iter_idx_pos >= 0 && __Iter_idx_pos < __Iter_idx_len )) || \
+    __bashClass.crash "Iterator: cursor not on an element"
+
+  local __Iter_idx_tclass
+  __bashClass.parse "$self" "target_class" __Iter_idx_tclass
+
+  if [[ "$__Iter_idx_tclass" == "Map" ]]; then
+    local -n __Iter_idx_snap="__bashClass_iterkeys_${self}"
+    __bashClass.return "${__Iter_idx_snap[$__Iter_idx_pos]}" ${into:-}
+  else
+    __bashClass.return "$__Iter_idx_pos" ${into:-}
+  fi
+}
+
+Iterator.reset() {
+  local -I self class
+  self="$self" class=Iterator __bashClass.dispatch set position "-1"
+}
+
+# ============================================================================
+# Register Container Methods & Finalize
+# ============================================================================
+
 __bashClass.registerMethod Container itemAt Container.itemAt
 __bashClass.registerMethod Container setAt Container.setAt
 __bashClass.registerMethod Container get Container.get
@@ -365,20 +582,40 @@ __bashClass.registerMethod Container length Container.length
 __bashClass.registerMethod Container clear Container.clear
 __bashClass.registerMethod Container has Container.has
 __bashClass.registerMethod Container toArray Container.toArray
+__bashClass.registerMethod Container each Container.each
 __bashClass.registerMethod Container isEmpty Container.isEmpty
+__bashClass.registerMethod Container iterator Container.iterator
+__bashClass.registerMethod Container next Container.next
+__bashClass.registerMethod Container prev Container.prev
+__bashClass.registerMethod Container hasNext Container.hasNext
+__bashClass.registerMethod Container hasPrev Container.hasPrev
+__bashClass.registerMethod Container current Container.current
+__bashClass.registerMethod Container iterIndex Container.iterIndex
+__bashClass.registerMethod Container iterReset Container.iterReset
+__bashClass.registerMethod Container noIterators Container.noIterators
 __bashClass.registerMethod Container new Container.new
 __bashClass.registerMethod Container destroy Container.destroy
 __bashClass.registerMethod Container toString Container.toString
 __bashClass.registerClass Container
 
-# Augment bashClass with container-aware traversal methods.
-# These are registered on bashClass so every object (Container or not)
-# can traverse containers stored in its properties. The functions are
-# defined above as __bashClass.itemFrom and __bashClass.setOn.
-# The bashClass methods= descriptor is updated so new objects created
-# after Container loads get stubs for these methods automatically.
+# ============================================================================
+# Register Iterator Methods & Finalize
+# ============================================================================
+
+__bashClass.registerMethod Iterator new      Iterator.new
+__bashClass.registerMethod Iterator hasNext  Iterator.hasNext
+__bashClass.registerMethod Iterator hasPrev  Iterator.hasPrev
+__bashClass.registerMethod Iterator next     Iterator.next
+__bashClass.registerMethod Iterator prev     Iterator.prev
+__bashClass.registerMethod Iterator current  Iterator.current
+__bashClass.registerMethod Iterator index    Iterator.index
+__bashClass.registerMethod Iterator reset    Iterator.reset
+__bashClass.registerClass Iterator
+
+# ============================================================================
+# bashClass augmentation — container-aware traversal for all objects
+# ============================================================================
+
 __bashClass.registerMethod bashClass itemFrom __bashClass.itemFrom
 __bashClass.registerMethod bashClass setOn __bashClass.setOn
-
-# Append to bashClass's methods list so stubAll picks them up
 __bashClass_registry["bashClass"]="${__bashClass_registry["bashClass"]/|methods=/|methods=itemFrom,setOn,}"

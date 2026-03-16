@@ -1,5 +1,5 @@
 #!/bin/bash
-set -u
+set -uo pipefail
 
 # Box and Cube tests — TestSuite version
 
@@ -153,7 +153,8 @@ $t.section "Lazy Stub Baking"
 into=sb new Box length=3 width=3 height=3
 into=v $sb.volume; $t.assert_eq "first call (stub)" "$v" "27"
 into=v $sb.volume; $t.assert_eq "second call (baked)" "$v" "27"
-$t.assert_ok "baked wrapper exists" declare -f "$sb.volume"
+declare -f "$sb.volume" > /dev/null 2>&1
+$t.assert_ok "baked wrapper exists" test $? -eq 0
 
 # ============================================================================
 # Typecast with Baked Wrapper
