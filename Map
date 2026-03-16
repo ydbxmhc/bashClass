@@ -7,13 +7,13 @@
 # delete, has, keys, values, and iteration via toArray.
 #
 # Storage: each Map instance owns a global associative array named
-# __bashClass_data_${self}. Key-value data lives there, not in the
+# __bashClass_data_${_Self}. Key-value data lives there, not in the
 # pipe-delimited descriptor. This gives us native bash associative array
 # performance for lookups while the object system handles identity,
 # dispatch, and lifecycle.
 #
 # Key ordering: Map maintains insertion order via a companion indexed
-# array __bashClass_keys_${self}. All traversal methods (keys, values,
+# array __bashClass_keys_${_Self}. All traversal methods (keys, values,
 # toArray, toString, each, iterator) walk keys in the order they were
 # first inserted. Overwriting an existing key updates the value but does
 # NOT change the key's position in the order. Deleting a key removes it

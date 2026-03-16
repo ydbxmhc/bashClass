@@ -8,7 +8,7 @@
 # index, slicing, and deletion with automatic re-indexing.
 #
 # Storage: each List instance owns a global indexed array named
-# __bashClass_data_${self}. Element data lives there, not in the
+# __bashClass_data_${_Self}. Element data lives there, not in the
 # pipe-delimited descriptor. This gives us native bash array performance
 # for reads/writes while the object system handles identity and dispatch.
 #
@@ -38,7 +38,7 @@ __bashClass_registry["List"]="|class=List|parent=Container|methods=new,get,set,d
 # Constructor — creates a new List instance with an indexed companion array.
 #
 # Delegates to __bashClass.new for descriptor creation and stub generation,
-# then declares a global indexed array (__bashClass_data_${self}) as the
+# then declares a global indexed array (__bashClass_data_${_Self}) as the
 # companion storage. The type=indexed argument lands in the descriptor so
 # introspection (toString, Container.toString) can report the storage flavor
 # without poking at the companion array directly.

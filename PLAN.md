@@ -16,6 +16,7 @@
 | `Math` | 75/75 | Arbitrary precision; fast path for ≤18 digits; Machin pi verified to 50+ digits |
 | `TestSuite` | 31/31 | Self-testing test harness |
 | `test_stress` | 131/131 | Framework adversarial tests |
+| `test_logging` | 51/51 | Logging system (levels, per-class overrides, fallback) |
 | `test_pi_growth` | — | Incremental pi benchmark (runs until >10s/digit) |
 
 ### Removed
@@ -50,14 +51,17 @@
 - **Duplicate key bug** fixed in `__bashClass.new` — constructor now replaces in-place instead of blindly appending
 - **Cube constructor** now requires `size=N`, crashes if missing or malformed
 - **TestSuite class** built — immediate and queue modes, 6 assertion methods, verbose/quiet modes
-- **All tests re-instrumented** with TestSuite — 437 assertions across 5 files, all passing under `set -uo pipefail`
+- **All tests re-instrumented** with TestSuite — 488 assertions across 6 files, all passing under `set -uo pipefail`
 - **`bencode`/`bdecode`** fixed to use `into=` convention (was positional `$2`)
 - **`each` iterator** added to Container/List/Map — callback-style iteration, non-zero return stops
-- **Insertion-ordered Map** — companion `__bashClass_keys_${self}` array tracks key insertion order; all traversal methods walk insertion order
+- **Insertion-ordered Map** — companion `__bashClass_keys_${_Self}` array tracks key insertion order; all traversal methods walk insertion order
 - **Iterator companion class** — defined inside Container file; stateful cursor with next/prev/current/index/reset/hasNext/hasPrev
 - **Lazy iterator delegation** on Container — `$list.next`, `$list.hasNext`, etc. auto-create internal Iterator on first use
-- **`noIterators`** opt-out method — subclasses call `$self.noIterators` to wall off all iterator methods
+- **`noIterators`** opt-out method — subclasses call `$_Self.noIterators` to wall off all iterator methods
 - **Blackjack script** written (untested) — inline classes, full game loop, uses boop List
+- **`_Self`/`_Class` rename** — `self`/`class` renamed to `_Self`/`_Class` across entire codebase (framework, all classes, all tests, all docs). Single-underscore mixed-case convention chosen for semi-private, collision-resistant naming.
+- **Framework-wide LOGLEVEL system** — six numeric levels (silent/error/warn/info/debug/trace), per-class overrides inherited via class chain with cached resolution, fallback log file when stderr unavailable. Public API: `_Error`, `_Warn`, `_Info`, `_Debug`, `_Trace`, `_Crash`, `_LogLevel`. 51 tests in `test_logging_ts`.
+- **Baked-wrapper typecast fix** — Tier 2 (legitimate typecast) was checking the wrong direction; fixed to use `__bashClass.isa` directly with `_Self`. Tier 3 (unrelated class leakage) now emits `_Warn` diagnostic instead of silently ignoring.
 
 ### Known Bugs — None Currently
 
@@ -88,10 +92,10 @@ Iterator companion class defined inside Container. Stateful cursor with
 `next`, `prev`, `current`, `index`, `reset`, `hasNext`, `hasPrev`.
 Lazy delegation on Container: `$list.next` auto-creates internal Iterator.
 Explicit `$list.iterator` for independent cursors. Map iterators snapshot
-ordered keys at creation time. `$self.noIterators` for opt-out.
+ordered keys at creation time. `$_Self.noIterators` for opt-out.
 
 ### Insertion-Ordered Map ✓ DONE
-Companion indexed array `__bashClass_keys_${self}` tracks insertion order.
+Companion indexed array `__bashClass_keys_${_Self}` tracks insertion order.
 All traversal methods walk insertion order. Overwrite preserves position.
 Delete removes from order; re-insert goes to end.
 
@@ -193,9 +197,5 @@ Post it with a straight face and let the thread do the work.
 
 - `bdecode` TODO: `output=file` support for binary-safe round-trip
 - `__bashClass.return` filesystem mode: `__bashClass.returnPath` from call stack introspection
-- `boop` TODO: typecast interface variable naming convention (`_Input` vs `_input` etc.)
 - Doubly-linked List: decide before implementing LinkedList @@
-- ~~Clean up `REFACTOR_STATUS.md`~~ — replaced with redirect to PLAN.md and docs/boop.md
-- Clean up stale log files (`math_out.log`, `pi_growth.log`, `tc_debug.log`) @@
-- `test_matrix` — not in the test count table; verify it still runs @@
 

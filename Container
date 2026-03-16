@@ -9,7 +9,7 @@
 #
 # Architecture:
 #   Container data lives in companion bash arrays, NOT in the pipe-delimited
-#   descriptor. Each instance owns a global array named __bashClass_data_${self}.
+#   descriptor. Each instance owns a global array named __bashClass_data_${_Self}.
 #   Child constructors declare it as indexed (-ga) or associative (-gA).
 #   The descriptor only holds metadata (class, parent, type).
 #
@@ -37,7 +37,7 @@
 #   forwards to it. For independent cursors, create Iterators explicitly:
 #     into=iter Iterator target="$list" target_class="List"
 #
-#   Subclasses that don't want iterators call $self.noIterators in their
+#   Subclasses that don't want iterators call $_Self.noIterators in their
 #   constructor to wall off all iterator methods with a clear error.
 #
 # Virtual methods (child MUST override): get, set, delete, length, clear, has, toArray
