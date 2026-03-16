@@ -26,7 +26,7 @@ into=val $l.get 0          # first element
 into=val $l.get -1         # last element (Python-style negative index)
 $l.set 0 "new_first"       # replace first element
 $l.set -1 "new_last"       # replace last element
-$l.has 0 && echo "exists"  # bounds check (exit code)
+$l.has 0 && printf "exists\n"  # bounds check (exit code)
 ```
 
 Out-of-range `get` returns empty string. Out-of-range `set` and `delete` crash.
@@ -59,13 +59,45 @@ into=s $l.slice -2          # last two elements
 
 Returns a newline-delimited string.
 
+### Callback Iteration
+
+```bash
+my_callback() { printf "[%s] %s\n" "$1" "$2"; }
+$l.each my_callback         # calls: my_callback 0 "alpha"
+                             #        my_callback 1 "beta"
+```
+
+If the callback returns non-zero, iteration stops immediately.
+
+### Iterator (Stateful Cursor)
+
+```bash
+# Lazy delegation — auto-created on first use
+while $l.hasNext; do
+  into=val $l.next
+  into=idx $l.iterIndex
+  printf "[%s] %s\n" "$idx" "$val"
+done
+$l.iterReset                # back to start
+
+# Explicit — independent cursor
+into=iter $l.iterator
+while $iter.hasNext; do
+  into=val $iter.next
+  printf "%s\n" "$val"
+done
+```
+
+See [Container.md](Container.md) for full iterator documentation,
+including multiple independent cursors and Map snapshot behavior.
+
 ### Utility
 
 ```bash
 into=n $l.length            # element count
 $l.clear                    # remove all elements
 $l.delete 2                 # remove element at index, re-index
-$l.isEmpty && echo "empty"  # boolean check
+$l.isEmpty && printf "empty\n"  # boolean check
 $l.destroy                  # clean up companion array + registry
 ```
 
@@ -98,12 +130,25 @@ into=val $outer.itemAt 0 1  # "b" — traverses into inner list
 into=l List
 $l.push "hello" "world" "foo"
 into=v $l.get 0
-echo "$v"                   # hello
+printf "%s\n" "$v"              # hello
 
 into=v $l.pop
-echo "$v"                   # foo
+printf "%s\n" "$v"              # foo
 
 into=n $l.length
-echo "$n"                   # 2
-```
+printf "%s\n" "$n"              # 2
 
+# Walk with each
+show() { printf "  [%s] %s\n" "$1" "$2"; }
+$l.each show
+#   [0] hello
+#   [1] world
+
+# Walk with iterator
+while $l.hasNext; do
+  into=val $l.next
+  printf "-> %s\n" "$val"
+done
+# -> hello
+# -> world
+```

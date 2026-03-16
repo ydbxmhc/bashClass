@@ -704,10 +704,86 @@ arrays (`__bashClass_data_${self}`), not in the pipe-delimited descriptor.
 This gives native bash array performance for element access. The
 descriptor only holds metadata (class, parent, type).
 
+Map also maintains a companion indexed array (`__bashClass_keys_${self}`)
+that tracks key insertion order. All traversal methods (keys, values,
+toArray, toString, each, iterator) walk keys in the order they were
+first added. Overwriting an existing key updates the value but preserves
+its position. Deleting a key removes it from the order; re-inserting
+places it at the end.
+
 Why not encode arrays into the descriptor? Because bash arrays can't
 nest inside associative arrays, and encoding list elements into a
 pipe-delimited string would mean escaping delimiters inside delimiters.
 Fragile, slow, and not worth the pain.
+
+### Iterator: Companion Class
+
+Iterator is a stateful cursor for traversing containers. It's defined
+inside the Container source file (not a separate file) because it's
+useless without Container and Container benefits from having it always
+available.
+
+Iterator inherits from `bashClass` (not Container). It doesn't hold
+data and doesn't fulfill the Container contract — it holds a reference
+to a container and a position. The relationship is composition: Container
+*has-a* Iterator, Iterator *references* a Container.
+
+Every Container instance gets lazy iterator delegation. Calling
+`$list.next` or `$map.hasNext` auto-creates an internal Iterator on
+first use and forwards to it. For independent cursors, create Iterators
+explicitly:
+
+```bash
+# Lazy delegation — auto-created, one per container
+while $list.hasNext; do
+  into=val $list.next
+  into=idx $list.iterIndex
+  printf "[%s] %s\n" "$idx" "$val"
+done
+$list.iterReset                      # back to start
+
+# Explicit — independent cursor, you manage it
+into=iter $list.iterator
+while $iter.hasNext; do
+  into=val $iter.next
+  printf "%s\n" "$val"
+done
+
+# Multiple independent cursors on the same container
+into=iter1 $list.iterator
+into=iter2 $list.iterator
+into=v1 $iter1.next                  # advances iter1 only
+into=v2 $iter2.next                  # advances iter2 only
+```
+
+Delegation methods on Container: `next`, `prev`, `hasNext`, `hasPrev`,
+`current`, `iterIndex`, `iterReset`. These forward to the lazy internal
+Iterator. The names `iterIndex` and `iterReset` avoid collision with
+potential Container methods.
+
+Methods on Iterator objects (explicit or internal): `next`, `prev`,
+`hasNext`, `hasPrev`, `current`, `index`, `reset`.
+
+For Map iterators, the ordered key list is snapshotted at creation time.
+Mutations to the Map after the iterator is created don't affect the
+snapshot — predictable traversal over live-view consistency.
+
+Subclasses that don't want iterators call `$self.noIterators` in their
+constructor:
+
+```bash
+MyStack.new() {
+  local -I class; : "${class:=MyStack}"
+  local __MyStack_new_self
+  into=__MyStack_new_self __bashClass.new "$@"
+  declare -ga "__bashClass_data_${__MyStack_new_self}"
+  $__MyStack_new_self.noIterators     # walls off all iterator methods
+  __bashClass.return "$__MyStack_new_self" ${into:-}
+}
+```
+
+After `noIterators`, any call to `$obj.next`, `$obj.iterator`, etc.
+crashes with "ClassName does not support iterators".
 
 ---
 
@@ -849,13 +925,14 @@ bashClass                          (root — get, set, isa, toString, new, super
   │     └── Cube                   (equal-sided Box — overrides geometry methods)
   ├── Container                    (virtual base — defines collection interface)
   │     ├── List                   (indexed array — push, pop, shift, slice, etc.)
-  │     └── Map                    (associative array — key-value pairs)
+  │     └── Map                    (insertion-ordered associative array — key-value pairs)
+  ├── Iterator                     (stateful cursor — companion to Container, defined in Container file)
   └── Math                         (arbitrary precision arithmetic — pi, expressions, etc.)
 ```
 
 When Container loads, it augments `bashClass` with `itemFrom` and `setOn`,
 so every object (not just containers) can traverse containers stored in
-its properties.
+its properties. It also registers the Iterator companion class.
 
 ---
 
@@ -866,14 +943,16 @@ its properties.
 | `boop` | The framework. Load this first, load this only. |
 | `Box` | Example class: 3D rectangular prism. |
 | `Cube` | Example class: equal-sided Box (inherits Box). |
-| `Container` | Virtual base class for collections. |
+| `Container` | Virtual base class for collections. Also defines the Iterator companion class. |
 | `List` | Indexed array container. |
-| `Map` | Associative array container. |
+| `Map` | Insertion-ordered associative array container. |
 | `Math` | Arbitrary precision arithmetic, pi, expression evaluators. |
+| `TestSuite` | Structured test harness — assertions, sections, timing, quiet/verbose modes. |
 | `docs/` | You are here. |
-| `test_box_cube` | 14 tests for Box and Cube. |
-| `test_containers` | 88 tests for Container, List, and Map. |
-| `test_math` | 75 tests for Math (including pi verification). |
-| `test_stress` | 132 adversarial tests for the framework itself. |
-| `test_pi_growth` | Incremental pi benchmark. |
-| `test_matrix` | Matrix operations benchmark (nested Lists). |
+| `test_testsuite` | 31 tests — TestSuite testing itself. |
+| `test_box_cube_ts` | 45 tests for Box and Cube. |
+| `test_containers_ts` | 155 tests for Container, List, Map, Iterator, and delegation. |
+| `test_math_ts` | 75 tests for Math (including pi verification). |
+| `test_stress_ts` | 131 adversarial tests for the framework itself. |
+| `test_pi_growth` | Incremental pi benchmark (not a TestSuite file). |
+| `test_matrix` | Matrix operations benchmark (not a TestSuite file). |

@@ -55,8 +55,8 @@ class=Box $c.volume        # dispatches to Box.volume
 
 into=c Cube size=5
 into=v $c.volume
-echo "Volume: $v"          # Volume: 125
+printf "Volume: %s\n" "$v"   # Volume: 125
 
-$c.isa Box && echo "yes"   # yes — Cube inherits from Box
+$c.isa Box && printf "yes\n"   # yes — Cube inherits from Box
 ```
 

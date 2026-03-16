@@ -60,7 +60,7 @@ required=2 into=a $b.area 4 5    # must be exactly 2 args
 ```bash
 into=v $b.get "length"    # read property
 $b.set "color" "blue"     # write property
-$b.isa Box && echo yes    # type check (walks inheritance)
+$b.isa Box && printf "yes\n"    # type check (walks inheritance)
 into=s $b.toString         # Box(_id){ length=5 width=3 height=7 }
 ```
 
@@ -71,9 +71,9 @@ into=s $b.toString         # Box(_id){ length=5 width=3 height=7 }
 
 into=b Box length=10 width=5 height=3
 into=v $b.volume
-echo "Volume: $v"          # Volume: 150
+printf "Volume: %s\n" "$v"   # Volume: 150
 
 into=t $b.top
-echo "Top area: $t"        # Top area: 50
+printf "Top area: %s\n" "$t" # Top area: 50
 ```
 

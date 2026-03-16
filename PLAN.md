@@ -11,10 +11,11 @@
 | Component | Tests | Notes |
 |-----------|-------|-------|
 | `boop` (core framework) | — | Dispatch, registry, encoding, return handler, import system |
-| `Box` / `Cube` | 14/14 | Example classes; good interface model |
-| `Container` / `List` / `Map` | 88/88 | Full collection layer, nested structures work |
+| `Box` / `Cube` | 45/45 | Example classes; good interface model |
+| `Container` / `List` / `Map` / `Iterator` | 155/155 | Full collection layer, insertion-ordered Map, iterators, nested structures |
 | `Math` | 75/75 | Arbitrary precision; fast path for ≤18 digits; Machin pi verified to 50+ digits |
-| `test_stress` | 132/132 | Framework adversarial tests |
+| `TestSuite` | 31/31 | Self-testing test harness |
+| `test_stress` | 131/131 | Framework adversarial tests |
 | `test_pi_growth` | — | Incremental pi benchmark (runs until >10s/digit) |
 
 ### Removed
@@ -46,6 +47,17 @@
 - **docs/boop.md** — comprehensive framework reference (return system, class authoring, naming conventions, internals, gotchas)
 - **README.md** rewritten — bash 5+ requirement, quick start, class walkthrough, doc links, current test counts
 - **REFACTOR_STATUS.md** replaced with redirect — content migrated to PLAN.md and docs/boop.md
+- **Duplicate key bug** fixed in `__bashClass.new` — constructor now replaces in-place instead of blindly appending
+- **Cube constructor** now requires `size=N`, crashes if missing or malformed
+- **TestSuite class** built — immediate and queue modes, 6 assertion methods, verbose/quiet modes
+- **All tests re-instrumented** with TestSuite — 437 assertions across 5 files, all passing under `set -uo pipefail`
+- **`bencode`/`bdecode`** fixed to use `into=` convention (was positional `$2`)
+- **`each` iterator** added to Container/List/Map — callback-style iteration, non-zero return stops
+- **Insertion-ordered Map** — companion `__bashClass_keys_${self}` array tracks key insertion order; all traversal methods walk insertion order
+- **Iterator companion class** — defined inside Container file; stateful cursor with next/prev/current/index/reset/hasNext/hasPrev
+- **Lazy iterator delegation** on Container — `$list.next`, `$list.hasNext`, etc. auto-create internal Iterator on first use
+- **`noIterators`** opt-out method — subclasses call `$self.noIterators` to wall off all iterator methods
+- **Blackjack script** written (untested) — inline classes, full game loop, uses boop List
 
 ### Known Bugs — None Currently
 
@@ -67,6 +79,22 @@ All classes audited. Comments match behavior. Error messages reviewed.
 
 *Roughly in order of effort, all building on existing Container/List foundations.*
 
+### `each` Callback Iteration ✓ DONE
+Implemented on Container (virtual), List, and Map. Callback receives
+(index, value) for List and (key, value) for Map. Non-zero return stops.
+
+### Iterator Protocol ✓ DONE
+Iterator companion class defined inside Container. Stateful cursor with
+`next`, `prev`, `current`, `index`, `reset`, `hasNext`, `hasPrev`.
+Lazy delegation on Container: `$list.next` auto-creates internal Iterator.
+Explicit `$list.iterator` for independent cursors. Map iterators snapshot
+ordered keys at creation time. `$self.noIterators` for opt-out.
+
+### Insertion-Ordered Map ✓ DONE
+Companion indexed array `__bashClass_keys_${self}` tracks insertion order.
+All traversal methods walk insertion order. Overwrite preserves position.
+Delete removes from order; re-insert goes to end.
+
 ### Stack
 Classic LIFO. Constrain List: expose `push`, `pop`, `peek`, `isEmpty`.
 Hide `shift`, `unshift`, `get`-by-index. One morning's work.
@@ -84,19 +112,6 @@ Consider whether doubly-linked is worth the complexity at this stage. @@
 Unique unordered collection. Implement on top of Map keys — values are irrelevant,
 keys are the members. Expose `add`, `has`, `remove`, `toArray`, `union`, `intersect`.
 Arguably simpler than LinkedList.
-
-### Iterator Protocol
-The gap that will hurt most if deferred too long.
-A common `each` method on `Container` taking a callback function name would let
-any function traverse any container without knowing its type.
-Enables writing generic algorithms — sort, filter, map, reduce — once,
-for everything.
-
-**Suggested interface:**
-```bash
-$list.each "my_callback_fn"     # calls my_callback_fn index value
-$map.each "my_callback_fn"      # calls my_callback_fn key value
-```
 
 ---
 

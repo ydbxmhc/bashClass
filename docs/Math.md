@@ -153,11 +153,11 @@ bases gracefully fall back to the string engine per iteration.
 ### Comparisons
 
 ```bash
-$m.eq $n && echo "equal"        # exit code 0 = true
-$m.lt $n && echo "less"
-$m.gt $n && echo "greater"
-$m.le $n && echo "less or equal"
-$m.ge $n && echo "greater or equal"
+$m.eq $n && printf "equal\n"        # exit code 0 = true
+$m.lt $n && printf "less\n"
+$m.gt $n && printf "greater\n"
+$m.le $n && printf "less or equal\n"
+$m.ge $n && printf "greater or equal\n"
 into=rc $m.cmp $n               # 0=equal, 1=greater, 2=less
 ```
 
@@ -172,7 +172,7 @@ into=i $m.toInt              # truncate to integer string
 into=v $m.val                # decimal string: "3.14159"
 into=s $m.toString           # Math(_id){ 3.14159 }
 into=s $m.format "%.4f"      # printf-style formatting: "3.1416"
-$m.isZero && echo "zero"     # boolean check
+$m.isZero && printf "zero\n"     # boolean check
 ```
 
 `round` uses round-half-up (not banker's rounding). If the digit past
@@ -248,22 +248,22 @@ by pi and arctan for performance.
 
 # Static API — quick math, plain value strings
 into=v Math.add 1.5 2.3
-echo "$v"                    # 3.8
+printf "%s\n" "$v"               # 3.8
 
 into=v Math.DO "( 10 + 5 ) / 3"
-echo "$v"                    # 5
+printf "%s\n" "$v"               # 5
 
 into=v Math.RPN 3 4 + 2 x
-echo "$v"                    # 14
+printf "%s\n" "$v"               # 14
 
 # Powers
 into=v Math.pow 2 32
-echo "$v"                    # 4294967296
+printf "%s\n" "$v"               # 4294967296
 
 # Static square loop
 for x in 1 2 3 4 5; do
   into=v Math.square $x
-  echo "$x² = $v"
+  printf "%s² = %s\n" "$x" "$v"
 done
 # 1² = 1  ...  5² = 25
 
@@ -272,22 +272,22 @@ into=a Math 1
 into=b Math 3
 into=r precision=50 $a.divide $b
 into=v $r.val
-echo "$v"
+printf "%s\n" "$v"
 # 0.33333333333333333333333333333333333333333333333333
 
 # Rounding is always explicit
 into=rounded $r.round 10
 into=v $rounded.val
-echo "$v"                    # 0.3333333333
+printf "%s\n" "$v"               # 0.3333333333
 
 # Pi
 into=pi Math.pi 30
 into=v $pi.val
-echo "pi = $v"
+printf "pi = %s\n" "$v"
 # pi = 3.14159265358979323846264338328
 
 # Format for display
 into=m Math 3.14159
 into=s $m.format "%010.4f"
-echo "$s"                    # 00003.1416
+printf "%s\n" "$s"               # 00003.1416
 ```

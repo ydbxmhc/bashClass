@@ -20,11 +20,11 @@ into=c Cube size=4 unit=cm
 
 # Call methods
 into=vol $c.volume
-echo "$vol"                          # 64
+printf "%s\n" "$vol"                 # 64
 
 # Type checking walks the inheritance chain
-$c.isa Cube && echo "it's a cube"    # it's a cube
-$c.isa Box  && echo "it's a box"     # it's a box
+$c.isa Cube && printf "it's a cube\n"    # it's a cube
+$c.isa Box  && printf "it's a box\n"     # it's a box
 
 # Display
 $c.toString pretty
@@ -73,7 +73,7 @@ vol=$( $cube.volume )               # vol="64"
 
 # Global side-channel (overwritten by next call)
 $cube.volume
-echo "$__bashClass_RETURN"          # 64
+printf "%s\n" "$__bashClass_RETURN"  # 64
 ```
 
 `into=` is the fast path. Use it.
@@ -105,12 +105,37 @@ $colors.push "red" "green" "blue"
 into=first $colors.get 0             # "red"
 into=last  $colors.get -1            # "blue" (negative indices)
 
-# Associative map
+# Insertion-ordered associative map
 into=config Map
 $config.set "host" "localhost"
 $config.set "port" "8080"
 into=h $config.get "host"            # "localhost"
-$config.has "port" && echo "yes"     # yes
+$config.has "port" && printf "yes\n"     # yes
+
+# Keys come back in insertion order
+into=k $config.keys                  # "host\nport" (not random hash order)
+```
+
+### Iteration
+
+Two styles: callback-based (`each`) and cursor-based (Iterator).
+
+```bash
+# Callback — function called for each element
+show() { printf "  %s = %s\n" "$1" "$2"; }
+$config.each show
+#   host = localhost
+#   port = 8080
+
+# Iterator — lazy, auto-created on first use
+$colors.push "red" "green" "blue"
+while $colors.hasNext; do
+  into=val $colors.next
+  printf "%s\n" "$val"
+done
+# red
+# green
+# blue
 ```
 
 ### Nested Structures
@@ -147,7 +172,7 @@ into=v Math.DO "( 10 + 5 ) / 3"     # "5"
 # Pi to arbitrary precision
 into=pi Math.pi 50
 into=v $pi.val
-echo "$v"
+printf "%s\n" "$v"
 # 3.14159265358979323846264338327950288419716939937510
 ```
 
@@ -184,7 +209,7 @@ __bashClass.registerClass MyClass
 . boop MyClass
 into=obj MyClass name=World
 into=msg $obj.greet
-echo "$msg"                          # Hello, World
+printf "%s\n" "$msg"                 # Hello, World
 ```
 
 See [docs/boop.md](docs/boop.md) for the full framework reference,
@@ -206,21 +231,27 @@ bashClass                          (root — get, set, isa, toString, new, super
   │     └── Cube                   (equal-sided Box)
   ├── Container                    (virtual base for collections)
   │     ├── List                   (indexed array)
-  │     └── Map                    (associative array)
-  └── Math                         (arbitrary precision arithmetic)
+  │     └── Map                    (insertion-ordered associative array)
+  ├── Iterator                     (stateful cursor — companion to Container)
+  ├── Math                         (arbitrary precision arithmetic)
+  └── TestSuite                    (structured test harness)
 ```
 
 ## Tests
 
+All tests use the TestSuite class. Default output is quiet (failures +
+summary only). Set `TESTSUITE_VERBOSE=1` for full output.
+
 ```bash
-bash test_box_cube                   # 14 tests
-bash test_containers                 # 88 tests
-bash test_math                       # 75 tests (includes pi verification)
-bash test_stress                     # 132 adversarial framework tests
-bash test_pi_growth                  # incremental pi benchmark
+bash test_testsuite                  # 31 tests (TestSuite self-test)
+bash test_box_cube_ts                # 45 tests
+bash test_containers_ts              # 155 tests (List, Map, Iterator, delegation)
+bash test_math_ts                    # 75 tests (includes pi verification)
+bash test_stress_ts                  # 131 adversarial framework tests
+bash test_pi_growth                  # incremental pi benchmark (not TestSuite)
 ```
 
-All 309 tests passing.
+437 assertions across 5 TestSuite files, all passing.
 
 ## Documentation
 
@@ -228,7 +259,8 @@ Detailed docs for each class live in `docs/`:
 
 - [boop (framework)](docs/boop.md) — the full reference
 - [Box](docs/Box.md) / [Cube](docs/Cube.md) — geometry examples
-- [Container](docs/Container.md) / [List](docs/List.md) / [Map](docs/Map.md) — collections
+- [Container](docs/Container.md) — virtual base + Iterator companion class
+- [List](docs/List.md) / [Map](docs/Map.md) — collections
 - [Math](docs/Math.md) — arbitrary precision arithmetic
 
 ## Status
