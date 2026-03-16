@@ -50,6 +50,8 @@ Map.new() {
   into=__Map_new_self __bashClass.new type=associative "$@"
   declare -gA "__bashClass_data_${__Map_new_self}"
   declare -ga "__bashClass_keys_${__Map_new_self}"
+  eval "__bashClass_data_${__Map_new_self}+=()"
+  eval "__bashClass_keys_${__Map_new_self}+=()"
   __bashClass.return "$__Map_new_self" ${into:-}
 }
 
@@ -103,9 +105,11 @@ Map.delete() {
   # Remove from ordered key list and compact
   local -a __Map_del_new=()
   local __Map_del_k
-  for __Map_del_k in "${__Map_del_keys[@]}"; do
-    [[ "$__Map_del_k" != "$__Map_del_key" ]] && __Map_del_new+=("$__Map_del_k")
-  done
+  if [[ -n "${!__Map_del_keys[@]}" ]]; then
+    for __Map_del_k in "${__Map_del_keys[@]}"; do
+      [[ "$__Map_del_k" != "$__Map_del_key" ]] && __Map_del_new+=("$__Map_del_k")
+    done
+  fi
   __Map_del_keys=("${__Map_del_new[@]+"${__Map_del_new[@]}"}")
 }
 
@@ -115,7 +119,8 @@ Map.delete() {
 Map.length() {
   local -I self class
   local -n __Map_length_arr="__bashClass_data_${self}"
-  __bashClass.return "${#__Map_length_arr[@]}" ${into:-}
+  local -i __Map_length_len=0; [[ -n "${!__Map_length_arr[@]}" ]] && __Map_length_len=${#__Map_length_arr[@]}
+  __bashClass.return "$__Map_length_len" ${into:-}
 }
 
 # Remove all key-value pairs from the map.
@@ -146,7 +151,7 @@ Map.keys() {
   local -I self class
   local -n __Map_keys_keys="__bashClass_keys_${self}"
   local __Map_keys_out
-  if ! [[ -v __Map_keys_keys[@] ]] || (( ${#__Map_keys_keys[@]} == 0 )); then
+  if ! [[ -n "${!__Map_keys_keys[@]}" ]] || (( ${#__Map_keys_keys[@]} == 0 )); then
     __bashClass.return "" ${into:-}
     return
   fi
@@ -166,7 +171,7 @@ Map.values() {
   local -n __Map_values_arr="__bashClass_data_${self}"
   local -n __Map_values_keys="__bashClass_keys_${self}"
   local __Map_values_out=""
-  if ! [[ -v __Map_values_keys[@] ]] || (( ${#__Map_values_keys[@]} == 0 )); then
+  if ! [[ -n "${!__Map_values_keys[@]}" ]] || (( ${#__Map_values_keys[@]} == 0 )); then
     __bashClass.return "" ${into:-}
     return
   fi
@@ -188,7 +193,7 @@ Map.toArray() {
   local -n __Map_toArray_arr="__bashClass_data_${self}"
   local -n __Map_toArray_keys="__bashClass_keys_${self}"
   local __Map_toArray_out="" __Map_toArray_key __Map_toArray_first=1
-  if [[ -v __Map_toArray_keys[@] ]]; then
+  if [[ -n "${!__Map_toArray_keys[@]}" ]]; then
     for __Map_toArray_key in "${__Map_toArray_keys[@]}"; do
       (( __Map_toArray_first )) || __Map_toArray_out="$__Map_toArray_out
 "
@@ -209,7 +214,7 @@ Map.toString() {
   local -n __Map_ts_arr="__bashClass_data_${self}"
   local -n __Map_ts_keys="__bashClass_keys_${self}"
   local __Map_ts_out="Map($self){ " __Map_ts_key __Map_ts_first=1
-  if [[ -v __Map_ts_keys[@] ]]; then
+  if [[ -n "${!__Map_ts_keys[@]}" ]]; then
     for __Map_ts_key in "${__Map_ts_keys[@]}"; do
       (( __Map_ts_first )) || __Map_ts_out="$__Map_ts_out, "
       __Map_ts_out="$__Map_ts_out$__Map_ts_key=\"${__Map_ts_arr[$__Map_ts_key]}\""
@@ -231,7 +236,7 @@ Map.each() {
   local __Map_each_fn="$1"
   local -n __Map_each_arr="__bashClass_data_${self}"
   local -n __Map_each_keys="__bashClass_keys_${self}"
-  [[ -v __Map_each_keys[@] ]] || return 0
+  [[ -n "${!__Map_each_keys[@]}" ]] || return 0
   local __Map_each_key
   for __Map_each_key in "${__Map_each_keys[@]}"; do
     "$__Map_each_fn" "$__Map_each_key" "${__Map_each_arr[$__Map_each_key]}" || return

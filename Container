@@ -409,7 +409,7 @@ Iterator.new() {
     declare -ga "__bashClass_iterkeys_${__Iter_new_self}"
     local -n __Iter_new_keys="__bashClass_keys_${__Iter_new_target}"
     local -n __Iter_new_snap="__bashClass_iterkeys_${__Iter_new_self}"
-    if [[ -v __Iter_new_keys[@] ]] && (( ${#__Iter_new_keys[@]} > 0 )); then
+    if [[ -n "${!__Iter_new_keys[@]}" ]] && (( ${#__Iter_new_keys[@]} > 0 )); then
       __Iter_new_snap=("${__Iter_new_keys[@]}")
     fi
   fi
@@ -427,14 +427,14 @@ __Iterator._targetLen() {
 
   if [[ "$__itl_tclass" == "Map" ]]; then
     local -n __itl_snap="__bashClass_iterkeys_${__itl_self}"
-    if [[ -v __itl_snap[@] ]]; then
+    if [[ -n "${!__itl_snap[@]}" ]]; then
       __itl_out=${#__itl_snap[@]}
     else
       __itl_out=0
     fi
   else
     local -n __itl_arr="__bashClass_data_${__itl_target}"
-    if [[ -v __itl_arr[@] ]]; then
+    if [[ -n "${!__itl_arr[@]}" ]]; then
       __itl_out=${#__itl_arr[@]}
     else
       __itl_out=0

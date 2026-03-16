@@ -55,6 +55,7 @@ List.new() {
   local __List_new_self
   into=__List_new_self __bashClass.new type=indexed "$@"
   declare -ga "__bashClass_data_${__List_new_self}"
+  eval "__bashClass_data_${__List_new_self}+=()"
   __bashClass.return "$__List_new_self" ${into:-}
 }
 
@@ -81,7 +82,7 @@ List.get() {
   local -I self class
   local -i __List_get_idx="$1"
   local -n __List_get_arr="__bashClass_data_${self}"
-  local -i __List_get_len=${#__List_get_arr[@]}
+  local -i __List_get_len=0; [[ -n "${!__List_get_arr[@]}" ]] && __List_get_len=${#__List_get_arr[@]}
   (( __List_get_idx < 0 )) && (( __List_get_idx += __List_get_len ))
   if (( __List_get_idx < 0 || __List_get_idx >= __List_get_len )); then
     __bashClass.return "" ${into:-}
@@ -111,7 +112,7 @@ List.set() {
   local -i __List_set_idx="$1"
   local __List_set_val="$2"
   local -n __List_set_arr="__bashClass_data_${self}"
-  local -i __List_set_len=${#__List_set_arr[@]}
+  local -i __List_set_len=0; [[ -n "${!__List_set_arr[@]}" ]] && __List_set_len=${#__List_set_arr[@]}
   (( __List_set_idx < 0 )) && (( __List_set_idx += __List_set_len ))
   (( __List_set_idx < 0 || __List_set_idx > __List_set_len )) && \
     __bashClass.crash "List index out of range: $1 (length: $__List_set_len)"
@@ -138,12 +139,12 @@ List.delete() {
   local -I self class
   local -i __List_del_idx="$1"
   local -n __List_del_arr="__bashClass_data_${self}"
-  local -i __List_del_len=${#__List_del_arr[@]}
+  local -i __List_del_len=0; [[ -n "${!__List_del_arr[@]}" ]] && __List_del_len=${#__List_del_arr[@]}
   (( __List_del_idx < 0 )) && (( __List_del_idx += __List_del_len ))
   (( __List_del_idx < 0 || __List_del_idx >= __List_del_len )) && \
     __bashClass.crash "List index out of range: $1 (length: $__List_del_len)"
   unset '__List_del_arr[$__List_del_idx]'
-  __List_del_arr=("${__List_del_arr[@]}")
+  __List_del_arr=("${__List_del_arr[@]+"${__List_del_arr[@]}"}")
 }
 
 # Return the number of elements in the list.
@@ -156,7 +157,8 @@ List.delete() {
 List.length() {
   local -I self class
   local -n __List_length_arr="__bashClass_data_${self}"
-  __bashClass.return "${#__List_length_arr[@]}" ${into:-}
+  local -i __List_length_len=0; [[ -n "${!__List_length_arr[@]}" ]] && __List_length_len=${#__List_length_arr[@]}
+  __bashClass.return "$__List_length_len" ${into:-}
 }
 
 # Remove all elements from the list.
@@ -185,7 +187,7 @@ List.has() {
   local -I self class
   local -i __List_has_idx="$1"
   local -n __List_has_arr="__bashClass_data_${self}"
-  local -i __List_has_len=${#__List_has_arr[@]}
+  local -i __List_has_len=0; [[ -n "${!__List_has_arr[@]}" ]] && __List_has_len=${#__List_has_arr[@]}
   (( __List_has_idx < 0 )) && (( __List_has_idx += __List_has_len ))
   (( __List_has_idx >= 0 && __List_has_idx < __List_has_len )) && return 0 || return 1
 }
@@ -221,7 +223,7 @@ List.push() {
 List.pop() {
   local -I self class
   local -n __List_pop_arr="__bashClass_data_${self}"
-  local -i __List_pop_len=${#__List_pop_arr[@]}
+  local -i __List_pop_len=0; [[ -n "${!__List_pop_arr[@]}" ]] && __List_pop_len=${#__List_pop_arr[@]}
   (( __List_pop_len == 0 )) && __bashClass.crash "pop from empty List"
   local __List_pop_val="${__List_pop_arr[-1]}"
   unset '__List_pop_arr[-1]'
@@ -240,7 +242,7 @@ List.pop() {
 List.shift() {
   local -I self class
   local -n __List_shift_arr="__bashClass_data_${self}"
-  local -i __List_shift_len=${#__List_shift_arr[@]}
+  local -i __List_shift_len=0; [[ -n "${!__List_shift_arr[@]}" ]] && __List_shift_len=${#__List_shift_arr[@]}
   (( __List_shift_len == 0 )) && __bashClass.crash "shift from empty List"
   local __List_shift_val="${__List_shift_arr[0]}"
   __List_shift_arr=("${__List_shift_arr[@]:1}")
@@ -258,7 +260,7 @@ List.shift() {
 List.unshift() {
   local -I self class
   local -n __List_unshift_arr="__bashClass_data_${self}"
-  __List_unshift_arr=("$@" "${__List_unshift_arr[@]}")
+  __List_unshift_arr=("$@" "${__List_unshift_arr[@]+"${__List_unshift_arr[@]}"}")
 }
 
 # Extract a sub-range of elements as a newline-delimited string.
@@ -279,7 +281,7 @@ List.slice() {
   local -I self class
   local -i __List_slice_start="${1:-0}" __List_slice_end
   local -n __List_slice_arr="__bashClass_data_${self}"
-  local -i __List_slice_len=${#__List_slice_arr[@]}
+  local -i __List_slice_len=0; [[ -n "${!__List_slice_arr[@]}" ]] && __List_slice_len=${#__List_slice_arr[@]}
   __List_slice_end="${2:-$__List_slice_len}"
   (( __List_slice_start < 0 )) && (( __List_slice_start += __List_slice_len ))
   (( __List_slice_end < 0 )) && (( __List_slice_end += __List_slice_len ))
@@ -307,7 +309,7 @@ List.toArray() {
   local -I self class
   local -n __List_toArray_arr="__bashClass_data_${self}"
   local __List_toArray_out
-  if (( ${#__List_toArray_arr[@]} == 0 )); then
+  if ! [[ -n "${!__List_toArray_arr[@]}" ]] || (( ${#__List_toArray_arr[@]} == 0 )); then
     __bashClass.return "" ${into:-}
     return
   fi
@@ -334,7 +336,7 @@ List.toArray() {
 List.toString() {
   local -I self class
   local -n __List_ts_arr="__bashClass_data_${self}"
-  local -i __List_ts_len=${#__List_ts_arr[@]}
+  local -i __List_ts_len=0; [[ -n "${!__List_ts_arr[@]}" ]] && __List_ts_len=${#__List_ts_arr[@]}
   local __List_ts_out="List($self)[ "
   local -i __List_ts_i
   for (( __List_ts_i=0; __List_ts_i < __List_ts_len; __List_ts_i++ )); do
@@ -361,7 +363,7 @@ List.each() {
   local -I self class
   local __List_each_fn="$1"
   local -n __List_each_arr="__bashClass_data_${self}"
-  [[ -v __List_each_arr[@] ]] || return 0
+  [[ -n "${!__List_each_arr[@]}" ]] || return 0
   local -i __List_each_len=${#__List_each_arr[@]} __List_each_i
   for (( __List_each_i=0; __List_each_i < __List_each_len; __List_each_i++ )); do
     "$__List_each_fn" "$__List_each_i" "${__List_each_arr[$__List_each_i]}" || return
