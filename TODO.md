@@ -160,3 +160,38 @@ Principle: Only suppress stderr when you know exactly what the error
 will be, you're expecting it, and the content has no debugging value.
 
 ---
+
+## Inline Class Definitions in Executable Scripts
+
+Currently, class files must be separate files to be both sourceable
+(for testing/reuse) and executable (for standalone scripts). The
+blackjack example originally defined all classes inline, but this
+prevented sourcing just the classes without running the game loop.
+
+Investigate a pattern for defining classes inline in an executable
+script while still allowing them to be sourced separately. Options:
+
+- `BASH_SOURCE` vs `$0` guard before the main logic
+- A `__bashClass.main` convention that registerClass can detect
+- A flag/property on the class that marks the file as executable
+
+Related: "Class File Execution Guard" section above.
+
+---
+
+## Generalize Card/Deck/Hand Classes
+
+Card, Deck, and Hand currently have blackjack-specific logic (ace
+rules, 52-card fill, etc.). These concepts are reusable beyond
+blackjack — tarot decks, index cards, any collection of items with
+a "hand" metaphor.
+
+Consider splitting into generic base classes and game-specific
+subclasses:
+
+- `Card` — generic card with arbitrary properties
+- `PlayingCard extends Card` — suit/rank/faceUp, 52-card standard
+- `Deck` — generic ordered collection with shuffle/draw
+- `PlayingDeck extends Deck` — fills with 52 PlayingCards
+- `Hand` — generic scored collection
+- `BlackjackHand extends Hand` — ace adjustment, bust/blackjack logic

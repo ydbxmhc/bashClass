@@ -5,7 +5,6 @@ set -uo pipefail
 # BLACKJACK — a boop framework demonstration
 #
 # Single-player blackjack against the house. You start with $100.
-# All classes defined inline — no separate files needed.
 #
 # Demonstrates: inheritance, method override, isa, List composition,
 #               into= returns, object creation, and property access.
@@ -13,250 +12,7 @@ set -uo pipefail
 # Usage: bash blackjack
 # ─────────────────────────────────────────────────────────────────────
 
-. boop List
-
-# ═════════════════════════════════════════════════════════════════════
-# Card — base playing card
-# ═════════════════════════════════════════════════════════════════════
-
-__bashClass_registry["Card"]="|class=Card|parent=bashClass\
-|methods=new,flip,val,toString\
-|properties=suit,rank,faceUp"
-
-Card.new() {
-  local -I class; : "${class:=Card}"
-  local __Card_new_self __Card_new_suit="" __Card_new_rank="" __Card_new_faceUp=0
-  for __Card_new_arg in "$@"; do
-    case "$__Card_new_arg" in
-      suit=*)   __Card_new_suit="${__Card_new_arg#suit=}" ;;
-      rank=*)   __Card_new_rank="${__Card_new_arg#rank=}" ;;
-      faceUp=*) __Card_new_faceUp="${__Card_new_arg#faceUp=}" ;;
-    esac
-  done
-  [[ -n "$__Card_new_suit" ]] || __bashClass.crash "Card: suit= is required"
-  [[ -n "$__Card_new_rank" ]] || __bashClass.crash "Card: rank= is required"
-  into=__Card_new_self __bashClass.new suit="$__Card_new_suit" rank="$__Card_new_rank" faceUp="$__Card_new_faceUp"
-  __bashClass.return "$__Card_new_self" ${into:-}
-}
-
-Card.flip() {
-  local -I self class
-  local __Card_flip_fu; __bashClass.parse "$self" "faceUp" __Card_flip_fu
-  if [[ "$__Card_flip_fu" == "1" ]]; then
-    $self.set faceUp 0
-  else
-    $self.set faceUp 1
-  fi
-}
-
-Card.val() {
-  local -I self class
-  local __Card_val_rank; __bashClass.parse "$self" "rank" __Card_val_rank
-  case "$__Card_val_rank" in
-    [2-9]) __bashClass.return "$__Card_val_rank" ${into:-} ;;
-    10)    __bashClass.return "10" ${into:-} ;;
-    *)     __bashClass.return "0" ${into:-} ;;
-  esac
-}
-
-Card.toString() {
-  local -I self class
-  local __Card_ts_fu; __bashClass.parse "$self" "faceUp" __Card_ts_fu
-  if [[ "$__Card_ts_fu" != "1" ]]; then
-    __bashClass.return "[?]" ${into:-}
-    return
-  fi
-  local __Card_ts_rank __Card_ts_suit
-  __bashClass.parse "$self" "rank" __Card_ts_rank
-  __bashClass.parse "$self" "suit" __Card_ts_suit
-  __bashClass.return "${__Card_ts_rank}${__Card_ts_suit}" ${into:-}
-}
-
-__bashClass.registerMethod Card new      Card.new
-__bashClass.registerMethod Card flip     Card.flip
-__bashClass.registerMethod Card val      Card.val
-__bashClass.registerMethod Card toString Card.toString
-__bashClass.registerClass Card
-
-# ═════════════════════════════════════════════════════════════════════
-# FaceCard extends Card — J, Q, K are always worth 10
-# ═════════════════════════════════════════════════════════════════════
-
-__bashClass_registry["FaceCard"]="|class=FaceCard|parent=Card\
-|methods=new,val\
-|properties=suit,rank,faceUp"
-
-FaceCard.new() {
-  local -I class; class=FaceCard; Card.new "$@"
-}
-
-FaceCard.val() {
-  local -I self class
-  __bashClass.return "10" ${into:-}
-}
-
-__bashClass.registerMethod FaceCard new FaceCard.new
-__bashClass.registerMethod FaceCard val FaceCard.val
-__bashClass.registerClass FaceCard
-
-# ═════════════════════════════════════════════════════════════════════
-# Ace extends Card — worth 11 (Hand adjusts to 1 when bust)
-# ═════════════════════════════════════════════════════════════════════
-
-__bashClass_registry["Ace"]="|class=Ace|parent=Card\
-|methods=new,val\
-|properties=suit,rank,faceUp"
-
-Ace.new() {
-  local -I class; class=Ace; Card.new "$@"
-}
-
-Ace.val() {
-  local -I self class
-  __bashClass.return "11" ${into:-}
-}
-
-__bashClass.registerMethod Ace new Ace.new
-__bashClass.registerMethod Ace val Ace.val
-__bashClass.registerClass Ace
-
-# ═════════════════════════════════════════════════════════════════════
-# Deck extends List — 52 cards, shuffle, draw
-# ═════════════════════════════════════════════════════════════════════
-
-__bashClass_registry["Deck"]="|class=Deck|parent=List\
-|methods=new,fill,shuffle,draw\
-|properties=type"
-
-Deck.new() {
-  local -I class; class=Deck
-  local __Deck_new_self
-  into=__Deck_new_self List.new "$@"
-  self="$__Deck_new_self" class=Deck Deck.fill
-  self="$__Deck_new_self" class=Deck Deck.shuffle
-  __bashClass.return "$__Deck_new_self" ${into:-}
-}
-
-Deck.fill() {
-  local -I self class
-  $self.clear
-  local __Deck_fill_suits=("♠" "♥" "♦" "♣") __Deck_fill_s __Deck_fill_r __Deck_fill_c
-  for __Deck_fill_s in "${__Deck_fill_suits[@]}"; do
-    for __Deck_fill_r in 2 3 4 5 6 7 8 9 10; do
-      into=__Deck_fill_c Card suit="$__Deck_fill_s" rank="$__Deck_fill_r"
-      $self.push "$__Deck_fill_c"
-    done
-    for __Deck_fill_r in J Q K; do
-      into=__Deck_fill_c FaceCard suit="$__Deck_fill_s" rank="$__Deck_fill_r"
-      $self.push "$__Deck_fill_c"
-    done
-    into=__Deck_fill_c Ace suit="$__Deck_fill_s" rank=A
-    $self.push "$__Deck_fill_c"
-  done
-}
-
-Deck.shuffle() {
-  local -I self class
-  local -i __Deck_shuf_len __Deck_shuf_i __Deck_shuf_j
-  local __Deck_shuf_a __Deck_shuf_b
-  into=__Deck_shuf_len $self.length
-  for (( __Deck_shuf_i = __Deck_shuf_len - 1; __Deck_shuf_i > 0; __Deck_shuf_i-- )); do
-    __Deck_shuf_j=$(( RANDOM % (__Deck_shuf_i + 1) ))
-    into=__Deck_shuf_a $self.get $__Deck_shuf_i
-    into=__Deck_shuf_b $self.get $__Deck_shuf_j
-    $self.set $__Deck_shuf_i "$__Deck_shuf_b"
-    $self.set $__Deck_shuf_j "$__Deck_shuf_a"
-  done
-}
-
-Deck.draw() {
-  local -I self class
-  local __Deck_draw_card; into=__Deck_draw_card $self.pop
-  __bashClass.return "$__Deck_draw_card" ${into:-}
-}
-
-__bashClass.registerMethod Deck new     Deck.new
-__bashClass.registerMethod Deck fill    Deck.fill
-__bashClass.registerMethod Deck shuffle Deck.shuffle
-__bashClass.registerMethod Deck draw    Deck.draw
-__bashClass.registerClass Deck
-
-# ═════════════════════════════════════════════════════════════════════
-# Hand extends List — holds cards, computes score
-# ═════════════════════════════════════════════════════════════════════
-
-__bashClass_registry["Hand"]="|class=Hand|parent=List\
-|methods=new,total,isBust,isBlackjack,show\
-|properties=type,owner"
-
-Hand.new() {
-  local -I class; class=Hand
-  local __Hand_new_self
-  into=__Hand_new_self List.new "$@"
-  __bashClass.return "$__Hand_new_self" ${into:-}
-}
-
-Hand.total() {
-  local -I self class
-  local -i __Hand_total_sum=0 __Hand_total_aces=0 __Hand_total_i __Hand_total_len
-  local __Hand_total_card __Hand_total_v
-  into=__Hand_total_len $self.length
-  for (( __Hand_total_i=0; __Hand_total_i < __Hand_total_len; __Hand_total_i++ )); do
-    into=__Hand_total_card $self.get $__Hand_total_i
-    into=__Hand_total_v $__Hand_total_card.val
-    (( __Hand_total_sum += __Hand_total_v ))
-    $__Hand_total_card.isa Ace && (( __Hand_total_aces++ )) || true
-  done
-  while (( __Hand_total_sum > 21 && __Hand_total_aces > 0 )); do
-    (( __Hand_total_sum -= 10 )); (( __Hand_total_aces-- ))
-  done
-  __bashClass.return "$__Hand_total_sum" ${into:-}
-}
-
-Hand.isBust() {
-  local -I self class
-  local -i __Hand_isBust_total
-  into=__Hand_isBust_total self="$self" class=Hand Hand.total
-  (( __Hand_isBust_total > 21 )) && return 0 || return 1
-}
-
-Hand.isBlackjack() {
-  local -I self class
-  local -i __Hand_isBJ_len __Hand_isBJ_total
-  into=__Hand_isBJ_len $self.length
-  (( __Hand_isBJ_len != 2 )) && return 1
-  into=__Hand_isBJ_total self="$self" class=Hand Hand.total
-  (( __Hand_isBJ_total == 21 )) && return 0 || return 1
-}
-
-Hand.show() {
-  local -I self class
-  local __Hand_show_owner __Hand_show_out="" __Hand_show_card __Hand_show_str
-  local -i __Hand_show_i __Hand_show_len __Hand_show_total __Hand_show_hidden=0
-  __bashClass.parse "$self" "owner" __Hand_show_owner
-  into=__Hand_show_len $self.length
-  for (( __Hand_show_i=0; __Hand_show_i < __Hand_show_len; __Hand_show_i++ )); do
-    into=__Hand_show_card $self.get $__Hand_show_i
-    into=__Hand_show_str $__Hand_show_card.toString
-    [[ "$__Hand_show_str" == "[?]" ]] && __Hand_show_hidden=1
-    (( __Hand_show_i > 0 )) && __Hand_show_out="$__Hand_show_out "
-    __Hand_show_out="$__Hand_show_out$__Hand_show_str"
-  done
-  if (( __Hand_show_hidden )); then
-    __Hand_show_out="$__Hand_show_owner: $__Hand_show_out"
-  else
-    into=__Hand_show_total self="$self" class=Hand Hand.total
-    __Hand_show_out="$__Hand_show_owner: $__Hand_show_out  [$__Hand_show_total]"
-  fi
-  __bashClass.return "$__Hand_show_out" ${into:-}
-}
-
-__bashClass.registerMethod Hand new          Hand.new
-__bashClass.registerMethod Hand total        Hand.total
-__bashClass.registerMethod Hand isBust       Hand.isBust
-__bashClass.registerMethod Hand isBlackjack  Hand.isBlackjack
-__bashClass.registerMethod Hand show         Hand.show
-__bashClass.registerClass Hand
+. boop Deck Hand
 
 # ═════════════════════════════════════════════════════════════════════
 # Game helpers
@@ -274,8 +30,8 @@ deal_down() {
 
 show_table() {
   local _p="$1" _h="$2" _s
-  into=_s $_h.show;  printf "  %s\n" "$_s"
-  into=_s $_p.show;  printf "  %s\n\n" "$_s"
+  into=_s $_h.show "Dealer";  printf "  %s\n" "$_s"
+  into=_s $_p.show "You";     printf "  %s\n\n" "$_s"
 }
 
 reveal() {
@@ -322,8 +78,8 @@ while (( bankroll > 0 )); do
 
   # Fresh deck each round
   into=deck Deck
-  into=player Hand owner="You"
-  into=house  Hand owner="Dealer"
+  into=player Hand
+  into=house  Hand
 
   # Deal: player up, house down, player up, house up
   deal_up   "$player" "$deck"
@@ -333,7 +89,7 @@ while (( bankroll > 0 )); do
 
   show_table "$player" "$house"
 
-  # ── Check naturals (peek at house cards without revealing) ──
+  # ── Check naturals ──
   declare _hole_card _up_card
   declare -i _hole_val _up_val
   into=_hole_card $house.get 0

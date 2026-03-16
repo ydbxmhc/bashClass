@@ -1,0 +1,407 @@
+#!/bin/bash
+set -uo pipefail
+
+# Blackjack class tests — exercises Card, FaceCard, Ace, Deck, Hand
+
+# Source blackjack to get the class definitions, but we need to prevent
+# the game loop from running. The game loop is guarded by being at the
+# bottom of the file after all class definitions, so we source just the
+# class definitions by sourcing boop and then the blackjack file up to
+# the game loop. Actually, blackjack sources boop itself, so we can just
+# define a function that exits before the game loop... 
+#
+# Simpler: extract the class definitions into a separate file, or just
+# re-source boop and redefine the classes here. But that duplicates code.
+#
+# Simplest: source blackjack with stdin closed so read fails immediately
+# and the game loop exits. Let's try that.
+
+. boop TestSuite Deck Hand
+
+into=t TestSuite name="Blackjack Tests"
+
+# ============================================================================
+# Card Basics
+# ============================================================================
+
+$t.section "Card Basics"
+
+into=c Card suit="♠" rank="7"
+into=v $c.get suit;   $t.assert_eq "suit stored" "$v" "♠"
+into=v $c.get rank;   $t.assert_eq "rank stored" "$v" "7"
+into=v $c.get faceUp; $t.assert_eq "default faceUp=0" "$v" "0"
+
+into=c2 Card suit="♥" rank="K" faceUp=1
+into=v $c2.get faceUp; $t.assert_eq "explicit faceUp=1" "$v" "1"
+
+# ============================================================================
+# Card.flip
+# ============================================================================
+
+$t.section "Card.flip"
+
+into=c Card suit="♦" rank="3"
+into=v $c.get faceUp; $t.assert_eq "starts face down" "$v" "0"
+$c.flip
+into=v $c.get faceUp; $t.assert_eq "after flip: face up" "$v" "1"
+$c.flip
+into=v $c.get faceUp; $t.assert_eq "after second flip: face down" "$v" "0"
+
+# ============================================================================
+# Card.val
+# ============================================================================
+
+$t.section "Card.val"
+
+into=c2 Card suit="♠" rank="2"; into=v $c2.val; $t.assert_eq "2 = 2" "$v" "2"
+into=c9 Card suit="♠" rank="9"; into=v $c9.val; $t.assert_eq "9 = 9" "$v" "9"
+into=c10 Card suit="♠" rank="10"; into=v $c10.val; $t.assert_eq "10 = 10" "$v" "10"
+
+# ============================================================================
+# Card.toString
+# ============================================================================
+
+$t.section "Card.toString"
+
+into=c Card suit="♠" rank="7"
+into=v $c.toString; $t.assert_eq "face down shows [?]" "$v" "[?]"
+$c.flip
+into=v $c.toString; $t.assert_eq "face up shows rank+suit" "$v" "7♠"
+
+into=c10 Card suit="♥" rank="10" faceUp=1
+into=v $c10.toString; $t.assert_eq "10 shows correctly" "$v" "10♥"
+
+# ============================================================================
+# FaceCard
+# ============================================================================
+
+$t.section "FaceCard"
+
+into=fj FaceCard suit="♠" rank="J"
+into=fq FaceCard suit="♥" rank="Q"
+into=fk FaceCard suit="♦" rank="K"
+
+into=v $fj.val; $t.assert_eq "J = 10" "$v" "10"
+into=v $fq.val; $t.assert_eq "Q = 10" "$v" "10"
+into=v $fk.val; $t.assert_eq "K = 10" "$v" "10"
+
+$fj.flip
+into=v $fj.toString; $t.assert_eq "J♠ toString" "$v" "J♠"
+
+# FaceCard isa checks
+$t.assert_ok "FaceCard isa FaceCard" $fj.isa FaceCard
+$t.assert_ok "FaceCard isa Card" $fj.isa Card
+$t.assert_ok "FaceCard isa bashClass" $fj.isa bashClass
+$t.assert_fail "FaceCard not Ace" $fj.isa Ace
+
+# ============================================================================
+# Ace
+# ============================================================================
+
+$t.section "Ace"
+
+into=a Ace suit="♣" rank="A"
+into=v $a.val; $t.assert_eq "Ace = 11" "$v" "11"
+$a.flip
+into=v $a.toString; $t.assert_eq "A♣ toString" "$v" "A♣"
+
+$t.assert_ok "Ace isa Ace" $a.isa Ace
+$t.assert_ok "Ace isa Card" $a.isa Card
+$t.assert_fail "Ace not FaceCard" $a.isa FaceCard
+
+# ============================================================================
+# Card type hierarchy
+# ============================================================================
+
+$t.section "Card Type Hierarchy"
+
+into=plain Card suit="♠" rank="5"
+$t.assert_ok "Card isa Card" $plain.isa Card
+$t.assert_fail "Card not FaceCard" $plain.isa FaceCard
+$t.assert_fail "Card not Ace" $plain.isa Ace
+$t.assert_fail "Card not Deck" $plain.isa Deck
+$t.assert_fail "Card not Hand" $plain.isa Hand
+$t.assert_fail "Card not List" $plain.isa List
+
+# ============================================================================
+# Deck
+# ============================================================================
+
+$t.section "Deck"
+
+into=d Deck
+into=len $d.length; $t.assert_eq "deck has 52 cards" "$len" "52"
+
+# Draw reduces length
+into=c $d.draw
+into=len $d.length; $t.assert_eq "51 after draw" "$len" "51"
+
+# Drawn card is a valid object
+into=v $c.get suit; $t.assert_ne "drawn card has suit" "$v" ""
+into=v $c.get rank; $t.assert_ne "drawn card has rank" "$v" ""
+
+# Draw all remaining cards
+declare -i _i
+for (( _i=0; _i < 51; _i++ )); do
+  into=c $d.draw
+done
+into=len $d.length; $t.assert_eq "empty after 52 draws" "$len" "0"
+
+# Deck isa checks
+into=d2 Deck
+$t.assert_ok "Deck isa Deck" $d2.isa Deck
+$t.assert_ok "Deck isa List" $d2.isa List
+$t.assert_fail "Deck not Card" $d2.isa Card
+
+# ============================================================================
+# Deck composition — verify all 52 cards are correct
+# ============================================================================
+
+$t.section "Deck Composition"
+
+into=d Deck
+declare -i _num_cards=0 _num_face=0 _num_ace=0 _num_plain=0
+declare _card _cls
+for (( _i=0; _i < 52; _i++ )); do
+  into=_card $d.draw
+  (( _num_cards++ ))
+  __bashClass.parse "$_card" "class" _cls
+  case "$_cls" in
+    FaceCard) (( _num_face++ )) ;;
+    Ace)      (( _num_ace++ )) ;;
+    Card)     (( _num_plain++ )) ;;
+  esac
+done
+$t.assert_eq "52 total cards" "$_num_cards" "52"
+$t.assert_eq "12 face cards (3 per suit)" "$_num_face" "12"
+$t.assert_eq "4 aces" "$_num_ace" "4"
+$t.assert_eq "36 plain cards (9 per suit)" "$_num_plain" "36"
+
+# ============================================================================
+# Deck shuffle — two decks should differ
+# ============================================================================
+
+$t.section "Deck Shuffle"
+
+into=d1 Deck
+into=d2 Deck
+declare _d1_first _d2_first _d1_last _d2_last
+into=_d1_first $d1.get 0
+into=_d2_first $d2.get 0
+into=_d1_last $d1.get 51
+into=_d2_last $d2.get 51
+# At least one of first or last should differ (astronomically unlikely both match)
+declare _d1f_rank _d2f_rank _d1l_rank _d2l_rank
+__bashClass.parse "$_d1_first" "rank" _d1f_rank
+__bashClass.parse "$_d2_first" "rank" _d2f_rank
+__bashClass.parse "$_d1_last" "rank" _d1l_rank
+__bashClass.parse "$_d2_last" "rank" _d2l_rank
+declare _differ=0
+[[ "$_d1f_rank" != "$_d2f_rank" ]] && _differ=1
+[[ "$_d1l_rank" != "$_d2l_rank" ]] && _differ=1
+$t.assert_eq "two decks differ after shuffle" "$_differ" "1"
+
+# ============================================================================
+# Hand Basics
+# ============================================================================
+
+$t.section "Hand Basics"
+
+into=h Hand
+into=len $h.length; $t.assert_eq "empty hand" "$len" "0"
+
+# Hand isa checks
+$t.assert_ok "Hand isa Hand" $h.isa Hand
+$t.assert_ok "Hand isa List" $h.isa List
+$t.assert_fail "Hand not Card" $h.isa Card
+$t.assert_fail "Hand not Deck" $h.isa Deck
+
+# ============================================================================
+# Hand.total — basic scoring
+# ============================================================================
+
+$t.section "Hand.total Basic"
+
+into=h Hand
+into=c1 Card suit="♠" rank="5"; $h.push "$c1"
+into=c2 Card suit="♥" rank="7"; $h.push "$c2"
+into=v $h.total; $t.assert_eq "5 + 7 = 12" "$v" "12"
+
+into=h2 Hand
+into=c1 Card suit="♠" rank="10"; $h2.push "$c1"
+into=c2 FaceCard suit="♥" rank="K"; $h2.push "$c2"
+into=v $h2.total; $t.assert_eq "10 + K = 20" "$v" "20"
+
+# ============================================================================
+# Hand.total — ace handling
+# ============================================================================
+
+$t.section "Hand.total Ace Handling"
+
+# Ace as 11
+into=h Hand
+into=c1 Ace suit="♠" rank="A"; $h.push "$c1"
+into=c2 Card suit="♥" rank="7"; $h.push "$c2"
+into=v $h.total; $t.assert_eq "A + 7 = 18 (ace as 11)" "$v" "18"
+
+# Ace adjusted to 1 when bust
+into=h2 Hand
+into=c1 Ace suit="♠" rank="A"; $h2.push "$c1"
+into=c2 Card suit="♥" rank="7"; $h2.push "$c2"
+into=c3 FaceCard suit="♦" rank="K"; $h2.push "$c3"
+into=v $h2.total; $t.assert_eq "A + 7 + K = 18 (ace adjusted)" "$v" "18"
+
+# Two aces — one adjusted
+into=h3 Hand
+into=c1 Ace suit="♠" rank="A"; $h3.push "$c1"
+into=c2 Ace suit="♥" rank="A"; $h3.push "$c2"
+into=v $h3.total; $t.assert_eq "A + A = 12 (one adjusted)" "$v" "12"
+
+# Two aces + high card — both adjusted
+into=h4 Hand
+into=c1 Ace suit="♠" rank="A"; $h4.push "$c1"
+into=c2 Ace suit="♥" rank="A"; $h4.push "$c2"
+into=c3 FaceCard suit="♦" rank="K"; $h4.push "$c3"
+into=v $h4.total; $t.assert_eq "A + A + K = 12 (both adjusted)" "$v" "12"
+
+# Four aces
+into=h5 Hand
+into=c1 Ace suit="♠" rank="A"; $h5.push "$c1"
+into=c2 Ace suit="♥" rank="A"; $h5.push "$c2"
+into=c3 Ace suit="♦" rank="A"; $h5.push "$c3"
+into=c4 Ace suit="♣" rank="A"; $h5.push "$c4"
+into=v $h5.total; $t.assert_eq "4 aces = 14 (three adjusted)" "$v" "14"
+
+# ============================================================================
+# Hand.isBust
+# ============================================================================
+
+$t.section "Hand.isBust"
+
+into=h Hand
+into=c1 FaceCard suit="♠" rank="K"; $h.push "$c1"
+into=c2 Card suit="♥" rank="5"; $h.push "$c2"
+$t.assert_fail "15 not bust" $h.isBust
+
+into=c3 FaceCard suit="♦" rank="Q"; $h.push "$c3"
+$t.assert_ok "25 is bust" $h.isBust
+
+# Exactly 21 is not bust
+into=h2 Hand
+into=c1 Ace suit="♠" rank="A"; $h2.push "$c1"
+into=c2 FaceCard suit="♥" rank="K"; $h2.push "$c2"
+$t.assert_fail "21 not bust" $h2.isBust
+
+# ============================================================================
+# Hand.isBlackjack
+# ============================================================================
+
+$t.section "Hand.isBlackjack"
+
+# Ace + face card = blackjack
+into=h Hand
+into=c1 Ace suit="♠" rank="A"; $h.push "$c1"
+into=c2 FaceCard suit="♥" rank="K"; $h.push "$c2"
+$t.assert_ok "A + K = blackjack" $h.isBlackjack
+
+# Ace + 10 = blackjack
+into=h2 Hand
+into=c1 Ace suit="♠" rank="A"; $h2.push "$c1"
+into=c2 Card suit="♥" rank="10"; $h2.push "$c2"
+$t.assert_ok "A + 10 = blackjack" $h2.isBlackjack
+
+# 10 + Ace (reversed order) = blackjack
+into=h3 Hand
+into=c1 Card suit="♠" rank="10"; $h3.push "$c1"
+into=c2 Ace suit="♥" rank="A"; $h3.push "$c2"
+$t.assert_ok "10 + A = blackjack" $h3.isBlackjack
+
+# 21 with 3 cards is NOT blackjack
+into=h4 Hand
+into=c1 Card suit="♠" rank="7"; $h4.push "$c1"
+into=c2 Card suit="♥" rank="7"; $h4.push "$c2"
+into=c3 Card suit="♦" rank="7"; $h4.push "$c3"
+$t.assert_fail "7+7+7=21 but not blackjack" $h4.isBlackjack
+
+# Two face cards = 20, not blackjack
+into=h5 Hand
+into=c1 FaceCard suit="♠" rank="K"; $h5.push "$c1"
+into=c2 FaceCard suit="♥" rank="Q"; $h5.push "$c2"
+$t.assert_fail "K+Q=20 not blackjack" $h5.isBlackjack
+
+# ============================================================================
+# Hand.show
+# ============================================================================
+
+$t.section "Hand.show"
+
+into=h Hand
+into=c1 Card suit="♠" rank="7" faceUp=1; $h.push "$c1"
+into=c2 FaceCard suit="♥" rank="K" faceUp=1; $h.push "$c2"
+into=v $h.show "You"
+$t.assert_contains "show includes label" "$v" "You:"
+$t.assert_contains "show includes 7♠" "$v" "7♠"
+$t.assert_contains "show includes K♥" "$v" "K♥"
+$t.assert_contains "show includes total" "$v" "[17]"
+
+# Hidden card suppresses total
+into=h2 Hand
+into=c1 Card suit="♦" rank="3"; $h2.push "$c1"
+into=c2 Card suit="♣" rank="9" faceUp=1; $h2.push "$c2"
+into=v $h2.show "Dealer"
+$t.assert_contains "hidden shows [?]" "$v" "[?]"
+$t.assert_contains "hidden shows label" "$v" "Dealer:"
+# Should NOT contain a total bracket when cards are hidden
+declare _has_total=0
+[[ "$v" =~ \[[0-9] ]] && _has_total=1
+$t.assert_eq "no total when hidden" "$_has_total" "0"
+
+# ============================================================================
+# Cross-object dispatch (the bug we fixed)
+# ============================================================================
+
+$t.section "Cross-Object Dispatch"
+
+# This is the scenario that was failing before the bake fix:
+# Hand.total calls $card.val on each card while class=Hand is in scope.
+# The baked wrapper must not misinterpret this as a typecast.
+
+into=h Hand
+into=c1 Card suit="♠" rank="5"; $h.push "$c1"
+into=c2 FaceCard suit="♥" rank="J"; $h.push "$c2"
+into=c3 Ace suit="♦" rank="A"; $h.push "$c3"
+into=v $h.total
+$t.assert_eq "Hand.total calls card.val correctly" "$v" "16"
+
+# Hand.show calls $card.toString on each card
+$c1.flip; $c2.flip; $c3.flip
+into=v $h.show
+$t.assert_contains "Hand.show calls card.toString" "$v" "5♠"
+$t.assert_contains "Hand.show gets FaceCard" "$v" "J♥"
+$t.assert_contains "Hand.show gets Ace" "$v" "A♦"
+
+# ============================================================================
+# Integration — deal from deck to hand
+# ============================================================================
+
+$t.section "Integration"
+
+into=d Deck
+into=h Hand
+
+# Deal 5 cards
+declare -i _i
+for (( _i=0; _i < 5; _i++ )); do
+  into=c $d.draw
+  $c.flip
+  $h.push "$c"
+done
+
+into=deck_len $d.length; $t.assert_eq "deck has 47" "$deck_len" "47"
+into=hand_len $h.length; $t.assert_eq "hand has 5" "$hand_len" "5"
+
+# Total should be computable
+into=v $h.total
+$t.assert_ok "total is a number" test "$v" -ge 5
+
+$t.summary

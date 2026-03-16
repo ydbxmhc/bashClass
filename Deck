@@ -1,0 +1,68 @@
+#!/bin/bash
+
+# Deck — 52-card playing card deck
+
+[[ -n "${__bashClass_registry[Deck]+set}" ]] && return 2>/dev/null
+
+. boop List Card
+
+# ═════════════════════════════════════════════════════════════════════
+# Deck extends List — 52 cards, shuffle, draw
+# ═════════════════════════════════════════════════════════════════════
+
+__bashClass_registry["Deck"]="|class=Deck|parent=List\
+|methods=new,fill,shuffle,draw\
+|properties=type"
+
+Deck.new() {
+  local -I class; class=Deck
+  local __Deck_new_self
+  into=__Deck_new_self List.new "$@"
+  self="$__Deck_new_self" class=Deck Deck.fill
+  self="$__Deck_new_self" class=Deck Deck.shuffle
+  __bashClass.return "$__Deck_new_self" ${into:-}
+}
+
+Deck.fill() {
+  local -I self class
+  $self.clear
+  local __Deck_fill_suits=("♠" "♥" "♦" "♣") __Deck_fill_s __Deck_fill_r __Deck_fill_c
+  for __Deck_fill_s in "${__Deck_fill_suits[@]}"; do
+    for __Deck_fill_r in 2 3 4 5 6 7 8 9 10; do
+      into=__Deck_fill_c Card suit="$__Deck_fill_s" rank="$__Deck_fill_r"
+      $self.push "$__Deck_fill_c"
+    done
+    for __Deck_fill_r in J Q K; do
+      into=__Deck_fill_c FaceCard suit="$__Deck_fill_s" rank="$__Deck_fill_r"
+      $self.push "$__Deck_fill_c"
+    done
+    into=__Deck_fill_c Ace suit="$__Deck_fill_s" rank=A
+    $self.push "$__Deck_fill_c"
+  done
+}
+
+Deck.shuffle() {
+  local -I self class
+  local -i __Deck_shuf_len __Deck_shuf_i __Deck_shuf_j
+  local __Deck_shuf_a __Deck_shuf_b
+  into=__Deck_shuf_len $self.length
+  for (( __Deck_shuf_i = __Deck_shuf_len - 1; __Deck_shuf_i > 0; __Deck_shuf_i-- )); do
+    __Deck_shuf_j=$(( RANDOM % (__Deck_shuf_i + 1) ))
+    into=__Deck_shuf_a $self.get $__Deck_shuf_i
+    into=__Deck_shuf_b $self.get $__Deck_shuf_j
+    $self.set $__Deck_shuf_i "$__Deck_shuf_b"
+    $self.set $__Deck_shuf_j "$__Deck_shuf_a"
+  done
+}
+
+Deck.draw() {
+  local -I self class
+  local __Deck_draw_card; into=__Deck_draw_card $self.pop
+  __bashClass.return "$__Deck_draw_card" ${into:-}
+}
+
+__bashClass.registerMethod Deck new     Deck.new
+__bashClass.registerMethod Deck fill    Deck.fill
+__bashClass.registerMethod Deck shuffle Deck.shuffle
+__bashClass.registerMethod Deck draw    Deck.draw
+__bashClass.registerClass Deck
