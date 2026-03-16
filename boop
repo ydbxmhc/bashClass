@@ -82,9 +82,11 @@ declare -g  __bashClass_returnMode="${__bashClass_returnMode:-auto}"
 # second-priority search location for class imports (after __bashClass_classPath,
 # before PATH). Resolved once at load time via realpath so symlinks don't fool it.
 declare -g  __bashClass_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
-# TODO: Typecast interface variables (input, type, self, class) use short names
-# that may collide with user locals. Evaluate convention: _Input, _Type, etc.
-# Leading underscore + mixed case? All caps? Needs ergonomic + safe balance.
+# TODO: See TODO.md "Typecast Interface Variables"
+
+# TODO: See TODO.md "Configurable Baked-Wrapper Typecast Behavior"
+# TODO: See TODO.md "Framework-Wide LOGLEVEL System"
+# TODO: See TODO.md "Argument-Parsing Object"
 
 # ============================================================================
 # GLOBALS - Return Values
@@ -246,9 +248,7 @@ __bashClass.bencode() {
 
 # Binary-safe decode: base64 via external tool.
 # Mirror of bencode — same subshell cost, same typecast interface.
-# TODO: output=file support for binary-safe round-trip. Bash variables
-# silently drop null bytes, so decoded binary data must go straight to a
-# file to survive intact. Until then, bdecode is only lossless for text.
+# TODO: See TODO.md "Binary-Safe Encode/Decode Output Mode"
 #
 # Usage: __bashClass.bdecode "encoded_string"                  # decode string
 #        input=file __bashClass.bdecode /path/to/encoded.dat   # decode from file
@@ -420,13 +420,45 @@ __bashClass.dispatch() {
   # If called from a stub (__init=true), bake a direct wrapper that replaces
   # the stub function. The baked wrapper hardcodes self, class, and the
   # resolved impl — no dispatch overhead on subsequent calls.
-  # The if/else inside the wrapper checks for typecasting: if someone calls
-  # class=OtherClass $obj.method, the baked class won't match, so it falls
-  # back to dispatch to resolve the typecast correctly.
+  #
+  # TYPECAST vs LEAKAGE DETECTION (three-tier):
+  #
+  # The baked wrapper must handle three cases when the ambient class
+  # differs from the baked class:
+  #
+  #   1. Exact match (common case): ambient class == baked class, or no
+  #      ambient class at all. Use the fast path — direct function call
+  #      with hardcoded self/class/impl. Zero dispatch overhead.
+  #
+  #   2. Family member: ambient class is in the baked class's inheritance
+  #      chain (e.g., class=FaceCard on a Card object). This is a
+  #      legitimate typecast — let dispatch resolve the method via MRO
+  #      starting from the ambient class.
+  #
+  #   3. Unrelated class: ambient class is NOT in the family tree (e.g.,
+  #      class=Hand leaking into a Card method via local -I in a Hand
+  #      method). This is leakage — ignore it and use the fast path.
+  #      See TODO above for future configurable behavior (warn/strict).
+  #
+  # EVAL ESCAPING NOTES:
+  #
+  # At eval time, $self, $class, $__dispatch_impl, and $__dispatch_method
+  # expand to their current values and get hardcoded into the wrapper.
+  # \$ and \"-quoted expansions survive eval and expand at runtime instead.
+  #
+  #   "${class:-Card}".isa Card
+  #    ^^^^^^^^^^^^^^^ — runtime expansion: ambient class, defaulting to baked
+  #                    — quotes force word boundary so .isa isn't swallowed
+  #                        ^^^^ — hardcoded at eval time
   if [[ "$__init" == "true" ]]; then
     eval "$self.$__dispatch_method() {
-      if [[ \${class:-$class} != '$class' ]]; then
-        self='$self' __bashClass.dispatch $__dispatch_method \"\$@\"
+      # Tier 1: exact match or no ambient class — fast path (common case)
+      if [[ \"\${class:-$class}\" == '$class' ]]; then
+        self='$self' class='$class' $__dispatch_impl \"\$@\"
+      # Tier 2: ambient class is in the family — legitimate typecast
+      elif \"\${class:-$class}\".isa $class; then
+        self='$self' class=\"\${class:-$class}\" __bashClass.dispatch $__dispatch_method \"\$@\"
+      # Tier 3: unrelated class (leakage) — ignore, use fast path
       else
         self='$self' class='$class' $__dispatch_impl \"\$@\"
       fi

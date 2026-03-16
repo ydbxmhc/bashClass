@@ -289,7 +289,11 @@ $__tc.volume
 $t.assert_eq "Cube volume normal" "$__bashClass_RETURN" "125"
 class=Box $__tc.volume
 $t.assert_eq "Cube volume typecast to Box" "$__bashClass_RETURN" "125"
-$t.assert_fail "typecast to nonexistent class" bash -c '. boop Cube; new Cube size=5; tc=$__bashClass_RETURN; $tc.volume; class=Sphere $tc.volume'
+# Typecast to nonexistent class — tier 3 (unrelated class) silently ignores
+# the bogus class and uses the baked class instead. This is correct behavior:
+# leakage/bogus typecasts don't crash, they just get ignored.
+class=Sphere $__tc.volume
+$t.assert_eq "typecast to nonexistent class uses baked class" "$__bashClass_RETURN" "125"
 
 class=Box $__tc.side; __tc_side="$__bashClass_RETURN"
 $__tc.side; __tc_side2="$__bashClass_RETURN"

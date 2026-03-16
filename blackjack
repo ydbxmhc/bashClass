@@ -183,11 +183,6 @@ __bashClass.registerClass Deck
 
 # ═════════════════════════════════════════════════════════════════════
 # Hand extends List — holds cards, computes score
-#
-# Hand methods read card properties directly via __bashClass.parse
-# rather than dispatching methods on card objects. This avoids the
-# baked-wrapper typecast ambiguity that occurs when a Hand method
-# (with class=Hand in scope) calls a baked wrapper on a Card object.
 # ═════════════════════════════════════════════════════════════════════
 
 __bashClass_registry["Hand"]="|class=Hand|parent=List\
@@ -201,21 +196,16 @@ Hand.new() {
   __bashClass.return "$__Hand_new_self" ${into:-}
 }
 
-# Compute hand value. Reads rank directly from each card's descriptor.
-# Aces count as 11, adjusted down to 1 while bust.
 Hand.total() {
   local -I self class
   local -i __Hand_total_sum=0 __Hand_total_aces=0 __Hand_total_i __Hand_total_len
-  local __Hand_total_card __Hand_total_rank
-  into=__Hand_total_len self="$self" class=Hand __bashClass.dispatch length
+  local __Hand_total_card __Hand_total_v
+  into=__Hand_total_len $self.length
   for (( __Hand_total_i=0; __Hand_total_i < __Hand_total_len; __Hand_total_i++ )); do
-    into=__Hand_total_card self="$self" class=Hand __bashClass.dispatch get $__Hand_total_i
-    __bashClass.parse "$__Hand_total_card" "rank" __Hand_total_rank
-    case "$__Hand_total_rank" in
-      A)         (( __Hand_total_sum += 11 )); (( __Hand_total_aces++ )) ;;
-      [JQK]|10)  (( __Hand_total_sum += 10 )) ;;
-      *)         (( __Hand_total_sum += __Hand_total_rank )) ;;
-    esac
+    into=__Hand_total_card $self.get $__Hand_total_i
+    into=__Hand_total_v $__Hand_total_card.val
+    (( __Hand_total_sum += __Hand_total_v ))
+    $__Hand_total_card.isa Ace && (( __Hand_total_aces++ )) || true
   done
   while (( __Hand_total_sum > 21 && __Hand_total_aces > 0 )); do
     (( __Hand_total_sum -= 10 )); (( __Hand_total_aces-- ))
@@ -233,31 +223,22 @@ Hand.isBust() {
 Hand.isBlackjack() {
   local -I self class
   local -i __Hand_isBJ_len __Hand_isBJ_total
-  into=__Hand_isBJ_len self="$self" class=Hand __bashClass.dispatch length
+  into=__Hand_isBJ_len $self.length
   (( __Hand_isBJ_len != 2 )) && return 1
   into=__Hand_isBJ_total self="$self" class=Hand Hand.total
   (( __Hand_isBJ_total == 21 )) && return 0 || return 1
 }
 
-# Display hand. Reads card properties directly from descriptors.
 Hand.show() {
   local -I self class
-  local __Hand_show_owner __Hand_show_out="" __Hand_show_rank __Hand_show_suit __Hand_show_fu
-  local __Hand_show_card __Hand_show_str
+  local __Hand_show_owner __Hand_show_out="" __Hand_show_card __Hand_show_str
   local -i __Hand_show_i __Hand_show_len __Hand_show_total __Hand_show_hidden=0
   __bashClass.parse "$self" "owner" __Hand_show_owner
-  into=__Hand_show_len self="$self" class=Hand __bashClass.dispatch length
+  into=__Hand_show_len $self.length
   for (( __Hand_show_i=0; __Hand_show_i < __Hand_show_len; __Hand_show_i++ )); do
-    into=__Hand_show_card self="$self" class=Hand __bashClass.dispatch get $__Hand_show_i
-    __bashClass.parse "$__Hand_show_card" "faceUp" __Hand_show_fu
-    if [[ "$__Hand_show_fu" == "1" ]]; then
-      __bashClass.parse "$__Hand_show_card" "rank" __Hand_show_rank
-      __bashClass.parse "$__Hand_show_card" "suit" __Hand_show_suit
-      __Hand_show_str="${__Hand_show_rank}${__Hand_show_suit}"
-    else
-      __Hand_show_str="[?]"
-      __Hand_show_hidden=1
-    fi
+    into=__Hand_show_card $self.get $__Hand_show_i
+    into=__Hand_show_str $__Hand_show_card.toString
+    [[ "$__Hand_show_str" == "[?]" ]] && __Hand_show_hidden=1
     (( __Hand_show_i > 0 )) && __Hand_show_out="$__Hand_show_out "
     __Hand_show_out="$__Hand_show_out$__Hand_show_str"
   done
@@ -353,24 +334,12 @@ while (( bankroll > 0 )); do
   show_table "$player" "$house"
 
   # ── Check naturals (peek at house cards without revealing) ──
-  declare _hole_rank _up_rank
-  declare -i _hole_val _up_val
   declare _hole_card _up_card
+  declare -i _hole_val _up_val
   into=_hole_card $house.get 0
   into=_up_card   $house.get 1
-  __bashClass.parse "$_hole_card" "rank" _hole_rank
-  __bashClass.parse "$_up_card"   "rank" _up_rank
-
-  case "$_hole_rank" in
-    A)        _hole_val=11 ;;
-    [JQK]|10) _hole_val=10 ;;
-    *)        _hole_val=$_hole_rank ;;
-  esac
-  case "$_up_rank" in
-    A)        _up_val=11 ;;
-    [JQK]|10) _up_val=10 ;;
-    *)        _up_val=$_up_rank ;;
-  esac
+  into=_hole_val $_hole_card.val
+  into=_up_val   $_up_card.val
 
   declare -i player_bj=0 house_bj=0 house_peek=0
   $player.isBlackjack && player_bj=1
