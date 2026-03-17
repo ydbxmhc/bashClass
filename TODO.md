@@ -5,6 +5,34 @@ reference entries here by section name.
 
 ---
 
+## Load Guard & Class Init Refactor
+
+The current load guard pattern in every class file:
+
+```bash
+[[ -n "${__bashClass_registry[ClassName]+set}" ]] && return 2>/dev/null
+```
+
+Has two problems:
+
+1. The `return` silently fails when the file is executed directly
+   (not sourced), and `2>/dev/null` hides the error. Under `set -e`
+   this is a silent fatal exit with no explanation.
+
+2. There's no help output — running `bash Box` does nothing useful.
+
+Planned replacement: a `bashClass.init` method on the root class that
+handles the load guard, detects direct execution, and prints help text.
+Design includes per-class help via `__bashClass_help["ClassName"]`,
+inheritable defaults, and a single-statement call pattern in class
+files. Details still under discussion.
+
+See also: "Class File Execution Guard & Help System" (below).
+
+Source: `boop`, all class files.
+
+---
+
 ## Reserved Variable Names & Inheritance Hygiene ✓ DONE
 
 The framework inherits exactly two names via `local -I`: `_Self` and
@@ -361,3 +389,73 @@ Source: PLAN.md Running Notes.
 - `test_matrix` verified — runs correctly, not a TestSuite file
   (benchmark only, intentionally excluded from test count)
 - `.gitignore` already covers `*.log` and `*.stackdump`
+
+---
+
+## Test Coverage Audit
+
+Every declared method in every class should have test coverage:
+
+- Valid usage (expected inputs produce expected outputs)
+- Expected failures (bad inputs crash with clear messages)
+- Unexpected/garbage inputs (fails gracefully, not dramatically)
+
+Classes with the most surface area to audit:
+- Container (23 methods), Math (26 methods + static wrappers),
+  List (15 methods), Map (12 methods), Iterator (8 methods)
+- Card/Deck/Hand — `test_blackjack` exists but coverage is unknown
+- bashClass root methods — `setOn` coverage unclear
+
+Also: CLI-level testing for Tier 3 public methods. These need
+creative adversarial input from a human who enjoys breaking things.
+
+---
+
+## Input Validation on Math Public API
+
+`Math.add`, `Math.subtract`, etc. accept garbage strings without
+complaint — the error surfaces deep in `__Math.toInt64` as a cryptic
+`10#` bash arithmetic error. The validation belongs in
+`__Math.resolve`, which is the single chokepoint for all numeric
+input. After parsing, check that digits are actually all digits;
+crash with a helpful message if not.
+
+Also consider: variadic behavior (`Math.add 1 2 3 4` sums all),
+single-argument identity (`Math.add 5` returns 5).
+
+---
+
+## Return System: Default to stdout + Newline Control
+
+Change `auto` mode so main shell defaults to stdout (with newline)
+instead of the `__bashClass_RETURN` side-channel. Add a global
+`__bashClass_returnNewline` flag (default on) controlling whether
+stdout output includes a trailing newline.
+
+Existing code that relies on the implicit global (e.g.,
+`test_stress_ts`) should be updated to use explicit
+`into=__bashClass_RETURN` — code should say where to put values.
+
+`into=` always wins regardless of mode. The mode only matters when
+no explicit target is given.
+
+---
+
+## Try/Catch Mechanism
+
+Bash has no native try/catch. The framework currently uses
+`__bashClass.crash` (which calls `exit`) for all fatal errors,
+and `assert_fail` wraps commands in subshells to isolate crashes.
+
+A try/catch pattern would let user code attempt operations that
+might crash and handle the failure without dying. Options:
+
+- Subshell-based: `try` runs in a subshell, captures exit code
+  and stderr, `catch` block runs on failure. Simple but forks.
+- Trap-based: `ERR` trap with a recovery mechanism. Complex,
+  interacts badly with `set -e`, fragile across bash versions.
+- Flag-based: set a "don't crash, set error flag" mode on
+  `__bashClass.crash`, let callers check the flag. Lightweight
+  but changes crash semantics globally.
+
+Related: Signal Handler Class (already in TODO), Fatality Threshold.

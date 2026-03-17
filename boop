@@ -98,12 +98,12 @@ declare -g  __bashClass_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # info=3:   notable lifecycle events (object creation, class loading)
 # debug=4:  detailed internal state for troubleshooting
 # trace=5:  finest grain — descriptor dumps, dispatch steps, etc.
-declare -gi __bashClass_LOG_SILENT=0
-declare -gi __bashClass_LOG_ERROR=1
-declare -gi __bashClass_LOG_WARN=2
-declare -gi __bashClass_LOG_INFO=3
-declare -gi __bashClass_LOG_DEBUG=4
-declare -gi __bashClass_LOG_TRACE=5
+declare -gri __bashClass_LOG_SILENT=0
+declare -gri __bashClass_LOG_ERROR=1
+declare -gri __bashClass_LOG_WARN=2
+declare -gri __bashClass_LOG_INFO=3
+declare -gri __bashClass_LOG_DEBUG=4
+declare -gri __bashClass_LOG_TRACE=5
 
 # Global default log level. Controls what gets emitted when no per-class
 # override exists. Default is warn — errors and warnings show, info and
@@ -359,8 +359,8 @@ __bashClass.return() {
   fi
 
   case "$__return_mode" in
-    nameref) __bashClass.crash "nameref mode requires target variable" ;;
-    stdout) printf "%s" "$__return_val" ;;
+    nameref) __bashClass.crash "nameref mode requires target variable" ;; # wouldn't be here if it had one!
+    stdout) printf "%s" "${__return_val:-}" ${_EOL:-}                  ;; # with line ending if set
     global) __bashClass_RETURN="$__return_val" ;;
     filesystem)
       # TODO: __bashClass.returnPath from call stack introspection
@@ -543,11 +543,17 @@ __bashClass.parse() {
 # can resolve calls. The implementing function must already exist (declared
 # via `declare -f`) at registration time — no forward declarations.
 #
-# All three names are validated: class as identifier, method as identifier,
+# Arguments:
+#   $1 — class name (identifier)
+#   $2 — method name (identifier)
+#   $3 — implementing function name (optional; defaults to "$1.$2")
+#
+# All names are validated: class as identifier, method as identifier,
 # impl as function (dots allowed). This is the only way methods enter the
 # registry, so validation here protects every downstream dispatch.
 __bashClass.registerMethod() {
-  local __regmethod_class="$1" __regmethod_method="$2" __regmethod_impl="$3"
+  local __regmethod_class="$1" __regmethod_method="$2"
+  local __regmethod_impl="${3:-$1.$2}"
 
   __bashClass.validate "$__regmethod_class"
   __bashClass.validate "$__regmethod_method"

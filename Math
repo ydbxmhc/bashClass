@@ -406,12 +406,33 @@ __Math.stripLeading() {
   printf '%s' "${__sl_val:-0}"
 }
 
-# Resolve a Math argument: object ID → extract digits/scale/neg from
-# descriptor. Literal string → parse it. Sets caller's namerefs.
+# Resolve a Math argument to its digits/scale/neg triple.
+#
+# If the input is an object ID (starts with _ and is in the registry),
+# extracts digits, scale, and neg from the object's descriptor.
+# Otherwise, parses and validates the input as a literal number string.
+#
+# Literal parsing uses a single regex to validate and decompose the
+# input in one pass. Accepts optional leading/trailing whitespace,
+# optional sign, and requires at least one digit. Rejects everything
+# else (letters, operators, multiple dots, etc.) with a clear error.
+#
+# Trailing fractional zeros are preserved — they encode precision.
+# "3.14" (scale=2) and "3.140" (scale=3) are intentionally different.
+#
+# Arguments:
+#   $1 — input value (object ID or numeric string like "3.14" or "-42")
+#   $2 — nameref: receives digit string (no sign, no decimal point)
+#   $3 — nameref: receives scale (integer, number of decimal places)
+#   $4 — nameref: receives neg flag (0=positive, 1=negative)
+#
+# Returns: nothing (results via namerefs)
+# Crashes: if input is not a valid number or recognized object ID
 __Math.resolve() {
   local __res_input="$1"
   local -n __res_digits="$2" __res_scale="$3" __res_neg="$4"
 
+  # Object ID — already validated, extract from descriptor
   if [[ "$__res_input" == _* && -n "${__bashClass_registry[$__res_input]:-}" ]]; then
     __bashClass.parse "$__res_input" "digits" __res_digits
     __bashClass.parse "$__res_input" "scale" __res_scale
@@ -419,29 +440,40 @@ __Math.resolve() {
     return
   fi
 
-  # Parse literal
-  __res_neg=0
-  [[ "$__res_input" == -* ]] && { __res_neg=1; __res_input="${__res_input#-}"; }
-
-  if [[ "$__res_input" == *.* ]]; then
-    local __res_int="${__res_input%%.*}"
-    local __res_frac="${__res_input#*.}"
-    # Inline stripLeading — no subshell
-    __res_int="${__res_int#"${__res_int%%[!0]*}"}"
-    : "${__res_int:=0}"
-    __res_digits="${__res_int}${__res_frac}"
-    __res_scale=${#__res_frac}
-  else
-    __res_digits="${__res_input#"${__res_input%%[!0]*}"}"
-    : "${__res_digits:=0}"
-    __res_scale=0
+  # Validate and decompose literal in one pass:
+  #   group 1: sign ("-" or empty)
+  #   group 2: integer digits (may be empty if fraction exists)
+  #   group 3: decimal point ("." or empty)
+  #   group 4: fractional digits (may be empty if integer exists)
+  # The -n check ensures at least one digit is present somewhere.
+  if ! [[ "${__res_input:-}" =~ ^[[:space:]]*(-?)([0-9]*)([.]*)([0-9]*)[[:space:]]*$ \
+       && -n "${BASH_REMATCH[2]:-}${BASH_REMATCH[4]:-}" ]]; then
+    __bashClass.crash "Math: invalid number '$1' — expected a numeric value like '3.14' or '-42'"
   fi
 
-  # Normalize: strip leading zeros from digits but keep at least "0"
-  __res_digits="${__res_digits#"${__res_digits%%[!0]*}"}"
-  : "${__res_digits:=0}"
-  # If digits is "0", force neg=0 (no negative zero)
-  [[ "$__res_digits" == "0" ]] && __res_neg=0
+  __res_neg=${#BASH_REMATCH[1]}                                  # "-" → length 1; empty → 0
+  local __res_int="${BASH_REMATCH[2]}"                           # digits before the dot
+  local __res_frac="${BASH_REMATCH[4]}"                          # digits after the dot
+
+  # Default empty integer part to zero (e.g., ".5")
+  if [[ -z "$__res_int" ]]; then
+    _Debug "__Math.resolve: no integer part in '$1', defaulting to 0"
+    __res_int=0
+  fi
+
+  # Default empty fraction to zero when a dot was present (e.g., "1.")
+  if [[ -z "$__res_frac" && -n "${BASH_REMATCH[3]}" ]]; then
+    _Debug "__Math.resolve: no fraction in '$1', defaulting to 0"
+    __res_frac=0
+  fi
+
+  __res_int="${__res_int#"${__res_int%%[!0]*}"}"                 # strip leading zeros
+  : "${__res_int:=0}"                                            # keep at least "0"
+
+  __res_digits="${__res_int}${__res_frac}"                       # concatenate for arithmetic
+  __res_scale=${#__res_frac}                                     # precision = fraction length
+
+  [[ "${__res_digits//0/}" == "" ]] && __res_neg=0               # no negative zero
 }
 
 # Align two numbers to the same scale by padding the shorter one with

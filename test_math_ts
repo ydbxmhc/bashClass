@@ -208,4 +208,44 @@ for __ssq_x in 1 2 3 4 5; do
   $t.assert_eq "Math.square $__ssq_x = $(( __ssq_x * __ssq_x ))" "$v" "$(( __ssq_x * __ssq_x ))"
 done
 
+# ============================================================================
+# Input validation
+# ============================================================================
+
+$t.section "Input validation — rejection"
+$t.assert_fail "rejects expression as operand" bash -c '. boop Math; Math.add "(1+2)x3" "4" 2>/dev/null'
+$t.assert_fail "rejects alpha string" bash -c '. boop Math; Math.add "abc" "1" 2>/dev/null'
+$t.assert_fail "rejects mixed alpha-numeric" bash -c '. boop Math; Math.add "12abc" "1" 2>/dev/null'
+$t.assert_fail "rejects trailing alpha" bash -c '. boop Math; Math.add "3.14abc" "1" 2>/dev/null'
+$t.assert_fail "rejects special characters" bash -c '. boop Math; Math.add "1+2" "3" 2>/dev/null'
+$t.assert_fail "rejects empty string" bash -c '. boop Math; Math.add "" "1" 2>/dev/null'
+$t.assert_fail "rejects whitespace-only" bash -c '. boop Math; Math.add "   " "1" 2>/dev/null'
+$t.assert_fail "rejects bare minus" bash -c '. boop Math; Math.add "-" "1" 2>/dev/null'
+$t.assert_fail "rejects bare dot" bash -c '. boop Math; Math.add "." "1" 2>/dev/null'
+$t.assert_fail "rejects minus-dot" bash -c '. boop Math; Math.add "-." "1" 2>/dev/null'
+$t.assert_fail "rejects double dot" bash -c '. boop Math; Math.add "1.2.3" "1" 2>/dev/null'
+$t.assert_fail "rejects double minus" bash -c '. boop Math; Math.add "--5" "1" 2>/dev/null'
+$t.assert_fail "rejects minus in middle" bash -c '. boop Math; Math.add "5-3" "1" 2>/dev/null'
+$t.assert_fail "rejects comma decimal" bash -c '. boop Math; Math.add "3,14" "1" 2>/dev/null'
+$t.assert_fail "rejects hex notation" bash -c '. boop Math; Math.add "0xFF" "1" 2>/dev/null'
+$t.assert_fail "rejects embedded newline" bash -c '. boop Math; Math.add "3
+14" "1" 2>/dev/null'
+$t.assert_fail "rejects unicode digits" bash -c '. boop Math; Math.add "３" "1" 2>/dev/null'
+$t.assert_fail "rejects tab characters" bash -c '. boop Math; Math.add "$(printf "3\t14")" "1" 2>/dev/null'
+
+# Scientific notation — currently rejected, will become valid (see TODO)
+$t.assert_fail "rejects scientific notation (positive exp)" bash -c '. boop Math; Math.add "1.5e3" "1" 2>/dev/null'
+$t.assert_fail "rejects scientific notation (negative exp)" bash -c '. boop Math; Math.add "2.7E-4" "1" 2>/dev/null'
+$t.assert_fail "rejects scientific notation (uppercase)" bash -c '. boop Math; Math.add "1E10" "1" 2>/dev/null'
+$t.assert_fail "rejects scientific notation (plus exp)" bash -c '. boop Math; Math.add "1.5e+3" "1" 2>/dev/null'
+
+$t.section "Input validation — acceptance"
+into=v Math.add " 3.14 " "1"; $t.assert_eq "trims whitespace" "$v" "4.14"
+into=v Math.add ".5" "0";      $t.assert_eq "leading dot (.5)" "$v" "0.5"
+into=v Math.add "1." "0";      $t.assert_eq "trailing dot (1.)" "$v" "1"
+into=v Math.add "-0" "0";      $t.assert_eq "negative zero normalizes" "$v" "0"
+into=v Math.add "-0.0" "0";    $t.assert_eq "negative zero with decimal normalizes" "$v" "0"
+into=v Math.add "0777" "0";    $t.assert_eq "leading zeros treated as decimal" "$v" "777"
+into=v Math.add "007.5" "0";   $t.assert_eq "leading zeros with decimal" "$v" "7.5"
+
 $t.summary
