@@ -3,7 +3,7 @@
 # Cube class
 
 # Load guard — if already registered, nothing to do
-[[ -n "${__bashClass_registry[Cube]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Cube]+set}" ]] && return 2>/dev/null
 
 . boop Box
 
@@ -11,7 +11,7 @@
 # Cube Class Descriptor
 # ============================================================================
 
-__bashClass_registry["Cube"]="|class=Cube|parent=Box|methods=new,side,top,end,bottom,volume|properties=size,length,width,height,unit"
+__boop_registry["Cube"]="|class=Cube|parent=Box|methods=new,side,top,end,bottom,volume|properties=size,length,width,height,unit"
 
 # ============================================================================
 # Cube Implementation Functions
@@ -27,68 +27,68 @@ Cube.new() {
   for __Cube_new_arg in "$@"; do
     if [[ "$__Cube_new_arg" =~ ^size= ]]; then
       [[ "$__Cube_new_arg" =~ ^size=([0-9]+)$ ]] || \
-        __bashClass.crash "Cube: size requires a positive integer, got '$__Cube_new_arg'"
+        __boop.crash "Cube: size requires a positive integer, got '$__Cube_new_arg'"
       __Cube_new_size="${BASH_REMATCH[1]}"
     fi
   done
 
-  [[ -n "$__Cube_new_size" ]] || __bashClass.crash "Cube: size is required"
+  [[ -n "$__Cube_new_size" ]] || __boop.crash "Cube: size is required"
 
   # Delegate to base constructor with derived dimensions
-  into=__Cube_new_self __bashClass.new "$@" size=$__Cube_new_size length=$__Cube_new_size width=$__Cube_new_size height=$__Cube_new_size
-  __bashClass.return "$__Cube_new_self" ${into:-}
+  into=__Cube_new_self __boop.new "$@" size=$__Cube_new_size length=$__Cube_new_size width=$__Cube_new_size height=$__Cube_new_size
+  __boop.return "$__Cube_new_self" ${into:-}
 }
 
 # Calculate side face area (all faces equal for cube)
 Cube.side() {
   local -I _Self _Class
   local __Cube_side_size __Cube_side_val
-  __bashClass.parse "$_Self" "size" __Cube_side_size
-  into=__Cube_side_val _Self="$_Self" _Class=Box __bashClass.dispatch area "$__Cube_side_size" "$__Cube_side_size"
-  __bashClass.return "$__Cube_side_val" ${into:-}
+  __boop.parse "$_Self" "size" __Cube_side_size
+  into=__Cube_side_val _Self="$_Self" _Class=Box __boop.dispatch area "$__Cube_side_size" "$__Cube_side_size"
+  __boop.return "$__Cube_side_val" ${into:-}
 }
 
 # Top face (same as side for cube)
 Cube.top() {
   local -I _Self _Class
   local __Cube_top_val
-  into=__Cube_top_val _Self="$_Self" _Class="$_Class" __bashClass.dispatch side
-  __bashClass.return "$__Cube_top_val" ${into:-}
+  into=__Cube_top_val _Self="$_Self" _Class="$_Class" __boop.dispatch side
+  __boop.return "$__Cube_top_val" ${into:-}
 }
 
 # End face (same as side for cube)
 Cube.end() {
   local -I _Self _Class
   local __Cube_end_val
-  into=__Cube_end_val _Self="$_Self" _Class="$_Class" __bashClass.dispatch side
-  __bashClass.return "$__Cube_end_val" ${into:-}
+  into=__Cube_end_val _Self="$_Self" _Class="$_Class" __boop.dispatch side
+  __boop.return "$__Cube_end_val" ${into:-}
 }
 
 # Bottom face (same as side for cube)
 Cube.bottom() {
   local -I _Self _Class
   local __Cube_bottom_val
-  into=__Cube_bottom_val _Self="$_Self" _Class="$_Class" __bashClass.dispatch side
-  __bashClass.return "$__Cube_bottom_val" ${into:-}
+  into=__Cube_bottom_val _Self="$_Self" _Class="$_Class" __boop.dispatch side
+  __boop.return "$__Cube_bottom_val" ${into:-}
 }
 
 # Calculate volume
 Cube.volume() {
   local -I _Self _Class
   local __Cube_volume_size __Cube_volume_vol
-  __bashClass.parse "$_Self" "size" __Cube_volume_size
+  __boop.parse "$_Self" "size" __Cube_volume_size
   into=__Cube_volume_vol required=3 Box.calc "$__Cube_volume_size" "$__Cube_volume_size" "$__Cube_volume_size"
-  __bashClass.return "$__Cube_volume_vol" ${into:-}
+  __boop.return "$__Cube_volume_vol" ${into:-}
 }
 
 # ============================================================================
 # Register Methods & Finalize
 # ============================================================================
 
-__bashClass.registerMethod Cube new Cube.new
-__bashClass.registerMethod Cube side Cube.side
-__bashClass.registerMethod Cube top Cube.top
-__bashClass.registerMethod Cube end Cube.end
-__bashClass.registerMethod Cube bottom Cube.bottom
-__bashClass.registerMethod Cube volume Cube.volume
-__bashClass.registerClass Cube
+__boop.registerMethod Cube new Cube.new
+__boop.registerMethod Cube side Cube.side
+__boop.registerMethod Cube top Cube.top
+__boop.registerMethod Cube end Cube.end
+__boop.registerMethod Cube bottom Cube.bottom
+__boop.registerMethod Cube volume Cube.volume
+__boop.registerClass Cube

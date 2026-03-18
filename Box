@@ -3,7 +3,7 @@
 # Box class
 
 # Load guard — if already registered, nothing to do
-[[ -n "${__bashClass_registry[Box]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Box]+set}" ]] && return 2>/dev/null
 
 . boop
 
@@ -11,7 +11,7 @@
 # Box Class Descriptor
 # ============================================================================
 
-__bashClass_registry["Box"]="|class=Box|parent=bashClass|methods=calc,area,top,end,side,bottom,volume,new|properties=length,width,height,unit,color"
+__boop_registry["Box"]="|class=Box|parent=boop|methods=calc,area,top,end,side,bottom,volume,new|properties=length,width,height,unit,color"
 
 # ============================================================================
 # Box Implementation Functions
@@ -23,15 +23,15 @@ Box.calc() {
   local -i __Box_calc_tot=1 required="${required:-0}"
 
   if ((required)); then
-    (( required == $# )) || __bashClass.crash "$FUNCNAME requires $required INTEGER arguments to multiply"
+    (( required == $# )) || __boop.crash "$FUNCNAME requires $required INTEGER arguments to multiply"
   fi
 
   for __Box_calc_arg in "$@"; do
-    [[ "${__Box_calc_arg:-}" =~ ^[0-9]+$ ]] && ((__Box_calc_arg)) || __bashClass.crash "$FUNCNAME arguments must be nonzero integers: $*"
+    [[ "${__Box_calc_arg:-}" =~ ^[0-9]+$ ]] && ((__Box_calc_arg)) || __boop.crash "$FUNCNAME arguments must be nonzero integers: $*"
     (( __Box_calc_tot *= __Box_calc_arg ))
   done
 
-  __bashClass.return "$__Box_calc_tot" ${into:-}
+  __boop.return "$__Box_calc_tot" ${into:-}
 }
 
 # Calculate area (2D) — thin wrapper, passes into through
@@ -44,49 +44,49 @@ Box.area() {
 Box.top() {
   local -I _Self _Class
   local __Box_top_l __Box_top_w __Box_top_val
-  __bashClass.parse "$_Self" "length" __Box_top_l
-  __bashClass.parse "$_Self" "width" __Box_top_w
-  into=__Box_top_val _Self="$_Self" _Class="$_Class" __bashClass.dispatch area "$__Box_top_l" "$__Box_top_w"
-  __bashClass.return "$__Box_top_val" ${into:-}
+  __boop.parse "$_Self" "length" __Box_top_l
+  __boop.parse "$_Self" "width" __Box_top_w
+  into=__Box_top_val _Self="$_Self" _Class="$_Class" __boop.dispatch area "$__Box_top_l" "$__Box_top_w"
+  __boop.return "$__Box_top_val" ${into:-}
 }
 
 # Calculate end face area
 Box.end() {
   local -I _Self _Class
   local __Box_end_h __Box_end_w __Box_end_val
-  __bashClass.parse "$_Self" "height" __Box_end_h
-  __bashClass.parse "$_Self" "width" __Box_end_w
-  into=__Box_end_val _Self="$_Self" _Class="$_Class" __bashClass.dispatch area "$__Box_end_h" "$__Box_end_w"
-  __bashClass.return "$__Box_end_val" ${into:-}
+  __boop.parse "$_Self" "height" __Box_end_h
+  __boop.parse "$_Self" "width" __Box_end_w
+  into=__Box_end_val _Self="$_Self" _Class="$_Class" __boop.dispatch area "$__Box_end_h" "$__Box_end_w"
+  __boop.return "$__Box_end_val" ${into:-}
 }
 
 # Calculate side face area
 Box.side() {
   local -I _Self _Class
   local __Box_side_h __Box_side_l __Box_side_val
-  __bashClass.parse "$_Self" "height" __Box_side_h
-  __bashClass.parse "$_Self" "length" __Box_side_l
-  into=__Box_side_val _Self="$_Self" _Class="$_Class" __bashClass.dispatch area "$__Box_side_h" "$__Box_side_l"
-  __bashClass.return "$__Box_side_val" ${into:-}
+  __boop.parse "$_Self" "height" __Box_side_h
+  __boop.parse "$_Self" "length" __Box_side_l
+  into=__Box_side_val _Self="$_Self" _Class="$_Class" __boop.dispatch area "$__Box_side_h" "$__Box_side_l"
+  __boop.return "$__Box_side_val" ${into:-}
 }
 
 # Calculate bottom face area (same as top)
 Box.bottom() {
   local -I _Self _Class
   local __Box_bottom_val
-  into=__Box_bottom_val _Self="$_Self" _Class="$_Class" __bashClass.dispatch top
-  __bashClass.return "$__Box_bottom_val" ${into:-}
+  into=__Box_bottom_val _Self="$_Self" _Class="$_Class" __boop.dispatch top
+  __boop.return "$__Box_bottom_val" ${into:-}
 }
 
 # Calculate volume (3D)
 Box.volume() {
   local -I _Self _Class
   local __Box_volume_l __Box_volume_h __Box_volume_w __Box_volume_vol
-  __bashClass.parse "$_Self" "length" __Box_volume_l
-  __bashClass.parse "$_Self" "height" __Box_volume_h
-  __bashClass.parse "$_Self" "width" __Box_volume_w
+  __boop.parse "$_Self" "length" __Box_volume_l
+  __boop.parse "$_Self" "height" __Box_volume_h
+  __boop.parse "$_Self" "width" __Box_volume_w
   into=__Box_volume_vol required=3 Box.calc "$__Box_volume_l" "$__Box_volume_h" "$__Box_volume_w"
-  __bashClass.return "$__Box_volume_vol" ${into:-}
+  __boop.return "$__Box_volume_vol" ${into:-}
 }
 
 # Box constructor — delegates to base class.
@@ -94,20 +94,20 @@ Box.new() {
   local -I _Class
   : "${_Class:=Box}"
   local __Box_new_self
-  into=__Box_new_self __bashClass.new "$@"
-  __bashClass.return "$__Box_new_self" ${into:-}
+  into=__Box_new_self __boop.new "$@"
+  __boop.return "$__Box_new_self" ${into:-}
 }
 
 # ============================================================================
 # Register Methods & Finalize
 # ============================================================================
 
-__bashClass.registerMethod Box calc Box.calc
-__bashClass.registerMethod Box area Box.area
-__bashClass.registerMethod Box top Box.top
-__bashClass.registerMethod Box end Box.end
-__bashClass.registerMethod Box side Box.side
-__bashClass.registerMethod Box bottom Box.bottom
-__bashClass.registerMethod Box volume Box.volume
-__bashClass.registerMethod Box new Box.new
-__bashClass.registerClass Box
+__boop.registerMethod Box calc Box.calc
+__boop.registerMethod Box area Box.area
+__boop.registerMethod Box top Box.top
+__boop.registerMethod Box end Box.end
+__boop.registerMethod Box side Box.side
+__boop.registerMethod Box bottom Box.bottom
+__boop.registerMethod Box volume Box.volume
+__boop.registerMethod Box new Box.new
+__boop.registerClass Box

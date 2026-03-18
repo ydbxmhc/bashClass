@@ -12,43 +12,43 @@
 # ============================================================================
 # SOURCED MODE — Framework definitions (once only)
 # ============================================================================
-if (( ! ${__bashClass_loaded:-0} )); then
+if (( ! ${__boop_loaded:-0} )); then
 
 # ============================================================================
 # GLOBALS - Process State
 # ============================================================================
 
-# Captured at load time so __bashClass.return can detect subshells later.
+# Captured at load time so __boop.return can detect subshells later.
 # If BASHPID != this value at call time, we're in a subshell and auto mode
 # switches to stdout (since globals can't escape a subshell boundary).
-declare -gi __bashClass_rootPID=$BASHPID
+declare -gi __boop_rootPID=$BASHPID
 
 # ============================================================================
 # GLOBALS - Registries
 # ============================================================================
 
 # Master object/class store. Keys are object IDs (_a1b2c3) or class names (Box).
-# Values are pipe-delimited descriptors: |class=Box|parent=bashClass|length=%33|...
+# Values are pipe-delimited descriptors: |class=Box|parent=boop|length=%33|...
 # Classes and objects share this registry — distinguished by context, not type field.
-declare -gA __bashClass_registry
+declare -gA __boop_registry
 
 # Method resolution cache. Keys are "ClassName.methodName", values are the
 # implementing function name (e.g., "Box.volume" → "Box.volume" the function).
 # Populated on first dispatch; inherited methods get cached under the calling
 # class so the MRO walk only happens once per class+method pair.
-declare -gA __bashClass_methodRegistry
+declare -gA __boop_methodRegistry
 
 # Explicit path overrides for class file resolution. If a class is registered
-# here, __bashClass.import skips directory and PATH searches entirely.
-# Usage: __bashClass_classPath["MyClass"]="/opt/lib/MyClass"
-declare -gA __bashClass_classPath
+# here, __boop.import skips directory and PATH searches entirely.
+# Usage: __boop_classPath["MyClass"]="/opt/lib/MyClass"
+declare -gA __boop_classPath
 
 # In-progress load tracker. Set to 1 while a class file is being sourced,
 # cleared when done. Prevents circular recursion when a class file sources
 # boop as part of its own dependency chain (e.g., Cube sources boop Box,
 # Box sources boop — without this flag, boop would try to re-import Box
 # mid-load and recurse until bash gives up).
-declare -gA __bashClass_loading
+declare -gA __boop_loading
 
 # Function-level static storage. A flat associative array for any function
 # to stash values between calls — memoization, cached intermediates,
@@ -59,29 +59,29 @@ declare -gA __bashClass_loading
 # Functions read/write directly — no helper needed.
 #
 # Usage:
-#   __bashClass_static["Math.arctan.cache_1_5"]="0.19739555984988..."
-#   local cached="${__bashClass_static[Math.arctan.cache_1_5]:-}"
-#   __bashClass_static["factorial.12"]="479001600"
+#   __boop_static["Math.arctan.cache_1_5"]="0.19739555984988..."
+#   local cached="${__boop_static[Math.arctan.cache_1_5]:-}"
+#   __boop_static["factorial.12"]="479001600"
 #
 # This lives in boop (not in a class file) because it's a framework-level
 # facility. Any function in any class can use it. The data persists for
 # the lifetime of the shell process.
-declare -gA __bashClass_static
+declare -gA __boop_static
 
 # ============================================================================
 # GLOBALS - Configuration
 # ============================================================================
 
-# Controls how __bashClass.return delivers values when no explicit nameref
+# Controls how __boop.return delivers values when no explicit nameref
 # target is provided. Modes: auto (global in main shell, stdout in subshell),
 # nameref (requires target — crashes without one), stdout, global, filesystem.
-# Can be overridden per-call via environment: __bashClass_returnMode=stdout $obj.volume
-declare -g  __bashClass_returnMode="${__bashClass_returnMode:-auto}"
+# Can be overridden per-call via environment: __boop_returnMode=stdout $obj.volume
+declare -g  __boop_returnMode="${__boop_returnMode:-auto}"
 
 # Absolute path to the directory containing this framework file. Used as the
-# second-priority search location for class imports (after __bashClass_classPath,
+# second-priority search location for class imports (after __boop_classPath,
 # before PATH). Resolved once at load time via realpath so symlinks don't fool it.
-declare -g  __bashClass_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+declare -g  __boop_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # TODO: See TODO.md "Reserved Variable Names & Inheritance Hygiene"
 
 # TODO: See TODO.md "Configurable Baked-Wrapper Typecast Behavior"
@@ -98,31 +98,31 @@ declare -g  __bashClass_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # info=3:   notable lifecycle events (object creation, class loading)
 # debug=4:  detailed internal state for troubleshooting
 # trace=5:  finest grain — descriptor dumps, dispatch steps, etc.
-declare -gri __bashClass_LOG_SILENT=0
-declare -gri __bashClass_LOG_ERROR=1
-declare -gri __bashClass_LOG_WARN=2
-declare -gri __bashClass_LOG_INFO=3
-declare -gri __bashClass_LOG_DEBUG=4
-declare -gri __bashClass_LOG_TRACE=5
+declare -gri __boop_LOG_SILENT=0
+declare -gri __boop_LOG_ERROR=1
+declare -gri __boop_LOG_WARN=2
+declare -gri __boop_LOG_INFO=3
+declare -gri __boop_LOG_DEBUG=4
+declare -gri __boop_LOG_TRACE=5
 
 # Global default log level. Controls what gets emitted when no per-class
 # override exists. Default is warn — errors and warnings show, info and
 # below are silent.
-declare -gi __bashClass_logLevel=$__bashClass_LOG_WARN
+declare -gi __boop_logLevel=$__boop_LOG_WARN
 
 # Per-class log level overrides. Keyed by class name, values are numeric
 # levels. When a class has an entry here, it (and its descendants, unless
 # they have their own override) use this level instead of the global.
-declare -gA __bashClass_classLogLevel
+declare -gA __boop_classLogLevel
 
 # Resolved log level cache. Keyed by class name, values are the numeric
 # level that was resolved by walking the inheritance chain. Populated on
 # first log call for a given class, cleared when setLogLevel changes
 # anything in the chain.
-declare -gA __bashClass_resolvedLogLevel
+declare -gA __boop_resolvedLogLevel
 
 # Human-readable level names for output formatting.
-declare -gA __bashClass_logLevelName=(
+declare -gA __boop_logLevelName=(
   [0]="SILENT" [1]="ERROR" [2]="WARN"
   [3]="INFO"   [4]="DEBUG" [5]="TRACE"
 )
@@ -130,27 +130,27 @@ declare -gA __bashClass_logLevelName=(
 # Fallback log file. If stderr is unavailable (redirected to /dev/null,
 # closed, etc.), log output goes here instead. Per-process PID suffix
 # prevents concurrent sessions from stomping each other.
-declare -g __bashClass_logFile="${TMPDIR:-/tmp}/boop_${$}.log"
+declare -g __boop_logFile="${TMPDIR:-/tmp}/boop_${$}.log"
 
 # ============================================================================
 # GLOBALS - Return Values
 # ============================================================================
 
-# Side-channel for global return mode. When __bashClass.return is called
+# Side-channel for global return mode. When __boop.return is called
 # without a nameref target and the mode resolves to "global", the value
-# lands here. Callers read it after the call: $obj.volume; printf "%s" "$__bashClass_RETURN"
+# lands here. Callers read it after the call: $obj.volume; printf "%s" "$__boop_RETURN"
 # Intentionally a single flat global — keeps the API simple. If you need
 # to capture a value without clobbering this, use into=varname instead.
-declare -g  __bashClass_RETURN=""
+declare -g  __boop_RETURN=""
 
 # ============================================================================
 # GLOBALS - Initialization Flags
 # ============================================================================
 
-# Set to 1 at the bottom of this block. The outer guard (( ! __bashClass_loaded ))
+# Set to 1 at the bottom of this block. The outer guard (( ! __boop_loaded ))
 # checks this so re-sourcing boop (e.g., from a class file's `. boop`) skips
 # all definitions and jumps straight to the import-arguments section at the end.
-declare -gi __bashClass_loaded=0
+declare -gi __boop_loaded=0
 
 # ============================================================================
 # UTILITY
@@ -159,19 +159,19 @@ declare -gi __bashClass_loaded=0
 # Crash with error message. All output goes to stderr; exit code defaults to 1.
 # If the first argument is a bare integer, it becomes the exit code and is
 # shifted off before printing. Remaining arguments are printed one per line.
-# Usage: __bashClass.crash "something broke"
-#        __bashClass.crash 42 "custom exit code" "additional context"
-__bashClass.crash() {
+# Usage: __boop.crash "something broke"
+#        __boop.crash 42 "custom exit code" "additional context"
+__boop.crash() {
   local -i __crash_err=1
   if [[ "${1:-}" =~ ^[0-9]+$ ]]; then __crash_err=$1; shift; fi
   { printf "%s\n" "$@" >&2; } 2>/dev/null || \
-    printf "%s\n" "$@" >> "$__bashClass_logFile" 2>/dev/null
+    printf "%s\n" "$@" >> "$__boop_logFile" 2>/dev/null
   exit $__crash_err
 }
 
 # Returns 0 if the current execution context is a subshell (BASHPID differs
 # from the root PID captured at framework load time). Used by auto return mode.
-__bashClass.inSubshell() { [[ $BASHPID != $__bashClass_rootPID ]]; }
+__boop.inSubshell() { [[ $BASHPID != $__boop_rootPID ]]; }
 
 # ============================================================================
 # LOGGING
@@ -179,39 +179,39 @@ __bashClass.inSubshell() { [[ $BASHPID != $__bashClass_rootPID ]]; }
 
 # Resolve the effective log level for a class. Walks the inheritance chain
 # looking for the first class with an explicit override in
-# __bashClass_classLogLevel, falling back to the global default.
-# Result is cached in __bashClass_resolvedLogLevel so the walk happens
+# __boop_classLogLevel, falling back to the global default.
+# Result is cached in __boop_resolvedLogLevel so the walk happens
 # at most once per class (until invalidated by setLogLevel).
 #
-# Usage: __bashClass.resolveLogLevel "Math" __result_var
-__bashClass.resolveLogLevel() {
+# Usage: __boop.resolveLogLevel "Math" __result_var
+__boop.resolveLogLevel() {
   local __rlvl_class="$1" __rlvl_target="${2:-}"
   local __rlvl_result
 
   # Check cache first
-  if [[ -n "${__bashClass_resolvedLogLevel[$__rlvl_class]+set}" ]]; then
-    __rlvl_result="${__bashClass_resolvedLogLevel[$__rlvl_class]}"
+  if [[ -n "${__boop_resolvedLogLevel[$__rlvl_class]+set}" ]]; then
+    __rlvl_result="${__boop_resolvedLogLevel[$__rlvl_class]}"
   else
     # Walk inheritance chain
     local __rlvl_cursor="$__rlvl_class"
     __rlvl_result=""
     while [[ -n "$__rlvl_cursor" ]]; do
-      if [[ -n "${__bashClass_classLogLevel[$__rlvl_cursor]+set}" ]]; then
-        __rlvl_result="${__bashClass_classLogLevel[$__rlvl_cursor]}"
+      if [[ -n "${__boop_classLogLevel[$__rlvl_cursor]+set}" ]]; then
+        __rlvl_result="${__boop_classLogLevel[$__rlvl_cursor]}"
         break
       fi
       # Move to parent
       local __rlvl_parent=""
-      if [[ -n "${__bashClass_registry[$__rlvl_cursor]+set}" ]]; then
-        [[ "${__bashClass_registry[$__rlvl_cursor]}" =~ \|parent=([^|]*)\| ]] && \
+      if [[ -n "${__boop_registry[$__rlvl_cursor]+set}" ]]; then
+        [[ "${__boop_registry[$__rlvl_cursor]}" =~ \|parent=([^|]*)\| ]] && \
           __rlvl_parent="${BASH_REMATCH[1]}"
       fi
       __rlvl_cursor="$__rlvl_parent"
     done
     # Fall back to global default
-    [[ -z "$__rlvl_result" ]] && __rlvl_result=$__bashClass_logLevel
+    [[ -z "$__rlvl_result" ]] && __rlvl_result=$__boop_logLevel
     # Cache it
-    __bashClass_resolvedLogLevel[$__rlvl_class]=$__rlvl_result
+    __boop_resolvedLogLevel[$__rlvl_class]=$__rlvl_result
   fi
 
   if [[ -n "$__rlvl_target" ]]; then
@@ -226,21 +226,21 @@ __bashClass.resolveLogLevel() {
 # at or below the threshold. Bails immediately on cache hit when the
 # level is too verbose — the hot path is one hash lookup + one compare.
 #
-# Usage (internal): __bashClass.log 2 "something unexpected"
+# Usage (internal): __boop.log 2 "something unexpected"
 # Users should use the public wrappers: _Warn, _Debug, etc.
-__bashClass.log() {
+__boop.log() {
   local -i __log_level=$1; shift
   local -I _Class
 
   # Resolve effective level for this class context
-  local __log_class="${_Class:-bashClass}"
+  local __log_class="${_Class:-boop}"
   local -i __log_threshold
 
   # Hot path: cached lookup + integer compare
-  if [[ -n "${__bashClass_resolvedLogLevel[$__log_class]+set}" ]]; then
-    __log_threshold=${__bashClass_resolvedLogLevel[$__log_class]}
+  if [[ -n "${__boop_resolvedLogLevel[$__log_class]+set}" ]]; then
+    __log_threshold=${__boop_resolvedLogLevel[$__log_class]}
   else
-    __bashClass.resolveLogLevel "$__log_class" __log_threshold
+    __boop.resolveLogLevel "$__log_class" __log_threshold
   fi
 
   # Below threshold? Bail.
@@ -252,22 +252,22 @@ __bashClass.log() {
   [[ "$__log_caller" =~ ^_ && ! "$__log_caller" =~ \. ]] && \
     __log_caller="${FUNCNAME[3]:-main}"
 
-  local __log_label="${__bashClass_logLevelName[$__log_level]:-LOG}"
+  local __log_label="${__boop_logLevelName[$__log_level]:-LOG}"
   local __log_msg
   printf -v __log_msg "[%s] %s: %s" "$__log_label" "$__log_caller" "$*"
 
   # Try stderr first; fall back to log file if stderr write fails
   printf "%s\n" "$__log_msg" >&2 2>/dev/null || \
-    printf "%s\n" "$__log_msg" >> "$__bashClass_logFile" 2>/dev/null
+    printf "%s\n" "$__log_msg" >> "$__boop_logFile" 2>/dev/null
 }
 
 # Set log level. With one argument, sets the global default.
 # With two arguments, sets a per-class override and invalidates
 # the resolved cache for that class and all its descendants.
 #
-# Usage: __bashClass.setLogLevel warn          # global
-#        __bashClass.setLogLevel debug Math     # per-class
-__bashClass.setLogLevel() {
+# Usage: __boop.setLogLevel warn          # global
+#        __boop.setLogLevel debug Math     # per-class
+__boop.setLogLevel() {
   local __slvl_name="$1" __slvl_class="${2:-}"
   local -i __slvl_num
 
@@ -276,20 +276,20 @@ __bashClass.setLogLevel() {
     silent|0) __slvl_num=0 ;; error|1)  __slvl_num=1 ;;
     warn|2)   __slvl_num=2 ;; info|3)   __slvl_num=3 ;;
     debug|4)  __slvl_num=4 ;; trace|5)  __slvl_num=5 ;;
-    *) __bashClass.crash "Invalid log level: $__slvl_name (use: silent, error, warn, info, debug, trace)" ;;
+    *) __boop.crash "Invalid log level: $__slvl_name (use: silent, error, warn, info, debug, trace)" ;;
   esac
 
   if [[ -z "$__slvl_class" ]]; then
     # Global default — clear entire resolved cache
-    __bashClass_logLevel=$__slvl_num
-    __bashClass_resolvedLogLevel=()
+    __boop_logLevel=$__slvl_num
+    __boop_resolvedLogLevel=()
   else
     # Per-class override — set it and invalidate cache for this class
     # and any class whose resolved level might have been inherited from it
-    __bashClass_classLogLevel[$__slvl_class]=$__slvl_num
+    __boop_classLogLevel[$__slvl_class]=$__slvl_num
     # Simple invalidation: clear the whole resolved cache. The walks
     # are cheap and only happen once after a level change.
-    __bashClass_resolvedLogLevel=()
+    __boop_resolvedLogLevel=()
   fi
 }
 
@@ -297,11 +297,11 @@ __bashClass.setLogLevel() {
 # Public convenience wrappers — the user-facing API
 # ---------------------------------------------------------------------------
 
-_Trace() { __bashClass.log $__bashClass_LOG_TRACE "$@"; }
-_Debug() { __bashClass.log $__bashClass_LOG_DEBUG "$@"; }
-_Info()  { __bashClass.log $__bashClass_LOG_INFO  "$@"; }
-_Warn()  { __bashClass.log $__bashClass_LOG_WARN  "$@"; }
-_Error() { __bashClass.log $__bashClass_LOG_ERROR "$@"; }
+_Trace() { __boop.log $__boop_LOG_TRACE "$@"; }
+_Debug() { __boop.log $__boop_LOG_DEBUG "$@"; }
+_Info()  { __boop.log $__boop_LOG_INFO  "$@"; }
+_Warn()  { __boop.log $__boop_LOG_WARN  "$@"; }
+_Error() { __boop.log $__boop_LOG_ERROR "$@"; }
 
 # _Crash: logs as error, then exits. The message always prints
 # regardless of log level (it's fatal — you need to see it).
@@ -310,12 +310,12 @@ _Crash() {
   local __crash_msg
   printf -v __crash_msg "[CRASH] %s: %s" "${FUNCNAME[1]:-main}" "$*"
   printf "%s\n" "$__crash_msg" >&2 2>/dev/null || \
-    printf "%s\n" "$__crash_msg" >> "$__bashClass_logFile" 2>/dev/null
+    printf "%s\n" "$__crash_msg" >> "$__boop_logFile" 2>/dev/null
   exit 1
 }
 
-# _LogLevel: convenience wrapper for __bashClass.setLogLevel
-_LogLevel() { __bashClass.setLogLevel "$@"; }
+# _LogLevel: convenience wrapper for __boop.setLogLevel
+_LogLevel() { __boop.setLogLevel "$@"; }
 
 # ============================================================================
 # UNIVERSAL RETURN HANDLER
@@ -323,7 +323,7 @@ _LogLevel() { __bashClass.setLogLevel "$@"; }
 
 # Every function that produces a value calls this as its last act.
 # This is the single choke point for all value delivery in the framework.
-# Respects __bashClass_returnMode globally; auto mode uses context clues.
+# Respects __boop_returnMode globally; auto mode uses context clues.
 #
 # When a nameref target ($2) is provided, it ALWAYS wins — the value is
 # written directly into the caller's named variable via bash nameref,
@@ -332,17 +332,17 @@ _LogLevel() { __bashClass.setLogLevel "$@"; }
 #
 # When no target is provided, the global mode governs:
 #   auto       → global in main shell, stdout in subshell (detected via BASHPID)
-#   global     → writes to __bashClass_RETURN
+#   global     → writes to __boop_RETURN
 #   stdout     → printf to stdout (natural for $() capture)
 #   nameref    → crashes (target is required — this is intentional)
 #   filesystem → writes to a temp file keyed by caller function name + PID
 #
 # Usage:
-#   __bashClass.return "$value"              # uses global mode (auto default)
-#   __bashClass.return "$value" target_var   # nameref — always direct write
-__bashClass.return() {
+#   __boop.return "$value"              # uses global mode (auto default)
+#   __boop.return "$value" target_var   # nameref — always direct write
+__boop.return() {
   local __return_val="$1" __return_target="${2:-}"
-  local __return_mode="$__bashClass_returnMode"
+  local __return_mode="$__boop_returnMode"
 
   # If a nameref target is explicitly provided, always use it.
   # The global mode setting only governs calls with no target.
@@ -353,20 +353,20 @@ __bashClass.return() {
   fi
 
   if [[ "$__return_mode" == "auto" ]]; then
-    if [[ $BASHPID != $__bashClass_rootPID ]]; then __return_mode="stdout"
+    if [[ $BASHPID != $__boop_rootPID ]]; then __return_mode="stdout"
     else __return_mode="global"
     fi
   fi
 
   case "$__return_mode" in
-    nameref) __bashClass.crash "nameref mode requires target variable" ;; # wouldn't be here if it had one!
+    nameref) __boop.crash "nameref mode requires target variable" ;; # wouldn't be here if it had one!
     stdout) printf "%s" "${__return_val:-}" ${_EOL:-}                  ;; # with line ending if set
-    global) __bashClass_RETURN="$__return_val" ;;
+    global) __boop_RETURN="$__return_val" ;;
     filesystem)
-      # TODO: __bashClass.returnPath from call stack introspection
-      printf "%s" "$__return_val" >| "${__bashClass_tmpdir:-/tmp}/__bashClass_${FUNCNAME[1]}_$BASHPID"
+      # TODO: __boop.returnPath from call stack introspection
+      printf "%s" "$__return_val" >| "${__boop_tmpdir:-/tmp}/__boop_${FUNCNAME[1]}_$BASHPID"
       ;;
-    *) __bashClass.crash "Invalid return mode: $__return_mode" ;;
+    *) __boop.crash "Invalid return mode: $__return_mode" ;;
   esac
 }
 
@@ -382,14 +382,14 @@ __bashClass.return() {
 # "%" in "%7C" to "%257C", corrupting the value. Percent-first ensures the
 # escape character itself is safe before anything else touches it.
 # Handles: % | = newline tab
-__bashClass.encode() {
+__boop.encode() {
   local __encode_val="$1"
   __encode_val="${__encode_val//%/%25}"
   __encode_val="${__encode_val//|/%7C}"
   __encode_val="${__encode_val//=/%3D}"
   __encode_val="${__encode_val//$'\n'/%0A}"
   __encode_val="${__encode_val//$'\t'/%09}"
-  __bashClass.return "$__encode_val" "${2:-}"
+  __boop.return "$__encode_val" "${2:-}"
 }
 
 # Fast decode: reverses encode. Uses bash parameter expansion (no subshell).
@@ -399,14 +399,14 @@ __bashClass.encode() {
 # pipe pass would decode that to "|", producing a value that was never there.
 # By decoding percent last, we guarantee that only sequences we encoded are
 # restored, and user data containing literal "%7C" survives the round-trip.
-__bashClass.decode() {
+__boop.decode() {
   local __decode_val="$1"
   __decode_val="${__decode_val//%09/$'\t'}"
   __decode_val="${__decode_val//%0A/$'\n'}"
   __decode_val="${__decode_val//%3D/=}"
   __decode_val="${__decode_val//%7C/|}"
   __decode_val="${__decode_val//%25/%}"
-  __bashClass.return "$__decode_val" "${2:-}"
+  __boop.return "$__decode_val" "${2:-}"
 }
 
 # Binary-safe encode: base64 via external tool.
@@ -420,38 +420,38 @@ __bashClass.decode() {
 #   input=file             — encode the contents of the file at $1
 #   input=-                — encode from stdin (pipe-friendly)
 #
-# Usage: __bashClass.bencode "string"                  # encode string
-#        input=file __bashClass.bencode /path/to/file  # encode file contents
-#        input=- __bashClass.bencode                   # encode from stdin
-__bashClass.bencode() {
+# Usage: __boop.bencode "string"                  # encode string
+#        input=file __boop.bencode /path/to/file  # encode file contents
+#        input=- __boop.bencode                   # encode from stdin
+__boop.bencode() {
   local -l input; : "${input:=string}"
   local __bencode_val
   case $input in
-    file) [[ -f "$1" ]] || __bashClass.crash "File not found: $1"
+    file) [[ -f "$1" ]] || __boop.crash "File not found: $1"
           __bencode_val=$(base64 -w0 < "$1") ;;
     -)    __bencode_val=$(base64 -w0) ;;
     *)    __bencode_val=$(printf '%s' "$1" | base64 -w0) ;;
   esac
-  __bashClass.return "$__bencode_val" ${into:-}
+  __boop.return "$__bencode_val" ${into:-}
 }
 
 # Binary-safe decode: base64 via external tool.
 # Mirror of bencode — same subshell cost, same typecast interface.
 # TODO: See TODO.md "Binary-Safe Encode/Decode Output Mode"
 #
-# Usage: __bashClass.bdecode "encoded_string"                  # decode string
-#        input=file __bashClass.bdecode /path/to/encoded.dat   # decode from file
-#        input=- __bashClass.bdecode                           # decode from stdin
-__bashClass.bdecode() {
+# Usage: __boop.bdecode "encoded_string"                  # decode string
+#        input=file __boop.bdecode /path/to/encoded.dat   # decode from file
+#        input=- __boop.bdecode                           # decode from stdin
+__boop.bdecode() {
   local -l input; : "${input:=string}"
   local __bdecode_val
   case $input in
-    file) [[ -f "$1" ]] || __bashClass.crash "File not found: $1"
+    file) [[ -f "$1" ]] || __boop.crash "File not found: $1"
           __bdecode_val=$(base64 -d < "$1") ;;
     -)    __bdecode_val=$(base64 -d) ;;
     *)    __bdecode_val=$(printf '%s' "$1" | base64 -d) ;;
   esac
-  __bashClass.return "$__bdecode_val" ${into:-}
+  __boop.return "$__bdecode_val" ${into:-}
 }
 
 # ============================================================================
@@ -464,7 +464,7 @@ __bashClass.bdecode() {
 # Validate and reject — never sanitize and proceed.
 #
 # In identifier mode (default): allows [A-Za-z_][A-Za-z0-9_]* — no dots.
-# In function mode: allows dots in the name (e.g., "Box.calc", "__bashClass.return")
+# In function mode: allows dots in the name (e.g., "Box.calc", "__boop.return")
 # because bash functions can contain dots, and our dispatch system relies on them.
 #
 # The type= typecast uses `local -l` for case-insensitive matching, so
@@ -473,15 +473,15 @@ __bashClass.bdecode() {
 # because the unrecognized variable doesn't set `type` — this is correct
 # behavior (strictest validation wins by default).
 #
-# Usage: __bashClass.validate "Box"                     # identifier (default)
-#        type=function __bashClass.validate "Box.calc"  # function name (dots ok)
-__bashClass.validate() {
+# Usage: __boop.validate "Box"                     # identifier (default)
+#        type=function __boop.validate "Box.calc"  # function name (dots ok)
+__boop.validate() {
   local __validate_pat; local -l type; : "${type:=identifier}"
   case $type in
     func|function) __validate_pat='^[A-Za-z_][A-Za-z0-9_.]*$' ;;
     *)             __validate_pat='^[A-Za-z_][A-Za-z0-9_]*$' ;;
   esac
-  [[ "$1" =~ $__validate_pat ]] || __bashClass.crash "Invalid $type: '$1'"
+  [[ "$1" =~ $__validate_pat ]] || __boop.crash "Invalid $type: '$1'"
 }
 
 # ============================================================================
@@ -489,12 +489,12 @@ __bashClass.validate() {
 # ============================================================================
 
 # Set global default return mode. Affects all subsequent calls to
-# __bashClass.return that don't have an explicit nameref target.
+# __boop.return that don't have an explicit nameref target.
 # This is a process-wide setting — use with intention.
-__bashClass.setDefaultMode() {
+__boop.setDefaultMode() {
   case "$1" in
-    auto|nameref|stdout|global|filesystem) __bashClass_returnMode="$1" ;;
-    *) __bashClass.crash "Invalid mode: $1 (use: auto, nameref, stdout, global, filesystem)" ;;
+    auto|nameref|stdout|global|filesystem) __boop_returnMode="$1" ;;
+    *) __boop.crash "Invalid mode: $1 (use: auto, nameref, stdout, global, filesystem)" ;;
   esac
 }
 
@@ -504,7 +504,7 @@ __bashClass.setDefaultMode() {
 
 # Extract a single field from a pipe-delimited descriptor string.
 # The descriptor format is: |field1=value1|field2=value2|...
-# Values are stored encoded (via __bashClass.encode); this function
+# Values are stored encoded (via __boop.encode); this function
 # decodes them before returning.
 #
 # Accepts an optional $3 nameref target for zero-copy extraction.
@@ -516,22 +516,22 @@ __bashClass.setDefaultMode() {
 # delimiter guarantees field-name boundaries.
 #
 # Usage:
-#   value=$(__bashClass.parse "Box" "parent")           # stdout (subshell)
-#   __bashClass.parse "Box" "parent" my_var             # nameref (no subshell)
-#   __bashClass_returnMode=global __bashClass.parse ... # global variable
-__bashClass.parse() {
+#   value=$(__boop.parse "Box" "parent")           # stdout (subshell)
+#   __boop.parse "Box" "parent" my_var             # nameref (no subshell)
+#   __boop_returnMode=global __boop.parse ... # global variable
+__boop.parse() {
   local __parse_key="$1" __parse_field="$2" __parse_target="${3:-}"
 
-  __bashClass.validate "$__parse_key"
+  __boop.validate "$__parse_key"
 
-  local __parse_descriptor="${__bashClass_registry[$__parse_key]:-}"
+  local __parse_descriptor="${__boop_registry[$__parse_key]:-}"
   local __parse_pattern="\\|${__parse_field}=([^|]*)"
   local __parse_value=""
   if [[ "$__parse_descriptor" =~ $__parse_pattern ]]; then
-    __bashClass.decode "${BASH_REMATCH[1]}" __parse_value
+    __boop.decode "${BASH_REMATCH[1]}" __parse_value
   fi
 
-  __bashClass.return "$__parse_value" "$__parse_target"
+  __boop.return "$__parse_value" "$__parse_target"
 }
 
 # ============================================================================
@@ -551,17 +551,17 @@ __bashClass.parse() {
 # All names are validated: class as identifier, method as identifier,
 # impl as function (dots allowed). This is the only way methods enter the
 # registry, so validation here protects every downstream dispatch.
-__bashClass.registerMethod() {
+__boop.registerMethod() {
   local __regmethod_class="$1" __regmethod_method="$2"
   local __regmethod_impl="${3:-$1.$2}"
 
-  __bashClass.validate "$__regmethod_class"
-  __bashClass.validate "$__regmethod_method"
-  type=function __bashClass.validate "$__regmethod_impl"
+  __boop.validate "$__regmethod_class"
+  __boop.validate "$__regmethod_method"
+  type=function __boop.validate "$__regmethod_impl"
 
-  declare -f "$__regmethod_impl" >/dev/null || __bashClass.crash "Function '$__regmethod_impl' does not exist"
+  declare -f "$__regmethod_impl" >/dev/null || __boop.crash "Function '$__regmethod_impl' does not exist"
 
-  __bashClass_methodRegistry["$__regmethod_class.$__regmethod_method"]="$__regmethod_impl"
+  __boop_methodRegistry["$__regmethod_class.$__regmethod_method"]="$__regmethod_impl"
 }
 
 # ============================================================================
@@ -570,7 +570,7 @@ __bashClass.registerMethod() {
 
 # Unified dispatcher with inheritance support, MRO caching, and lazy baking.
 #
-# Resolution: checks __bashClass_methodRegistry for "class.method" first (O(1)).
+# Resolution: checks __boop_methodRegistry for "class.method" first (O(1)).
 # On cache miss, walks the parent chain via descriptor "parent" fields until
 # it finds a registered implementation, then caches the result under the
 # original class so the walk never happens again for that pair.
@@ -582,18 +582,18 @@ __bashClass.registerMethod() {
 # (e.g., _Class=Box $cube.volume), the wrapper detects the mismatch and falls
 # back to full dispatch so the typecast resolves correctly. This means normal
 # calls are fast (direct function call) and typecasts always work (dispatch).
-__bashClass.dispatch() {
-  local _Self="${_Self:-${_Class:-bashClass}}" _Class="${_Class:-bashClass}"
+__boop.dispatch() {
+  local _Self="${_Self:-${_Class:-boop}}" _Class="${_Class:-boop}"
   local -l __init; : "${__init:=false}"
   local __dispatch_method="$1"; shift
 
-  __bashClass.validate "$_Self"
-  __bashClass.validate "$_Class"
-  __bashClass.validate "$__dispatch_method"
+  __boop.validate "$_Self"
+  __boop.validate "$_Class"
+  __boop.validate "$__dispatch_method"
 
   # Check cache first (direct lookup — O(1) in the common case)
   local __dispatch_cachekey="$_Class.$__dispatch_method"
-  local __dispatch_impl="${__bashClass_methodRegistry[$__dispatch_cachekey]:-}"
+  local __dispatch_impl="${__boop_methodRegistry[$__dispatch_cachekey]:-}"
 
   # Cache miss: walk the inheritance chain (parent → grandparent → ...).
   # When found in an ancestor, cache it under the calling class so this
@@ -601,16 +601,16 @@ __bashClass.dispatch() {
   if [[ -z "$__dispatch_impl" ]]; then
     local __dispatch_current="$_Class"
     while [[ -n "$__dispatch_current" ]]; do
-      __dispatch_impl="${__bashClass_methodRegistry[$__dispatch_current.$__dispatch_method]:-}"
+      __dispatch_impl="${__boop_methodRegistry[$__dispatch_current.$__dispatch_method]:-}"
       if [[ -n "$__dispatch_impl" ]]; then
-        [[ "$__dispatch_current" != "$_Class" ]] && __bashClass_methodRegistry[$__dispatch_cachekey]="$__dispatch_impl"
+        [[ "$__dispatch_current" != "$_Class" ]] && __boop_methodRegistry[$__dispatch_cachekey]="$__dispatch_impl"
         break
       fi
-      __bashClass.parse "$__dispatch_current" "parent" __dispatch_current
+      __boop.parse "$__dispatch_current" "parent" __dispatch_current
     done
   fi
 
-  [[ -n "$__dispatch_impl" ]] || __bashClass.crash "Method not found: $_Class.$__dispatch_method"
+  [[ -n "$__dispatch_impl" ]] || __boop.crash "Method not found: $_Class.$__dispatch_method"
 
   # If called from a stub (__init=true), bake a direct wrapper that replaces
   # the stub function. The baked wrapper hardcodes self, class, and the
@@ -653,10 +653,10 @@ __bashClass.dispatch() {
       # Tier 2: ambient class is in the family — legitimate typecast
       #   Check: is this object an instance of the ambient class?
       #   Covers both upcasts (_Class=Box on a Cube) and downcasts.
-      #   Uses __bashClass.isa directly to avoid triggering dispatch
+      #   Uses __boop.isa directly to avoid triggering dispatch
       #   recursion through the baked wrapper system.
-      elif _Self='$_Self' _Class='$_Class' __bashClass.isa \"\${_Class:-$_Class}\"; then
-        _Self='$_Self' _Class=\"\${_Class:-$_Class}\" __bashClass.dispatch $__dispatch_method \"\$@\"
+      elif _Self='$_Self' _Class='$_Class' __boop.isa \"\${_Class:-$_Class}\"; then
+        _Self='$_Self' _Class=\"\${_Class:-$_Class}\" __boop.dispatch $__dispatch_method \"\$@\"
       # Tier 3: unrelated class (leakage) — warn and use fast path
       else
         _Class='$_Class' _Warn \"class leakage: \\\"\${_Class}\\\" is unrelated to $_Class in $_Self.$__dispatch_method — using $_Class\"
@@ -678,10 +678,10 @@ __bashClass.dispatch() {
 # pipe-delimited string. This captures the full state of all objects
 # and class definitions. Does NOT serialize baked wrapper functions —
 # those are regenerated on next access via the stub/bake mechanism.
-__bashClass.serialize() {
+__boop.serialize() {
   local __serialize_file="${1:-objects.dat}"
-  for __serialize_key in "${!__bashClass_registry[@]}"; do
-    printf "%s\t%s\n" "$__serialize_key" "${__bashClass_registry[$__serialize_key]}"
+  for __serialize_key in "${!__boop_registry[@]}"; do
+    printf "%s\t%s\n" "$__serialize_key" "${__boop_registry[$__serialize_key]}"
   done > "$__serialize_file"
 }
 
@@ -690,16 +690,16 @@ __bashClass.serialize() {
 # tampered data files. Existing registry entries with the same key
 # are overwritten — last write wins.
 # NOTE: This restores descriptor data only. Object wrapper functions
-# (stubs/baked) are NOT recreated — call __bashClass.stubAll or
-# __bashClass.refresh on each object after deserializing if you need
+# (stubs/baked) are NOT recreated — call __boop.stubAll or
+# __boop.refresh on each object after deserializing if you need
 # to call methods on them.
-__bashClass.deserialize() {
+__boop.deserialize() {
   local __deserialize_file="${1:-objects.dat}"
-  [[ -f "$__deserialize_file" ]] || __bashClass.crash "File not found: $__deserialize_file"
+  [[ -f "$__deserialize_file" ]] || __boop.crash "File not found: $__deserialize_file"
   local __deserialize_key __deserialize_descriptor
   while IFS=$'\t' read -r __deserialize_key __deserialize_descriptor; do
-    __bashClass.validate "$__deserialize_key"
-    __bashClass_registry[$__deserialize_key]="$__deserialize_descriptor"
+    __boop.validate "$__deserialize_key"
+    __boop_registry[$__deserialize_key]="$__deserialize_descriptor"
   done < "$__deserialize_file"
 }
 
@@ -711,9 +711,9 @@ __bashClass.deserialize() {
 # Delegates to parse, which handles decoding and return routing.
 # The ${into:-} passes through the caller's nameref target (if any)
 # so the value lands directly in their variable without touching the global.
-__bashClass.get() {
+__boop.get() {
   local -I _Self _Class
-  __bashClass.parse "$_Self" "$1" ${into:-}
+  __boop.parse "$_Self" "$1" ${into:-}
 }
 
 # Update a property value in the object's descriptor.
@@ -724,44 +724,44 @@ __bashClass.get() {
 # regex match + string substitution on the descriptor. If it doesn't
 # exist, it's appended to the end. This means property order in the
 # descriptor reflects insertion order, with mutations preserving position.
-__bashClass.set() {
+__boop.set() {
   local -I _Self _Class
   local __set_prop="$1" __set_encoded
-  __bashClass.encode "$2" __set_encoded
+  __boop.encode "$2" __set_encoded
 
-  local __set_descriptor="${__bashClass_registry[$_Self]:-}"
+  local __set_descriptor="${__boop_registry[$_Self]:-}"
 
   if [[ "$__set_descriptor" =~ \|${__set_prop}=[^|]* ]]; then
     local __set_old="${BASH_REMATCH[0]}"
-    __bashClass_registry[$_Self]="${__set_descriptor/${__set_old}/|${__set_prop}=${__set_encoded}}"
+    __boop_registry[$_Self]="${__set_descriptor/${__set_old}/|${__set_prop}=${__set_encoded}}"
   else
-    __bashClass_registry[$_Self]="$__set_descriptor|$__set_prop=$__set_encoded"
+    __boop_registry[$_Self]="$__set_descriptor|$__set_prop=$__set_encoded"
   fi
 }
 
 # Type checking with ancestry walk.
-# No args: returns the object's class name (via __bashClass.return).
+# No args: returns the object's class name (via __boop.return).
 # With arg: walks the inheritance chain and returns 0 (true) if the
 # object's class matches or inherits from the queried class, 1 (false)
 # otherwise. The walk follows "parent" fields in class descriptors
-# up to the root (bashClass, whose parent is empty string).
+# up to the root (boop, whose parent is empty string).
 #
-# Note: isa with a query does NOT call __bashClass.return — it
+# Note: isa with a query does NOT call __boop.return — it
 # communicates via exit code only (0/1), which is the bash convention
 # for boolean checks: `$obj.isa Box && printf "it's a box"`
-__bashClass.isa() {
+__boop.isa() {
   local -I _Self _Class
   local __isa_query="${1:-}"
 
   if [[ -z "$__isa_query" ]]; then
-    __bashClass.return "$_Class" ${into:-}
+    __boop.return "$_Class" ${into:-}
     return 0
   fi
 
   local __isa_current="$_Class"
   while [[ -n "$__isa_current" ]]; do
     [[ "$__isa_current" == "$__isa_query" ]] && return 0
-    __bashClass.parse "$__isa_current" "parent" __isa_current
+    __boop.parse "$__isa_current" "parent" __isa_current
   done
   return 1
 }
@@ -784,11 +784,11 @@ __bashClass.isa() {
 # Usage: $obj.toString                    # compact one-liner
 #        $obj.toString pretty             # columnar with newlines
 #        prettyPrint=true $obj.toString    # same, via environment
-__bashClass.toString() {
+__boop.toString() {
   local -I _Self _Class
   local -l prettyPrint; : "${prettyPrint:=false}"
   [[ "${1:-}" == "pretty" ]] && prettyPrint=true
-  local __ts_descriptor="${__bashClass_registry[$_Self]:-}"
+  local __ts_descriptor="${__boop_registry[$_Self]:-}"
   local __ts_field __ts_value __ts_decoded __ts_output
 
   # Both modes iterate the descriptor by matching "|key=value" segments,
@@ -803,13 +803,13 @@ __bashClass.toString() {
       case "$__ts_field" in
         class|parent|methods|properties) ;;
         *)
-          __bashClass.decode "$__ts_value" __ts_decoded
+          __boop.decode "$__ts_value" __ts_decoded
           __ts_output="$__ts_output $__ts_field=$__ts_decoded"
           ;;
       esac
       __ts_descriptor="${__ts_descriptor#*"${BASH_REMATCH[0]}"}"
     done
-    __bashClass.return "$__ts_output }" ${into:-}
+    __boop.return "$__ts_output }" ${into:-}
     return
   fi
 
@@ -822,7 +822,7 @@ __bashClass.toString() {
     case "$__ts_field" in
       class|parent|methods|properties) ;;
       *)
-        __bashClass.decode "$__ts_value" __ts_decoded
+        __boop.decode "$__ts_value" __ts_decoded
         __ts_keys+=("$__ts_field")
         __ts_vals+=("$__ts_decoded")
         (( ${#__ts_field} > __ts_maxlen )) && __ts_maxlen=${#__ts_field} || true
@@ -839,7 +839,7 @@ __bashClass.toString() {
   done
   __ts_output="$__ts_output}"
 
-  __bashClass.return "$__ts_output" ${into:-}
+  __boop.return "$__ts_output" ${into:-}
 }
 
 # Object constructor. This is the beating heart of object creation.
@@ -848,17 +848,17 @@ __bashClass.toString() {
 #    microseconds — fast, no subshell, monotonically increasing).
 # 2. Builds a pipe-delimited descriptor from the class name and any
 #    key=value arguments, encoding values for safe storage.
-# 3. Registers the descriptor in __bashClass_registry.
+# 3. Registers the descriptor in __boop_registry.
 # 4. Generates lazy stubs for all methods and property accessors via
-#    __bashClass.stubAll. Stubs are tiny eval'd functions that call
+#    __boop.stubAll. Stubs are tiny eval'd functions that call
 #    dispatch with __init=true on first use, triggering the bake
 #    mechanism that replaces them with direct wrappers.
 #
 # Arguments are key=value pairs. Duplicate keys are allowed — both
 # end up in the descriptor, but get/parse will match the first one.
 # (This is documented behavior, not a bug.)
-__bashClass.new() {
-  local -I _Class; : "${_Class:=bashClass}"
+__boop.new() {
+  local -I _Class; : "${_Class:=boop}"
 
   # Generate unique object ID
   local _Self; printf -v _Self "_%x" "${EPOCHREALTIME//.}"
@@ -873,7 +873,7 @@ __bashClass.new() {
   local __new_encoded __new_prop __new_val
   for __new_arg in "$@"; do
     IFS='=' read -r __new_prop __new_val <<< "$__new_arg"
-    __bashClass.encode "$__new_val" __new_encoded
+    __boop.encode "$__new_val" __new_encoded
     if [[ "$__new_descriptor" =~ \|${__new_prop}=[^|]* ]]; then
       __new_descriptor="${__new_descriptor/${BASH_REMATCH[0]}/|${__new_prop}=${__new_encoded}}"
     else
@@ -882,23 +882,23 @@ __bashClass.new() {
   done
 
   # Register object
-  __bashClass_registry[$_Self]="$__new_descriptor"
+  __boop_registry[$_Self]="$__new_descriptor"
 
   # Generate lazy stubs for all methods (walk inheritance chain)
-  __bashClass.stubAll "$_Self" "$_Class"
+  __boop.stubAll "$_Self" "$_Class"
 
-  __bashClass.return "$_Self" ${into:-}
+  __boop.return "$_Self" ${into:-}
 }
 
 # Call a method on the parent class. Looks up the current class's parent
 # from its descriptor and re-dispatches with the parent as the class context.
 # Crashes if the class has no parent (you're already at the root — nowhere to go).
-# Usage: _Self=$obj _Class=Cube __bashClass.dispatch super volume
-__bashClass.super() {
+# Usage: _Self=$obj _Class=Cube __boop.dispatch super volume
+__boop.super() {
   local -I _Self _Class
-  local __super_parent; __bashClass.parse "$_Class" "parent" __super_parent
-  [[ -n "$__super_parent" ]] || __bashClass.crash "$_Class has no parent"
-  _Self="$_Self" _Class="$__super_parent" __bashClass.dispatch "$@"
+  local __super_parent; __boop.parse "$_Class" "parent" __super_parent
+  [[ -n "$__super_parent" ]] || __boop.crash "$_Class has no parent"
+  _Self="$_Self" _Class="$__super_parent" __boop.dispatch "$@"
 }
 
 # ============================================================================
@@ -920,32 +920,32 @@ __bashClass.super() {
 #
 # Pass "force" as $3 to overwrite existing functions — used by refresh
 # to tear down baked wrappers and re-stub everything.
-__bashClass.stubAll() {
+__boop.stubAll() {
   local __stub_self="$1" __stub_class="$2" __stub_force="${3:-}"
   local __stub_current="$__stub_class" __stub_method __stub_methods
 
   # Walk inheritance chain, stub all methods
   while [[ -n "$__stub_current" ]]; do
-    __bashClass.parse "$__stub_current" "methods" __stub_methods
+    __boop.parse "$__stub_current" "methods" __stub_methods
     IFS=',' read -ra __stub_method_list <<< "$__stub_methods"
     for __stub_method in "${__stub_method_list[@]}"; do
       [[ -n "$__stub_method" ]] || continue
       [[ "$__stub_force" != "force" ]] && declare -f "$__stub_self.$__stub_method" >/dev/null && continue
-      eval "$__stub_self.$__stub_method() { __init=true _Self='$__stub_self' _Class='$__stub_class' __bashClass.dispatch $__stub_method \"\$@\"; }"
+      eval "$__stub_self.$__stub_method() { __init=true _Self='$__stub_self' _Class='$__stub_class' __boop.dispatch $__stub_method \"\$@\"; }"
     done
-    __bashClass.parse "$__stub_current" "parent" __stub_current
+    __boop.parse "$__stub_current" "parent" __stub_current
   done
 
   # Stub property accessors (get/set by property name)
   local __stub_props __stub_prop
-  __bashClass.parse "$__stub_class" "properties" __stub_props
+  __boop.parse "$__stub_class" "properties" __stub_props
   IFS=',' read -ra __stub_prop_list <<< "$__stub_props"
   for __stub_prop in "${__stub_prop_list[@]}"; do
     [[ -n "$__stub_prop" ]] || continue
     [[ "$__stub_force" != "force" ]] && declare -f "$__stub_self.$__stub_prop" >/dev/null && continue
     eval "$__stub_self.$__stub_prop() {
-      if ((\$#)); then _Self='$__stub_self' _Class='$__stub_class' __bashClass.dispatch set '$__stub_prop' \"\$1\"
-      else _Self='$__stub_self' _Class='$__stub_class' __bashClass.dispatch get '$__stub_prop'; fi
+      if ((\$#)); then _Self='$__stub_self' _Class='$__stub_class' __boop.dispatch set '$__stub_prop' \"\$1\"
+      else _Self='$__stub_self' _Class='$__stub_class' __boop.dispatch get '$__stub_prop'; fi
     }"
   done
 }
@@ -954,11 +954,11 @@ __bashClass.stubAll() {
 # and replaces them with fresh stubs. The next call to any method will
 # re-resolve via dispatch and re-bake. Useful after modifying the method
 # registry at runtime (e.g., monkey-patching a method implementation).
-__bashClass.refresh() {
+__boop.refresh() {
   local __refresh_self="$1"
-  local __refresh_class; __bashClass.parse "$__refresh_self" "class" __refresh_class
-  [[ -n "$__refresh_class" ]] || __bashClass.crash "Cannot refresh: no class for '$__refresh_self'"
-  __bashClass.stubAll "$__refresh_self" "$__refresh_class" force
+  local __refresh_class; __boop.parse "$__refresh_self" "class" __refresh_class
+  [[ -n "$__refresh_class" ]] || __boop.crash "Cannot refresh: no class for '$__refresh_self'"
+  __boop.stubAll "$__refresh_self" "$__refresh_class" force
 }
 
 # Finalize a class definition. Call this at the bottom of a class file
@@ -969,40 +969,40 @@ __bashClass.refresh() {
 # 2. For each method, creates a ClassName.method() wrapper that dispatches
 #    with the class hardcoded. These wrappers let you call Box.volume()
 #    as a class-level method (useful for static-style calls and as the
-#    target of __bashClass.registerMethod).
+#    target of __boop.registerMethod).
 # 3. If the class name itself isn't already a function, creates a
-#    constructor shorthand: Box() { _Class=Box __bashClass.dispatch new "$@"; }
+#    constructor shorthand: Box() { _Class=Box __boop.dispatch new "$@"; }
 #    This enables the clean `Box length=5 width=3 height=7` syntax.
 #
 # Methods already defined by the class author (e.g., Box.calc as a real
 # function) take priority — registerClass will NOT overwrite them. This
 # lets class authors provide custom implementations that bypass dispatch
 # when called directly.
-__bashClass.registerClass() {
+__boop.registerClass() {
   local __regclass_class="$1"
-  __bashClass.validate "$__regclass_class"
+  __boop.validate "$__regclass_class"
 
-  [[ -n "${__bashClass_registry[$__regclass_class]:-}" ]] || \
-    __bashClass.crash "No descriptor for class '$__regclass_class' — register it first"
+  [[ -n "${__boop_registry[$__regclass_class]:-}" ]] || \
+    __boop.crash "No descriptor for class '$__regclass_class' — register it first"
 
   local __regclass_current="$__regclass_class" __regclass_method __regclass_methods
 
   # Walk inheritance chain, create ClassName.method wrappers
   while [[ -n "$__regclass_current" ]]; do
-    __bashClass.parse "$__regclass_current" "methods" __regclass_methods
+    __boop.parse "$__regclass_current" "methods" __regclass_methods
     IFS=',' read -ra __regclass_method_list <<< "$__regclass_methods"
     for __regclass_method in "${__regclass_method_list[@]}"; do
       [[ -n "$__regclass_method" ]] || continue
       # Don't overwrite — class author's definitions take priority
       declare -f "$__regclass_class.$__regclass_method" >/dev/null && continue
-      eval "$__regclass_class.$__regclass_method() { _Class='$__regclass_class' __bashClass.dispatch $__regclass_method \"\$@\"; }"
+      eval "$__regclass_class.$__regclass_method() { _Class='$__regclass_class' __boop.dispatch $__regclass_method \"\$@\"; }"
     done
-    __bashClass.parse "$__regclass_current" "parent" __regclass_current
+    __boop.parse "$__regclass_current" "parent" __regclass_current
   done
 
   # Make the class name itself a constructor
   declare -f "$__regclass_class" >/dev/null || \
-    eval "$__regclass_class() { _Class='$__regclass_class' __bashClass.dispatch new \"\$@\"; }"
+    eval "$__regclass_class() { _Class='$__regclass_class' __boop.dispatch new \"\$@\"; }"
 }
 
 # Global convenience constructor. Slightly friendlier than the class-as-
@@ -1012,8 +1012,8 @@ __bashClass.registerClass() {
 #        into=mybox new Cube size=4
 new() {
   local __new_class="$1"; shift
-  __bashClass.validate "$__new_class"
-  _Class="$__new_class" __bashClass.dispatch new "$@"
+  __boop.validate "$__new_class"
+  _Class="$__new_class" __boop.dispatch new "$@"
 }
 
 # ============================================================================
@@ -1024,50 +1024,50 @@ new() {
 # and sources the corresponding file into the current shell.
 #
 # Resolution order (first match wins):
-#   1. __bashClass_classPath registry — explicit path overrides set by the user
-#   2. __bashClass_dir — the directory where boop itself lives (co-located classes)
+#   1. __boop_classPath registry — explicit path overrides set by the user
+#   2. __boop_dir — the directory where boop itself lives (co-located classes)
 #   3. PATH — via the . (source) builtin's native search behavior
 #
 # Load guards (two layers):
-#   - __bashClass_registry[ClassName]+set — class already fully loaded, skip entirely.
-#   - __bashClass_loading[ClassName] — class is mid-load (its file is currently being
+#   - __boop_registry[ClassName]+set — class already fully loaded, skip entirely.
+#   - __boop_loading[ClassName] — class is mid-load (its file is currently being
 #     sourced). This prevents circular recursion: Cube's file sources `. boop Box`,
 #     Box's file sources `. boop`, boop re-enters import for Box — the loading flag
 #     catches this and skips, letting the original load complete.
 #
 # The loading flag is unset after each successful source. If the source fails
 # (exit code != 0), we crash — a half-loaded class is worse than no class.
-__bashClass.import() {
+__boop.import() {
   local __import_class
   for __import_class in "$@"; do
     # Already loaded? Skip.
-    [[ -n "${__bashClass_registry[$__import_class]+set}" ]] && continue
+    [[ -n "${__boop_registry[$__import_class]+set}" ]] && continue
 
     # Already loading? Skip (prevents circular recursion when a class
     # file sources boop as part of its own load sequence).
-    [[ -n "${__bashClass_loading[$__import_class]:-}" ]] && continue
-    __bashClass_loading[$__import_class]=1
+    [[ -n "${__boop_loading[$__import_class]:-}" ]] && continue
+    __boop_loading[$__import_class]=1
 
     # Check explicit path registry first
-    if [[ -n "${__bashClass_classPath[$__import_class]:-}" ]]; then
-      . "${__bashClass_classPath[$__import_class]}" || \
-        __bashClass.crash "Failed to load class '$__import_class' from ${__bashClass_classPath[$__import_class]}"
-      unset '__bashClass_loading[$__import_class]'
+    if [[ -n "${__boop_classPath[$__import_class]:-}" ]]; then
+      . "${__boop_classPath[$__import_class]}" || \
+        __boop.crash "Failed to load class '$__import_class' from ${__boop_classPath[$__import_class]}"
+      unset '__boop_loading[$__import_class]'
       continue
     fi
 
-    # Check __bashClass_dir (co-located with framework)
-    if [[ -f "$__bashClass_dir/$__import_class" ]]; then
-      . "$__bashClass_dir/$__import_class" || \
-        __bashClass.crash "Failed to load class '$__import_class' from $__bashClass_dir"
-      unset '__bashClass_loading[$__import_class]'
+    # Check __boop_dir (co-located with framework)
+    if [[ -f "$__boop_dir/$__import_class" ]]; then
+      . "$__boop_dir/$__import_class" || \
+        __boop.crash "Failed to load class '$__import_class' from $__boop_dir"
+      unset '__boop_loading[$__import_class]'
       continue
     fi
 
     # Fall through to PATH resolution
     . "$__import_class" 2>/dev/null || \
-      __bashClass.crash "Class '$__import_class' not found (checked classPath, $__bashClass_dir, PATH)"
-    unset '__bashClass_loading[$__import_class]'
+      __boop.crash "Class '$__import_class' not found (checked classPath, $__boop_dir, PATH)"
+    unset '__boop_loading[$__import_class]'
   done
 }
 
@@ -1075,33 +1075,33 @@ __bashClass.import() {
 # REGISTER BASE CLASS
 # ============================================================================
 
-# bashClass is the root of all inheritance. Every class ultimately inherits
-# from it (parent chain terminates at bashClass's empty parent field).
+# boop is the root of all inheritance. Every class ultimately inherits
+# from it (parent chain terminates at boop's empty parent field).
 # The standard methods registered here (get, set, isa, toString, new, super)
 # are available to all objects unless overridden by a subclass.
-__bashClass_registry["bashClass"]="|class=bashClass|parent=|methods=new,get,set,isa,toString,super|properties="
-__bashClass.registerMethod bashClass get __bashClass.get
-__bashClass.registerMethod bashClass set __bashClass.set
-__bashClass.registerMethod bashClass isa __bashClass.isa
-__bashClass.registerMethod bashClass toString __bashClass.toString
-__bashClass.registerMethod bashClass new __bashClass.new
-__bashClass.registerMethod bashClass super __bashClass.super
-__bashClass.registerClass bashClass
+__boop_registry["boop"]="|class=boop|parent=|methods=new,get,set,isa,toString,super|properties="
+__boop.registerMethod boop get __boop.get
+__boop.registerMethod boop set __boop.set
+__boop.registerMethod boop isa __boop.isa
+__boop.registerMethod boop toString __boop.toString
+__boop.registerMethod boop new __boop.new
+__boop.registerMethod boop super __boop.super
+__boop.registerClass boop
 
 # ============================================================================
 # INITIALIZATION COMPLETE
 # ============================================================================
-__bashClass_loaded=1
+__boop_loaded=1
 
-fi  # end of (( ! __bashClass_loaded ))
+fi  # end of (( ! __boop_loaded ))
 
 # ============================================================================
 # IMPORT ARGUMENTS — always processed, even on subsequent sources
 # ============================================================================
-# This block runs OUTSIDE the __bashClass_loaded guard. When a class file
+# This block runs OUTSIDE the __boop_loaded guard. When a class file
 # does `. boop Box`, the framework definitions are skipped (already loaded),
 # but this block still runs and imports Box. This is the mechanism that lets
 # class files declare dependencies via their source line.
 if (( $# )); then
-  __bashClass.import "$@"
+  __boop.import "$@"
 fi

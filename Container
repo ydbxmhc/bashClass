@@ -9,7 +9,7 @@
 #
 # Architecture:
 #   Container data lives in companion bash arrays, NOT in the pipe-delimited
-#   descriptor. Each instance owns a global array named __bashClass_data_${_Self}.
+#   descriptor. Each instance owns a global array named __boop_data_${_Self}.
 #   Child constructors declare it as indexed (-ga) or associative (-gA).
 #   The descriptor only holds metadata (class, parent, type).
 #
@@ -21,12 +21,12 @@
 #   dispatch, and lifecycle.
 #
 # Inheritance hierarchy:
-#   bashClass → Container → List (indexed)
+#   boop → Container → List (indexed)
 #                         → Map  (associative)
 #                         → Stack, Queue, etc. (future)
 #
 # Iterator (companion class, defined in this file):
-#   bashClass → Iterator
+#   boop → Iterator
 #   Iterator is a standalone cursor object that holds a reference to a
 #   Container and a position. It is NOT a Container subclass — it doesn't
 #   hold data and doesn't fulfill the Container contract. It exists because
@@ -45,7 +45,7 @@
 # Iterator delegation (lazy): next, prev, hasNext, hasPrev, current, iterIndex, iterReset
 
 # Load guard — if already registered, nothing to do
-[[ -n "${__bashClass_registry[Container]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Container]+set}" ]] && return 2>/dev/null
 
 . boop
 
@@ -53,7 +53,7 @@
 # Container Class Descriptor
 # ============================================================================
 
-__bashClass_registry["Container"]="|class=Container|parent=bashClass|methods=new,destroy,length,clear,has,get,set,delete,isEmpty,toArray,toString,itemAt,setAt,each,iterator,next,prev,hasNext,hasPrev,current,iterIndex,iterReset,noIterators|properties=type"
+__boop_registry["Container"]="|class=Container|parent=boop|methods=new,destroy,length,clear,has,get,set,delete,isEmpty,toArray,toString,itemAt,setAt,each,iterator,next,prev,hasNext,hasPrev,current,iterIndex,iterReset,noIterators|properties=type"
 
 # ============================================================================
 # Virtual methods — child classes MUST override these.
@@ -64,42 +64,42 @@ __bashClass_registry["Container"]="|class=Container|parent=bashClass|methods=new
 
 Container.get() {
   local -I _Self _Class
-  __bashClass.crash "$_Class must implement 'get'"
+  __boop.crash "$_Class must implement 'get'"
 }
 
 Container.set() {
   local -I _Self _Class
-  __bashClass.crash "$_Class must implement 'set'"
+  __boop.crash "$_Class must implement 'set'"
 }
 
 Container.delete() {
   local -I _Self _Class
-  __bashClass.crash "$_Class must implement 'delete'"
+  __boop.crash "$_Class must implement 'delete'"
 }
 
 Container.length() {
   local -I _Self _Class
-  __bashClass.crash "$_Class must implement 'length'"
+  __boop.crash "$_Class must implement 'length'"
 }
 
 Container.clear() {
   local -I _Self _Class
-  __bashClass.crash "$_Class must implement 'clear'"
+  __boop.crash "$_Class must implement 'clear'"
 }
 
 Container.has() {
   local -I _Self _Class
-  __bashClass.crash "$_Class must implement 'has'"
+  __boop.crash "$_Class must implement 'has'"
 }
 
 Container.toArray() {
   local -I _Self _Class
-  __bashClass.crash "$_Class must implement 'toArray'"
+  __boop.crash "$_Class must implement 'toArray'"
 }
 
 Container.each() {
   local -I _Self _Class
-  __bashClass.crash "$_Class must implement 'each'"
+  __boop.crash "$_Class must implement 'each'"
 }
 
 # ============================================================================
@@ -109,7 +109,7 @@ Container.each() {
 Container.isEmpty() {
   local -I _Self _Class
   local __Container_isEmpty_len
-  into=__Container_isEmpty_len _Self="$_Self" _Class="$_Class" __bashClass.dispatch length
+  into=__Container_isEmpty_len _Self="$_Self" _Class="$_Class" __boop.dispatch length
   (( __Container_isEmpty_len == 0 )) && return 0 || return 1
 }
 
@@ -127,18 +127,18 @@ Container.isEmpty() {
 # ============================================================================
 
 # Internal helper — ensure the lazy iterator exists, store its ID in $3.
-# Uses __bashClass.set (descriptor property) not Container.set (data storage).
+# Uses __boop.set (descriptor property) not Container.set (data storage).
 __Container._ensureIterator() {
   local __cei_self="$1" __cei_class="$2" __cei_target="$3"
   local __cei_iter
-  __bashClass.parse "$__cei_self" "_iterator" __cei_iter
+  __boop.parse "$__cei_self" "_iterator" __cei_iter
   if [[ -z "$__cei_iter" ]]; then
     into=__cei_iter Iterator target="$__cei_self" target_class="$__cei_class"
     # Store in descriptor, not in container data
     local __cei_encoded
-    __bashClass.encode "$__cei_iter" __cei_encoded
-    local __cei_desc="${__bashClass_registry[$__cei_self]:-}"
-    __bashClass_registry[$__cei_self]="$__cei_desc|_iterator=$__cei_encoded"
+    __boop.encode "$__cei_iter" __cei_encoded
+    local __cei_desc="${__boop_registry[$__cei_self]:-}"
+    __boop_registry[$__cei_self]="$__cei_desc|_iterator=$__cei_encoded"
   fi
   local -n __cei_ref="$__cei_target"
   __cei_ref="$__cei_iter"
@@ -156,7 +156,7 @@ Container.iterator() {
   local -I _Self _Class
   local __Container_iter_obj
   into=__Container_iter_obj Iterator target="$_Self" target_class="$_Class"
-  __bashClass.return "$__Container_iter_obj" ${into:-}
+  __boop.return "$__Container_iter_obj" ${into:-}
 }
 
 # Advance the internal iterator and return the next value.
@@ -164,8 +164,8 @@ Container.next() {
   local -I _Self _Class
   local __Container_next_iter
   __Container._ensureIterator "$_Self" "$_Class" __Container_next_iter
-  into=__Container_next_val _Self="$__Container_next_iter" _Class=Iterator __bashClass.dispatch next
-  __bashClass.return "$__Container_next_val" ${into:-}
+  into=__Container_next_val _Self="$__Container_next_iter" _Class=Iterator __boop.dispatch next
+  __boop.return "$__Container_next_val" ${into:-}
 }
 
 # Move the internal iterator backward and return the value.
@@ -173,8 +173,8 @@ Container.prev() {
   local -I _Self _Class
   local __Container_prev_iter
   __Container._ensureIterator "$_Self" "$_Class" __Container_prev_iter
-  into=__Container_prev_val _Self="$__Container_prev_iter" _Class=Iterator __bashClass.dispatch prev
-  __bashClass.return "$__Container_prev_val" ${into:-}
+  into=__Container_prev_val _Self="$__Container_prev_iter" _Class=Iterator __boop.dispatch prev
+  __boop.return "$__Container_prev_val" ${into:-}
 }
 
 # Check if the internal iterator has more elements ahead.
@@ -182,7 +182,7 @@ Container.hasNext() {
   local -I _Self _Class
   local __Container_hn_iter
   __Container._ensureIterator "$_Self" "$_Class" __Container_hn_iter
-  _Self="$__Container_hn_iter" _Class=Iterator __bashClass.dispatch hasNext
+  _Self="$__Container_hn_iter" _Class=Iterator __boop.dispatch hasNext
 }
 
 # Check if the internal iterator has elements behind.
@@ -190,7 +190,7 @@ Container.hasPrev() {
   local -I _Self _Class
   local __Container_hp_iter
   __Container._ensureIterator "$_Self" "$_Class" __Container_hp_iter
-  _Self="$__Container_hp_iter" _Class=Iterator __bashClass.dispatch hasPrev
+  _Self="$__Container_hp_iter" _Class=Iterator __boop.dispatch hasPrev
 }
 
 # Return the value at the internal iterator's current position.
@@ -198,8 +198,8 @@ Container.current() {
   local -I _Self _Class
   local __Container_cur_iter
   __Container._ensureIterator "$_Self" "$_Class" __Container_cur_iter
-  into=__Container_cur_val _Self="$__Container_cur_iter" _Class=Iterator __bashClass.dispatch current
-  __bashClass.return "$__Container_cur_val" ${into:-}
+  into=__Container_cur_val _Self="$__Container_cur_iter" _Class=Iterator __boop.dispatch current
+  __boop.return "$__Container_cur_val" ${into:-}
 }
 
 # Return the key/index at the internal iterator's current position.
@@ -207,8 +207,8 @@ Container.iterIndex() {
   local -I _Self _Class
   local __Container_idx_iter
   __Container._ensureIterator "$_Self" "$_Class" __Container_idx_iter
-  into=__Container_idx_val _Self="$__Container_idx_iter" _Class=Iterator __bashClass.dispatch index
-  __bashClass.return "$__Container_idx_val" ${into:-}
+  into=__Container_idx_val _Self="$__Container_idx_iter" _Class=Iterator __boop.dispatch index
+  __boop.return "$__Container_idx_val" ${into:-}
 }
 
 # Reset the internal iterator to before the first element.
@@ -216,7 +216,7 @@ Container.iterReset() {
   local -I _Self _Class
   local __Container_rst_iter
   __Container._ensureIterator "$_Self" "$_Class" __Container_rst_iter
-  _Self="$__Container_rst_iter" _Class=Iterator __bashClass.dispatch reset
+  _Self="$__Container_rst_iter" _Class=Iterator __boop.dispatch reset
 }
 
 # Disable all iterator methods on this instance. Call from a subclass
@@ -228,7 +228,7 @@ Container.noIterators() {
   local -I _Self _Class
   local __noi_method
   for __noi_method in iterator next prev hasNext hasPrev current iterIndex iterReset; do
-    eval "$_Self.$__noi_method() { __bashClass.crash '$_Class does not support iterators'; }"
+    eval "$_Self.$__noi_method() { __boop.crash '$_Class does not support iterators'; }"
   done
 }
 
@@ -240,14 +240,14 @@ Container.new() {
   local -I _Class
   : "${_Class:=Container}"
   local __Container_new_self
-  into=__Container_new_self __bashClass.new "$@"
-  __bashClass.return "$__Container_new_self" ${into:-}
+  into=__Container_new_self __boop.new "$@"
+  __boop.return "$__Container_new_self" ${into:-}
 }
 
 Container.destroy() {
   local -I _Self _Class
-  unset "__bashClass_data_${_Self}"
-  unset "__bashClass_registry[$_Self]"
+  unset "__boop_data_${_Self}"
+  unset "__boop_registry[$_Self]"
 }
 
 Container.toString() {
@@ -255,18 +255,18 @@ Container.toString() {
   local -l prettyPrint; : "${prettyPrint:=false}"
   [[ "${1:-}" == "pretty" ]] && prettyPrint=true
   local __Container_ts_len __Container_ts_type
-  into=__Container_ts_len _Self="$_Self" _Class="$_Class" __bashClass.dispatch length
-  __bashClass.parse "$_Self" "type" __Container_ts_type
+  into=__Container_ts_len _Self="$_Self" _Class="$_Class" __boop.dispatch length
+  __boop.parse "$_Self" "type" __Container_ts_type
 
   if [[ "$prettyPrint" != "true" ]]; then
-    __bashClass.return "$_Class($_Self){ type=$__Container_ts_type length=$__Container_ts_len }" ${into:-}
+    __boop.return "$_Class($_Self){ type=$__Container_ts_type length=$__Container_ts_len }" ${into:-}
     return
   fi
 
   local __Container_ts_out
   printf -v __Container_ts_out "%s(%s) {\n  type   = %s\n  length = %s\n}" \
     "$_Class" "$_Self" "$__Container_ts_type" "$__Container_ts_len"
-  __bashClass.return "$__Container_ts_out" ${into:-}
+  __boop.return "$__Container_ts_out" ${into:-}
 }
 
 # ============================================================================
@@ -284,13 +284,13 @@ Container.itemAt() {
   local -I _Self _Class
   local __Container_itemAt_cursor="$_Self" __Container_itemAt_class="$_Class"
   while (( $# > 1 )); do
-    into=__Container_itemAt_cursor _Self="$__Container_itemAt_cursor" _Class="$__Container_itemAt_class" __bashClass.dispatch get "$1"
-    [[ -n "$__Container_itemAt_cursor" ]] || { __bashClass.return "" ${into:-}; return; }
-    __bashClass.parse "$__Container_itemAt_cursor" "class" __Container_itemAt_class
+    into=__Container_itemAt_cursor _Self="$__Container_itemAt_cursor" _Class="$__Container_itemAt_class" __boop.dispatch get "$1"
+    [[ -n "$__Container_itemAt_cursor" ]] || { __boop.return "" ${into:-}; return; }
+    __boop.parse "$__Container_itemAt_cursor" "class" __Container_itemAt_class
     shift
   done
-  _Self="$__Container_itemAt_cursor" _Class="$__Container_itemAt_class" into=__Container_itemAt_cursor __bashClass.dispatch get "$1"
-  __bashClass.return "$__Container_itemAt_cursor" ${into:-}
+  _Self="$__Container_itemAt_cursor" _Class="$__Container_itemAt_class" into=__Container_itemAt_cursor __boop.dispatch get "$1"
+  __boop.return "$__Container_itemAt_cursor" ${into:-}
 }
 
 Container.setAt() {
@@ -298,59 +298,59 @@ Container.setAt() {
   local __Container_setAt_val="$1"; shift
   local __Container_setAt_cursor="$_Self" __Container_setAt_class="$_Class"
   while (( $# > 1 )); do
-    into=__Container_setAt_cursor _Self="$__Container_setAt_cursor" _Class="$__Container_setAt_class" __bashClass.dispatch get "$1"
+    into=__Container_setAt_cursor _Self="$__Container_setAt_cursor" _Class="$__Container_setAt_class" __boop.dispatch get "$1"
     [[ -n "$__Container_setAt_cursor" ]] || \
-      __bashClass.crash "setAt: missing intermediate at '$1'"
-    __bashClass.parse "$__Container_setAt_cursor" "class" __Container_setAt_class
+      __boop.crash "setAt: missing intermediate at '$1'"
+    __boop.parse "$__Container_setAt_cursor" "class" __Container_setAt_class
     shift
   done
-  _Self="$__Container_setAt_cursor" _Class="$__Container_setAt_class" __bashClass.dispatch set "$1" "$__Container_setAt_val"
+  _Self="$__Container_setAt_cursor" _Class="$__Container_setAt_class" __boop.dispatch set "$1" "$__Container_setAt_val"
 }
 
 # ============================================================================
-# Deep Traversal — itemFrom / setOn (bashClass augmentation)
+# Deep Traversal — itemFrom / setOn (boop augmentation)
 #
-# Registered on bashClass so ALL objects can use them. Loading Container
+# Registered on boop so ALL objects can use them. Loading Container
 # adds container-awareness to the entire object system.
 # ============================================================================
 
-__bashClass.itemFrom() {
+__boop.itemFrom() {
   local -I _Self _Class
   local __itemFrom_cursor __itemFrom_class
-  __bashClass.parse "$_Self" "$1" __itemFrom_cursor
-  [[ -n "$__itemFrom_cursor" ]] || { __bashClass.return "" ${into:-}; return; }
-  __bashClass.parse "$__itemFrom_cursor" "class" __itemFrom_class
+  __boop.parse "$_Self" "$1" __itemFrom_cursor
+  [[ -n "$__itemFrom_cursor" ]] || { __boop.return "" ${into:-}; return; }
+  __boop.parse "$__itemFrom_cursor" "class" __itemFrom_class
   shift
   while (( $# > 1 )); do
-    into=__itemFrom_cursor _Self="$__itemFrom_cursor" _Class="$__itemFrom_class" __bashClass.dispatch get "$1"
-    [[ -n "$__itemFrom_cursor" ]] || { __bashClass.return "" ${into:-}; return; }
-    __bashClass.parse "$__itemFrom_cursor" "class" __itemFrom_class
+    into=__itemFrom_cursor _Self="$__itemFrom_cursor" _Class="$__itemFrom_class" __boop.dispatch get "$1"
+    [[ -n "$__itemFrom_cursor" ]] || { __boop.return "" ${into:-}; return; }
+    __boop.parse "$__itemFrom_cursor" "class" __itemFrom_class
     shift
   done
-  _Self="$__itemFrom_cursor" _Class="$__itemFrom_class" into=__itemFrom_cursor __bashClass.dispatch get "$1"
-  __bashClass.return "$__itemFrom_cursor" ${into:-}
+  _Self="$__itemFrom_cursor" _Class="$__itemFrom_class" into=__itemFrom_cursor __boop.dispatch get "$1"
+  __boop.return "$__itemFrom_cursor" ${into:-}
 }
 
-__bashClass.setOn() {
+__boop.setOn() {
   local -I _Self _Class
   local __setOn_cursor __setOn_class
-  __bashClass.parse "$_Self" "$1" __setOn_cursor
-  [[ -n "$__setOn_cursor" ]] || __bashClass.crash "setOn: property '$1' is empty"
-  __bashClass.parse "$__setOn_cursor" "class" __setOn_class
+  __boop.parse "$_Self" "$1" __setOn_cursor
+  [[ -n "$__setOn_cursor" ]] || __boop.crash "setOn: property '$1' is empty"
+  __boop.parse "$__setOn_cursor" "class" __setOn_class
   shift
   local __setOn_val="$1"; shift
   while (( $# > 1 )); do
-    into=__setOn_cursor _Self="$__setOn_cursor" _Class="$__setOn_class" __bashClass.dispatch get "$1"
+    into=__setOn_cursor _Self="$__setOn_cursor" _Class="$__setOn_class" __boop.dispatch get "$1"
     [[ -n "$__setOn_cursor" ]] || \
-      __bashClass.crash "setOn: missing intermediate at '$1'"
-    __bashClass.parse "$__setOn_cursor" "class" __setOn_class
+      __boop.crash "setOn: missing intermediate at '$1'"
+    __boop.parse "$__setOn_cursor" "class" __setOn_class
     shift
   done
-  _Self="$__setOn_cursor" _Class="$__setOn_class" __bashClass.dispatch set "$1" "$__setOn_val"
+  _Self="$__setOn_cursor" _Class="$__setOn_class" __boop.dispatch set "$1" "$__setOn_val"
 }
 
 # ============================================================================
-# Iterator — companion class (bashClass → Iterator)
+# Iterator — companion class (boop → Iterator)
 #
 # Stateful cursor for traversing Container subclasses. Holds a reference
 # to a container (target) and a position. NOT a Container subclass — it
@@ -381,7 +381,7 @@ __bashClass.setOn() {
 #   done
 # ============================================================================
 
-__bashClass_registry["Iterator"]="|class=Iterator|parent=bashClass|methods=new,hasNext,hasPrev,next,prev,current,index,reset|properties=target,target_class"
+__boop_registry["Iterator"]="|class=Iterator|parent=boop|methods=new,hasNext,hasPrev,next,prev,current,index,reset|properties=target,target_class"
 
 # Constructor — creates an Iterator bound to a container.
 # Required args: target=<objectID> target_class=<className>
@@ -398,42 +398,42 @@ Iterator.new() {
     esac
   done
 
-  [[ -n "$__Iter_new_target" ]] || __bashClass.crash "Iterator: target is required"
-  [[ -n "$__Iter_new_tclass" ]] || __bashClass.crash "Iterator: target_class is required"
+  [[ -n "$__Iter_new_target" ]] || __boop.crash "Iterator: target is required"
+  [[ -n "$__Iter_new_tclass" ]] || __boop.crash "Iterator: target_class is required"
 
   local __Iter_new_self
-  into=__Iter_new_self __bashClass.new target="$__Iter_new_target" target_class="$__Iter_new_tclass" position=-1
+  into=__Iter_new_self __boop.new target="$__Iter_new_target" target_class="$__Iter_new_tclass" position=-1
 
   # For Map targets, snapshot the ordered key list
   if [[ "$__Iter_new_tclass" == "Map" ]]; then
-    declare -ga "__bashClass_iterkeys_${__Iter_new_self}"
-    local -n __Iter_new_keys="__bashClass_keys_${__Iter_new_target}"
-    local -n __Iter_new_snap="__bashClass_iterkeys_${__Iter_new_self}"
+    declare -ga "__boop_iterkeys_${__Iter_new_self}"
+    local -n __Iter_new_keys="__boop_keys_${__Iter_new_target}"
+    local -n __Iter_new_snap="__boop_iterkeys_${__Iter_new_self}"
     if [[ -n "${!__Iter_new_keys[@]}" ]] && (( ${#__Iter_new_keys[@]} > 0 )); then
       __Iter_new_snap=("${__Iter_new_keys[@]}")
     fi
   fi
 
-  __bashClass.return "$__Iter_new_self" ${into:-}
+  __boop.return "$__Iter_new_self" ${into:-}
 }
 
 # Internal helper — get the length of the target container into $2.
 __Iterator._targetLen() {
   local __itl_self="$1"
   local __itl_target __itl_tclass
-  __bashClass.parse "$__itl_self" "target" __itl_target
-  __bashClass.parse "$__itl_self" "target_class" __itl_tclass
+  __boop.parse "$__itl_self" "target" __itl_target
+  __boop.parse "$__itl_self" "target_class" __itl_tclass
   local -n __itl_out="$2"
 
   if [[ "$__itl_tclass" == "Map" ]]; then
-    local -n __itl_snap="__bashClass_iterkeys_${__itl_self}"
+    local -n __itl_snap="__boop_iterkeys_${__itl_self}"
     if [[ -n "${!__itl_snap[@]}" ]]; then
       __itl_out=${#__itl_snap[@]}
     else
       __itl_out=0
     fi
   else
-    local -n __itl_arr="__bashClass_data_${__itl_target}"
+    local -n __itl_arr="__boop_data_${__itl_target}"
     if [[ -n "${!__itl_arr[@]}" ]]; then
       __itl_out=${#__itl_arr[@]}
     else
@@ -445,7 +445,7 @@ __Iterator._targetLen() {
 Iterator.hasNext() {
   local -I _Self _Class
   local __Iter_hn_pos
-  __bashClass.parse "$_Self" "position" __Iter_hn_pos
+  __boop.parse "$_Self" "position" __Iter_hn_pos
   : "${__Iter_hn_pos:=-1}"
   local -i __Iter_hn_len
   __Iterator._targetLen "$_Self" __Iter_hn_len
@@ -455,7 +455,7 @@ Iterator.hasNext() {
 Iterator.hasPrev() {
   local -I _Self _Class
   local __Iter_hp_pos
-  __bashClass.parse "$_Self" "position" __Iter_hp_pos
+  __boop.parse "$_Self" "position" __Iter_hp_pos
   : "${__Iter_hp_pos:=-1}"
   (( __Iter_hp_pos > 0 )) && return 0 || return 1
 }
@@ -463,159 +463,159 @@ Iterator.hasPrev() {
 Iterator.next() {
   local -I _Self _Class
   local __Iter_next_pos
-  __bashClass.parse "$_Self" "position" __Iter_next_pos
+  __boop.parse "$_Self" "position" __Iter_next_pos
   : "${__Iter_next_pos:=-1}"
   local -i __Iter_next_len
   __Iterator._targetLen "$_Self" __Iter_next_len
 
   (( __Iter_next_pos + 1 < __Iter_next_len )) || \
-    __bashClass.crash "Iterator: no more elements (next)"
+    __boop.crash "Iterator: no more elements (next)"
 
   (( __Iter_next_pos++ ))
-  _Self="$_Self" _Class=Iterator __bashClass.dispatch set position "$__Iter_next_pos"
+  _Self="$_Self" _Class=Iterator __boop.dispatch set position "$__Iter_next_pos"
 
   local __Iter_next_target __Iter_next_tclass
-  __bashClass.parse "$_Self" "target" __Iter_next_target
-  __bashClass.parse "$_Self" "target_class" __Iter_next_tclass
+  __boop.parse "$_Self" "target" __Iter_next_target
+  __boop.parse "$_Self" "target_class" __Iter_next_tclass
 
   if [[ "$__Iter_next_tclass" == "Map" ]]; then
-    local -n __Iter_next_snap="__bashClass_iterkeys_${_Self}"
+    local -n __Iter_next_snap="__boop_iterkeys_${_Self}"
     local __Iter_next_key="${__Iter_next_snap[$__Iter_next_pos]}"
-    local -n __Iter_next_data="__bashClass_data_${__Iter_next_target}"
-    __bashClass.return "${__Iter_next_data[$__Iter_next_key]:-}" ${into:-}
+    local -n __Iter_next_data="__boop_data_${__Iter_next_target}"
+    __boop.return "${__Iter_next_data[$__Iter_next_key]:-}" ${into:-}
   else
-    local -n __Iter_next_arr="__bashClass_data_${__Iter_next_target}"
-    __bashClass.return "${__Iter_next_arr[$__Iter_next_pos]}" ${into:-}
+    local -n __Iter_next_arr="__boop_data_${__Iter_next_target}"
+    __boop.return "${__Iter_next_arr[$__Iter_next_pos]}" ${into:-}
   fi
 }
 
 Iterator.prev() {
   local -I _Self _Class
   local __Iter_prev_pos
-  __bashClass.parse "$_Self" "position" __Iter_prev_pos
+  __boop.parse "$_Self" "position" __Iter_prev_pos
   : "${__Iter_prev_pos:=-1}"
 
   (( __Iter_prev_pos > 0 )) || \
-    __bashClass.crash "Iterator: no previous element (prev)"
+    __boop.crash "Iterator: no previous element (prev)"
 
   (( __Iter_prev_pos-- ))
-  _Self="$_Self" _Class=Iterator __bashClass.dispatch set position "$__Iter_prev_pos"
+  _Self="$_Self" _Class=Iterator __boop.dispatch set position "$__Iter_prev_pos"
 
   local __Iter_prev_target __Iter_prev_tclass
-  __bashClass.parse "$_Self" "target" __Iter_prev_target
-  __bashClass.parse "$_Self" "target_class" __Iter_prev_tclass
+  __boop.parse "$_Self" "target" __Iter_prev_target
+  __boop.parse "$_Self" "target_class" __Iter_prev_tclass
 
   if [[ "$__Iter_prev_tclass" == "Map" ]]; then
-    local -n __Iter_prev_snap="__bashClass_iterkeys_${_Self}"
+    local -n __Iter_prev_snap="__boop_iterkeys_${_Self}"
     local __Iter_prev_key="${__Iter_prev_snap[$__Iter_prev_pos]}"
-    local -n __Iter_prev_data="__bashClass_data_${__Iter_prev_target}"
-    __bashClass.return "${__Iter_prev_data[$__Iter_prev_key]:-}" ${into:-}
+    local -n __Iter_prev_data="__boop_data_${__Iter_prev_target}"
+    __boop.return "${__Iter_prev_data[$__Iter_prev_key]:-}" ${into:-}
   else
-    local -n __Iter_prev_arr="__bashClass_data_${__Iter_prev_target}"
-    __bashClass.return "${__Iter_prev_arr[$__Iter_prev_pos]}" ${into:-}
+    local -n __Iter_prev_arr="__boop_data_${__Iter_prev_target}"
+    __boop.return "${__Iter_prev_arr[$__Iter_prev_pos]}" ${into:-}
   fi
 }
 
 Iterator.current() {
   local -I _Self _Class
   local __Iter_cur_pos
-  __bashClass.parse "$_Self" "position" __Iter_cur_pos
+  __boop.parse "$_Self" "position" __Iter_cur_pos
   : "${__Iter_cur_pos:=-1}"
   local -i __Iter_cur_len
   __Iterator._targetLen "$_Self" __Iter_cur_len
 
   (( __Iter_cur_pos >= 0 && __Iter_cur_pos < __Iter_cur_len )) || \
-    __bashClass.crash "Iterator: cursor not on an element"
+    __boop.crash "Iterator: cursor not on an element"
 
   local __Iter_cur_target __Iter_cur_tclass
-  __bashClass.parse "$_Self" "target" __Iter_cur_target
-  __bashClass.parse "$_Self" "target_class" __Iter_cur_tclass
+  __boop.parse "$_Self" "target" __Iter_cur_target
+  __boop.parse "$_Self" "target_class" __Iter_cur_tclass
 
   if [[ "$__Iter_cur_tclass" == "Map" ]]; then
-    local -n __Iter_cur_snap="__bashClass_iterkeys_${_Self}"
+    local -n __Iter_cur_snap="__boop_iterkeys_${_Self}"
     local __Iter_cur_key="${__Iter_cur_snap[$__Iter_cur_pos]}"
-    local -n __Iter_cur_data="__bashClass_data_${__Iter_cur_target}"
-    __bashClass.return "${__Iter_cur_data[$__Iter_cur_key]:-}" ${into:-}
+    local -n __Iter_cur_data="__boop_data_${__Iter_cur_target}"
+    __boop.return "${__Iter_cur_data[$__Iter_cur_key]:-}" ${into:-}
   else
-    local -n __Iter_cur_arr="__bashClass_data_${__Iter_cur_target}"
-    __bashClass.return "${__Iter_cur_arr[$__Iter_cur_pos]}" ${into:-}
+    local -n __Iter_cur_arr="__boop_data_${__Iter_cur_target}"
+    __boop.return "${__Iter_cur_arr[$__Iter_cur_pos]}" ${into:-}
   fi
 }
 
 Iterator.index() {
   local -I _Self _Class
   local __Iter_idx_pos
-  __bashClass.parse "$_Self" "position" __Iter_idx_pos
+  __boop.parse "$_Self" "position" __Iter_idx_pos
   : "${__Iter_idx_pos:=-1}"
   local -i __Iter_idx_len
   __Iterator._targetLen "$_Self" __Iter_idx_len
 
   (( __Iter_idx_pos >= 0 && __Iter_idx_pos < __Iter_idx_len )) || \
-    __bashClass.crash "Iterator: cursor not on an element"
+    __boop.crash "Iterator: cursor not on an element"
 
   local __Iter_idx_tclass
-  __bashClass.parse "$_Self" "target_class" __Iter_idx_tclass
+  __boop.parse "$_Self" "target_class" __Iter_idx_tclass
 
   if [[ "$__Iter_idx_tclass" == "Map" ]]; then
-    local -n __Iter_idx_snap="__bashClass_iterkeys_${_Self}"
-    __bashClass.return "${__Iter_idx_snap[$__Iter_idx_pos]}" ${into:-}
+    local -n __Iter_idx_snap="__boop_iterkeys_${_Self}"
+    __boop.return "${__Iter_idx_snap[$__Iter_idx_pos]}" ${into:-}
   else
-    __bashClass.return "$__Iter_idx_pos" ${into:-}
+    __boop.return "$__Iter_idx_pos" ${into:-}
   fi
 }
 
 Iterator.reset() {
   local -I _Self _Class
-  _Self="$_Self" _Class=Iterator __bashClass.dispatch set position "-1"
+  _Self="$_Self" _Class=Iterator __boop.dispatch set position "-1"
 }
 
 # ============================================================================
 # Register Container Methods & Finalize
 # ============================================================================
 
-__bashClass.registerMethod Container itemAt Container.itemAt
-__bashClass.registerMethod Container setAt Container.setAt
-__bashClass.registerMethod Container get Container.get
-__bashClass.registerMethod Container set Container.set
-__bashClass.registerMethod Container delete Container.delete
-__bashClass.registerMethod Container length Container.length
-__bashClass.registerMethod Container clear Container.clear
-__bashClass.registerMethod Container has Container.has
-__bashClass.registerMethod Container toArray Container.toArray
-__bashClass.registerMethod Container each Container.each
-__bashClass.registerMethod Container isEmpty Container.isEmpty
-__bashClass.registerMethod Container iterator Container.iterator
-__bashClass.registerMethod Container next Container.next
-__bashClass.registerMethod Container prev Container.prev
-__bashClass.registerMethod Container hasNext Container.hasNext
-__bashClass.registerMethod Container hasPrev Container.hasPrev
-__bashClass.registerMethod Container current Container.current
-__bashClass.registerMethod Container iterIndex Container.iterIndex
-__bashClass.registerMethod Container iterReset Container.iterReset
-__bashClass.registerMethod Container noIterators Container.noIterators
-__bashClass.registerMethod Container new Container.new
-__bashClass.registerMethod Container destroy Container.destroy
-__bashClass.registerMethod Container toString Container.toString
-__bashClass.registerClass Container
+__boop.registerMethod Container itemAt Container.itemAt
+__boop.registerMethod Container setAt Container.setAt
+__boop.registerMethod Container get Container.get
+__boop.registerMethod Container set Container.set
+__boop.registerMethod Container delete Container.delete
+__boop.registerMethod Container length Container.length
+__boop.registerMethod Container clear Container.clear
+__boop.registerMethod Container has Container.has
+__boop.registerMethod Container toArray Container.toArray
+__boop.registerMethod Container each Container.each
+__boop.registerMethod Container isEmpty Container.isEmpty
+__boop.registerMethod Container iterator Container.iterator
+__boop.registerMethod Container next Container.next
+__boop.registerMethod Container prev Container.prev
+__boop.registerMethod Container hasNext Container.hasNext
+__boop.registerMethod Container hasPrev Container.hasPrev
+__boop.registerMethod Container current Container.current
+__boop.registerMethod Container iterIndex Container.iterIndex
+__boop.registerMethod Container iterReset Container.iterReset
+__boop.registerMethod Container noIterators Container.noIterators
+__boop.registerMethod Container new Container.new
+__boop.registerMethod Container destroy Container.destroy
+__boop.registerMethod Container toString Container.toString
+__boop.registerClass Container
 
 # ============================================================================
 # Register Iterator Methods & Finalize
 # ============================================================================
 
-__bashClass.registerMethod Iterator new      Iterator.new
-__bashClass.registerMethod Iterator hasNext  Iterator.hasNext
-__bashClass.registerMethod Iterator hasPrev  Iterator.hasPrev
-__bashClass.registerMethod Iterator next     Iterator.next
-__bashClass.registerMethod Iterator prev     Iterator.prev
-__bashClass.registerMethod Iterator current  Iterator.current
-__bashClass.registerMethod Iterator index    Iterator.index
-__bashClass.registerMethod Iterator reset    Iterator.reset
-__bashClass.registerClass Iterator
+__boop.registerMethod Iterator new      Iterator.new
+__boop.registerMethod Iterator hasNext  Iterator.hasNext
+__boop.registerMethod Iterator hasPrev  Iterator.hasPrev
+__boop.registerMethod Iterator next     Iterator.next
+__boop.registerMethod Iterator prev     Iterator.prev
+__boop.registerMethod Iterator current  Iterator.current
+__boop.registerMethod Iterator index    Iterator.index
+__boop.registerMethod Iterator reset    Iterator.reset
+__boop.registerClass Iterator
 
 # ============================================================================
-# bashClass augmentation — container-aware traversal for all objects
+# boop augmentation — container-aware traversal for all objects
 # ============================================================================
 
-__bashClass.registerMethod bashClass itemFrom __bashClass.itemFrom
-__bashClass.registerMethod bashClass setOn __bashClass.setOn
-__bashClass_registry["bashClass"]="${__bashClass_registry["bashClass"]/|methods=/|methods=itemFrom,setOn,}"
+__boop.registerMethod boop itemFrom __boop.itemFrom
+__boop.registerMethod boop setOn __boop.setOn
+__boop_registry["boop"]="${__boop_registry["boop"]/|methods=/|methods=itemFrom,setOn,}"

@@ -27,7 +27,7 @@
 # understands the algorithms.
 
 # Load guard
-[[ -n "${__bashClass_registry[Math]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Math]+set}" ]] && return 2>/dev/null
 
 . boop
 
@@ -47,7 +47,7 @@ __Math.setPrecision() { __Math_precision=$1; }
 # Math Class Descriptor
 # ============================================================================
 
-__bashClass_registry["Math"]="|class=Math|parent=bashClass|methods=new,add,sub,subtract,mul,multiply,div,divide,mod,pow,square,abs,neg,eq,lt,gt,le,ge,cmp,round,toInt,toScale,format,val,toString,isZero|properties=digits,scale,neg"
+__boop_registry["Math"]="|class=Math|parent=boop|methods=new,add,sub,subtract,mul,multiply,div,divide,mod,pow,square,abs,neg,eq,lt,gt,le,ge,cmp,round,toInt,toScale,format,val,toString,isZero|properties=digits,scale,neg"
 
 
 # ============================================================================
@@ -336,7 +336,7 @@ __Math.strDiv() {
   local -i __div_maxdigits="${4:-$__Math_precision}"
   local -n __div_qscale="$5"
 
-  [[ "$__div_b" == "0" ]] && __bashClass.crash "Math: division by zero"
+  [[ "$__div_b" == "0" ]] && __boop.crash "Math: division by zero"
   [[ "$__div_a" == "0" ]] && { __div_quotient="0"; __div_qscale=0; return; }
 
   local __div_remainder="0"
@@ -433,10 +433,10 @@ __Math.resolve() {
   local -n __res_digits="$2" __res_scale="$3" __res_neg="$4"
 
   # Object ID — already validated, extract from descriptor
-  if [[ "$__res_input" == _* && -n "${__bashClass_registry[$__res_input]:-}" ]]; then
-    __bashClass.parse "$__res_input" "digits" __res_digits
-    __bashClass.parse "$__res_input" "scale" __res_scale
-    __bashClass.parse "$__res_input" "neg" __res_neg
+  if [[ "$__res_input" == _* && -n "${__boop_registry[$__res_input]:-}" ]]; then
+    __boop.parse "$__res_input" "digits" __res_digits
+    __boop.parse "$__res_input" "scale" __res_scale
+    __boop.parse "$__res_input" "neg" __res_neg
     return
   fi
 
@@ -448,7 +448,7 @@ __Math.resolve() {
   # The -n check ensures at least one digit is present somewhere.
   if ! [[ "${__res_input:-}" =~ ^[[:space:]]*(-?)([0-9]*)([.]*)([0-9]*)[[:space:]]*$ \
        && -n "${BASH_REMATCH[2]:-}${BASH_REMATCH[4]:-}" ]]; then
-    __bashClass.crash "Math: invalid number '$1' — expected a numeric value like '3.14' or '-42'"
+    __boop.crash "Math: invalid number '$1' — expected a numeric value like '3.14' or '-42'"
   fi
 
   __res_neg=${#BASH_REMATCH[1]}                                  # "-" → length 1; empty → 0
@@ -532,8 +532,8 @@ __Math.fromParts() {
   [[ "$__fp_digits" == "0" ]] && __fp_neg=0
 
   local __fp_self
-  into=__fp_self _Class=Math __bashClass.new "digits=$__fp_digits" "scale=$__fp_scale" "neg=$__fp_neg"
-  __bashClass.return "$__fp_self" "${4:-}"
+  into=__fp_self _Class=Math __boop.new "digits=$__fp_digits" "scale=$__fp_scale" "neg=$__fp_neg"
+  __boop.return "$__fp_self" "${4:-}"
 }
 
 # ============================================================================
@@ -669,7 +669,7 @@ __Math.i_div() {
   __Math.resolve "$_Self" __div_dA __div_sA __div_nA
   __Math.resolve "$1" __div_dB __div_sB __div_nB
 
-  [[ "$__div_dB" == "0" ]] && __bashClass.crash "Math: division by zero"
+  [[ "$__div_dB" == "0" ]] && __boop.crash "Math: division by zero"
 
   # Fast path: native integer division when operands are small enough.
   # After align, we multiply dividend by 10^extra for fractional digits.
@@ -736,15 +736,15 @@ __Math.i_mod() {
   __Math.resolve "$_Self" __mod_dA __mod_sA __mod_nA
   __Math.resolve "$1" __mod_dB __mod_sB __mod_nB
 
-  [[ "$__mod_dB" == "0" ]] && __bashClass.crash "Math: modulo by zero"
+  [[ "$__mod_dB" == "0" ]] && __boop.crash "Math: modulo by zero"
 
   __Math.alignScale __mod_dA __mod_sA __mod_dB __mod_sB
 
   local -i __mod_iA __mod_iB
   __Math.toInt64 "$__mod_dA" $__mod_sA $__mod_nA __mod_iA \
-    || __bashClass.crash "Math: mod operand too large for native arithmetic"
+    || __boop.crash "Math: mod operand too large for native arithmetic"
   __Math.toInt64 "$__mod_dB" $__mod_sB $__mod_nB __mod_iB \
-    || __bashClass.crash "Math: mod operand too large for native arithmetic"
+    || __boop.crash "Math: mod operand too large for native arithmetic"
 
   local __mod_fd; local -i __mod_fs __mod_fn
   __Math.fromInt64 $(( __mod_iA % __mod_iB )) $__mod_sA __mod_fd __mod_fs __mod_fn
@@ -761,8 +761,8 @@ __Math.i_pow() {
   local -i __pow_sB __pow_nB
   __Math.resolve "$1" __pow_dB __pow_sB __pow_nB
 
-  (( __pow_sB != 0 )) && __bashClass.crash "Math: fractional exponents not supported"
-  (( __pow_nB )) && __bashClass.crash "Math: negative exponents not supported"
+  (( __pow_sB != 0 )) && __boop.crash "Math: fractional exponents not supported"
+  (( __pow_nB )) && __boop.crash "Math: negative exponents not supported"
 
   # Exponent is a plain integer
   local -i __pow_exp=10#$__pow_dB
@@ -776,7 +776,7 @@ __Math.i_pow() {
     into=__pow_result _Self="$__pow_result" _Class=Math __Math.i_mul "$_Self"
   done
 
-  __bashClass.return "$__pow_result" ${into:-}
+  __boop.return "$__pow_result" ${into:-}
 }
 
 
@@ -896,7 +896,7 @@ Math.toInt() {
   __Math.resolve "$_Self" __ti_d __ti_s __ti_n
 
   if (( __ti_s >= ${#__ti_d} )); then
-    __bashClass.return "0" ${into:-}; return
+    __boop.return "0" ${into:-}; return
   fi
 
   local __ti_int="${__ti_d:0:${#__ti_d}-__ti_s}"
@@ -904,7 +904,7 @@ Math.toInt() {
   __ti_int="${__ti_int#"${__ti_int%%[!0]*}"}"
   : "${__ti_int:=0}"
   (( __ti_n )) && [[ "$__ti_int" != "0" ]] && __ti_int="-${__ti_int}"
-  __bashClass.return "$__ti_int" ${into:-}
+  __boop.return "$__ti_int" ${into:-}
 }
 
 # Return the decimal string representation. "3.14", "-0.5", "42", etc.
@@ -933,14 +933,14 @@ Math.val() {
   fi
 
   (( __val_n )) && [[ "$__val_result" != "0" ]] && __val_result="-${__val_result}"
-  __bashClass.return "$__val_result" ${into:-}
+  __boop.return "$__val_result" ${into:-}
 }
 
 Math.toString() {
   local -I _Self _Class
   local __ts_val
   into=__ts_val _Self="$_Self" _Class="$_Class" Math.val
-  __bashClass.return "Math($_Self){ $__ts_val }" ${into:-}
+  __boop.return "Math($_Self){ $__ts_val }" ${into:-}
 }
 
 # Change scale (decimal places). Pads with zeros or rounds to fit.
@@ -961,8 +961,8 @@ Math.toScale() {
     __tsc_d="${__tsc_d}${__tsc_pad}"
     # Bypass fromParts to preserve trailing zeros
     local __tsc_self
-    into=__tsc_self _Class=Math __bashClass.new "digits=$__tsc_d" "scale=$__tsc_target" "neg=$__tsc_n"
-    __bashClass.return "$__tsc_self" ${into:-}
+    into=__tsc_self _Class=Math __boop.new "digits=$__tsc_d" "scale=$__tsc_target" "neg=$__tsc_n"
+    __boop.return "$__tsc_self" ${into:-}
   elif (( __tsc_target < __tsc_s )); then
     local -i __tsc_sigdigits=$(( ${#__tsc_d} - (__tsc_s - __tsc_target) ))
     (( __tsc_sigdigits < 1 )) && __tsc_sigdigits=1
@@ -979,9 +979,9 @@ Math.toScale() {
       local __tsc_zeros2
       printf -v __tsc_zeros2 "%0${__tsc_pad2}d" 0
       __tsc_rd="${__tsc_rd}${__tsc_zeros2}"
-      into=${into:-} _Class=Math __bashClass.new "digits=$__tsc_rd" "scale=$__tsc_target" "neg=$__tsc_rn"
+      into=${into:-} _Class=Math __boop.new "digits=$__tsc_rd" "scale=$__tsc_target" "neg=$__tsc_rn"
     else
-      __bashClass.return "$__tsc_rounded" ${into:-}
+      __boop.return "$__tsc_rounded" ${into:-}
     fi
   else
     __Math.fromParts "$__tsc_d" $__tsc_s $__tsc_n ${into:-}
@@ -999,7 +999,7 @@ Math.format() {
   into=__fmt_str _Self="$_Self" _Class="$_Class" Math.val
   local __fmt_result
   printf -v __fmt_result "$1" "$__fmt_str"
-  __bashClass.return "$__fmt_result" ${into:-}
+  __boop.return "$__fmt_result" ${into:-}
 }
 
 
@@ -1096,7 +1096,7 @@ __Math.rawDiv() {
   local -n __rd_od="${7}" __rd_os="${8}" __rd_on="${9}"
   local -i __rd_prec="${10:-$__Math_precision}"
 
-  [[ "$__rd_dB" == "0" ]] && __bashClass.crash "Math: division by zero"
+  [[ "$__rd_dB" == "0" ]] && __boop.crash "Math: division by zero"
 
   __Math.alignScale __rd_dA __rd_sA __rd_dB __rd_sB
 
@@ -1142,7 +1142,7 @@ __Math.rawDivSmall() {
 # end to wrap the result. This eliminates all object overhead (ID gen,
 # descriptor encoding, registry writes, stub eval) from the hot path.
 #
-# Uses __bashClass_static to cache results at a given precision so
+# Uses __boop_static to cache results at a given precision so
 # repeated calls (e.g., from pi at the same precision) don't recompute.
 #
 # $1 = integer n (compute arctan(1/n))
@@ -1155,8 +1155,8 @@ __Math.arctan_recip() {
 
   # Check cache
   local __at_cachekey="Math.arctan_recip.${__at_n}.${__at_prec}"
-  if [[ -n "${__bashClass_static[$__at_cachekey]:-}" ]]; then
-    __bashClass.return "${__bashClass_static[$__at_cachekey]}" "${3:-}"
+  if [[ -n "${__boop_static[$__at_cachekey]:-}" ]]; then
+    __boop.return "${__boop_static[$__at_cachekey]}" "${3:-}"
     return
   fi
 
@@ -1255,8 +1255,8 @@ __Math.arctan_recip() {
   local __at_result
   __Math.fromParts "$__at_sd" $__at_ss $__at_sn __at_result
 
-  __bashClass_static[$__at_cachekey]="$__at_result"
-  __bashClass.return "$__at_result" "${3:-}"
+  __boop_static[$__at_cachekey]="$__at_result"
+  __boop.return "$__at_result" "${3:-}"
 }
 
 # Calculate pi to the specified precision using Machin's formula:
@@ -1279,8 +1279,8 @@ Math.pi() {
 
   # Check cache
   local __pi_cachekey="Math.pi.${__pi_prec}"
-  if [[ -n "${__bashClass_static[$__pi_cachekey]:-}" ]]; then
-    __bashClass.return "${__bashClass_static[$__pi_cachekey]}" ${into:-}
+  if [[ -n "${__boop_static[$__pi_cachekey]:-}" ]]; then
+    __boop.return "${__boop_static[$__pi_cachekey]}" ${into:-}
     return
   fi
 
@@ -1326,8 +1326,8 @@ Math.pi() {
   fi
   __Math.fromParts "$__pi_td" $__pi_ts $__pi_tn __pi_result
 
-  __bashClass_static[$__pi_cachekey]="$__pi_result"
-  __bashClass.return "$__pi_result" ${into:-}
+  __boop_static[$__pi_cachekey]="$__pi_result"
+  __boop.return "$__pi_result" ${into:-}
 }
 
 
@@ -1335,33 +1335,33 @@ Math.pi() {
 # Register Methods & Finalize
 # ============================================================================
 
-__bashClass.registerMethod Math new Math.new
-__bashClass.registerMethod Math add __Math.i_add
-__bashClass.registerMethod Math sub __Math.i_sub
-__bashClass.registerMethod Math subtract __Math.i_sub
-__bashClass.registerMethod Math mul __Math.i_mul
-__bashClass.registerMethod Math multiply __Math.i_mul
-__bashClass.registerMethod Math div __Math.i_div
-__bashClass.registerMethod Math divide __Math.i_div
-__bashClass.registerMethod Math square __Math.i_square
-__bashClass.registerMethod Math mod __Math.i_mod
-__bashClass.registerMethod Math pow __Math.i_pow
-__bashClass.registerMethod Math abs __Math.i_abs
-__bashClass.registerMethod Math neg __Math.i_neg
-__bashClass.registerMethod Math eq Math.eq
-__bashClass.registerMethod Math lt Math.lt
-__bashClass.registerMethod Math gt Math.gt
-__bashClass.registerMethod Math le Math.le
-__bashClass.registerMethod Math ge Math.ge
-__bashClass.registerMethod Math cmp Math.cmp
-__bashClass.registerMethod Math round Math.round
-__bashClass.registerMethod Math toInt Math.toInt
-__bashClass.registerMethod Math toScale Math.toScale
-__bashClass.registerMethod Math format Math.format
-__bashClass.registerMethod Math val Math.val
-__bashClass.registerMethod Math toString Math.toString
-__bashClass.registerMethod Math isZero Math.isZero
-__bashClass.registerClass Math
+__boop.registerMethod Math new Math.new
+__boop.registerMethod Math add __Math.i_add
+__boop.registerMethod Math sub __Math.i_sub
+__boop.registerMethod Math subtract __Math.i_sub
+__boop.registerMethod Math mul __Math.i_mul
+__boop.registerMethod Math multiply __Math.i_mul
+__boop.registerMethod Math div __Math.i_div
+__boop.registerMethod Math divide __Math.i_div
+__boop.registerMethod Math square __Math.i_square
+__boop.registerMethod Math mod __Math.i_mod
+__boop.registerMethod Math pow __Math.i_pow
+__boop.registerMethod Math abs __Math.i_abs
+__boop.registerMethod Math neg __Math.i_neg
+__boop.registerMethod Math eq Math.eq
+__boop.registerMethod Math lt Math.lt
+__boop.registerMethod Math gt Math.gt
+__boop.registerMethod Math le Math.le
+__boop.registerMethod Math ge Math.ge
+__boop.registerMethod Math cmp Math.cmp
+__boop.registerMethod Math round Math.round
+__boop.registerMethod Math toInt Math.toInt
+__boop.registerMethod Math toScale Math.toScale
+__boop.registerMethod Math format Math.format
+__boop.registerMethod Math val Math.val
+__boop.registerMethod Math toString Math.toString
+__boop.registerMethod Math isZero Math.isZero
+__boop.registerClass Math
 
 # ============================================================================
 # Static API — class-level functions that return plain value strings
@@ -1431,10 +1431,10 @@ __Math.formatVal() {
   fi
 
   (( __fv_n )) && [[ "$__fv_result" != "0" ]] && __fv_result="-${__fv_result}"
-  __bashClass.return "$__fv_result" "${4:-}"
+  __boop.return "$__fv_result" "${4:-}"
 }
 
-# Internal: static binary op. Returns plain value string via __bashClass.return.
+# Internal: static binary op. Returns plain value string via __boop.return.
 # Uses native $(( )) fast path when operands fit in 64-bit.
 __Math.staticBinOp() {
   local __sbo_op="$1"
@@ -1458,7 +1458,7 @@ __Math.staticBinOp() {
           case "$__sbo_op" in
             add) __Math.fromInt64 $(( __sbo_iA + __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
             sub) __Math.fromInt64 $(( __sbo_iA - __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
-            mod) [[ "$__sbo_dB" == "0" ]] && __bashClass.crash "Math: modulo by zero"
+            mod) [[ "$__sbo_dB" == "0" ]] && __boop.crash "Math: modulo by zero"
                  __Math.fromInt64 $(( __sbo_iA % __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
           esac
           __Math.formatVal "$__sbo_rd" $__sbo_rs $__sbo_rn ${into:-}
@@ -1485,13 +1485,13 @@ __Math.staticBinOp() {
     mul) __Math.rawMul "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn ;;
     div) local -i __sbo_prec=${precision:-$__Math_precision}
          __Math.rawDiv "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn $__sbo_prec ;;
-    mod) [[ "$__sbo_dB" == "0" ]] && __bashClass.crash "Math: modulo by zero"
+    mod) [[ "$__sbo_dB" == "0" ]] && __boop.crash "Math: modulo by zero"
          __Math.alignScale __sbo_dA __sbo_sA __sbo_dB __sbo_sB
          local -i __sbo_iA __sbo_iB
          __Math.toInt64 "$__sbo_dA" $__sbo_sA $__sbo_nA __sbo_iA \
-           || __bashClass.crash "Math: mod operand too large for native arithmetic"
+           || __boop.crash "Math: mod operand too large for native arithmetic"
          __Math.toInt64 "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_iB \
-           || __bashClass.crash "Math: mod operand too large for native arithmetic"
+           || __boop.crash "Math: mod operand too large for native arithmetic"
          __Math.fromInt64 $(( __sbo_iA % __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
   esac
 
@@ -1533,7 +1533,7 @@ Math.pow()      { if [[ -n "${_Self:-}" ]]; then local -I _Self _Class; __Math.i
   local __spow_tmp; into=__spow_tmp Math.new "$1"
   local __spow_result; into=__spow_result _Self="$__spow_tmp" _Class=Math __Math.i_pow "$2"
   local __spow_val; into=__spow_val _Self="$__spow_result" _Class=Math Math.val
-  __bashClass.return "$__spow_val" ${into:-}; fi; }
+  __boop.return "$__spow_val" ${into:-}; fi; }
 
 # Symbol aliases — same functions, shorter names.
 # The +, *, / characters require the `function` keyword form inside eval.
@@ -1687,7 +1687,7 @@ Math.RPN() {
       __rpn_stack[$__rpn_sp]="$__rpn_tok"
       (( __rpn_sp++ ))
     elif [[ "$__rpn_type" == "op" ]]; then
-      (( __rpn_sp < 2 )) && __bashClass.crash "Math.RPN: not enough operands for '$__rpn_tok'"
+      (( __rpn_sp < 2 )) && __boop.crash "Math.RPN: not enough operands for '$__rpn_tok'"
       (( __rpn_sp-- ))
       local __rpn_b="${__rpn_stack[$__rpn_sp]}"
       (( __rpn_sp-- ))
@@ -1699,8 +1699,8 @@ Math.RPN() {
     fi
   done
 
-  (( __rpn_sp != 1 )) && __bashClass.crash "Math.RPN: invalid expression (${__rpn_sp} values remain)"
-  __bashClass.return "${__rpn_stack[0]}" ${into:-}
+  (( __rpn_sp != 1 )) && __boop.crash "Math.RPN: invalid expression (${__rpn_sp} values remain)"
+  __boop.return "${__rpn_stack[0]}" ${into:-}
 }
 
 # Math.DO — infix expression evaluator with operator precedence and parens.

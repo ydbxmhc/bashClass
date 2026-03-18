@@ -8,7 +8,7 @@ apologies.
 
 The framework file is called `boop` because life is too short for
 `bash_object_oriented_programming_framework.sh`. The internal namespace
-is `__bashClass_*` — the filename is the personality, the internals are
+is `__boop_*` — the filename is the personality, the internals are
 the plumbing.
 
 ## Requirements
@@ -37,7 +37,7 @@ If your users might be on macOS, tell them up front.
 ```
 
 The framework loads once. Re-sourcing `. boop` skips all definitions
-(guarded by `__bashClass_loaded`) and only processes import arguments.
+(guarded by `__boop_loaded`) and only processes import arguments.
 This means class files can safely do `. boop SomeDependency` without
 re-executing the framework.
 
@@ -87,7 +87,7 @@ into=b Box length=5 width=3 height=7
 into=b new Box length=5 width=3 height=7
 
 # Full dispatch (you'll never need this, but it exists)
-into=b _Class=Box __bashClass.dispatch new length=5 width=3 height=7
+into=b _Class=Box __boop.dispatch new length=5 width=3 height=7
 ```
 
 Constructor arguments are `key=value` pairs. They land in the object's
@@ -106,7 +106,7 @@ dispatch entirely.
 
 This is the part that makes boop feel different from "just bash functions."
 Every value-producing function in the framework routes through a single
-return handler (`__bashClass.return`). You choose how to receive the value.
+return handler (`__boop.return`). You choose how to receive the value.
 
 ### `into=` — The Recommended Way
 
@@ -131,22 +131,22 @@ into=vol $cube.volume
 printf "%s\n" "$vol"            # 64
 
 # Force stdout mode for one call — prints directly, no variable needed
-__bashClass_returnMode=stdout $cube.volume
+__boop_returnMode=stdout $cube.volume
 printf "\n"                     # (add a newline if you want one)
 
 # That's a mouthful. Consider an alias:
-alias show='__bashClass_returnMode=stdout'
+alias show='__boop_returnMode=stdout'
 show $cube.volume               # same thing, less typing
 
 # Or use the global side-channel and print that
 $cube.volume
-printf "%s\n" "$__bashClass_RETURN"  # 64
+printf "%s\n" "$__boop_RETURN"  # 64
 
 # Subshell capture — classic bash, works anywhere
 printf "Volume: %s\n" "$( $cube.volume )"  # Volume: 64
 ```
 
-The first two avoid subshells entirely. The `__bashClass_returnMode=stdout`
+The first two avoid subshells entirely. The `__boop_returnMode=stdout`
 prefix is a per-call override — it doesn't change the global default.
 
 ### Subshell Capture (Classic Bash)
@@ -182,18 +182,18 @@ into=val $matrix.itemAt 0 1           # "2"
 
 ```bash
 $cube.volume
-printf "%s\n" "$__bashClass_RETURN"  # "64"
+printf "%s\n" "$__boop_RETURN"  # "64"
 ```
 
 When no `into=` is provided and you're in the main shell, the value
-lands in `__bashClass_RETURN`. It's a single flat global — the next
+lands in `__boop_RETURN`. It's a single flat global — the next
 call overwrites it. Fine for quick one-offs, but `into=` is safer.
 
 ### Explicit Mode Override
 
 ```bash
-__bashClass_returnMode=stdout $cube.volume    # force stdout
-__bashClass_returnMode=nameref $cube.volume   # crash (no target!)
+__boop_returnMode=stdout $cube.volume    # force stdout
+__boop_returnMode=nameref $cube.volume   # crash (no target!)
 ```
 
 You can override the global mode per-call via environment prefix.
@@ -203,14 +203,14 @@ stdout in subshells.
 
 ```bash
 # Change the default for the whole process
-__bashClass.setDefaultMode stdout
+__boop.setDefaultMode stdout
 ```
 
 ---
 
 ## Properties: Get and Set
 
-Every object inherits `get` and `set` from `bashClass`:
+Every object inherits `get` and `set` from `boop`:
 
 ```bash
 into=b Box length=5 width=3 height=7
@@ -265,7 +265,7 @@ slower — use only when you actually need binary safety.
 ```bash
 $cube.isa Cube      && printf "yes\n"   # 0 (true)
 $cube.isa Box       && printf "yes\n"   # 0 (true — inherits)
-$cube.isa bashClass && printf "yes\n"   # 0 (true — everything does)
+$cube.isa boop && printf "yes\n"   # 0 (true — everything does)
 $cube.isa Map       || printf "nope\n"  # 1 (false)
 
 # No argument = return the class name
@@ -311,11 +311,11 @@ contents instead of descriptor properties.
 ## Inheritance
 
 Classes form a single-inheritance chain. Every class ultimately inherits
-from `bashClass`, which provides `get`, `set`, `isa`, `toString`, `new`,
+from `boop`, which provides `get`, `set`, `isa`, `toString`, `new`,
 and `super`.
 
 ```
-bashClass
+boop
   ├── Box
   │     └── Cube
   ├── Container
@@ -329,7 +329,7 @@ bashClass
 When you call `$cube.volume`, the framework:
 
 1. Checks the method registry for `Cube.volume` (O(1) hash lookup).
-2. On cache miss, walks the parent chain: Cube → Box → bashClass.
+2. On cache miss, walks the parent chain: Cube → Box → boop.
 3. When found (say, in Box), caches it as `Cube.volume` so the walk
    never happens again for that class+method pair.
 
@@ -366,10 +366,10 @@ Call the parent class's implementation of a method:
 
 ```bash
 # Inside a class method:
-_Self=$_Self _Class=$_Class __bashClass.dispatch super volume
+_Self=$_Self _Class=$_Class __boop.dispatch super volume
 ```
 
-Crashes if you're already at the root (`bashClass` has no parent).
+Crashes if you're already at the root (`boop` has no parent).
 
 ---
 
@@ -382,14 +382,14 @@ project, slightly condensed:
 #!/bin/bash
 
 # Load guard — skip if already registered
-[[ -n "${__bashClass_registry[Box]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Box]+set}" ]] && return 2>/dev/null
 
 # Load the framework (and any parent classes)
 . boop
 
 # --- Class Descriptor ---
 # Pipe-delimited: class name, parent, method list, property list
-__bashClass_registry["Box"]="|class=Box|parent=bashClass\
+__boop_registry["Box"]="|class=Box|parent=boop\
 |methods=calc,area,top,end,side,bottom,volume,new\
 |properties=length,width,height,unit,color"
 
@@ -399,36 +399,36 @@ __bashClass_registry["Box"]="|class=Box|parent=bashClass\
 Box.volume() {
   local -I _Self _Class
   local __Box_volume_l __Box_volume_h __Box_volume_w __Box_volume_vol
-  __bashClass.parse "$_Self" "length" __Box_volume_l
-  __bashClass.parse "$_Self" "height" __Box_volume_h
-  __bashClass.parse "$_Self" "width"  __Box_volume_w
+  __boop.parse "$_Self" "length" __Box_volume_l
+  __boop.parse "$_Self" "height" __Box_volume_h
+  __boop.parse "$_Self" "width"  __Box_volume_w
   into=__Box_volume_vol required=3 Box.calc \
     "$__Box_volume_l" "$__Box_volume_h" "$__Box_volume_w"
-  __bashClass.return "$__Box_volume_vol" ${into:-}
+  __boop.return "$__Box_volume_vol" ${into:-}
 }
 
 Box.new() {
   local -I _Class
   : "${_Class:=Box}"
   local __Box_new_self
-  into=__Box_new_self __bashClass.new "$@"
-  __bashClass.return "$__Box_new_self" ${into:-}
+  into=__Box_new_self __boop.new "$@"
+  __boop.return "$__Box_new_self" ${into:-}
 }
 
 # ... other methods ...
 
 # --- Registration ---
-__bashClass.registerMethod Box volume Box.volume
-__bashClass.registerMethod Box new     Box.new
+__boop.registerMethod Box volume Box.volume
+__boop.registerMethod Box new     Box.new
 # ... register all methods ...
 
 # --- Finalize ---
-__bashClass.registerClass Box
+__boop.registerClass Box
 ```
 
 ### The Pattern, Step by Step
 
-1. **Load guard**: Check `__bashClass_registry[ClassName]+set`. If the
+1. **Load guard**: Check `__boop_registry[ClassName]+set`. If the
    class is already loaded, `return` immediately. The `2>/dev/null`
    silences the error when the file is executed directly (not sourced).
 
@@ -437,20 +437,20 @@ __bashClass.registerClass Box
    circular prevention.
 
 3. **Descriptor**: Register a pipe-delimited string in
-   `__bashClass_registry["ClassName"]`. Fields:
+   `__boop_registry["ClassName"]`. Fields:
    - `class=` — the class name (in the descriptor string)
-   - `parent=` — the parent class (use `bashClass` for root)
+   - `parent=` — the parent class (use `boop` for root)
    - `methods=` — comma-separated list of method names
    - `properties=` — comma-separated list of property names
 
 4. **Method functions**: Name them `ClassName.methodName`. Start with
    `local -I _Self _Class` to inherit the calling object's identity.
-   End value-producing methods with `__bashClass.return "$val" ${into:-}`.
+   End value-producing methods with `__boop.return "$val" ${into:-}`.
 
-5. **Register methods**: `__bashClass.registerMethod ClassName method ClassName.method`
+5. **Register methods**: `__boop.registerMethod ClassName method ClassName.method`
    for each method. The implementing function must exist at registration time.
 
-6. **Finalize**: `__bashClass.registerClass ClassName` creates class-level
+6. **Finalize**: `__boop.registerClass ClassName` creates class-level
    wrappers and the constructor shorthand.
 
 ### Subclassing
@@ -460,11 +460,11 @@ and sourcing the parent:
 
 ```bash
 #!/bin/bash
-[[ -n "${__bashClass_registry[Cube]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Cube]+set}" ]] && return 2>/dev/null
 
 . boop Box    # loads Box (our parent)
 
-__bashClass_registry["Cube"]="|class=Cube|parent=Box\
+__boop_registry["Cube"]="|class=Cube|parent=Box\
 |methods=new,side,top,end,bottom,volume\
 |properties=size,length,width,height,unit"
 
@@ -479,25 +479,25 @@ Cube.new() {
   done
 
   # Delegate to base constructor with derived dimensions
-  into=__Cube_new_self __bashClass.new "$@" \
+  into=__Cube_new_self __boop.new "$@" \
     length=$__Cube_new_size width=$__Cube_new_size height=$__Cube_new_size
-  __bashClass.return "$__Cube_new_self" ${into:-}
+  __boop.return "$__Cube_new_self" ${into:-}
 }
 
 # Override methods as needed...
 Cube.volume() {
   local -I _Self _Class
   local __Cube_volume_size __Cube_volume_vol
-  __bashClass.parse "$_Self" "size" __Cube_volume_size
+  __boop.parse "$_Self" "size" __Cube_volume_size
   into=__Cube_volume_vol required=3 Box.calc \
     "$__Cube_volume_size" "$__Cube_volume_size" "$__Cube_volume_size"
-  __bashClass.return "$__Cube_volume_vol" ${into:-}
+  __boop.return "$__Cube_volume_vol" ${into:-}
 }
 
 # Register and finalize
-__bashClass.registerMethod Cube new    Cube.new
-__bashClass.registerMethod Cube volume Cube.volume
-__bashClass.registerClass Cube
+__boop.registerMethod Cube new    Cube.new
+__boop.registerMethod Cube volume Cube.volume
+__boop.registerClass Cube
 ```
 
 Methods not overridden are inherited. Cube gets `calc`, `area`, `get`,
@@ -512,10 +512,10 @@ These aren't suggestions — they prevent real bugs.
 | What | Convention | Why |
 |------|-----------|-----|
 | Local variables | `__ClassName_methodName_varname` | Prevents nameref collisions across the call stack. Bash namerefs resolve by name, not scope — if two functions both use `local val`, a nameref in the inner function can accidentally bind to the outer function's `val`. Prefixing makes names unique. |
-| Value return | `__bashClass.return "$val" ${into:-}` | Routes through the universal return handler. The `${into:-}` passes the caller's nameref target (if any) so the value lands directly in their variable. |
+| Value return | `__boop.return "$val" ${into:-}` | Routes through the universal return handler. The `${into:-}` passes the caller's nameref target (if any) so the value lands directly in their variable. |
 | Delegation capture | `into=__ClassName_method_localvar SomeCall` | Captures a sub-call's return value into a prefixed local. Same collision-prevention logic. |
 | Output | `printf`, never `echo` | `echo` interprets backslash escapes on some platforms. `printf` is predictable everywhere. |
-| Framework internals | `__bashClass_*` or `__bashClass.*` | Leading double underscore = hands off. |
+| Framework internals | `__boop_*` or `__boop.*` | Leading double underscore = hands off. |
 
 ### The `local -I` Pattern
 
@@ -547,13 +547,13 @@ prevent leakage. See the Container source for the full explanation.
 Arguments after `boop` are class names to import. Resolution order
 (first match wins):
 
-1. `__bashClass_classPath["ClassName"]` — explicit path override
-2. `__bashClass_dir` — the directory where `boop` lives (co-located files)
+1. `__boop_classPath["ClassName"]` — explicit path override
+2. `__boop_dir` — the directory where `boop` lives (co-located files)
 3. `PATH` — the shell's standard search path
 
 ```bash
 # Register a custom path for a class
-__bashClass_classPath["MyClass"]="/opt/lib/MyClass"
+__boop_classPath["MyClass"]="/opt/lib/MyClass"
 . boop MyClass    # loads from /opt/lib/MyClass
 ```
 
@@ -561,9 +561,9 @@ __bashClass_classPath["MyClass"]="/opt/lib/MyClass"
 
 Two layers prevent double-loading and circular recursion:
 
-- **Registry check**: If `__bashClass_registry[ClassName]` is already set,
+- **Registry check**: If `__boop_registry[ClassName]` is already set,
   the class file's own load guard (`return 2>/dev/null`) skips it.
-- **Loading flag**: `__bashClass_loading[ClassName]` is set while a class
+- **Loading flag**: `__boop_loading[ClassName]` is set while a class
   file is being sourced. If boop re-enters import for the same class
   (because the class file sources boop as part of its dependency chain),
   the flag catches it and skips. This prevents infinite recursion in
@@ -578,10 +578,10 @@ Save and restore the entire object registry:
 
 ```bash
 # Save all objects and class definitions to a file
-__bashClass.serialize "state.dat"
+__boop.serialize "state.dat"
 
 # Load them back (in a new shell, or after clearing)
-__bashClass.deserialize "state.dat"
+__boop.deserialize "state.dat"
 ```
 
 The file format is tab-delimited: `key<TAB>descriptor` per line.
@@ -589,12 +589,12 @@ Keys are validated on load to prevent injection from tampered files.
 
 Serialization captures descriptor data only. Baked wrapper functions
 are NOT saved — they're regenerated on next access via the stub/bake
-mechanism. After deserializing, call `__bashClass.refresh` on objects
+mechanism. After deserializing, call `__boop.refresh` on objects
 you need to call methods on:
 
 ```bash
-__bashClass.deserialize "state.dat"
-__bashClass.refresh "$my_object_id"
+__boop.deserialize "state.dat"
+__boop.refresh "$my_object_id"
 $my_object_id.volume    # works — stubs regenerated
 ```
 
@@ -603,12 +603,12 @@ $my_object_id.volume    # works — stubs regenerated
 ## Validation
 
 Every user-supplied name that touches `eval`, registries, or dispatch
-goes through `__bashClass.validate`:
+goes through `__boop.validate`:
 
 ```bash
-__bashClass.validate "Box"                     # OK — valid identifier
-__bashClass.validate "my-class"                # CRASH — dashes not allowed
-type=function __bashClass.validate "Box.calc"  # OK — dots allowed in function mode
+__boop.validate "Box"                     # OK — valid identifier
+__boop.validate "my-class"                # CRASH — dashes not allowed
+type=function __boop.validate "Box.calc"  # OK — dots allowed in function mode
 ```
 
 Identifier mode (default): `[A-Za-z_][A-Za-z0-9_]*` — no dots, no dashes,
@@ -625,15 +625,15 @@ a clear message, not a silent corruption.
 
 ## Static Storage
 
-`__bashClass_static` is a global associative array available to any
+`__boop_static` is a global associative array available to any
 function in any class for cross-call persistence:
 
 ```bash
 # Cache a computed value
-__bashClass_static["Math.pi.cache_20"]="3.14159265358979323846"
+__boop_static["Math.pi.cache_20"]="3.14159265358979323846"
 
 # Check the cache later
-local cached="${__bashClass_static[Math.pi.cache_20]:-}"
+local cached="${__boop_static[Math.pi.cache_20]:-}"
 if [[ -n "$cached" ]]; then
   # cache hit — skip the expensive computation
 fi
@@ -653,21 +653,21 @@ classes can use it for whatever they need.
 
 ### Object Storage
 
-Objects are entries in `__bashClass_registry`, a global associative array.
+Objects are entries in `__boop_registry`, a global associative array.
 The key is the object ID (e.g., `_64d0895be1590`), the value is a
 pipe-delimited descriptor string:
 
 ```
-|class=Box|parent=bashClass|length=%335|width=%333|height=%337|
+|class=Box|parent=boop|length=%335|width=%333|height=%337|
 ```
 
 Values are percent-encoded (pipes, equals, percents, newlines, tabs)
-so they don't corrupt the delimiter structure. `__bashClass.parse`
+so they don't corrupt the delimiter structure. `__boop.parse`
 extracts and decodes fields by regex match on the descriptor string.
 
 Classes are also entries in the same registry — distinguished by context,
-not by a type field. `__bashClass_registry["Box"]` holds the class
-descriptor (methods, properties, parent). `__bashClass_registry["_64d..."]`
+not by a type field. `__boop_registry["Box"]` holds the class
+descriptor (methods, properties, parent). `__boop_registry["_64d..."]`
 holds an object descriptor (class, property values).
 
 ### Lazy Stubs and Baking
@@ -679,7 +679,7 @@ for every method:
 # What stubAll generates (conceptually):
 _64d0895be1590.volume() {
   __init=true _Self='_64d0895be1590' _Class='Box' \
-    __bashClass.dispatch volume "$@"
+    __boop.dispatch volume "$@"
 }
 ```
 
@@ -689,7 +689,7 @@ On first call, `__init=true` tells dispatch to bake a direct wrapper:
 # What dispatch bakes (conceptually):
 _64d0895be1590.volume() {
   if [[ ${_Class:-Box} != 'Box' ]]; then
-    _Self='_64d0895be1590' __bashClass.dispatch volume "$@"
+    _Self='_64d0895be1590' __boop.dispatch volume "$@"
   else
     _Self='_64d0895be1590' _Class='Box' Box.volume "$@"
   fi
@@ -707,11 +707,11 @@ call, then zero overhead forever after.
 ### Container Companion Arrays
 
 Container subclasses (List, Map) store their data in separate bash
-arrays (`__bashClass_data_${self}`), not in the pipe-delimited descriptor.
+arrays (`__boop_data_${self}`), not in the pipe-delimited descriptor.
 This gives native bash array performance for element access. The
 descriptor only holds metadata (class, parent, type).
 
-Map also maintains a companion indexed array (`__bashClass_keys_${self}`)
+Map also maintains a companion indexed array (`__boop_keys_${self}`)
 that tracks key insertion order. All traversal methods (keys, values,
 toArray, toString, each, iterator) walk keys in the order they were
 first added. Overwriting an existing key updates the value but preserves
@@ -730,7 +730,7 @@ inside the Container source file (not a separate file) because it's
 useless without Container and Container benefits from having it always
 available.
 
-Iterator inherits from `bashClass` (not Container). It doesn't hold
+Iterator inherits from `boop` (not Container). It doesn't hold
 data and doesn't fulfill the Container contract — it holds a reference
 to a container and a position. The relationship is composition: Container
 *has-a* Iterator, Iterator *references* a Container.
@@ -782,10 +782,10 @@ constructor:
 MyStack.new() {
   local -I _Class; : "${_Class:=MyStack}"
   local __MyStack_new_self
-  into=__MyStack_new_self __bashClass.new "$@"
-  declare -ga "__bashClass_data_${__MyStack_new_self}"
+  into=__MyStack_new_self __boop.new "$@"
+  declare -ga "__boop_data_${__MyStack_new_self}"
   $__MyStack_new_self.noIterators     # walls off all iterator methods
-  __bashClass.return "$__MyStack_new_self" ${into:-}
+  __boop.return "$__MyStack_new_self" ${into:-}
 }
 ```
 
@@ -856,7 +856,7 @@ crash because of a missing class.
 If stderr is unavailable (closed, redirected), log output falls back
 to `${TMPDIR:-/tmp}/boop_${PID}.log`. Per-process PID suffix prevents
 concurrent sessions from stomping each other. The fallback path is
-stored in `__bashClass_logFile` and can be overridden.
+stored in `__boop_logFile` and can be overridden.
 
 ### Output Format
 
@@ -876,16 +876,16 @@ automatically skipped in the stack walk.
 
 | Function | Description |
 |----------|-------------|
-| `__bashClass.new` | Object constructor. Generates ID, builds descriptor, registers, stubs methods. |
-| `__bashClass.return` | Universal return handler. Routes values via nameref, stdout, global, or filesystem. |
-| `__bashClass.dispatch` | Method dispatcher with MRO, caching, and lazy baking. |
-| `__bashClass.parse` | Extract a field from a descriptor string. Decodes values. |
-| `__bashClass.get` | Read a property from an object's descriptor. |
-| `__bashClass.set` | Write a property to an object's descriptor. |
-| `__bashClass.isa` | Type check with inheritance walk. |
-| `__bashClass.toString` | Human-readable object display (compact or pretty). |
-| `__bashClass.super` | Dispatch a method against the parent class. |
-| `__bashClass.crash` | Exit with error message(s) to stderr. Optional custom exit code. |
+| `__boop.new` | Object constructor. Generates ID, builds descriptor, registers, stubs methods. |
+| `__boop.return` | Universal return handler. Routes values via nameref, stdout, global, or filesystem. |
+| `__boop.dispatch` | Method dispatcher with MRO, caching, and lazy baking. |
+| `__boop.parse` | Extract a field from a descriptor string. Decodes values. |
+| `__boop.get` | Read a property from an object's descriptor. |
+| `__boop.set` | Write a property to an object's descriptor. |
+| `__boop.isa` | Type check with inheritance walk. |
+| `__boop.toString` | Human-readable object display (compact or pretty). |
+| `__boop.super` | Dispatch a method against the parent class. |
+| `__boop.crash` | Exit with error message(s) to stderr. Optional custom exit code. |
 
 ### Logging
 
@@ -898,62 +898,62 @@ automatically skipped in the stack walk.
 | `_Error` | Log at error level (1). |
 | `_Crash` | Log as error and exit 1. Always prints regardless of level. |
 | `_LogLevel` | Set global or per-class log level. |
-| `__bashClass.log` | Core log function (use the wrappers above instead). |
-| `__bashClass.resolveLogLevel` | Resolve effective level for a class with caching. |
-| `__bashClass.setLogLevel` | Set log level and invalidate cache. |
+| `__boop.log` | Core log function (use the wrappers above instead). |
+| `__boop.resolveLogLevel` | Resolve effective level for a class with caching. |
+| `__boop.setLogLevel` | Set log level and invalidate cache. |
 
 ### Registration & Import
 
 | Function | Description |
 |----------|-------------|
-| `__bashClass.registerMethod` | Map "Class.method" → implementing function in the method registry. |
-| `__bashClass.registerClass` | Finalize a class: create class-level wrappers and constructor shorthand. |
-| `__bashClass.stubAll` | Generate lazy stubs for all methods on an object. |
-| `__bashClass.refresh` | Tear down baked wrappers and re-stub (for runtime method changes). |
-| `__bashClass.import` | Resolve and source class files. |
-| `__bashClass.validate` | Reject unsafe identifiers/function names. |
+| `__boop.registerMethod` | Map "Class.method" → implementing function in the method registry. |
+| `__boop.registerClass` | Finalize a class: create class-level wrappers and constructor shorthand. |
+| `__boop.stubAll` | Generate lazy stubs for all methods on an object. |
+| `__boop.refresh` | Tear down baked wrappers and re-stub (for runtime method changes). |
+| `__boop.import` | Resolve and source class files. |
+| `__boop.validate` | Reject unsafe identifiers/function names. |
 
 ### Encoding
 
 | Function | Description |
 |----------|-------------|
-| `__bashClass.encode` | Percent-encode pipes, equals, percents, newlines, tabs. |
-| `__bashClass.decode` | Reverse of encode. |
-| `__bashClass.bencode` | Base64 encode (binary-safe, requires subshell). |
-| `__bashClass.bdecode` | Base64 decode (binary-safe, requires subshell). |
+| `__boop.encode` | Percent-encode pipes, equals, percents, newlines, tabs. |
+| `__boop.decode` | Reverse of encode. |
+| `__boop.bencode` | Base64 encode (binary-safe, requires subshell). |
+| `__boop.bdecode` | Base64 decode (binary-safe, requires subshell). |
 
 ### Serialization
 
 | Function | Description |
 |----------|-------------|
-| `__bashClass.serialize` | Dump registry to tab-delimited file. |
-| `__bashClass.deserialize` | Load registry from tab-delimited file. |
+| `__boop.serialize` | Dump registry to tab-delimited file. |
+| `__boop.deserialize` | Load registry from tab-delimited file. |
 
 ### Configuration
 
 | Function | Description |
 |----------|-------------|
-| `__bashClass.setDefaultMode` | Set global return mode (auto/nameref/stdout/global/filesystem). |
-| `__bashClass.inSubshell` | Returns 0 if current context is a subshell. |
+| `__boop.setDefaultMode` | Set global return mode (auto/nameref/stdout/global/filesystem). |
+| `__boop.inSubshell` | Returns 0 if current context is a subshell. |
 
 ### Global Variables
 
 | Variable | Description |
 |----------|-------------|
-| `__bashClass_registry` | Master object/class store (associative array). |
-| `__bashClass_methodRegistry` | Method resolution cache: "Class.method" → function name. |
-| `__bashClass_classPath` | Explicit path overrides for class file resolution. |
-| `__bashClass_loading` | In-progress load tracker (circular recursion prevention). |
-| `__bashClass_static` | Cross-call static storage for any function. |
-| `__bashClass_returnMode` | Current global return mode (default: "auto"). |
-| `__bashClass_dir` | Directory where boop lives (resolved at load time). |
-| `__bashClass_RETURN` | Side-channel for global return mode. |
-| `__bashClass_rootPID` | Root process PID (for subshell detection). |
-| `__bashClass_loaded` | Framework initialization flag. |
-| `__bashClass_logLevel` | Global default log level (default: 2/warn). |
-| `__bashClass_classLogLevel` | Per-class log level overrides (associative array). |
-| `__bashClass_resolvedLogLevel` | Cached resolved levels (associative array). |
-| `__bashClass_logFile` | Fallback log file path when stderr is unavailable. |
+| `__boop_registry` | Master object/class store (associative array). |
+| `__boop_methodRegistry` | Method resolution cache: "Class.method" → function name. |
+| `__boop_classPath` | Explicit path overrides for class file resolution. |
+| `__boop_loading` | In-progress load tracker (circular recursion prevention). |
+| `__boop_static` | Cross-call static storage for any function. |
+| `__boop_returnMode` | Current global return mode (default: "auto"). |
+| `__boop_dir` | Directory where boop lives (resolved at load time). |
+| `__boop_RETURN` | Side-channel for global return mode. |
+| `__boop_rootPID` | Root process PID (for subshell detection). |
+| `__boop_loaded` | Framework initialization flag. |
+| `__boop_logLevel` | Global default log level (default: 2/warn). |
+| `__boop_classLogLevel` | Per-class log level overrides (associative array). |
+| `__boop_resolvedLogLevel` | Cached resolved levels (associative array). |
+| `__boop_logFile` | Fallback log file path when stderr is unavailable. |
 
 ---
 
@@ -1022,7 +1022,7 @@ The Container source has a detailed block comment explaining this.
 ## The Class Hierarchy
 
 ```
-bashClass                          (root — get, set, isa, toString, new, super)
+boop                          (root — get, set, isa, toString, new, super)
   ├── Box                          (3D geometry — volume, area, top, side, end, bottom)
   │     └── Cube                   (equal-sided Box — overrides geometry methods)
   ├── Container                    (virtual base — defines collection interface)
@@ -1032,7 +1032,7 @@ bashClass                          (root — get, set, isa, toString, new, super
   └── Math                         (arbitrary precision arithmetic — pi, expressions, etc.)
 ```
 
-When Container loads, it augments `bashClass` with `itemFrom` and `setOn`,
+When Container loads, it augments `boop` with `itemFrom` and `setOn`,
 so every object (not just containers) can traverse containers stored in
 its properties. It also registers the Iterator companion class.
 

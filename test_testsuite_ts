@@ -67,7 +67,7 @@ $t.info "This line should appear but not affect counts"
 
 $t.section "TestSuite Introspection"
 $t.assert_ok "suite isa TestSuite" $t.isa TestSuite
-$t.assert_ok "suite isa bashClass" $t.isa bashClass
+$t.assert_ok "suite isa boop" $t.isa boop
 into=v $t.get "name"; $t.assert_eq "suite name" "$v" "TestSuite Self-Test"
 into=v $t.get "mode"; $t.assert_eq "suite mode" "$v" "immediate"
 

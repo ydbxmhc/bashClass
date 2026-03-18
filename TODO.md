@@ -10,7 +10,7 @@ reference entries here by section name.
 The current load guard pattern in every class file:
 
 ```bash
-[[ -n "${__bashClass_registry[ClassName]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[ClassName]+set}" ]] && return 2>/dev/null
 ```
 
 Has two problems:
@@ -21,9 +21,9 @@ Has two problems:
 
 2. There's no help output — running `bash Box` does nothing useful.
 
-Planned replacement: a `bashClass.init` method on the root class that
+Planned replacement: a `boop.init` method on the root class that
 handles the load guard, detects direct execution, and prints help text.
-Design includes per-class help via `__bashClass_help["ClassName"]`,
+Design includes per-class help via `__boop_help["ClassName"]`,
 inheritable defaults, and a single-statement call pattern in class
 files. Details still under discussion.
 
@@ -77,7 +77,7 @@ Source: `boop` dispatch/bake section, all class files.
 
 Tier 3 (unrelated class leakage) now emits a `_Warn` diagnostic
 instead of silently ignoring. Tier 2 (legitimate typecast) fixed to
-use `__bashClass.isa` directly, correctly handling upcasts (e.g.,
+use `__boop.isa` directly, correctly handling upcasts (e.g.,
 `_Class=Box` on a Cube). Users control visibility via `_LogLevel`.
 
 Source: `boop` dispatch/bake section.
@@ -114,7 +114,7 @@ sets fatality to `warn` and the process stops right at the point of
 leakage instead of silently continuing.
 
 Implementation: a second per-class + global threshold
-(`__bashClass_fatalLevel`), checked in `__bashClass.log` after the
+(`__boop_fatalLevel`), checked in `__boop.log` after the
 visibility check. If the message level is at or below the fatality
 threshold, log it and then crash. Clean extension of the existing
 system.
@@ -149,7 +149,7 @@ does nothing — confusing for users.
 
 ### Execution Guard
 
-`__bashClass.registerClass` could detect when the class file is being
+`__boop.registerClass` could detect when the class file is being
 executed directly (`BASH_SOURCE` == `$0`) and respond appropriately:
 
 - If the class has a flag indicating it's NOT meant to be executed
@@ -191,13 +191,13 @@ Usage:
 This could be:
 - Auto-generated from the class descriptor (methods, properties)
 - Enhanced with a `description` property and per-method docstrings
-- Stored in a `__bashClass_help` registry or inline in the descriptor
+- Stored in a `__boop_help` registry or inline in the descriptor
 
 ---
 
 ## Binary-Safe Encode/Decode Output Mode
 
-`__bashClass.bdecode` currently returns decoded data via the standard
+`__boop.bdecode` currently returns decoded data via the standard
 return mechanism, but bash variables silently drop null bytes. For true
 binary-safe round-trip, need `output=file` support that writes decoded
 data directly to a file without passing through a variable.
@@ -240,7 +240,7 @@ Investigate a pattern for defining classes inline in an executable
 script while still allowing them to be sourced separately. Options:
 
 - `BASH_SOURCE` vs `$0` guard before the main logic
-- A `__bashClass.main` convention that registerClass can detect
+- A `__boop.main` convention that registerClass can detect
 - A flag/property on the class that marks the file as executable
 
 Related: "Class File Execution Guard" section above.
@@ -341,8 +341,8 @@ Source: PLAN.md Phase 3.
 ## BOOP_CLASSPATH (Phase 4)
 
 Colon-delimited environment variable for class file search paths.
-Current resolution order: classPath registry → `__bashClass_dir` → PATH.
-Add BOOP_CLASSPATH between classPath registry and `__bashClass_dir`.
+Current resolution order: classPath registry → `__boop_dir` → PATH.
+Add BOOP_CLASSPATH between classPath registry and `__boop_dir`.
 Enables separate-repo class libraries without hand-registration.
 
 Source: PLAN.md Phase 4.
@@ -352,7 +352,7 @@ Source: PLAN.md Phase 4.
 ## Version Declaration (Phase 4)
 
 ```bash
-declare -gr __bashClass_version="0.1.0"
+declare -gr __boop_version="0.1.0"
 ```
 
 No enforcement needed yet. Lets downstream scripts check compatibility.
@@ -374,7 +374,7 @@ Source: PLAN.md Phase 5.
 
 ## Return System Filesystem Mode
 
-`__bashClass.returnPath` — use call stack introspection to determine a
+`__boop.returnPath` — use call stack introspection to determine a
 filesystem-backed return path. Would allow returning data via temp files
 instead of variables, useful for large payloads.
 
@@ -404,7 +404,7 @@ Classes with the most surface area to audit:
 - Container (23 methods), Math (26 methods + static wrappers),
   List (15 methods), Map (12 methods), Iterator (8 methods)
 - Card/Deck/Hand — `test_blackjack` exists but coverage is unknown
-- bashClass root methods — `setOn` coverage unclear
+- boop root methods — `setOn` coverage unclear
 
 Also: CLI-level testing for Tier 3 public methods. These need
 creative adversarial input from a human who enjoys breaking things.
@@ -428,13 +428,13 @@ single-argument identity (`Math.add 5` returns 5).
 ## Return System: Default to stdout + Newline Control
 
 Change `auto` mode so main shell defaults to stdout (with newline)
-instead of the `__bashClass_RETURN` side-channel. Add a global
-`__bashClass_returnNewline` flag (default on) controlling whether
+instead of the `__boop_RETURN` side-channel. Add a global
+`__boop_returnNewline` flag (default on) controlling whether
 stdout output includes a trailing newline.
 
 Existing code that relies on the implicit global (e.g.,
 `test_stress_ts`) should be updated to use explicit
-`into=__bashClass_RETURN` — code should say where to put values.
+`into=__boop_RETURN` — code should say where to put values.
 
 `into=` always wins regardless of mode. The mode only matters when
 no explicit target is given.
@@ -444,7 +444,7 @@ no explicit target is given.
 ## Try/Catch Mechanism
 
 Bash has no native try/catch. The framework currently uses
-`__bashClass.crash` (which calls `exit`) for all fatal errors,
+`__boop.crash` (which calls `exit`) for all fatal errors,
 and `assert_fail` wraps commands in subshells to isolate crashes.
 
 A try/catch pattern would let user code attempt operations that
@@ -455,7 +455,7 @@ might crash and handle the failure without dying. Options:
 - Trap-based: `ERR` trap with a recovery mechanism. Complex,
   interacts badly with `set -e`, fragile across bash versions.
 - Flag-based: set a "don't crash, set error flag" mode on
-  `__bashClass.crash`, let callers check the flag. Lightweight
+  `__boop.crash`, let callers check the flag. Lightweight
   but changes crash semantics globally.
 
 Related: Signal Handler Class (already in TODO), Fatality Threshold.

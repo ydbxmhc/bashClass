@@ -55,7 +55,7 @@ The `required=N` typecast enforces exact argument count:
 required=2 into=a $b.area 4 5    # must be exactly 2 args
 ```
 
-### Inherited (from bashClass)
+### Inherited (from boop)
 
 ```bash
 into=v $b.get "length"    # read property

@@ -20,7 +20,7 @@ Creates an empty map. Populate it with `set`.
 
 ## Insertion Order
 
-Map maintains a companion indexed array (`__bashClass_keys_${self}`)
+Map maintains a companion indexed array (`__boop_keys_${self}`)
 that tracks the order keys were first inserted. All traversal methods
 — `keys`, `values`, `toArray`, `toString`, `each`, and iterators —
 walk keys in insertion order.

@@ -6,7 +6,7 @@ associative arrays and naming conventions. No external dependencies.
 No subshells in the hot path.
 
 The framework file is called `boop` because fun is a feature. The
-internal namespace is `__bashClass_*` — the filename is the personality,
+internal namespace is `__boop_*` — the filename is the personality,
 the internals are the plumbing.
 
 ## Quick Start
@@ -73,7 +73,7 @@ vol=$( $cube.volume )               # vol="64"
 
 # Global side-channel (overwritten by next call)
 $cube.volume
-printf "%s\n" "$__bashClass_RETURN"  # 64
+printf "%s\n" "$__boop_RETURN"  # 64
 ```
 
 `into=` is the fast path. Use it.
@@ -91,7 +91,7 @@ printf "%s\n" "$__bashClass_RETURN"  # 64
 Class files use load guards to prevent double-loading. The framework
 uses a loading flag to prevent circular recursion during import chains.
 
-Resolution order: `__bashClass_classPath` registry → `boop`'s directory
+Resolution order: `__boop_classPath` registry → `boop`'s directory
 → `PATH`.
 
 ## Collections
@@ -180,29 +180,29 @@ printf "%s\n" "$v"
 
 ```bash
 #!/bin/bash
-[[ -n "${__bashClass_registry[MyClass]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[MyClass]+set}" ]] && return 2>/dev/null
 . boop
 
-__bashClass_registry["MyClass"]="|class=MyClass|parent=bashClass\
+__boop_registry["MyClass"]="|class=MyClass|parent=boop\
 |methods=new,greet|properties=name"
 
 MyClass.new() {
   local -I _Class; : "${_Class:=MyClass}"
   local __MyClass_new_self
-  into=__MyClass_new_self __bashClass.new "$@"
-  __bashClass.return "$__MyClass_new_self" ${into:-}
+  into=__MyClass_new_self __boop.new "$@"
+  __boop.return "$__MyClass_new_self" ${into:-}
 }
 
 MyClass.greet() {
   local -I _Self _Class
   local __MyClass_greet_name
-  __bashClass.parse "$_Self" "name" __MyClass_greet_name
-  __bashClass.return "Hello, $__MyClass_greet_name" ${into:-}
+  __boop.parse "$_Self" "name" __MyClass_greet_name
+  __boop.return "Hello, $__MyClass_greet_name" ${into:-}
 }
 
-__bashClass.registerMethod MyClass new   MyClass.new
-__bashClass.registerMethod MyClass greet MyClass.greet
-__bashClass.registerClass MyClass
+__boop.registerMethod MyClass new   MyClass.new
+__boop.registerMethod MyClass greet MyClass.greet
+__boop.registerClass MyClass
 ```
 
 ```bash
@@ -219,14 +219,14 @@ and all the gotchas.
 ## Conventions
 
 - Local variables: `__ClassName_methodName_varname` (prevents nameref collisions)
-- Value return: `__bashClass.return "$val" ${into:-}`
+- Value return: `__boop.return "$val" ${into:-}`
 - Output: `printf` everywhere, never `echo`
-- Framework internals: `__bashClass_*` prefix (hands off)
+- Framework internals: `__boop_*` prefix (hands off)
 
 ## Class Hierarchy
 
 ```
-bashClass                          (root — get, set, isa, toString, new, super)
+boop                          (root — get, set, isa, toString, new, super)
   ├── Box                          (3D geometry)
   │     └── Cube                   (equal-sided Box)
   ├── Container                    (virtual base for collections)

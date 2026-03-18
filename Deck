@@ -2,7 +2,7 @@
 
 # Deck — 52-card playing card deck
 
-[[ -n "${__bashClass_registry[Deck]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Deck]+set}" ]] && return 2>/dev/null
 
 . boop List Card
 
@@ -10,7 +10,7 @@
 # Deck extends List — 52 cards, shuffle, draw
 # ═════════════════════════════════════════════════════════════════════
 
-__bashClass_registry["Deck"]="|class=Deck|parent=List\
+__boop_registry["Deck"]="|class=Deck|parent=List\
 |methods=new,fill,shuffle,draw\
 |properties=type"
 
@@ -20,7 +20,7 @@ Deck.new() {
   into=__Deck_new_self List.new "$@"
   _Self="$__Deck_new_self" _Class=Deck Deck.fill
   _Self="$__Deck_new_self" _Class=Deck Deck.shuffle
-  __bashClass.return "$__Deck_new_self" ${into:-}
+  __boop.return "$__Deck_new_self" ${into:-}
 }
 
 Deck.fill() {
@@ -58,11 +58,11 @@ Deck.shuffle() {
 Deck.draw() {
   local -I _Self _Class
   local __Deck_draw_card; into=__Deck_draw_card $_Self.pop
-  __bashClass.return "$__Deck_draw_card" ${into:-}
+  __boop.return "$__Deck_draw_card" ${into:-}
 }
 
-__bashClass.registerMethod Deck new     Deck.new
-__bashClass.registerMethod Deck fill    Deck.fill
-__bashClass.registerMethod Deck shuffle Deck.shuffle
-__bashClass.registerMethod Deck draw    Deck.draw
-__bashClass.registerClass Deck
+__boop.registerMethod Deck new     Deck.new
+__boop.registerMethod Deck fill    Deck.fill
+__boop.registerMethod Deck shuffle Deck.shuffle
+__boop.registerMethod Deck draw    Deck.draw
+__boop.registerClass Deck

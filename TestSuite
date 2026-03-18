@@ -26,7 +26,7 @@
 #   # Or:     into=t TestSuite name="My Tests" verbose=1
 
 # Load guard
-[[ -n "${__bashClass_registry[TestSuite]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[TestSuite]+set}" ]] && return 2>/dev/null
 
 . boop List Map
 
@@ -34,7 +34,7 @@
 # TestSuite Class Descriptor
 # ============================================================================
 
-__bashClass_registry["TestSuite"]="|class=TestSuite|parent=bashClass\
+__boop_registry["TestSuite"]="|class=TestSuite|parent=boop\
 |methods=new,section,run,summary,assert_eq,assert_ne,assert_ok,assert_fail,assert_match,assert_contains,info\
 |properties=name,mode,verbose"
 
@@ -46,13 +46,13 @@ __bashClass_registry["TestSuite"]="|class=TestSuite|parent=bashClass\
 __TestSuite._pass() {
   local __tsp_self="$1" __tsp_desc="$2"
   local __tsp_verbose
-  __bashClass.parse "$__tsp_self" "verbose" __tsp_verbose
+  __boop.parse "$__tsp_self" "verbose" __tsp_verbose
   [[ "$__tsp_verbose" == "1" ]] && printf "  PASS: %s\n" "$__tsp_desc"
   local __tsp_p
-  __bashClass.parse "$__tsp_self" "passed" __tsp_p
+  __boop.parse "$__tsp_self" "passed" __tsp_p
   : "${__tsp_p:=0}"
   (( __tsp_p++ ))
-  _Self="$__tsp_self" _Class=TestSuite __bashClass.dispatch set passed "$__tsp_p"
+  _Self="$__tsp_self" _Class=TestSuite __boop.dispatch set passed "$__tsp_p"
 }
 
 # Print a FAIL line and increment the fail counter.
@@ -64,10 +64,10 @@ __TestSuite._fail() {
     printf "  FAIL: %s\n" "$__tsf_desc"
   fi
   local __tsf_f
-  __bashClass.parse "$__tsf_self" "failed" __tsf_f
+  __boop.parse "$__tsf_self" "failed" __tsf_f
   : "${__tsf_f:=0}"
   (( __tsf_f++ ))
-  _Self="$__tsf_self" _Class=TestSuite __bashClass.dispatch set failed "$__tsf_f"
+  _Self="$__tsf_self" _Class=TestSuite __boop.dispatch set failed "$__tsf_f"
 }
 
 # ============================================================================
@@ -88,11 +88,11 @@ TestSuite.new() {
     esac
   done
 
-  [[ -n "$__TS_new_name" ]] || __bashClass.crash "TestSuite: name is required"
+  [[ -n "$__TS_new_name" ]] || __boop.crash "TestSuite: name is required"
   [[ "$__TS_new_mode" == "immediate" || "$__TS_new_mode" == "queue" ]] || \
-    __bashClass.crash "TestSuite: mode must be 'immediate' or 'queue', got '$__TS_new_mode'"
+    __boop.crash "TestSuite: mode must be 'immediate' or 'queue', got '$__TS_new_mode'"
 
-  into=__TS_new_self __bashClass.new \
+  into=__TS_new_self __boop.new \
     name="$__TS_new_name" mode="$__TS_new_mode" verbose="$__TS_new_verbose" \
     passed=0 failed=0 \
     section_name="" section_start="" suite_start="$EPOCHREALTIME" queue=""
@@ -100,11 +100,11 @@ TestSuite.new() {
   # Create the queue List (only used in queue mode, but always available)
   local __TS_new_queue
   into=__TS_new_queue List
-  _Self="$__TS_new_self" _Class=TestSuite __bashClass.dispatch set queue "$__TS_new_queue"
+  _Self="$__TS_new_self" _Class=TestSuite __boop.dispatch set queue "$__TS_new_queue"
 
   printf "=== %s ===\n" "$__TS_new_name"
 
-  __bashClass.return "$__TS_new_self" ${into:-}
+  __boop.return "$__TS_new_self" ${into:-}
 }
 
 # ============================================================================
@@ -116,22 +116,22 @@ TestSuite.section() {
   local __TS_sec_name="$1"
 
   local __TS_sec_verbose
-  __bashClass.parse "$_Self" "verbose" __TS_sec_verbose
+  __boop.parse "$_Self" "verbose" __TS_sec_verbose
 
   # If there was a previous section in immediate mode, print its elapsed time
   local __TS_sec_prev_start
-  __bashClass.parse "$_Self" "section_start" __TS_sec_prev_start
+  __boop.parse "$_Self" "section_start" __TS_sec_prev_start
   if [[ -n "$__TS_sec_prev_start" && "$__TS_sec_verbose" == "1" ]]; then
     local __TS_sec_mode
-    __bashClass.parse "$_Self" "mode" __TS_sec_mode
+    __boop.parse "$_Self" "mode" __TS_sec_mode
     if [[ "$__TS_sec_mode" == "immediate" ]]; then
       printf "  [%.3fs]\n" "$(( ${EPOCHREALTIME//.} - ${__TS_sec_prev_start//.} ))e-6"
     fi
   fi
 
   [[ "$__TS_sec_verbose" == "1" ]] && printf "\n--- %s ---\n" "$__TS_sec_name"
-  _Self="$_Self" _Class="$_Class" __bashClass.dispatch set section_name "$__TS_sec_name"
-  _Self="$_Self" _Class="$_Class" __bashClass.dispatch set section_start "$EPOCHREALTIME"
+  _Self="$_Self" _Class="$_Class" __boop.dispatch set section_name "$__TS_sec_name"
+  _Self="$_Self" _Class="$_Class" __boop.dispatch set section_start "$EPOCHREALTIME"
 }
 
 # ============================================================================
@@ -210,7 +210,7 @@ __TestSuite._exec() {
       ;;
     info)
       local __tsx_verbose
-      __bashClass.parse "$__tsx_self" "verbose" __tsx_verbose
+      __boop.parse "$__tsx_self" "verbose" __tsx_verbose
       [[ "$__tsx_verbose" == "1" ]] && printf "  INFO: %s\n" "$__tsx_desc"
       ;;
   esac
@@ -225,7 +225,7 @@ __TestSuite._exec() {
 __TestSuite._route() {
   local __tsr_self="$1" __tsr_type="$2"
   local __tsr_mode
-  __bashClass.parse "$__tsr_self" "mode" __tsr_mode
+  __boop.parse "$__tsr_self" "mode" __tsr_mode
 
   if [[ "$__tsr_mode" == "immediate" ]]; then
     __TestSuite._exec "$@"
@@ -243,7 +243,7 @@ __TestSuite._route() {
       [[ -n "$__tsr_args" ]] && __tsr_args="$__tsr_args|$__tsr_i" || __tsr_args="$__tsr_i"
     done
     _Self="" _Class="" $__tsr_map.set "args" "$__tsr_args"
-    __bashClass.parse "$__tsr_self" "queue" __tsr_queue
+    __boop.parse "$__tsr_self" "queue" __tsr_queue
     _Self="" _Class="" $__tsr_queue.push "$__tsr_map"
   fi
 }
@@ -285,7 +285,7 @@ TestSuite.assert_contains() {
 TestSuite.info() {
   local -I _Self _Class
   local __TS_info_verbose
-  __bashClass.parse "$_Self" "verbose" __TS_info_verbose
+  __boop.parse "$_Self" "verbose" __TS_info_verbose
   [[ "$__TS_info_verbose" == "1" ]] && printf "  INFO: %s\n" "$1"
 }
 
@@ -297,7 +297,7 @@ TestSuite.run() {
   local -I _Self _Class
   local __TS_run_self="$_Self"
   local __TS_run_queue __TS_run_len
-  __bashClass.parse "$__TS_run_self" "queue" __TS_run_queue
+  __boop.parse "$__TS_run_self" "queue" __TS_run_queue
   _Self="" _Class="" into=__TS_run_len $__TS_run_queue.length
 
   local -i __TS_run_i
@@ -324,8 +324,8 @@ TestSuite.run() {
 
   # Print section timing
   local __TS_run_sec_start __TS_run_verbose
-  __bashClass.parse "$__TS_run_self" "section_start" __TS_run_sec_start
-  __bashClass.parse "$__TS_run_self" "verbose" __TS_run_verbose
+  __boop.parse "$__TS_run_self" "section_start" __TS_run_sec_start
+  __boop.parse "$__TS_run_self" "verbose" __TS_run_verbose
   if [[ -n "$__TS_run_sec_start" && "$__TS_run_verbose" == "1" ]]; then
     printf "  [%.3fs]\n" "$(( ${EPOCHREALTIME//.} - ${__TS_run_sec_start//.} ))e-6"
   fi
@@ -339,21 +339,21 @@ TestSuite.summary() {
   local -I _Self _Class
 
   local __TS_sum_verbose
-  __bashClass.parse "$_Self" "verbose" __TS_sum_verbose
+  __boop.parse "$_Self" "verbose" __TS_sum_verbose
 
   # Print final section timing if in immediate mode and verbose
   local __TS_sum_mode __TS_sum_sec_start
-  __bashClass.parse "$_Self" "mode" __TS_sum_mode
-  __bashClass.parse "$_Self" "section_start" __TS_sum_sec_start
+  __boop.parse "$_Self" "mode" __TS_sum_mode
+  __boop.parse "$_Self" "section_start" __TS_sum_sec_start
   if [[ "$__TS_sum_mode" == "immediate" && -n "$__TS_sum_sec_start" && "$__TS_sum_verbose" == "1" ]]; then
     printf "  [%.3fs]\n" "$(( ${EPOCHREALTIME//.} - ${__TS_sum_sec_start//.} ))e-6"
   fi
 
   local __TS_sum_name __TS_sum_p __TS_sum_f __TS_sum_start
-  __bashClass.parse "$_Self" "name" __TS_sum_name
-  __bashClass.parse "$_Self" "passed" __TS_sum_p
-  __bashClass.parse "$_Self" "failed" __TS_sum_f
-  __bashClass.parse "$_Self" "suite_start" __TS_sum_start
+  __boop.parse "$_Self" "name" __TS_sum_name
+  __boop.parse "$_Self" "passed" __TS_sum_p
+  __boop.parse "$_Self" "failed" __TS_sum_f
+  __boop.parse "$_Self" "suite_start" __TS_sum_start
   : "${__TS_sum_p:=0}" "${__TS_sum_f:=0}"
   local -i __TS_sum_total=$(( __TS_sum_p + __TS_sum_f ))
 
@@ -376,15 +376,15 @@ TestSuite.summary() {
 # Register Methods & Finalize
 # ============================================================================
 
-__bashClass.registerMethod TestSuite new             TestSuite.new
-__bashClass.registerMethod TestSuite section         TestSuite.section
-__bashClass.registerMethod TestSuite run             TestSuite.run
-__bashClass.registerMethod TestSuite summary         TestSuite.summary
-__bashClass.registerMethod TestSuite assert_eq       TestSuite.assert_eq
-__bashClass.registerMethod TestSuite assert_ne       TestSuite.assert_ne
-__bashClass.registerMethod TestSuite assert_ok       TestSuite.assert_ok
-__bashClass.registerMethod TestSuite assert_fail     TestSuite.assert_fail
-__bashClass.registerMethod TestSuite assert_match    TestSuite.assert_match
-__bashClass.registerMethod TestSuite assert_contains TestSuite.assert_contains
-__bashClass.registerMethod TestSuite info            TestSuite.info
-__bashClass.registerClass TestSuite
+__boop.registerMethod TestSuite new             TestSuite.new
+__boop.registerMethod TestSuite section         TestSuite.section
+__boop.registerMethod TestSuite run             TestSuite.run
+__boop.registerMethod TestSuite summary         TestSuite.summary
+__boop.registerMethod TestSuite assert_eq       TestSuite.assert_eq
+__boop.registerMethod TestSuite assert_ne       TestSuite.assert_ne
+__boop.registerMethod TestSuite assert_ok       TestSuite.assert_ok
+__boop.registerMethod TestSuite assert_fail     TestSuite.assert_fail
+__boop.registerMethod TestSuite assert_match    TestSuite.assert_match
+__boop.registerMethod TestSuite assert_contains TestSuite.assert_contains
+__boop.registerMethod TestSuite info            TestSuite.info
+__boop.registerClass TestSuite

@@ -8,7 +8,7 @@
 # index, slicing, and deletion with automatic re-indexing.
 #
 # Storage: each List instance owns a global indexed array named
-# __bashClass_data_${_Self}. Element data lives there, not in the
+# __boop_data_${_Self}. Element data lives there, not in the
 # pipe-delimited descriptor. This gives us native bash array performance
 # for reads/writes while the object system handles identity and dispatch.
 #
@@ -21,7 +21,7 @@
 # doesn't care what's inside — it's turtles all the way down.
 
 # Load guard — if already registered, nothing to do
-[[ -n "${__bashClass_registry[List]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[List]+set}" ]] && return 2>/dev/null
 
 . boop Container
 
@@ -29,7 +29,7 @@
 # List Class Descriptor
 # ============================================================================
 
-__bashClass_registry["List"]="|class=List|parent=Container|methods=new,get,set,delete,length,clear,has,push,pop,shift,unshift,slice,toArray,toString,each|properties=type"
+__boop_registry["List"]="|class=List|parent=Container|methods=new,get,set,delete,length,clear,has,push,pop,shift,unshift,slice,toArray,toString,each|properties=type"
 
 # ============================================================================
 # List Implementation Functions
@@ -37,26 +37,26 @@ __bashClass_registry["List"]="|class=List|parent=Container|methods=new,get,set,d
 
 # Constructor — creates a new List instance with an indexed companion array.
 #
-# Delegates to __bashClass.new for descriptor creation and stub generation,
-# then declares a global indexed array (__bashClass_data_${_Self}) as the
+# Delegates to __boop.new for descriptor creation and stub generation,
+# then declares a global indexed array (__boop_data_${_Self}) as the
 # companion storage. The type=indexed argument lands in the descriptor so
 # introspection (toString, Container.toString) can report the storage flavor
 # without poking at the companion array directly.
 #
 # The _Class= default ensures subclasses that forget to set _Class still get
 # a List, not a bare Container. Any extra key=value args pass through to
-# __bashClass.new and end up in the descriptor as metadata.
+# __boop.new and end up in the descriptor as metadata.
 #
 # Usage: into=mylist List
-#        into=mylist _Class=List __bashClass.dispatch new
+#        into=mylist _Class=List __boop.dispatch new
 List.new() {
   local -I _Class
   : "${_Class:=List}"
   local __List_new_self
-  into=__List_new_self __bashClass.new type=indexed "$@"
-  declare -ga "__bashClass_data_${__List_new_self}"
-  eval "__bashClass_data_${__List_new_self}+=()"
-  __bashClass.return "$__List_new_self" ${into:-}
+  into=__List_new_self __boop.new type=indexed "$@"
+  declare -ga "__boop_data_${__List_new_self}"
+  eval "__boop_data_${__List_new_self}+=()"
+  __boop.return "$__List_new_self" ${into:-}
 }
 
 # Retrieve an element by integer index.
@@ -81,14 +81,14 @@ List.new() {
 List.get() {
   local -I _Self _Class
   local -i __List_get_idx="$1"
-  local -n __List_get_arr="__bashClass_data_${_Self}"
+  local -n __List_get_arr="__boop_data_${_Self}"
   local -i __List_get_len=0; [[ -n "${!__List_get_arr[@]}" ]] && __List_get_len=${#__List_get_arr[@]}
   (( __List_get_idx < 0 )) && (( __List_get_idx += __List_get_len ))
   if (( __List_get_idx < 0 || __List_get_idx >= __List_get_len )); then
-    __bashClass.return "" ${into:-}
+    __boop.return "" ${into:-}
     return
   fi
-  __bashClass.return "${__List_get_arr[$__List_get_idx]}" ${into:-}
+  __boop.return "${__List_get_arr[$__List_get_idx]}" ${into:-}
 }
 
 # Store a value at a specific index.
@@ -111,11 +111,11 @@ List.set() {
   local -I _Self _Class
   local -i __List_set_idx="$1"
   local __List_set_val="$2"
-  local -n __List_set_arr="__bashClass_data_${_Self}"
+  local -n __List_set_arr="__boop_data_${_Self}"
   local -i __List_set_len=0; [[ -n "${!__List_set_arr[@]}" ]] && __List_set_len=${#__List_set_arr[@]}
   (( __List_set_idx < 0 )) && (( __List_set_idx += __List_set_len ))
   (( __List_set_idx < 0 || __List_set_idx > __List_set_len )) && \
-    __bashClass.crash "List index out of range: $1 (length: $__List_set_len)"
+    __boop.crash "List index out of range: $1 (length: $__List_set_len)"
   __List_set_arr[$__List_set_idx]="$__List_set_val"
 }
 
@@ -138,11 +138,11 @@ List.set() {
 List.delete() {
   local -I _Self _Class
   local -i __List_del_idx="$1"
-  local -n __List_del_arr="__bashClass_data_${_Self}"
+  local -n __List_del_arr="__boop_data_${_Self}"
   local -i __List_del_len=0; [[ -n "${!__List_del_arr[@]}" ]] && __List_del_len=${#__List_del_arr[@]}
   (( __List_del_idx < 0 )) && (( __List_del_idx += __List_del_len ))
   (( __List_del_idx < 0 || __List_del_idx >= __List_del_len )) && \
-    __bashClass.crash "List index out of range: $1 (length: $__List_del_len)"
+    __boop.crash "List index out of range: $1 (length: $__List_del_len)"
   unset '__List_del_arr[$__List_del_idx]'
   __List_del_arr=("${__List_del_arr[@]+"${__List_del_arr[@]}"}")
 }
@@ -150,15 +150,15 @@ List.delete() {
 # Return the number of elements in the list.
 #
 # Uses bash's native ${#array[@]} — O(1) since bash tracks array length
-# internally. Routes through __bashClass.return for consistent value delivery.
+# internally. Routes through __boop.return for consistent value delivery.
 #
 # Usage: into=len $list.length
-#        $list.length; printf "%s\n" "$__bashClass_RETURN"
+#        $list.length; printf "%s\n" "$__boop_RETURN"
 List.length() {
   local -I _Self _Class
-  local -n __List_length_arr="__bashClass_data_${_Self}"
+  local -n __List_length_arr="__boop_data_${_Self}"
   local -i __List_length_len=0; [[ -n "${!__List_length_arr[@]}" ]] && __List_length_len=${#__List_length_arr[@]}
-  __bashClass.return "$__List_length_len" ${into:-}
+  __boop.return "$__List_length_len" ${into:-}
 }
 
 # Remove all elements from the list.
@@ -169,7 +169,7 @@ List.length() {
 # Usage: $list.clear
 List.clear() {
   local -I _Self _Class
-  local -n __List_clear_arr="__bashClass_data_${_Self}"
+  local -n __List_clear_arr="__boop_data_${_Self}"
   __List_clear_arr=()
 }
 
@@ -186,7 +186,7 @@ List.clear() {
 List.has() {
   local -I _Self _Class
   local -i __List_has_idx="$1"
-  local -n __List_has_arr="__bashClass_data_${_Self}"
+  local -n __List_has_arr="__boop_data_${_Self}"
   local -i __List_has_len=0; [[ -n "${!__List_has_arr[@]}" ]] && __List_has_len=${#__List_has_arr[@]}
   (( __List_has_idx < 0 )) && (( __List_has_idx += __List_has_len ))
   (( __List_has_idx >= 0 && __List_has_idx < __List_has_len )) && return 0 || return 1
@@ -205,7 +205,7 @@ List.has() {
 #        $list.push "a" "b" "c"    # append three at once
 List.push() {
   local -I _Self _Class
-  local -n __List_push_arr="__bashClass_data_${_Self}"
+  local -n __List_push_arr="__boop_data_${_Self}"
   __List_push_arr+=("$@")
 }
 
@@ -219,15 +219,15 @@ List.push() {
 # already at the end.
 #
 # Usage: into=val $list.pop
-#        $list.pop; printf "%s\n" "$__bashClass_RETURN"
+#        $list.pop; printf "%s\n" "$__boop_RETURN"
 List.pop() {
   local -I _Self _Class
-  local -n __List_pop_arr="__bashClass_data_${_Self}"
+  local -n __List_pop_arr="__boop_data_${_Self}"
   local -i __List_pop_len=0; [[ -n "${!__List_pop_arr[@]}" ]] && __List_pop_len=${#__List_pop_arr[@]}
-  (( __List_pop_len == 0 )) && __bashClass.crash "pop from empty List"
+  (( __List_pop_len == 0 )) && __boop.crash "pop from empty List"
   local __List_pop_val="${__List_pop_arr[-1]}"
   unset '__List_pop_arr[-1]'
-  __bashClass.return "$__List_pop_val" ${into:-}
+  __boop.return "$__List_pop_val" ${into:-}
 }
 
 # Remove and return the first element (queue-style FIFO).
@@ -238,15 +238,15 @@ List.pop() {
 # consider whether the access pattern justifies the cost.
 #
 # Usage: into=val $list.shift
-#        $list.shift; printf "%s\n" "$__bashClass_RETURN"
+#        $list.shift; printf "%s\n" "$__boop_RETURN"
 List.shift() {
   local -I _Self _Class
-  local -n __List_shift_arr="__bashClass_data_${_Self}"
+  local -n __List_shift_arr="__boop_data_${_Self}"
   local -i __List_shift_len=0; [[ -n "${!__List_shift_arr[@]}" ]] && __List_shift_len=${#__List_shift_arr[@]}
-  (( __List_shift_len == 0 )) && __bashClass.crash "shift from empty List"
+  (( __List_shift_len == 0 )) && __boop.crash "shift from empty List"
   local __List_shift_val="${__List_shift_arr[0]}"
   __List_shift_arr=("${__List_shift_arr[@]:1}")
-  __bashClass.return "$__List_shift_val" ${into:-}
+  __boop.return "$__List_shift_val" ${into:-}
 }
 
 # Prepend one or more elements to the beginning of the list.
@@ -259,7 +259,7 @@ List.shift() {
 #        $list.unshift "a" "b"    # "a" becomes index 0, "b" index 1
 List.unshift() {
   local -I _Self _Class
-  local -n __List_unshift_arr="__bashClass_data_${_Self}"
+  local -n __List_unshift_arr="__boop_data_${_Self}"
   __List_unshift_arr=("$@" "${__List_unshift_arr[@]+"${__List_unshift_arr[@]}"}")
 }
 
@@ -280,17 +280,17 @@ List.unshift() {
 List.slice() {
   local -I _Self _Class
   local -i __List_slice_start="${1:-0}" __List_slice_end
-  local -n __List_slice_arr="__bashClass_data_${_Self}"
+  local -n __List_slice_arr="__boop_data_${_Self}"
   local -i __List_slice_len=0; [[ -n "${!__List_slice_arr[@]}" ]] && __List_slice_len=${#__List_slice_arr[@]}
   __List_slice_end="${2:-$__List_slice_len}"
   (( __List_slice_start < 0 )) && (( __List_slice_start += __List_slice_len ))
   (( __List_slice_end < 0 )) && (( __List_slice_end += __List_slice_len ))
   local -i __List_slice_count=$(( __List_slice_end - __List_slice_start ))
-  (( __List_slice_count <= 0 )) && { __bashClass.return "" ${into:-}; return; }
+  (( __List_slice_count <= 0 )) && { __boop.return "" ${into:-}; return; }
   local __List_slice_out
   printf -v __List_slice_out "%s\n" "${__List_slice_arr[@]:$__List_slice_start:$__List_slice_count}"
   __List_slice_out="${__List_slice_out%$'\n'}"
-  __bashClass.return "$__List_slice_out" ${into:-}
+  __boop.return "$__List_slice_out" ${into:-}
 }
 
 # Serialize all elements to a newline-delimited string.
@@ -307,15 +307,15 @@ List.slice() {
 # Usage: into=all $list.toArray
 List.toArray() {
   local -I _Self _Class
-  local -n __List_toArray_arr="__bashClass_data_${_Self}"
+  local -n __List_toArray_arr="__boop_data_${_Self}"
   local __List_toArray_out
   if ! [[ -n "${!__List_toArray_arr[@]}" ]] || (( ${#__List_toArray_arr[@]} == 0 )); then
-    __bashClass.return "" ${into:-}
+    __boop.return "" ${into:-}
     return
   fi
   printf -v __List_toArray_out "%s\n" "${__List_toArray_arr[@]}"
   __List_toArray_out="${__List_toArray_out%$'\n'}"
-  __bashClass.return "$__List_toArray_out" ${into:-}
+  __boop.return "$__List_toArray_out" ${into:-}
 }
 
 # Human-readable representation of the list and its contents.
@@ -335,7 +335,7 @@ List.toArray() {
 #        into=s $list.toString; printf "%s\n" "$s"
 List.toString() {
   local -I _Self _Class
-  local -n __List_ts_arr="__bashClass_data_${_Self}"
+  local -n __List_ts_arr="__boop_data_${_Self}"
   local -i __List_ts_len=0; [[ -n "${!__List_ts_arr[@]}" ]] && __List_ts_len=${#__List_ts_arr[@]}
   local __List_ts_out="List($_Self)[ "
   local -i __List_ts_i
@@ -344,7 +344,7 @@ List.toString() {
     __List_ts_out="$__List_ts_out\"${__List_ts_arr[$__List_ts_i]}\""
   done
   __List_ts_out="$__List_ts_out ]"
-  __bashClass.return "$__List_ts_out" ${into:-}
+  __boop.return "$__List_ts_out" ${into:-}
 }
 
 # Iterate over all elements, calling a user function for each.
@@ -362,7 +362,7 @@ List.toString() {
 List.each() {
   local -I _Self _Class
   local __List_each_fn="$1"
-  local -n __List_each_arr="__bashClass_data_${_Self}"
+  local -n __List_each_arr="__boop_data_${_Self}"
   [[ -n "${!__List_each_arr[@]}" ]] || return 0
   local -i __List_each_len=${#__List_each_arr[@]} __List_each_i
   for (( __List_each_i=0; __List_each_i < __List_each_len; __List_each_i++ )); do
@@ -374,19 +374,19 @@ List.each() {
 # Register Methods & Finalize
 # ============================================================================
 
-__bashClass.registerMethod List new List.new
-__bashClass.registerMethod List get List.get
-__bashClass.registerMethod List set List.set
-__bashClass.registerMethod List delete List.delete
-__bashClass.registerMethod List length List.length
-__bashClass.registerMethod List clear List.clear
-__bashClass.registerMethod List has List.has
-__bashClass.registerMethod List push List.push
-__bashClass.registerMethod List pop List.pop
-__bashClass.registerMethod List shift List.shift
-__bashClass.registerMethod List unshift List.unshift
-__bashClass.registerMethod List slice List.slice
-__bashClass.registerMethod List toArray List.toArray
-__bashClass.registerMethod List toString List.toString
-__bashClass.registerMethod List each List.each
-__bashClass.registerClass List
+__boop.registerMethod List new List.new
+__boop.registerMethod List get List.get
+__boop.registerMethod List set List.set
+__boop.registerMethod List delete List.delete
+__boop.registerMethod List length List.length
+__boop.registerMethod List clear List.clear
+__boop.registerMethod List has List.has
+__boop.registerMethod List push List.push
+__boop.registerMethod List pop List.pop
+__boop.registerMethod List shift List.shift
+__boop.registerMethod List unshift List.unshift
+__boop.registerMethod List slice List.slice
+__boop.registerMethod List toArray List.toArray
+__boop.registerMethod List toString List.toString
+__boop.registerMethod List each List.each
+__boop.registerClass List

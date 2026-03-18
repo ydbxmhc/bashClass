@@ -138,8 +138,8 @@ $t.assert_contains "per-class trace shows" "$(<"$__lf")" "box trace"
 _lc; _Trace "global trace" 2>"$__lf"
 $t.assert_eq "global trace hidden" "$(<"$__lf")" ""
 
-unset '__bashClass_classLogLevel[Box]'
-__bashClass_resolvedLogLevel=()
+unset '__boop_classLogLevel[Box]'
+__boop_resolvedLogLevel=()
 _LogLevel warn
 
 # ============================================================================
@@ -157,8 +157,8 @@ $t.assert_contains "Cube inherits Box debug" "$(<"$__lf")" "cube debug"
 _lc; _Class=Cube _Trace "cube trace" 2>"$__lf"
 $t.assert_eq "Cube trace hidden at inherited debug" "$(<"$__lf")" ""
 
-unset '__bashClass_classLogLevel[Box]'
-__bashClass_resolvedLogLevel=()
+unset '__boop_classLogLevel[Box]'
+__boop_resolvedLogLevel=()
 _LogLevel warn
 
 # ============================================================================
@@ -180,9 +180,9 @@ $t.assert_contains "Cube error shows" "$(<"$__lf")" "cube error"
 _lc; _Class=Box _Trace "box trace" 2>"$__lf"
 $t.assert_contains "Box still at trace" "$(<"$__lf")" "box trace"
 
-unset '__bashClass_classLogLevel[Box]'
-unset '__bashClass_classLogLevel[Cube]'
-__bashClass_resolvedLogLevel=()
+unset '__boop_classLogLevel[Box]'
+unset '__boop_classLogLevel[Cube]'
+__boop_resolvedLogLevel=()
 _LogLevel warn
 
 # ============================================================================
@@ -202,8 +202,8 @@ _lc; _Class=Box _Debug "after" 2>"$__lf"
 $t.assert_contains "debug shows after level change" "$(<"$__lf")" "after"
 
 # Global change tightens threshold for classes without per-class override
-unset '__bashClass_classLogLevel[Box]'
-__bashClass_resolvedLogLevel=()
+unset '__boop_classLogLevel[Box]'
+__boop_resolvedLogLevel=()
 _LogLevel debug
 _lc; _Class=Box _Debug "first" 2>"$__lf"
 $t.assert_contains "first debug shows" "$(<"$__lf")" "first"
@@ -227,8 +227,8 @@ _LogLevel error   # tighten global — Box should keep its own level
 _lc; _Class=Box _Debug "survives" 2>"$__lf"
 $t.assert_contains "per-class debug survives global error" "$(<"$__lf")" "survives"
 
-unset '__bashClass_classLogLevel[Box]'
-__bashClass_resolvedLogLevel=()
+unset '__boop_classLogLevel[Box]'
+__boop_resolvedLogLevel=()
 _LogLevel warn
 
 # ============================================================================
@@ -309,47 +309,47 @@ _lc; _Class=Box _Trace "call3" 2>"$__lf"
 $t.assert_contains "third cached call" "$(<"$__lf")" "call3"
 
 # Verify cache entry exists
-if [[ -n "${__bashClass_resolvedLogLevel[Box]+set}" ]]; then
+if [[ -n "${__boop_resolvedLogLevel[Box]+set}" ]]; then
   $t.assert_ok "cache entry exists for Box" true
 else
   $t.assert_ok "cache entry exists for Box" false
 fi
 
-unset '__bashClass_classLogLevel[Box]'
-__bashClass_resolvedLogLevel=()
+unset '__boop_classLogLevel[Box]'
+__boop_resolvedLogLevel=()
 _LogLevel warn
 
 # ============================================================================
-# bashClass (root) uses global level
+# boop (root) uses global level
 # ============================================================================
 
 $t.section "Root class uses global"
 
 _LogLevel debug
-_lc; _Class=bashClass _Debug "root debug" 2>"$__lf"
-$t.assert_contains "bashClass uses global" "$(<"$__lf")" "root debug"
+_lc; _Class=boop _Debug "root debug" 2>"$__lf"
+$t.assert_contains "boop uses global" "$(<"$__lf")" "root debug"
 _LogLevel warn
 
 # ============================================================================
-# Deep inheritance: Cube → Box → bashClass
+# Deep inheritance: Cube → Box → boop
 # ============================================================================
 
 $t.section "Deep inheritance chain"
 
 _LogLevel warn
-_LogLevel trace bashClass
+_LogLevel trace boop
 
 _lc; _Class=Cube _Trace "deep inherit" 2>"$__lf"
-$t.assert_contains "Cube inherits from bashClass" "$(<"$__lf")" "deep inherit"
+$t.assert_contains "Cube inherits from boop" "$(<"$__lf")" "deep inherit"
 
-# Override at Box — Cube should pick up Box, not bashClass
+# Override at Box — Cube should pick up Box, not boop
 _LogLevel error Box
 _lc; _Class=Cube _Warn "should hide" 2>"$__lf"
-$t.assert_eq "Cube picks Box override over bashClass" "$(<"$__lf")" ""
+$t.assert_eq "Cube picks Box override over boop" "$(<"$__lf")" ""
 
-unset '__bashClass_classLogLevel[Box]'
-unset '__bashClass_classLogLevel[bashClass]'
-__bashClass_resolvedLogLevel=()
+unset '__boop_classLogLevel[Box]'
+unset '__boop_classLogLevel[boop]'
+__boop_resolvedLogLevel=()
 _LogLevel warn
 
 # ============================================================================
@@ -364,7 +364,7 @@ rm -f "$__fallback_logfile"
 # Warn with stderr closed — should fall back to file
 bash -c '
   . boop
-  __bashClass_logFile="'"$__fallback_logfile"'"
+  __boop_logFile="'"$__fallback_logfile"'"
   exec 2>&-
   _Warn "fallback message"
 ' 2>/dev/null
@@ -379,7 +379,7 @@ fi
 # _Crash with stderr closed — should also fall back to file
 bash -c '
   . boop
-  __bashClass_logFile="'"$__fallback_logfile"'"
+  __boop_logFile="'"$__fallback_logfile"'"
   exec 2>&-
   _Crash "crash fallback"
 ' 2>/dev/null

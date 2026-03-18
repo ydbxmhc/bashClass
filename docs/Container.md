@@ -16,7 +16,7 @@ You typically don't use Container directly — use List or Map instead.
 ## Architecture
 
 Container data lives in companion bash arrays, not in the pipe-delimited
-descriptor. Each instance owns a global array named `__bashClass_data_${self}`.
+descriptor. Each instance owns a global array named `__boop_data_${self}`.
 Child constructors declare it as indexed (`-ga` for List) or associative
 (`-gA` for Map).
 
@@ -80,7 +80,7 @@ into=val $config.itemAt "db" "host"    # config["db"]["host"]
 $matrix.setAt "99" 1 2                 # matrix[1][2] = "99"
 ```
 
-When Container is loaded, it also augments bashClass with `itemFrom`
+When Container is loaded, it also augments boop with `itemFrom`
 and `setOn`, which start from a named property on any object:
 
 ```bash
@@ -91,7 +91,7 @@ $obj.setOn "tags" "urgent" 0           # obj.tags → List → set 0 "urgent"
 ## Iterator: Stateful Cursor
 
 Iterator is a companion class defined inside the Container source file.
-It inherits from `bashClass` (not Container) — it doesn't hold data,
+It inherits from `boop` (not Container) — it doesn't hold data,
 it holds a reference to a container and a cursor position.
 
 ### Lazy Delegation (Implicit Iterator)
@@ -167,7 +167,7 @@ Position semantics: -1 = before first element (initial state),
 ### Map Iterator Snapshots
 
 For Map iterators, the ordered key list is snapshotted at creation
-time into a companion array (`__bashClass_iterkeys_${iteratorID}`).
+time into a companion array (`__boop_iterkeys_${iteratorID}`).
 Mutations to the Map after the iterator is created don't affect the
 snapshot. This is a deliberate trade-off — predictable traversal over
 live-view consistency.
@@ -197,10 +197,10 @@ that crash with a clear message:
 MyStack.new() {
   local -I _Class; : "${_Class:=MyStack}"
   local __MyStack_new_self
-  into=__MyStack_new_self __bashClass.new "$@"
-  declare -ga "__bashClass_data_${__MyStack_new_self}"
+  into=__MyStack_new_self __boop.new "$@"
+  declare -ga "__boop_data_${__MyStack_new_self}"
   $__MyStack_new_self.noIterators
-  __bashClass.return "$__MyStack_new_self" ${into:-}
+  __boop.return "$__MyStack_new_self" ${into:-}
 }
 
 # Later:
@@ -210,9 +210,9 @@ $stack.next    # CRASH: "MyStack does not support iterators"
 ## Inheritance Hierarchy
 
 ```
-bashClass → Container → List  (indexed array)
+boop → Container → List  (indexed array)
                       → Map   (insertion-ordered associative array)
                       → Stack, Queue, etc. (future)
 
-bashClass → Iterator  (companion to Container — stateful cursor)
+boop → Iterator  (companion to Container — stateful cursor)
 ```

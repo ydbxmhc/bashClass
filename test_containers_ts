@@ -16,7 +16,7 @@ into=list List
 $t.assert_match "valid ID" "$list" "_[0-9a-f]*"
 $t.assert_ok "isa List" $list.isa List
 $t.assert_ok "isa Container" $list.isa Container
-$t.assert_ok "isa bashClass" $list.isa bashClass
+$t.assert_ok "isa boop" $list.isa boop
 
 # ============================================================================
 # LIST: push/pop/length
@@ -359,7 +359,7 @@ $t.section "Destroy"
 into=dlist List
 $dlist.push "a" "b" "c"
 $dlist.destroy
-if [[ -z "${__bashClass_registry[$dlist]:-}" ]]; then
+if [[ -z "${__boop_registry[$dlist]:-}" ]]; then
   $t.assert_ok "destroy removes from registry" true
 else
   $t.assert_ok "destroy removes from registry" false
@@ -437,7 +437,7 @@ into=ilist List
 $ilist.push "a" "b" "c" "d"
 
 into=iter $ilist.iterator
-$t.assert_ok "iterator isa bashClass" $iter.isa bashClass
+$t.assert_ok "iterator isa boop" $iter.isa boop
 $t.assert_ok "hasNext on fresh iterator" $iter.hasNext
 $t.assert_fail "hasPrev on fresh iterator" $iter.hasPrev
 

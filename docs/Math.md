@@ -198,7 +198,7 @@ arctan series expansion runs with raw digit/scale/neg triples (no
 object overhead) at extra working precision, then truncates to the
 requested digits.
 
-Results are cached in `__bashClass_static` so repeated calls at the
+Results are cached in `__boop_static` so repeated calls at the
 same or lower precision are instant.
 
 ## Performance

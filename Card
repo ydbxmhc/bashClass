@@ -2,7 +2,7 @@
 
 # Card, FaceCard, Ace — playing card classes
 
-[[ -n "${__bashClass_registry[Card]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Card]+set}" ]] && return 2>/dev/null
 
 . boop
 
@@ -10,7 +10,7 @@
 # Card — base playing card
 # ═════════════════════════════════════════════════════════════════════
 
-__bashClass_registry["Card"]="|class=Card|parent=bashClass\
+__boop_registry["Card"]="|class=Card|parent=boop\
 |methods=new,flip,val,toString\
 |properties=suit,rank,faceUp"
 
@@ -24,15 +24,15 @@ Card.new() {
       faceUp=*) __Card_new_faceUp="${__Card_new_arg#faceUp=}" ;;
     esac
   done
-  [[ -n "$__Card_new_suit" ]] || __bashClass.crash "Card: suit= is required"
-  [[ -n "$__Card_new_rank" ]] || __bashClass.crash "Card: rank= is required"
-  into=__Card_new_self __bashClass.new suit="$__Card_new_suit" rank="$__Card_new_rank" faceUp="$__Card_new_faceUp"
-  __bashClass.return "$__Card_new_self" ${into:-}
+  [[ -n "$__Card_new_suit" ]] || __boop.crash "Card: suit= is required"
+  [[ -n "$__Card_new_rank" ]] || __boop.crash "Card: rank= is required"
+  into=__Card_new_self __boop.new suit="$__Card_new_suit" rank="$__Card_new_rank" faceUp="$__Card_new_faceUp"
+  __boop.return "$__Card_new_self" ${into:-}
 }
 
 Card.flip() {
   local -I _Self _Class
-  local __Card_flip_fu; __bashClass.parse "$_Self" "faceUp" __Card_flip_fu
+  local __Card_flip_fu; __boop.parse "$_Self" "faceUp" __Card_flip_fu
   if [[ "$__Card_flip_fu" == "1" ]]; then
     $_Self.set faceUp 0
   else
@@ -42,38 +42,38 @@ Card.flip() {
 
 Card.val() {
   local -I _Self _Class
-  local __Card_val_rank; __bashClass.parse "$_Self" "rank" __Card_val_rank
+  local __Card_val_rank; __boop.parse "$_Self" "rank" __Card_val_rank
   case "$__Card_val_rank" in
-    [2-9]) __bashClass.return "$__Card_val_rank" ${into:-} ;;
-    10)    __bashClass.return "10" ${into:-} ;;
-    *)     __bashClass.return "0" ${into:-} ;;
+    [2-9]) __boop.return "$__Card_val_rank" ${into:-} ;;
+    10)    __boop.return "10" ${into:-} ;;
+    *)     __boop.return "0" ${into:-} ;;
   esac
 }
 
 Card.toString() {
   local -I _Self _Class
-  local __Card_ts_fu; __bashClass.parse "$_Self" "faceUp" __Card_ts_fu
+  local __Card_ts_fu; __boop.parse "$_Self" "faceUp" __Card_ts_fu
   if [[ "$__Card_ts_fu" != "1" ]]; then
-    __bashClass.return "[?]" ${into:-}
+    __boop.return "[?]" ${into:-}
     return
   fi
   local __Card_ts_rank __Card_ts_suit
-  __bashClass.parse "$_Self" "rank" __Card_ts_rank
-  __bashClass.parse "$_Self" "suit" __Card_ts_suit
-  __bashClass.return "${__Card_ts_rank}${__Card_ts_suit}" ${into:-}
+  __boop.parse "$_Self" "rank" __Card_ts_rank
+  __boop.parse "$_Self" "suit" __Card_ts_suit
+  __boop.return "${__Card_ts_rank}${__Card_ts_suit}" ${into:-}
 }
 
-__bashClass.registerMethod Card new      Card.new
-__bashClass.registerMethod Card flip     Card.flip
-__bashClass.registerMethod Card val      Card.val
-__bashClass.registerMethod Card toString Card.toString
-__bashClass.registerClass Card
+__boop.registerMethod Card new      Card.new
+__boop.registerMethod Card flip     Card.flip
+__boop.registerMethod Card val      Card.val
+__boop.registerMethod Card toString Card.toString
+__boop.registerClass Card
 
 # ═════════════════════════════════════════════════════════════════════
 # FaceCard extends Card — J, Q, K are always worth 10
 # ═════════════════════════════════════════════════════════════════════
 
-__bashClass_registry["FaceCard"]="|class=FaceCard|parent=Card\
+__boop_registry["FaceCard"]="|class=FaceCard|parent=Card\
 |methods=new,val\
 |properties=suit,rank,faceUp"
 
@@ -83,18 +83,18 @@ FaceCard.new() {
 
 FaceCard.val() {
   local -I _Self _Class
-  __bashClass.return "10" ${into:-}
+  __boop.return "10" ${into:-}
 }
 
-__bashClass.registerMethod FaceCard new FaceCard.new
-__bashClass.registerMethod FaceCard val FaceCard.val
-__bashClass.registerClass FaceCard
+__boop.registerMethod FaceCard new FaceCard.new
+__boop.registerMethod FaceCard val FaceCard.val
+__boop.registerClass FaceCard
 
 # ═════════════════════════════════════════════════════════════════════
 # Ace extends Card — worth 11 (Hand adjusts to 1 when bust)
 # ═════════════════════════════════════════════════════════════════════
 
-__bashClass_registry["Ace"]="|class=Ace|parent=Card\
+__boop_registry["Ace"]="|class=Ace|parent=Card\
 |methods=new,val\
 |properties=suit,rank,faceUp"
 
@@ -104,9 +104,9 @@ Ace.new() {
 
 Ace.val() {
   local -I _Self _Class
-  __bashClass.return "11" ${into:-}
+  __boop.return "11" ${into:-}
 }
 
-__bashClass.registerMethod Ace new Ace.new
-__bashClass.registerMethod Ace val Ace.val
-__bashClass.registerClass Ace
+__boop.registerMethod Ace new Ace.new
+__boop.registerMethod Ace val Ace.val
+__boop.registerClass Ace

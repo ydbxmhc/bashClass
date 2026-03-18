@@ -36,7 +36,7 @@
 - **Regex/printf optimization pass** across entire codebase (Float, Math, boop)
 - **`set -u` removed from boop** — framework no longer alters caller's shell options
 - **`.gitattributes`** — `* text=auto eol=lf` enforced
-- **`__bashClass_static`** declared in boop for cross-class caching
+- **`__boop_static`** declared in boop for cross-class caching
 - **Float removed** — deleted class, tests, docs, log file
 - **Global rounding removed** — `__Math_round` and `__Math.setRound` eliminated entirely. All operations truncate. Rounding is opt-in via explicit `Math.round` / `$obj.round N` only.
 - **strDiv leading-zero bug** fixed — quotient digits past decimal that were zero got included in digit string (e.g., 1/25 → digits `04`), risking octal interpretation
@@ -48,25 +48,25 @@
 - **docs/boop.md** — comprehensive framework reference (return system, class authoring, naming conventions, internals, gotchas)
 - **README.md** rewritten — bash 5+ requirement, quick start, class walkthrough, doc links, current test counts
 - **REFACTOR_STATUS.md** replaced with redirect — content migrated to PLAN.md and docs/boop.md
-- **Duplicate key bug** fixed in `__bashClass.new` — constructor now replaces in-place instead of blindly appending
+- **Duplicate key bug** fixed in `__boop.new` — constructor now replaces in-place instead of blindly appending
 - **Cube constructor** now requires `size=N`, crashes if missing or malformed
 - **TestSuite class** built — immediate and queue modes, 6 assertion methods, verbose/quiet modes
 - **All tests re-instrumented** with TestSuite — 488 assertions across 6 files, all passing under `set -uo pipefail`
 - **`bencode`/`bdecode`** fixed to use `into=` convention (was positional `$2`)
 - **`each` iterator** added to Container/List/Map — callback-style iteration, non-zero return stops
-- **Insertion-ordered Map** — companion `__bashClass_keys_${_Self}` array tracks key insertion order; all traversal methods walk insertion order
+- **Insertion-ordered Map** — companion `__boop_keys_${_Self}` array tracks key insertion order; all traversal methods walk insertion order
 - **Iterator companion class** — defined inside Container file; stateful cursor with next/prev/current/index/reset/hasNext/hasPrev
 - **Lazy iterator delegation** on Container — `$list.next`, `$list.hasNext`, etc. auto-create internal Iterator on first use
 - **`noIterators`** opt-out method — subclasses call `$_Self.noIterators` to wall off all iterator methods
 - **Blackjack script** written (untested) — inline classes, full game loop, uses boop List
 - **`_Self`/`_Class` rename** — `self`/`class` renamed to `_Self`/`_Class` across entire codebase (framework, all classes, all tests, all docs). Single-underscore mixed-case convention chosen for semi-private, collision-resistant naming.
 - **Framework-wide LOGLEVEL system** — six numeric levels (silent/error/warn/info/debug/trace), per-class overrides inherited via class chain with cached resolution, fallback log file when stderr unavailable. Public API: `_Error`, `_Warn`, `_Info`, `_Debug`, `_Trace`, `_Crash`, `_LogLevel`. 51 tests in `test_logging_ts`.
-- **Baked-wrapper typecast fix** — Tier 2 (legitimate typecast) was checking the wrong direction; fixed to use `__bashClass.isa` directly with `_Self`. Tier 3 (unrelated class leakage) now emits `_Warn` diagnostic instead of silently ignoring.
+- **Baked-wrapper typecast fix** — Tier 2 (legitimate typecast) was checking the wrong direction; fixed to use `__boop.isa` directly with `_Self`. Tier 3 (unrelated class leakage) now emits `_Warn` diagnostic instead of silently ignoring.
 
 ### Known Bugs — None Currently
 
 All previously tracked bugs have been fixed:
-- ~~`__bashClass_static` undeclared~~ — added to boop
+- ~~`__boop_static` undeclared~~ — added to boop
 - ~~`pi(N)` display repeats~~ — was caused by global rounding; removed entirely
 - ~~CRLF line endings~~ — `.gitattributes` enforces LF
 
@@ -95,7 +95,7 @@ Explicit `$list.iterator` for independent cursors. Map iterators snapshot
 ordered keys at creation time. `$_Self.noIterators` for opt-out.
 
 ### Insertion-Ordered Map ✓ DONE
-Companion indexed array `__bashClass_keys_${_Self}` tracks insertion order.
+Companion indexed array `__boop_keys_${_Self}` tracks insertion order.
 All traversal methods walk insertion order. Overwrite preserves position.
 Delete removes from order; re-insert goes to end.
 
@@ -139,13 +139,13 @@ Fits the framework's no-external-dependencies philosophy perfectly.
 
 ### BOOP_CLASSPATH
 Colon-delimited environment variable for class file search paths.
-Current resolution order: classPath registry → `__bashClass_dir` → PATH.
-Add BOOP_CLASSPATH between classPath registry and `__bashClass_dir`.
+Current resolution order: classPath registry → `__boop_dir` → PATH.
+Add BOOP_CLASSPATH between classPath registry and `__boop_dir`.
 Enables separate-repo class libraries without hand-registration.
 
 ### Version Declaration
 ```bash
-declare -gr __bashClass_version="0.1.0"
+declare -gr __boop_version="0.1.0"
 ```
 No enforcement needed yet. Lets downstream scripts check compatibility.
 Semantic versioning from the start — worth the five seconds it takes.
@@ -196,6 +196,6 @@ Post it with a straight face and let the thread do the work.
 ## Running Notes / @@ Backlog
 
 - `bdecode` TODO: `output=file` support for binary-safe round-trip
-- `__bashClass.return` filesystem mode: `__bashClass.returnPath` from call stack introspection
+- `__boop.return` filesystem mode: `__boop.returnPath` from call stack introspection
 - Doubly-linked List: decide before implementing LinkedList @@
 

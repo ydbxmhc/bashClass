@@ -40,7 +40,7 @@ reveal() {
   into=_len $_hand.length
   for (( _i=0; _i < _len; _i++ )); do
     into=_card $_hand.get $_i
-    __bashClass.parse "$_card" "faceUp" _fu
+    __boop.parse "$_card" "faceUp" _fu
     [[ "$_fu" != "1" ]] && $_card.flip
   done
 }
@@ -52,7 +52,7 @@ reveal() {
 printf '
   ╔══════════════════════════════════╗
   ║         ♠  BLACKJACK  ♠          ║
-  ║     powered by bashClass/boop    ║
+  ║     powered by boop/boop    ║
   ╚══════════════════════════════════╝
 \n'
 

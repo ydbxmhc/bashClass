@@ -37,7 +37,7 @@ and have various levels of logging established.
 System-specific variables also use the double-leading-underscore.
 These should only *EvER* be accessed through the provided methods.  
 
-Examples: `__bashClass.parse`, `__Math.rawAdd`, `__bashClass_classPath`
+Examples: `__boop.parse`, `__Math.rawAdd`, `__boop_classPath`
 
 ### Tier 2 — Semi-Private (`_single_underscore`)
 
@@ -193,12 +193,12 @@ This is ugly. It is also correct. *Do not skip the prefix.*
 
 ### Framework Globals
 
-All framework-level globals use the `__bashClass_` prefix:
+All framework-level globals use the `__boop_` prefix:
 
 ```bash
-__bashClass_registry        # master object/class store
-__bashClass_methodRegistry  # method resolution cache
-__bashClass_logLevel        # global log level
+__boop_registry        # master object/class store
+__boop_methodRegistry  # method resolution cache
+__boop_logLevel        # global log level
 ```
 
 ### Inherited Identity Variables
@@ -247,10 +247,10 @@ printf "%s\n" "$value"
 
 ### Value Returns
 
-All value-producing functions route through `__bashClass.return`:
+All value-producing functions route through `__boop.return`:
 
 ```bash
-__bashClass.return "$value" ${into:-}
+__boop.return "$value" ${into:-}
 ```
 
 The `${into:-}` passes the caller's nameref target if one was
@@ -288,7 +288,7 @@ input. The user needs to know what happened and where.
 [[ -z "$input" ]] && return
 
 # Better — safely tells the user at least SOME of what went wrong
-[[ -z "${input:-}" ]] && __bashClass.crash "Math.add: missing operand"
+[[ -z "${input:-}" ]] && __boop.crash "Math.add: missing operand"
 ```
 
 ### Tier-Appropriate Validation
@@ -302,7 +302,7 @@ input. The user needs to know what happened and where.
 
 ```bash
 # Tier 3 error message — helpful
-__bashClass.crash "Math.add: invalid number '${input:-}' — expected a numeric value like '3.14' or '-42'"
+__boop.crash "Math.add: invalid number '${input:-}' — expected a numeric value like '3.14' or '-42'"
 ```
 
 ### `2>/dev/null` Policy
@@ -334,21 +334,21 @@ Every class file follows this structure:
 # NOTE: This pattern is under review for refactoring. The 2>/dev/null
 # suppresses "return outside function" when the file is executed
 # directly instead of sourced, which is a debugging hazard under
-# set -e. A bashClass.init replacement is planned.
-[[ -n "${__bashClass_registry[ClassName]+set}" ]] && return 2>/dev/null
+# set -e. A boop.init replacement is planned.
+[[ -n "${__boop_registry[ClassName]+set}" ]] && return 2>/dev/null
 
 . boop [Dependencies]
 
 # Class descriptor
-__bashClass_registry["ClassName"]="..."
+__boop_registry["ClassName"]="..."
 
 # Method implementations (each with a function header comment)
 
 # Method registration
-__bashClass.registerMethod ClassName method ClassName.method
+__boop.registerMethod ClassName method ClassName.method
 
 # Finalize
-__bashClass.registerClass ClassName
+__boop.registerClass ClassName
 ```
 
 ---

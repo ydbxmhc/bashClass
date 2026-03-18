@@ -91,7 +91,7 @@ into=v $fj.toString; $t.assert_eq "J♠ toString" "$v" "J♠"
 # FaceCard isa checks
 $t.assert_ok "FaceCard isa FaceCard" $fj.isa FaceCard
 $t.assert_ok "FaceCard isa Card" $fj.isa Card
-$t.assert_ok "FaceCard isa bashClass" $fj.isa bashClass
+$t.assert_ok "FaceCard isa boop" $fj.isa boop
 $t.assert_fail "FaceCard not Ace" $fj.isa Ace
 
 # ============================================================================
@@ -165,7 +165,7 @@ declare _card _cls
 for (( _i=0; _i < 52; _i++ )); do
   into=_card $d.draw
   (( _num_cards++ ))
-  __bashClass.parse "$_card" "class" _cls
+  __boop.parse "$_card" "class" _cls
   case "$_cls" in
     FaceCard) (( _num_face++ )) ;;
     Ace)      (( _num_ace++ )) ;;
@@ -192,10 +192,10 @@ into=_d1_last $d1.get 51
 into=_d2_last $d2.get 51
 # At least one of first or last should differ (astronomically unlikely both match)
 declare _d1f_rank _d2f_rank _d1l_rank _d2l_rank
-__bashClass.parse "$_d1_first" "rank" _d1f_rank
-__bashClass.parse "$_d2_first" "rank" _d2f_rank
-__bashClass.parse "$_d1_last" "rank" _d1l_rank
-__bashClass.parse "$_d2_last" "rank" _d2l_rank
+__boop.parse "$_d1_first" "rank" _d1f_rank
+__boop.parse "$_d2_first" "rank" _d2f_rank
+__boop.parse "$_d1_last" "rank" _d1l_rank
+__boop.parse "$_d2_last" "rank" _d2l_rank
 declare _differ=0
 [[ "$_d1f_rank" != "$_d2f_rank" ]] && _differ=1
 [[ "$_d1l_rank" != "$_d2l_rank" ]] && _differ=1

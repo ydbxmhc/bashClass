@@ -43,7 +43,7 @@ into=v $cube.volume;     $t.assert_eq "volume 4x4x4" "$v" "64"
 $t.section "Type Checking"
 $t.assert_ok "cube isa Cube" $cube.isa Cube
 $t.assert_ok "cube isa Box" $cube.isa Box
-$t.assert_ok "cube isa bashClass" $cube.isa bashClass
+$t.assert_ok "cube isa boop" $cube.isa boop
 $t.assert_fail "cube not a String" $cube.isa String
 
 # ============================================================================
@@ -118,8 +118,8 @@ into=v $enc.get "color"; $t.assert_eq "tabs" "$v" "col1	col2"
 # ============================================================================
 
 $t.section "Binary-safe Encoding"
-into=enc_val __bashClass.bencode "hello|world=foo%bar"
-into=dec_val __bashClass.bdecode "$enc_val"
+into=enc_val __boop.bencode "hello|world=foo%bar"
+into=dec_val __boop.bdecode "$enc_val"
 $t.assert_eq "bencode/bdecode round-trip" "$dec_val" "hello|world=foo%bar"
 
 # ============================================================================
