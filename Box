@@ -23,11 +23,11 @@ Box.calc() {
   local -i __Box_calc_tot=1 required="${required:-0}"
 
   if ((required)); then
-    (( required == $# )) || __boop.crash "$FUNCNAME requires $required INTEGER arguments to multiply"
+    (( required == $# )) || _Crash "$FUNCNAME requires $required INTEGER arguments to multiply"
   fi
 
   for __Box_calc_arg in "$@"; do
-    [[ "${__Box_calc_arg:-}" =~ ^[0-9]+$ ]] && ((__Box_calc_arg)) || __boop.crash "$FUNCNAME arguments must be nonzero integers: $*"
+    [[ "${__Box_calc_arg:-}" =~ ^[0-9]+$ ]] && ((__Box_calc_arg)) || _Crash "$FUNCNAME arguments must be nonzero integers: $*"
     (( __Box_calc_tot *= __Box_calc_arg ))
   done
 

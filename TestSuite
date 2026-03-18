@@ -88,9 +88,9 @@ TestSuite.new() {
     esac
   done
 
-  [[ -n "$__TS_new_name" ]] || __boop.crash "TestSuite: name is required"
+  [[ -n "$__TS_new_name" ]] || _Crash "TestSuite: name is required"
   [[ "$__TS_new_mode" == "immediate" || "$__TS_new_mode" == "queue" ]] || \
-    __boop.crash "TestSuite: mode must be 'immediate' or 'queue', got '$__TS_new_mode'"
+    _Crash "TestSuite: mode must be 'immediate' or 'queue', got '$__TS_new_mode'"
 
   into=__TS_new_self __boop.new \
     name="$__TS_new_name" mode="$__TS_new_mode" verbose="$__TS_new_verbose" \

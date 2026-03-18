@@ -156,18 +156,37 @@ declare -gi __boop_loaded=0
 # UTILITY
 # ============================================================================
 
-# Crash with error message. All output goes to stderr; exit code defaults to 1.
-# If the first argument is a bare integer, it becomes the exit code and is
-# shifted off before printing. Remaining arguments are printed one per line.
-# Usage: __boop.crash "something broke"
-#        __boop.crash 42 "custom exit code" "additional context"
-__boop.crash() {
-  local -i __crash_err=1
-  if [[ "${1:-}" =~ ^[0-9]+$ ]]; then __crash_err=$1; shift; fi
-  { printf "%s\n" "$@" >&2; } 2>/dev/null || \
-    printf "%s\n" "$@" >> "$__boop_logFile" 2>/dev/null
-  exit $__crash_err
-}
+# Unified crash handler. Prints a tagged message to stderr with optional
+# stack trace, then exits. All output goes to stderr via `} >&2` on the
+# function body — no per-line redirection needed.
+#
+# Caller controls all whitespace in the message, including newlines.
+# `printf '%s'` with `$@` means each argument is concatenated literally —
+# add $'\n' between arguments if you want line breaks.
+#
+# Inherited variables (Tier 2, via `local -I`):
+#   _Err        — exit code (default: 1)
+#   _StackTrace — number of stack frames to show (default: 1)
+#                  0 = no trace, negative = show all frames
+#
+# Usage:
+#   _Crash "something broke"
+#   _Err=42 _Crash "custom exit code"
+#   _StackTrace=-1 _Crash "full trace"
+#   _Crash "line one" $'\n' "line two" $'\n'
+_Crash() {
+  local -I _Err _StackTrace
+  printf '%s' '[CRASH] ' "$@" $'\n'
+  (( _StackTrace = ${_StackTrace:- 1} ))
+  (( _StackTrace < 0 )) && _StackTrace=${#FUNCNAME[@]}
+  if (( _StackTrace > 0 )); then
+    local -i i
+    for (( i=1; i <= _StackTrace && i < ${#FUNCNAME[@]}; i++ )); do
+      printf "  in %s (%s:%s)\n" "${FUNCNAME[$i]}" "${BASH_SOURCE[$i]}" "${BASH_LINENO[$i-1]}"
+    done
+  fi
+  exit ${_Err:-1}
+} >&2
 
 # Returns 0 if the current execution context is a subshell (BASHPID differs
 # from the root PID captured at framework load time). Used by auto return mode.
@@ -276,7 +295,7 @@ __boop.setLogLevel() {
     silent|0) __slvl_num=0 ;; error|1)  __slvl_num=1 ;;
     warn|2)   __slvl_num=2 ;; info|3)   __slvl_num=3 ;;
     debug|4)  __slvl_num=4 ;; trace|5)  __slvl_num=5 ;;
-    *) __boop.crash "Invalid log level: $__slvl_name (use: silent, error, warn, info, debug, trace)" ;;
+    *) _Crash "Invalid log level: $__slvl_name (use: silent, error, warn, info, debug, trace)" ;;
   esac
 
   if [[ -z "$__slvl_class" ]]; then
@@ -302,17 +321,6 @@ _Debug() { __boop.log $__boop_LOG_DEBUG "$@"; }
 _Info()  { __boop.log $__boop_LOG_INFO  "$@"; }
 _Warn()  { __boop.log $__boop_LOG_WARN  "$@"; }
 _Error() { __boop.log $__boop_LOG_ERROR "$@"; }
-
-# _Crash: logs as error, then exits. The message always prints
-# regardless of log level (it's fatal — you need to see it).
-# Falls back to log file if stderr is unavailable.
-_Crash() {
-  local __crash_msg
-  printf -v __crash_msg "[CRASH] %s: %s" "${FUNCNAME[1]:-main}" "$*"
-  printf "%s\n" "$__crash_msg" >&2 2>/dev/null || \
-    printf "%s\n" "$__crash_msg" >> "$__boop_logFile" 2>/dev/null
-  exit 1
-}
 
 # _LogLevel: convenience wrapper for __boop.setLogLevel
 _LogLevel() { __boop.setLogLevel "$@"; }
@@ -359,14 +367,14 @@ __boop.return() {
   fi
 
   case "$__return_mode" in
-    nameref) __boop.crash "nameref mode requires target variable" ;; # wouldn't be here if it had one!
+    nameref) _Crash "nameref mode requires target variable" ;; # wouldn't be here if it had one!
     stdout) printf "%s" "${__return_val:-}" ${_EOL:-}                  ;; # with line ending if set
     global) __boop_RETURN="$__return_val" ;;
     filesystem)
       # TODO: __boop.returnPath from call stack introspection
       printf "%s" "$__return_val" >| "${__boop_tmpdir:-/tmp}/__boop_${FUNCNAME[1]}_$BASHPID"
       ;;
-    *) __boop.crash "Invalid return mode: $__return_mode" ;;
+    *) _Crash "Invalid return mode: $__return_mode" ;;
   esac
 }
 
@@ -427,7 +435,7 @@ __boop.bencode() {
   local -l input; : "${input:=string}"
   local __bencode_val
   case $input in
-    file) [[ -f "$1" ]] || __boop.crash "File not found: $1"
+    file) [[ -f "$1" ]] || _Crash "File not found: $1"
           __bencode_val=$(base64 -w0 < "$1") ;;
     -)    __bencode_val=$(base64 -w0) ;;
     *)    __bencode_val=$(printf '%s' "$1" | base64 -w0) ;;
@@ -446,7 +454,7 @@ __boop.bdecode() {
   local -l input; : "${input:=string}"
   local __bdecode_val
   case $input in
-    file) [[ -f "$1" ]] || __boop.crash "File not found: $1"
+    file) [[ -f "$1" ]] || _Crash "File not found: $1"
           __bdecode_val=$(base64 -d < "$1") ;;
     -)    __bdecode_val=$(base64 -d) ;;
     *)    __bdecode_val=$(printf '%s' "$1" | base64 -d) ;;
@@ -481,7 +489,7 @@ __boop.validate() {
     func|function) __validate_pat='^[A-Za-z_][A-Za-z0-9_.]*$' ;;
     *)             __validate_pat='^[A-Za-z_][A-Za-z0-9_]*$' ;;
   esac
-  [[ "$1" =~ $__validate_pat ]] || __boop.crash "Invalid $type: '$1'"
+  [[ "$1" =~ $__validate_pat ]] || _Crash "Invalid $type: '$1'"
 }
 
 # ============================================================================
@@ -494,7 +502,7 @@ __boop.validate() {
 __boop.setDefaultMode() {
   case "$1" in
     auto|nameref|stdout|global|filesystem) __boop_returnMode="$1" ;;
-    *) __boop.crash "Invalid mode: $1 (use: auto, nameref, stdout, global, filesystem)" ;;
+    *) _Crash "Invalid mode: $1 (use: auto, nameref, stdout, global, filesystem)" ;;
   esac
 }
 
@@ -559,7 +567,7 @@ __boop.registerMethod() {
   __boop.validate "$__regmethod_method"
   type=function __boop.validate "$__regmethod_impl"
 
-  declare -f "$__regmethod_impl" >/dev/null || __boop.crash "Function '$__regmethod_impl' does not exist"
+  declare -f "$__regmethod_impl" >/dev/null || _Crash "Function '$__regmethod_impl' does not exist"
 
   __boop_methodRegistry["$__regmethod_class.$__regmethod_method"]="$__regmethod_impl"
 }
@@ -610,7 +618,7 @@ __boop.dispatch() {
     done
   fi
 
-  [[ -n "$__dispatch_impl" ]] || __boop.crash "Method not found: $_Class.$__dispatch_method"
+  [[ -n "$__dispatch_impl" ]] || _Crash "Method not found: $_Class.$__dispatch_method"
 
   # If called from a stub (__init=true), bake a direct wrapper that replaces
   # the stub function. The baked wrapper hardcodes self, class, and the
@@ -695,7 +703,7 @@ __boop.serialize() {
 # to call methods on them.
 __boop.deserialize() {
   local __deserialize_file="${1:-objects.dat}"
-  [[ -f "$__deserialize_file" ]] || __boop.crash "File not found: $__deserialize_file"
+  [[ -f "$__deserialize_file" ]] || _Crash "File not found: $__deserialize_file"
   local __deserialize_key __deserialize_descriptor
   while IFS=$'\t' read -r __deserialize_key __deserialize_descriptor; do
     __boop.validate "$__deserialize_key"
@@ -897,7 +905,7 @@ __boop.new() {
 __boop.super() {
   local -I _Self _Class
   local __super_parent; __boop.parse "$_Class" "parent" __super_parent
-  [[ -n "$__super_parent" ]] || __boop.crash "$_Class has no parent"
+  [[ -n "$__super_parent" ]] || _Crash "$_Class has no parent"
   _Self="$_Self" _Class="$__super_parent" __boop.dispatch "$@"
 }
 
@@ -957,7 +965,7 @@ __boop.stubAll() {
 __boop.refresh() {
   local __refresh_self="$1"
   local __refresh_class; __boop.parse "$__refresh_self" "class" __refresh_class
-  [[ -n "$__refresh_class" ]] || __boop.crash "Cannot refresh: no class for '$__refresh_self'"
+  [[ -n "$__refresh_class" ]] || _Crash "Cannot refresh: no class for '$__refresh_self'"
   __boop.stubAll "$__refresh_self" "$__refresh_class" force
 }
 
@@ -983,7 +991,7 @@ __boop.registerClass() {
   __boop.validate "$__regclass_class"
 
   [[ -n "${__boop_registry[$__regclass_class]:-}" ]] || \
-    __boop.crash "No descriptor for class '$__regclass_class' — register it first"
+    _Crash "No descriptor for class '$__regclass_class' — register it first"
 
   local __regclass_current="$__regclass_class" __regclass_method __regclass_methods
 
@@ -1051,7 +1059,7 @@ __boop.import() {
     # Check explicit path registry first
     if [[ -n "${__boop_classPath[$__import_class]:-}" ]]; then
       . "${__boop_classPath[$__import_class]}" || \
-        __boop.crash "Failed to load class '$__import_class' from ${__boop_classPath[$__import_class]}"
+        _Crash "Failed to load class '$__import_class' from ${__boop_classPath[$__import_class]}"
       unset '__boop_loading[$__import_class]'
       continue
     fi
@@ -1059,14 +1067,14 @@ __boop.import() {
     # Check __boop_dir (co-located with framework)
     if [[ -f "$__boop_dir/$__import_class" ]]; then
       . "$__boop_dir/$__import_class" || \
-        __boop.crash "Failed to load class '$__import_class' from $__boop_dir"
+        _Crash "Failed to load class '$__import_class' from $__boop_dir"
       unset '__boop_loading[$__import_class]'
       continue
     fi
 
     # Fall through to PATH resolution
     . "$__import_class" 2>/dev/null || \
-      __boop.crash "Class '$__import_class' not found (checked classPath, $__boop_dir, PATH)"
+      _Crash "Class '$__import_class' not found (checked classPath, $__boop_dir, PATH)"
     unset '__boop_loading[$__import_class]'
   done
 }

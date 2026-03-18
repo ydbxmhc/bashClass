@@ -423,18 +423,22 @@ $t.assert_eq "50 rapid objects, all unique IDs" "$__dupes" "0"
 unset __seen_ids
 
 # ============================================================================
-# SECTION 23: crash function — error codes
+# SECTION 23: _Crash — unified crash handler
 # ============================================================================
 
-$t.section "crash"
-$t.assert_fail "crash default exit code" bash -c '. boop Cube; __boop.crash "boom"'
+$t.section "_Crash"
+$t.assert_fail "crash default exit code" bash -c '. boop Cube; _Crash "boom"'
 
 __crash_rc=0
-bash -c '. boop Cube; __boop.crash 42 "custom code"' 2>/dev/null || __crash_rc=$?
+bash -c '. boop Cube; _Err=42 _Crash "custom code"' 2>/dev/null || __crash_rc=$?
 $t.assert_eq "crash with custom exit code 42" "$__crash_rc" "42"
 
-__crash_stdout=$(bash -c '. boop Cube; __boop.crash "stderr test"' 2>/dev/null)
+__crash_stdout=$(bash -c '. boop Cube; _Crash "stderr test"' 2>/dev/null)
 $t.assert_eq "crash message goes to stderr, not stdout" "$__crash_stdout" ""
+
+__crash_rc=0
+bash -c '. boop Cube; _StackTrace=0 _Crash "no trace"' 2>/dev/null || __crash_rc=$?
+$t.assert_eq "crash with _StackTrace=0 still exits" "$__crash_rc" "1"
 
 # ============================================================================
 # SECTION 24: into typecast — named return through the full stack

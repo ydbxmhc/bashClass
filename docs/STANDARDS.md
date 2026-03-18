@@ -288,7 +288,7 @@ input. The user needs to know what happened and where.
 [[ -z "$input" ]] && return
 
 # Better — safely tells the user at least SOME of what went wrong
-[[ -z "${input:-}" ]] && __boop.crash "Math.add: missing operand"
+[[ -z "${input:-}" ]] && _Crash "Math.add: missing operand"
 ```
 
 ### Tier-Appropriate Validation
@@ -302,7 +302,7 @@ input. The user needs to know what happened and where.
 
 ```bash
 # Tier 3 error message — helpful
-__boop.crash "Math.add: invalid number '${input:-}' — expected a numeric value like '3.14' or '-42'"
+_Crash "Math.add: invalid number '${input:-}' — expected a numeric value like '3.14' or '-42'"
 ```
 
 ### `2>/dev/null` Policy

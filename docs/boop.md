@@ -885,7 +885,7 @@ automatically skipped in the stack walk.
 | `__boop.isa` | Type check with inheritance walk. |
 | `__boop.toString` | Human-readable object display (compact or pretty). |
 | `__boop.super` | Dispatch a method against the parent class. |
-| `__boop.crash` | Exit with error message(s) to stderr. Optional custom exit code. |
+| `__boop.crash` | *Removed* — replaced by `_Crash` (see Logging below). |
 
 ### Logging
 
@@ -896,7 +896,7 @@ automatically skipped in the stack walk.
 | `_Info` | Log at info level (3). |
 | `_Warn` | Log at warn level (2). |
 | `_Error` | Log at error level (1). |
-| `_Crash` | Log as error and exit 1. Always prints regardless of level. |
+| `_Crash` | Exit with tagged message to stderr. Supports `_Err` (exit code) and `_StackTrace` (frame count). |
 | `_LogLevel` | Set global or per-class log level. |
 | `__boop.log` | Core log function (use the wrappers above instead). |
 | `__boop.resolveLogLevel` | Resolve effective level for a class with caching. |

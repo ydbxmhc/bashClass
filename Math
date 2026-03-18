@@ -336,7 +336,7 @@ __Math.strDiv() {
   local -i __div_maxdigits="${4:-$__Math_precision}"
   local -n __div_qscale="$5"
 
-  [[ "$__div_b" == "0" ]] && __boop.crash "Math: division by zero"
+  [[ "$__div_b" == "0" ]] && _Crash "Math: division by zero"
   [[ "$__div_a" == "0" ]] && { __div_quotient="0"; __div_qscale=0; return; }
 
   local __div_remainder="0"
@@ -448,7 +448,7 @@ __Math.resolve() {
   # The -n check ensures at least one digit is present somewhere.
   if ! [[ "${__res_input:-}" =~ ^[[:space:]]*(-?)([0-9]*)([.]*)([0-9]*)[[:space:]]*$ \
        && -n "${BASH_REMATCH[2]:-}${BASH_REMATCH[4]:-}" ]]; then
-    __boop.crash "Math: invalid number '$1' — expected a numeric value like '3.14' or '-42'"
+    _Crash "Math: invalid number '$1' — expected a numeric value like '3.14' or '-42'"
   fi
 
   __res_neg=${#BASH_REMATCH[1]}                                  # "-" → length 1; empty → 0
@@ -669,7 +669,7 @@ __Math.i_div() {
   __Math.resolve "$_Self" __div_dA __div_sA __div_nA
   __Math.resolve "$1" __div_dB __div_sB __div_nB
 
-  [[ "$__div_dB" == "0" ]] && __boop.crash "Math: division by zero"
+  [[ "$__div_dB" == "0" ]] && _Crash "Math: division by zero"
 
   # Fast path: native integer division when operands are small enough.
   # After align, we multiply dividend by 10^extra for fractional digits.
@@ -736,15 +736,15 @@ __Math.i_mod() {
   __Math.resolve "$_Self" __mod_dA __mod_sA __mod_nA
   __Math.resolve "$1" __mod_dB __mod_sB __mod_nB
 
-  [[ "$__mod_dB" == "0" ]] && __boop.crash "Math: modulo by zero"
+  [[ "$__mod_dB" == "0" ]] && _Crash "Math: modulo by zero"
 
   __Math.alignScale __mod_dA __mod_sA __mod_dB __mod_sB
 
   local -i __mod_iA __mod_iB
   __Math.toInt64 "$__mod_dA" $__mod_sA $__mod_nA __mod_iA \
-    || __boop.crash "Math: mod operand too large for native arithmetic"
+    || _Crash "Math: mod operand too large for native arithmetic"
   __Math.toInt64 "$__mod_dB" $__mod_sB $__mod_nB __mod_iB \
-    || __boop.crash "Math: mod operand too large for native arithmetic"
+    || _Crash "Math: mod operand too large for native arithmetic"
 
   local __mod_fd; local -i __mod_fs __mod_fn
   __Math.fromInt64 $(( __mod_iA % __mod_iB )) $__mod_sA __mod_fd __mod_fs __mod_fn
@@ -761,8 +761,8 @@ __Math.i_pow() {
   local -i __pow_sB __pow_nB
   __Math.resolve "$1" __pow_dB __pow_sB __pow_nB
 
-  (( __pow_sB != 0 )) && __boop.crash "Math: fractional exponents not supported"
-  (( __pow_nB )) && __boop.crash "Math: negative exponents not supported"
+  (( __pow_sB != 0 )) && _Crash "Math: fractional exponents not supported"
+  (( __pow_nB )) && _Crash "Math: negative exponents not supported"
 
   # Exponent is a plain integer
   local -i __pow_exp=10#$__pow_dB
@@ -1096,7 +1096,7 @@ __Math.rawDiv() {
   local -n __rd_od="${7}" __rd_os="${8}" __rd_on="${9}"
   local -i __rd_prec="${10:-$__Math_precision}"
 
-  [[ "$__rd_dB" == "0" ]] && __boop.crash "Math: division by zero"
+  [[ "$__rd_dB" == "0" ]] && _Crash "Math: division by zero"
 
   __Math.alignScale __rd_dA __rd_sA __rd_dB __rd_sB
 
@@ -1458,7 +1458,7 @@ __Math.staticBinOp() {
           case "$__sbo_op" in
             add) __Math.fromInt64 $(( __sbo_iA + __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
             sub) __Math.fromInt64 $(( __sbo_iA - __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
-            mod) [[ "$__sbo_dB" == "0" ]] && __boop.crash "Math: modulo by zero"
+            mod) [[ "$__sbo_dB" == "0" ]] && _Crash "Math: modulo by zero"
                  __Math.fromInt64 $(( __sbo_iA % __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
           esac
           __Math.formatVal "$__sbo_rd" $__sbo_rs $__sbo_rn ${into:-}
@@ -1485,13 +1485,13 @@ __Math.staticBinOp() {
     mul) __Math.rawMul "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn ;;
     div) local -i __sbo_prec=${precision:-$__Math_precision}
          __Math.rawDiv "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn $__sbo_prec ;;
-    mod) [[ "$__sbo_dB" == "0" ]] && __boop.crash "Math: modulo by zero"
+    mod) [[ "$__sbo_dB" == "0" ]] && _Crash "Math: modulo by zero"
          __Math.alignScale __sbo_dA __sbo_sA __sbo_dB __sbo_sB
          local -i __sbo_iA __sbo_iB
          __Math.toInt64 "$__sbo_dA" $__sbo_sA $__sbo_nA __sbo_iA \
-           || __boop.crash "Math: mod operand too large for native arithmetic"
+           || _Crash "Math: mod operand too large for native arithmetic"
          __Math.toInt64 "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_iB \
-           || __boop.crash "Math: mod operand too large for native arithmetic"
+           || _Crash "Math: mod operand too large for native arithmetic"
          __Math.fromInt64 $(( __sbo_iA % __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
   esac
 
@@ -1687,7 +1687,7 @@ Math.RPN() {
       __rpn_stack[$__rpn_sp]="$__rpn_tok"
       (( __rpn_sp++ ))
     elif [[ "$__rpn_type" == "op" ]]; then
-      (( __rpn_sp < 2 )) && __boop.crash "Math.RPN: not enough operands for '$__rpn_tok'"
+      (( __rpn_sp < 2 )) && _Crash "Math.RPN: not enough operands for '$__rpn_tok'"
       (( __rpn_sp-- ))
       local __rpn_b="${__rpn_stack[$__rpn_sp]}"
       (( __rpn_sp-- ))
@@ -1699,7 +1699,7 @@ Math.RPN() {
     fi
   done
 
-  (( __rpn_sp != 1 )) && __boop.crash "Math.RPN: invalid expression (${__rpn_sp} values remain)"
+  (( __rpn_sp != 1 )) && _Crash "Math.RPN: invalid expression (${__rpn_sp} values remain)"
   __boop.return "${__rpn_stack[0]}" ${into:-}
 }
 

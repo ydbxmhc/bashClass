@@ -5,6 +5,52 @@ reference entries here by section name.
 
 ---
 
+## `::` Syntax — Mixins, Classlets, and Multiple Inheritance
+
+The `::` separator is conventional in bash for namespaced functions
+(`mylib::init`). boop doesn't use it — dots handle class.method
+dispatch. That frees `::` for a new role.
+
+Three potential applications, possibly overlapping:
+
+### Mixins / Traits ("Classlets")
+
+Bundles of methods without constructors or state — `Serializable`,
+`Comparable`, `Printable`. Not full classes, just method sets you
+mix into a real class on demand. The `::` identifies provenance:
+`Serializable::save` is the `save` method provided by the
+`Serializable` mixin, distinguishing it from any `save` the class
+defines itself.
+
+### Lazy Sub-Modules
+
+`Math::Trig` loads trig functions only when first touched. It
+doesn't inherit from Math — it extends Math's surface area on
+demand. The `::` signals "sub-module of" without implying an
+inheritance relationship. Could hook into the existing lazy
+stub/bake mechanism: first call to `Math::Trig.sin` triggers
+the load.
+
+### Multiple Inheritance Disambiguation
+
+If A inherits from both B and C, and both provide `method`,
+`B::A.method` specifies which lineage to resolve through.
+Similar to C++'s `Base::method()` — explicit, no magic, the
+programmer picks the path. Avoids Python-style MRO linearization
+complexity.
+
+Open questions:
+- Does `::` participate in dispatch, or is it purely a source-time
+  resolution hint?
+- Can classlets have state (properties), or are they method-only?
+- How does `isa` work with mixins? `$obj.isa Serializable`?
+- Performance: does this add overhead to the hot path, or is it
+  resolved at bake time and free thereafter?
+
+This is a design exploration — no implementation yet.
+
+---
+
 ## Load Guard & Class Init Refactor
 
 The current load guard pattern in every class file:
@@ -444,7 +490,7 @@ no explicit target is given.
 ## Try/Catch Mechanism
 
 Bash has no native try/catch. The framework currently uses
-`__boop.crash` (which calls `exit`) for all fatal errors,
+`_Crash` (which calls `exit`) for all fatal errors,
 and `assert_fail` wraps commands in subshells to isolate crashes.
 
 A try/catch pattern would let user code attempt operations that
@@ -455,7 +501,7 @@ might crash and handle the failure without dying. Options:
 - Trap-based: `ERR` trap with a recovery mechanism. Complex,
   interacts badly with `set -e`, fragile across bash versions.
 - Flag-based: set a "don't crash, set error flag" mode on
-  `__boop.crash`, let callers check the flag. Lightweight
+  `_Crash`, let callers check the flag. Lightweight
   but changes crash semantics globally.
 
 Related: Signal Handler Class (already in TODO), Fatality Threshold.

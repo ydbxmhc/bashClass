@@ -24,8 +24,8 @@ Card.new() {
       faceUp=*) __Card_new_faceUp="${__Card_new_arg#faceUp=}" ;;
     esac
   done
-  [[ -n "$__Card_new_suit" ]] || __boop.crash "Card: suit= is required"
-  [[ -n "$__Card_new_rank" ]] || __boop.crash "Card: rank= is required"
+  [[ -n "$__Card_new_suit" ]] || _Crash "Card: suit= is required"
+  [[ -n "$__Card_new_rank" ]] || _Crash "Card: rank= is required"
   into=__Card_new_self __boop.new suit="$__Card_new_suit" rank="$__Card_new_rank" faceUp="$__Card_new_faceUp"
   __boop.return "$__Card_new_self" ${into:-}
 }

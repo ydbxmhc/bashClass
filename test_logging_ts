@@ -376,19 +376,15 @@ else
   $t.assert_ok "fallback file was created" false
 fi
 
-# _Crash with stderr closed — should also fall back to file
+# _Crash with stderr closed — message is lost (by design), but still exits.
+# The old _Crash had a logfile fallback; the new one doesn't — if someone
+# closes stderr, that's their problem.
+__crash_rc=0
 bash -c '
   . boop
-  __boop_logFile="'"$__fallback_logfile"'"
   exec 2>&-
-  _Crash "crash fallback"
-' 2>/dev/null
-
-if [[ -f "$__fallback_logfile" ]]; then
-  $t.assert_contains "crash fallback has message" "$(<"$__fallback_logfile")" "crash fallback"
-  rm -f "$__fallback_logfile"
-else
-  $t.assert_ok "crash fallback file was created" false
-fi
+  _Crash "crash no stderr"
+' 2>/dev/null || __crash_rc=$?
+$t.assert_eq "crash with closed stderr still exits" "$__crash_rc" "1"
 
 $t.summary

@@ -115,7 +115,7 @@ List.set() {
   local -i __List_set_len=0; [[ -n "${!__List_set_arr[@]}" ]] && __List_set_len=${#__List_set_arr[@]}
   (( __List_set_idx < 0 )) && (( __List_set_idx += __List_set_len ))
   (( __List_set_idx < 0 || __List_set_idx > __List_set_len )) && \
-    __boop.crash "List index out of range: $1 (length: $__List_set_len)"
+    _Crash "List index out of range: $1 (length: $__List_set_len)"
   __List_set_arr[$__List_set_idx]="$__List_set_val"
 }
 
@@ -142,7 +142,7 @@ List.delete() {
   local -i __List_del_len=0; [[ -n "${!__List_del_arr[@]}" ]] && __List_del_len=${#__List_del_arr[@]}
   (( __List_del_idx < 0 )) && (( __List_del_idx += __List_del_len ))
   (( __List_del_idx < 0 || __List_del_idx >= __List_del_len )) && \
-    __boop.crash "List index out of range: $1 (length: $__List_del_len)"
+    _Crash "List index out of range: $1 (length: $__List_del_len)"
   unset '__List_del_arr[$__List_del_idx]'
   __List_del_arr=("${__List_del_arr[@]+"${__List_del_arr[@]}"}")
 }
@@ -224,7 +224,7 @@ List.pop() {
   local -I _Self _Class
   local -n __List_pop_arr="__boop_data_${_Self}"
   local -i __List_pop_len=0; [[ -n "${!__List_pop_arr[@]}" ]] && __List_pop_len=${#__List_pop_arr[@]}
-  (( __List_pop_len == 0 )) && __boop.crash "pop from empty List"
+  (( __List_pop_len == 0 )) && _Crash "pop from empty List"
   local __List_pop_val="${__List_pop_arr[-1]}"
   unset '__List_pop_arr[-1]'
   __boop.return "$__List_pop_val" ${into:-}
@@ -243,7 +243,7 @@ List.shift() {
   local -I _Self _Class
   local -n __List_shift_arr="__boop_data_${_Self}"
   local -i __List_shift_len=0; [[ -n "${!__List_shift_arr[@]}" ]] && __List_shift_len=${#__List_shift_arr[@]}
-  (( __List_shift_len == 0 )) && __boop.crash "shift from empty List"
+  (( __List_shift_len == 0 )) && _Crash "shift from empty List"
   local __List_shift_val="${__List_shift_arr[0]}"
   __List_shift_arr=("${__List_shift_arr[@]:1}")
   __boop.return "$__List_shift_val" ${into:-}
