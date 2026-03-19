@@ -104,13 +104,20 @@ declare -g  __boop_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # ============================================================================
 
 # Numeric log levels. Higher = more verbose.
-# silent=0: suppress everything (even errors — use with care)
-# error=1:  fatal or near-fatal conditions
-# warn=2:   unexpected but recoverable situations (default)
-# info=3:   notable lifecycle events (object creation, class loading)
-# debug=4:  detailed internal state for troubleshooting
-# trace=5:  finest grain — descriptor dumps, dispatch steps, etc.
-declare -gri __boop_LOG_SILENT=0
+# Level 0 is reserved as a crash trigger — if __boop.log receives
+# level 0 (e.g., from a missing/empty argument coerced by -i), it
+# prints the message and exits. This catches accidental direct calls
+# to __boop.log without a level argument.
+#
+# silent=-1: suppress everything (even errors — use with care)
+# crash=0:   reserved — triggers immediate crash (see above)
+# error=1:   fatal or near-fatal conditions
+# warn=2:    unexpected but recoverable situations (default)
+# info=3:    notable lifecycle events (object creation, class loading)
+# debug=4:   detailed internal state for troubleshooting
+# trace=5:   finest grain — descriptor dumps, dispatch steps, etc.
+declare -gri __boop_LOG_SILENT=-1
+declare -gri __boop_LOG_CRASH=0
 declare -gri __boop_LOG_ERROR=1
 declare -gri __boop_LOG_WARN=2
 declare -gri __boop_LOG_INFO=3
@@ -135,14 +142,15 @@ declare -gA __boop_resolvedLogLevel
 
 # Human-readable level names for output formatting.
 declare -gA __boop_logLevelName=(
-  [0]="SILENT" [1]="ERROR" [2]="WARN"
-  [3]="INFO"   [4]="DEBUG" [5]="TRACE"
+  [$__boop_LOG_SILENT]="SILENT" [$__boop_LOG_CRASH]="CRASH"  [$__boop_LOG_ERROR]="ERROR"
+  [$__boop_LOG_WARN]="WARN"     [$__boop_LOG_INFO]="INFO"    [$__boop_LOG_DEBUG]="DEBUG"
+  [$__boop_LOG_TRACE]="TRACE"
 )
 
 # Fallback log file. If stderr is unavailable (redirected to /dev/null,
 # closed, etc.), log output goes here instead. Per-process PID suffix
 # prevents concurrent sessions from stomping each other.
-declare -g __boop_logFile="${TMPDIR:-/tmp}/boop_${$}.log"
+declare -g __boop_logFile="${TMPDIR:-/tmp}/boop_$$.log"
 
 # ============================================================================
 # GLOBALS - Return Values
@@ -153,7 +161,7 @@ declare -g __boop_logFile="${TMPDIR:-/tmp}/boop_${$}.log"
 # lands here. Callers read it after the call: $obj.volume; printf "%s" "$_Out"
 # Intentionally a single flat global — keeps the API simple. If you need
 # to capture a value without clobbering this, use into=varname instead.
-declare -g  _Out=""
+declare -g  _Out="" # no dedicated method for this; no need
 
 # ============================================================================
 # GLOBALS - Initialization Flags
@@ -260,37 +268,39 @@ __boop.resolveLogLevel() {
 # Usage (internal): __boop.log 2 "something unexpected"
 # Users should use the public wrappers: _Warn, _Debug, etc.
 __boop.log() {
-  local -i __log_level=$1; shift
-  local -I _Class
+  local -i __log_level=${1:-0}; shift    # numeric level; empty/missing → 0 → crash
+  (( __log_level ==  0 )) && _Crash "$@" # level 0 = Crash; die loud, right now
+  (( __log_level == -1 )) && return 0    # explicit silent; nothing to do
+  [[ -n "${__boop_logLevelName[$__log_level]+set}" ]] || _Crash "invalid log level: '$__log_level'"
+  local -I _Class                       # inherit caller's class context
 
-  # Resolve effective level for this class context
-  local __log_class="${_Class:-boop}"
+  local __log_class="${_Class:-boop}"   # fall back to "boop" if no class in scope
   local -i __log_threshold
 
-  # Hot path: cached lookup + integer compare
+  # Hot path: one hash lookup. If the class's effective level is already
+  # cached, grab it directly. Otherwise resolve by walking the inheritance
+  # chain (caches the result for next time).
   if [[ -n "${__boop_resolvedLogLevel[$__log_class]+set}" ]]; then
     __log_threshold=${__boop_resolvedLogLevel[$__log_class]}
   else
     __boop.resolveLogLevel "$__log_class" __log_threshold
   fi
 
-  # Below threshold? Bail.
+  # Message level exceeds threshold — nothing to print.
   (( __log_level > __log_threshold )) && return 0
 
-  # Build context from call stack. Walk past internal wrappers
-  # (_Warn, _Debug, etc.) to find the real caller.
+  # Identify the real caller. FUNCNAME[0] is __boop.log, [1] is the
+  # wrapper (_Warn, _Debug, etc.), [2] is who actually called the wrapper.
+  # If [2] is one of our public wrappers, step one more frame to [3].
   local __log_caller="${FUNCNAME[2]:-main}"
-  [[ "$__log_caller" =~ ^_ && ! "$__log_caller" =~ \. ]] && \
+  [[ "$__log_caller" =~ ^_(Error|Warn|Info|Debug|Trace)$ ]] &&
     __log_caller="${FUNCNAME[3]:-main}"
 
+  # Format: [LEVEL] caller: message
   local __log_label="${__boop_logLevelName[$__log_level]:-LOG}"
-  local __log_msg
-  printf -v __log_msg "[%s] %s: %s" "$__log_label" "$__log_caller" "$*"
-
-  # Try stderr first; fall back to log file if stderr write fails
-  printf "%s\n" "$__log_msg" >&2 2>/dev/null || \
-    printf "%s\n" "$__log_msg" >> "$__boop_logFile" 2>/dev/null
-}
+  printf '[%s] %s: ' "$__log_label" "$__log_caller"
+  printf '%s' "$@" $'\n'
+} >&2
 
 # Set log level. With one argument, sets the global default.
 # With two arguments, sets a per-class override and invalidates
@@ -304,9 +314,9 @@ __boop.setLogLevel() {
 
   # Resolve name to number
   case "${__slvl_name,,}" in
-    silent|0) __slvl_num=0 ;; error|1)  __slvl_num=1 ;;
-    warn|2)   __slvl_num=2 ;; info|3)   __slvl_num=3 ;;
-    debug|4)  __slvl_num=4 ;; trace|5)  __slvl_num=5 ;;
+    silent|-1) __slvl_num=$__boop_LOG_SILENT ;; error|1)  __slvl_num=$__boop_LOG_ERROR ;;
+    warn|2)    __slvl_num=$__boop_LOG_WARN   ;; info|3)   __slvl_num=$__boop_LOG_INFO  ;;
+    debug|4)   __slvl_num=$__boop_LOG_DEBUG  ;; trace|5)  __slvl_num=$__boop_LOG_TRACE ;;
     *) _Crash "Invalid log level: $__slvl_name (use: silent, error, warn, info, debug, trace)" ;;
   esac
 

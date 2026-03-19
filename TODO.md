@@ -413,6 +413,14 @@ Source: PLAN.md Phase 5.
 filesystem-backed return path. Would allow returning data via temp files
 instead of variables, useful for large payloads.
 
+Consider: `_File` as a Tier 2 inherited var on `boop.pass` for explicit
+file output. Would unify the filesystem mode with a user-friendly
+inline pattern (`_File="/var/log/app.log" _Warn "something"`). Open
+questions around precedence (`into=` vs `_File` vs mode), whether it
+replaces the current filesystem mode or layers on top, and how much
+the framework should manage output streams vs leaving that to the user.
+Don't overthink it — users can always manage their own redirects.
+
 Source: PLAN.md Running Notes.
 
 ---

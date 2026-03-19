@@ -353,28 +353,18 @@ __boop_resolvedLogLevel=()
 _LogLevel warn
 
 # ============================================================================
-# Fallback log file when stderr is unavailable (needs isolation)
+# Closed stderr — messages lost, process survives
 # ============================================================================
 
-$t.section "Fallback log file"
-
-__fallback_logfile="${TMPDIR:-/tmp}/boop_test_fallback_$$.log"
-rm -f "$__fallback_logfile"
-
-# Warn with stderr closed — should fall back to file
+# Verify that logging with closed stderr propagates the write failure.
+__log_rc=0
 bash -c '
   . boop
-  __boop_logFile="'"$__fallback_logfile"'"
+  _LogLevel trace
   exec 2>&-
-  _Warn "fallback message"
-' 2>/dev/null
-
-if [[ -f "$__fallback_logfile" ]]; then
-  $t.assert_contains "fallback file has message" "$(<"$__fallback_logfile")" "fallback message"
-  rm -f "$__fallback_logfile"
-else
-  $t.assert_ok "fallback file was created" false
-fi
+  _Warn "lost message"
+' 2>/dev/null || __log_rc=$?
+$t.assert_eq "warn with closed stderr fails" "$__log_rc" "1"
 
 # _Crash with stderr closed — message is lost (by design), but still exits.
 # The old _Crash had a logfile fallback; the new one doesn't — if someone
