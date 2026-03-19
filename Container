@@ -129,19 +129,19 @@ Container.isEmpty() {
 # Internal helper — ensure the lazy iterator exists, store its ID in $3.
 # Uses __boop.set (descriptor property) not Container.set (data storage).
 __Container._ensureIterator() {
-  local __cei_self="$1" __cei_class="$2" __cei_target="$3"
-  local __cei_iter
-  __boop.parse "$__cei_self" "_iterator" __cei_iter
-  if [[ -z "$__cei_iter" ]]; then
-    into=__cei_iter Iterator target="$__cei_self" target_class="$__cei_class"
+  local __Container_ensureIterator_self="$1" __Container_ensureIterator_class="$2" __Container_ensureIterator_target="$3"
+  local __Container_ensureIterator_iter
+  __boop.parse "$__Container_ensureIterator_self" "_iterator" __Container_ensureIterator_iter
+  if [[ -z "$__Container_ensureIterator_iter" ]]; then
+    into=__Container_ensureIterator_iter Iterator target="$__Container_ensureIterator_self" target_class="$__Container_ensureIterator_class"
     # Store in descriptor, not in container data
-    local __cei_encoded
-    __boop.encode "$__cei_iter" __cei_encoded
-    local __cei_desc="${__boop_registry[$__cei_self]:-}"
-    __boop_registry[$__cei_self]="$__cei_desc|_iterator=$__cei_encoded"
+    local __Container_ensureIterator_encoded
+    __boop.encode "$__Container_ensureIterator_iter" __Container_ensureIterator_encoded
+    local __Container_ensureIterator_desc="${__boop_registry[$__Container_ensureIterator_self]:-}"
+    __boop_registry[$__Container_ensureIterator_self]="$__Container_ensureIterator_desc|_iterator=$__Container_ensureIterator_encoded"
   fi
-  local -n __cei_ref="$__cei_target"
-  __cei_ref="$__cei_iter"
+  local -n __Container_ensureIterator_ref="$__Container_ensureIterator_target"
+  __Container_ensureIterator_ref="$__Container_ensureIterator_iter"
 }
 
 # Create an explicit Iterator over this container.
@@ -226,9 +226,9 @@ Container.iterReset() {
 #   $_Self.noIterators
 Container.noIterators() {
   local -I _Self _Class
-  local __noi_method
-  for __noi_method in iterator next prev hasNext hasPrev current iterIndex iterReset; do
-    eval "$_Self.$__noi_method() { _Crash '$_Class does not support iterators'; }"
+  local __Container_noIterators_method
+  for __Container_noIterators_method in iterator next prev hasNext hasPrev current iterIndex iterReset; do
+    eval "$_Self.$__Container_noIterators_method() { _Crash '$_Class does not support iterators'; }"
   done
 }
 
@@ -316,37 +316,37 @@ Container.setAt() {
 
 __boop.itemFrom() {
   local -I _Self _Class
-  local __itemFrom_cursor __itemFrom_class
-  __boop.parse "$_Self" "$1" __itemFrom_cursor
-  [[ -n "$__itemFrom_cursor" ]] || { boop.pass "" ${into:-}; return; }
-  __boop.parse "$__itemFrom_cursor" "class" __itemFrom_class
+  local __boop_itemFrom_cursor __boop_itemFrom_class
+  __boop.parse "$_Self" "$1" __boop_itemFrom_cursor
+  [[ -n "$__boop_itemFrom_cursor" ]] || { boop.pass "" ${into:-}; return; }
+  __boop.parse "$__boop_itemFrom_cursor" "class" __boop_itemFrom_class
   shift
   while (( $# > 1 )); do
-    into=__itemFrom_cursor _Self="$__itemFrom_cursor" _Class="$__itemFrom_class" __boop.dispatch get "$1"
-    [[ -n "$__itemFrom_cursor" ]] || { boop.pass "" ${into:-}; return; }
-    __boop.parse "$__itemFrom_cursor" "class" __itemFrom_class
+    into=__boop_itemFrom_cursor _Self="$__boop_itemFrom_cursor" _Class="$__boop_itemFrom_class" __boop.dispatch get "$1"
+    [[ -n "$__boop_itemFrom_cursor" ]] || { boop.pass "" ${into:-}; return; }
+    __boop.parse "$__boop_itemFrom_cursor" "class" __boop_itemFrom_class
     shift
   done
-  _Self="$__itemFrom_cursor" _Class="$__itemFrom_class" into=__itemFrom_cursor __boop.dispatch get "$1"
-  boop.pass "$__itemFrom_cursor" ${into:-}
+  _Self="$__boop_itemFrom_cursor" _Class="$__boop_itemFrom_class" into=__boop_itemFrom_cursor __boop.dispatch get "$1"
+  boop.pass "$__boop_itemFrom_cursor" ${into:-}
 }
 
 __boop.setOn() {
   local -I _Self _Class
-  local __setOn_cursor __setOn_class
-  __boop.parse "$_Self" "$1" __setOn_cursor
-  [[ -n "$__setOn_cursor" ]] || _Crash "setOn: property '$1' is empty"
-  __boop.parse "$__setOn_cursor" "class" __setOn_class
+  local __boop_setOn_cursor __boop_setOn_class
+  __boop.parse "$_Self" "$1" __boop_setOn_cursor
+  [[ -n "$__boop_setOn_cursor" ]] || _Crash "setOn: property '$1' is empty"
+  __boop.parse "$__boop_setOn_cursor" "class" __boop_setOn_class
   shift
-  local __setOn_val="$1"; shift
+  local __boop_setOn_val="$1"; shift
   while (( $# > 1 )); do
-    into=__setOn_cursor _Self="$__setOn_cursor" _Class="$__setOn_class" __boop.dispatch get "$1"
-    [[ -n "$__setOn_cursor" ]] || \
+    into=__boop_setOn_cursor _Self="$__boop_setOn_cursor" _Class="$__boop_setOn_class" __boop.dispatch get "$1"
+    [[ -n "$__boop_setOn_cursor" ]] || \
       _Crash "setOn: missing intermediate at '$1'"
-    __boop.parse "$__setOn_cursor" "class" __setOn_class
+    __boop.parse "$__boop_setOn_cursor" "class" __boop_setOn_class
     shift
   done
-  _Self="$__setOn_cursor" _Class="$__setOn_class" __boop.dispatch set "$1" "$__setOn_val"
+  _Self="$__boop_setOn_cursor" _Class="$__boop_setOn_class" __boop.dispatch set "$1" "$__boop_setOn_val"
 }
 
 # ============================================================================
@@ -419,25 +419,25 @@ Iterator.new() {
 
 # Internal helper — get the length of the target container into $2.
 __Iterator._targetLen() {
-  local __itl_self="$1"
-  local __itl_target __itl_tclass
-  __boop.parse "$__itl_self" "target" __itl_target
-  __boop.parse "$__itl_self" "target_class" __itl_tclass
-  local -n __itl_out="$2"
+  local __Iterator_targetLen_self="$1"
+  local __Iterator_targetLen_target __Iterator_targetLen_tclass
+  __boop.parse "$__Iterator_targetLen_self" "target" __Iterator_targetLen_target
+  __boop.parse "$__Iterator_targetLen_self" "target_class" __Iterator_targetLen_tclass
+  local -n __Iterator_targetLen_out="$2"
 
-  if [[ "$__itl_tclass" == "Map" ]]; then
-    local -n __itl_snap="__boop_iterkeys_${__itl_self}"
-    if [[ -n "${!__itl_snap[@]}" ]]; then
-      __itl_out=${#__itl_snap[@]}
+  if [[ "$__Iterator_targetLen_tclass" == "Map" ]]; then
+    local -n __Iterator_targetLen_snap="__boop_iterkeys_${__Iterator_targetLen_self}"
+    if [[ -n "${!__Iterator_targetLen_snap[@]}" ]]; then
+      __Iterator_targetLen_out=${#__Iterator_targetLen_snap[@]}
     else
-      __itl_out=0
+      __Iterator_targetLen_out=0
     fi
   else
-    local -n __itl_arr="__boop_data_${__itl_target}"
-    if [[ -n "${!__itl_arr[@]}" ]]; then
-      __itl_out=${#__itl_arr[@]}
+    local -n __Iterator_targetLen_arr="__boop_data_${__Iterator_targetLen_target}"
+    if [[ -n "${!__Iterator_targetLen_arr[@]}" ]]; then
+      __Iterator_targetLen_out=${#__Iterator_targetLen_arr[@]}
     else
-      __itl_out=0
+      __Iterator_targetLen_out=0
     fi
   fi
 }
