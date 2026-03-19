@@ -394,6 +394,6 @@ Fix these on the spot. Don't create TODO items for them.
 ### Don't Break the Tests
 
 All changes must pass the full test suite before committing.
-Currently 488 assertions across 6 TestSuite files.
+Currently 514 assertions across 6 TestSuite files.
 
 

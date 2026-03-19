@@ -98,22 +98,17 @@ dispatch glue. But this means any unlocalized variable in any method
 silently inherits from its caller, which is a latent collision risk.
 
 The `__ClassName_methodName_varname` convention exists to prevent
-this, but compliance isn't audited.
+this. A full compliance sweep was completed across all source files:
+`boop`, `Container`, `List`, `Map`, `Math`, `TestSuite`, `Box`, `Cube`,
+`Card`, `Deck`, `Hand`, and `blackjack`. The naming convention is now
+enforced automatically by `test_all` — any non-compliant prefix
+(`__lowercase_`) that isn't a known class or framework name fails the
+build.
 
-The silent-correction behavior in dispatch is the sharpest edge here.
-When a method is delegated from a class that doesn't have it to one
-that does, the baked wrapper silently adopts the target class's
-identity. That's great when intentional, but a nightmare to debug
-when it isn't — the call succeeds with the wrong `_Self`/`_Class` and
-nothing complains.
-
-Policy — refactor as we go:
-- Every file we touch for other work gets scanned for unlocalized
-  variables that could inherit unexpected values. Sanitize on sight.
-- Every internal call in `boop` should be explicit about setting
-  `_Self`/`_Class`, or explicitly occluding them (clearing to empty),
-  unless we intentionally want inheritance (as in baked wrappers).
-- Priority: `boop` itself, then class files in order of complexity.
+During the sweep, a latent bug was found and fixed in `__boop.log`:
+`local -i` on the threshold variable coerced empty string to `0`,
+defeating the `[[ -z ]]` sentinel that triggers fallback to the global
+log level. The fix was removing the `-i` flag.
 
 Source: `boop` dispatch/bake section, all class files.
 
