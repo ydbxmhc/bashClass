@@ -200,9 +200,9 @@ _Crash() {
   (( _StackTrace = ${_StackTrace:- 1} ))
   (( _StackTrace < 0 )) && _StackTrace=${#FUNCNAME[@]}
   if (( _StackTrace > 0 )); then
-    local -i i
-    for (( i=1; i <= _StackTrace && i < ${#FUNCNAME[@]}; i++ )); do
-      printf "  in %s (%s:%s)\n" "${FUNCNAME[$i]}" "${BASH_SOURCE[$i]}" "${BASH_LINENO[$i-1]}"
+    local -i __Crash_i
+    for (( __Crash_i=1; __Crash_i <= _StackTrace && __Crash_i < ${#FUNCNAME[@]}; __Crash_i++ )); do
+      printf "  in %s (%s:%s)\n" "${FUNCNAME[$__Crash_i]}" "${BASH_SOURCE[$__Crash_i]}" "${BASH_LINENO[$__Crash_i-1]}"
     done
   fi
   exit ${_Err:-1}
@@ -216,89 +216,68 @@ __boop.inSubshell() { [[ $BASHPID != $__boop_rootPID ]]; }
 # LOGGING
 # ============================================================================
 
-# Resolve the effective log level for a class. Walks the inheritance chain
-# looking for the first class with an explicit override in
-# __boop_classLogLevel, falling back to the global default.
-# Result is cached in __boop_resolvedLogLevel so the walk happens
-# at most once per class (until invalidated by setLogLevel).
-#
-# Usage: __boop.resolveLogLevel "Math" __result_var
-__boop.resolveLogLevel() {
-  local __rlvl_class="$1" __rlvl_target="${2:-}"
-  local __rlvl_result
-
-  # Check cache first
-  if [[ -n "${__boop_resolvedLogLevel[$__rlvl_class]+set}" ]]; then
-    __rlvl_result="${__boop_resolvedLogLevel[$__rlvl_class]}"
-  else
-    # Walk inheritance chain
-    local __rlvl_cursor="$__rlvl_class"
-    __rlvl_result=""
-    while [[ -n "$__rlvl_cursor" ]]; do
-      if [[ -n "${__boop_classLogLevel[$__rlvl_cursor]+set}" ]]; then
-        __rlvl_result="${__boop_classLogLevel[$__rlvl_cursor]}"
-        break
-      fi
-      # Move to parent
-      local __rlvl_parent=""
-      if [[ -n "${__boop_registry[$__rlvl_cursor]+set}" ]]; then
-        [[ "${__boop_registry[$__rlvl_cursor]}" =~ \|parent=([^|]*)\| ]] && \
-          __rlvl_parent="${BASH_REMATCH[1]}"
-      fi
-      __rlvl_cursor="$__rlvl_parent"
-    done
-    # Fall back to global default
-    [[ -z "$__rlvl_result" ]] && __rlvl_result=$__boop_logLevel
-    # Cache it
-    __boop_resolvedLogLevel[$__rlvl_class]=$__rlvl_result
-  fi
-
-  if [[ -n "$__rlvl_target" ]]; then
-    printf -v "$__rlvl_target" '%s' "$__rlvl_result"
-  else
-    printf '%s' "$__rlvl_result"
-  fi
-}
-
 # Core log function. Checks the resolved level for the current class
 # (via inherited _Class) and emits to stderr if the message level is
 # at or below the threshold. Bails immediately on cache hit when the
 # level is too verbose — the hot path is one hash lookup + one compare.
 #
+# On cache miss, walks the inheritance chain looking for the first class
+# with an explicit override in __boop_classLogLevel, falling back to the
+# global default. Result is cached in __boop_resolvedLogLevel so the walk
+# happens at most once per class (until invalidated by setLogLevel).
+#
 # Usage (internal): __boop.log 2 "something unexpected"
 # Users should use the public wrappers: _Warn, _Debug, etc.
 __boop.log() {
-  local -i __log_level=${1:-0}; shift    # numeric level; empty/missing → 0 → crash
-  (( __log_level ==  0 )) && _Crash "$@" # level 0 = Crash; die loud, right now
-  (( __log_level == -1 )) && return 0    # explicit silent; nothing to do
-  [[ -n "${__boop_logLevelName[$__log_level]+set}" ]] || _Crash "invalid log level: '$__log_level'"
+  local -i __boop_log_level=${1:-0}; shift    # numeric level; empty/missing → 0 → crash
+  (( __boop_log_level ==  0 )) && _Crash "$@" # level 0 = Crash; die loud, right now
+  (( __boop_log_level == -1 )) && return 0    # explicit silent; nothing to do
+  [[ -n "${__boop_logLevelName[$__boop_log_level]+set}" ]] || _Crash "invalid log level: '$__boop_log_level'"
   local -I _Class                       # inherit caller's class context
 
-  local __log_class="${_Class:-boop}"   # fall back to "boop" if no class in scope
-  local -i __log_threshold
+  local __boop_log_class="${_Class:-boop}"   # fall back to "boop" if no class in scope
+  local __boop_log_threshold
 
-  # Hot path: one hash lookup. If the class's effective level is already
-  # cached, grab it directly. Otherwise resolve by walking the inheritance
-  # chain (caches the result for next time).
-  if [[ -n "${__boop_resolvedLogLevel[$__log_class]+set}" ]]; then
-    __log_threshold=${__boop_resolvedLogLevel[$__log_class]}
+  # Hot path: one hash lookup against the resolved cache.
+  if [[ -n "${__boop_resolvedLogLevel[$__boop_log_class]+set}" ]]; then
+    __boop_log_threshold=${__boop_resolvedLogLevel[$__boop_log_class]}
   else
-    __boop.resolveLogLevel "$__log_class" __log_threshold
+    # Cold path: walk the inheritance chain for the first class with an
+    # explicit level override. Cache the result when done.
+    local __boop_log_cursor="$__boop_log_class"
+    __boop_log_threshold=""
+    while [[ -n "$__boop_log_cursor" ]]; do
+      if [[ -n "${__boop_classLogLevel[$__boop_log_cursor]+set}" ]]; then
+        __boop_log_threshold=${__boop_classLogLevel[$__boop_log_cursor]}
+        break
+      fi
+      # Move to parent via descriptor
+      local __boop_log_parent=""
+      if [[ -n "${__boop_registry[$__boop_log_cursor]+set}" ]]; then
+        [[ "${__boop_registry[$__boop_log_cursor]}" =~ \|parent=([^|]*)\| ]] &&
+          __boop_log_parent="${BASH_REMATCH[1]}"
+      fi
+      __boop_log_cursor="$__boop_log_parent"
+    done
+    # Fall back to global default
+    [[ -z "$__boop_log_threshold" ]] && __boop_log_threshold=$__boop_logLevel
+    # Cache it
+    __boop_resolvedLogLevel[$__boop_log_class]=$__boop_log_threshold
   fi
 
   # Message level exceeds threshold — nothing to print.
-  (( __log_level > __log_threshold )) && return 0
+  (( __boop_log_level > __boop_log_threshold )) && return 0
 
   # Identify the real caller. FUNCNAME[0] is __boop.log, [1] is the
   # wrapper (_Warn, _Debug, etc.), [2] is who actually called the wrapper.
   # If [2] is one of our public wrappers, step one more frame to [3].
-  local __log_caller="${FUNCNAME[2]:-main}"
-  [[ "$__log_caller" =~ ^_(Error|Warn|Info|Debug|Trace)$ ]] &&
-    __log_caller="${FUNCNAME[3]:-main}"
+  local __boop_log_caller="${FUNCNAME[2]:-main}"
+  [[ "$__boop_log_caller" =~ ^_(Error|Warn|Info|Debug|Trace)$ ]] &&
+    __boop_log_caller="${FUNCNAME[3]:-main}"
 
   # Format: [LEVEL] caller: message
-  local __log_label="${__boop_logLevelName[$__log_level]:-LOG}"
-  printf '[%s] %s: ' "$__log_label" "$__log_caller"
+  local __boop_log_label="${__boop_logLevelName[$__boop_log_level]:-LOG}"
+  printf '[%s] %s: ' "$__boop_log_label" "$__boop_log_caller"
   printf '%s' "$@" $'\n'
 } >&2
 
@@ -309,25 +288,25 @@ __boop.log() {
 # Usage: __boop.setLogLevel warn          # global
 #        __boop.setLogLevel debug Math     # per-class
 __boop.setLogLevel() {
-  local __slvl_name="$1" __slvl_class="${2:-}"
-  local -i __slvl_num
+  local __boop_setLogLevel_name="$1" __boop_setLogLevel_class="${2:-}"
+  local -i __boop_setLogLevel_num
 
   # Resolve name to number
-  case "${__slvl_name,,}" in
-    silent|-1) __slvl_num=$__boop_LOG_SILENT ;; error|1)  __slvl_num=$__boop_LOG_ERROR ;;
-    warn|2)    __slvl_num=$__boop_LOG_WARN   ;; info|3)   __slvl_num=$__boop_LOG_INFO  ;;
-    debug|4)   __slvl_num=$__boop_LOG_DEBUG  ;; trace|5)  __slvl_num=$__boop_LOG_TRACE ;;
-    *) _Crash "Invalid log level: $__slvl_name (use: silent, error, warn, info, debug, trace)" ;;
+  case "${__boop_setLogLevel_name,,}" in
+    silent|-1) __boop_setLogLevel_num=$__boop_LOG_SILENT ;; error|1)  __boop_setLogLevel_num=$__boop_LOG_ERROR ;;
+    warn|2)    __boop_setLogLevel_num=$__boop_LOG_WARN   ;; info|3)   __boop_setLogLevel_num=$__boop_LOG_INFO  ;;
+    debug|4)   __boop_setLogLevel_num=$__boop_LOG_DEBUG  ;; trace|5)  __boop_setLogLevel_num=$__boop_LOG_TRACE ;;
+    *) _Crash "Invalid log level: $__boop_setLogLevel_name (use: silent, error, warn, info, debug, trace)" ;;
   esac
 
-  if [[ -z "$__slvl_class" ]]; then
+  if [[ -z "$__boop_setLogLevel_class" ]]; then
     # Global default — clear entire resolved cache
-    __boop_logLevel=$__slvl_num
+    __boop_logLevel=$__boop_setLogLevel_num
     __boop_resolvedLogLevel=()
   else
     # Per-class override — set it and invalidate cache for this class
     # and any class whose resolved level might have been inherited from it
-    __boop_classLogLevel[$__slvl_class]=$__slvl_num
+    __boop_classLogLevel[$__boop_setLogLevel_class]=$__boop_setLogLevel_num
     # Simple invalidation: clear the whole resolved cache. The walks
     # are cheap and only happen once after a level change.
     __boop_resolvedLogLevel=()
@@ -457,13 +436,13 @@ _EOL() { boop.pass "${1-$_EOL}" ${into:-_EOL}; }
 # escape character itself is safe before anything else touches it.
 # Handles: % | = newline tab
 __boop.encode() {
-  local __encode_val="$1"
-  __encode_val="${__encode_val//%/%25}"
-  __encode_val="${__encode_val//|/%7C}"
-  __encode_val="${__encode_val//=/%3D}"
-  __encode_val="${__encode_val//$'\n'/%0A}"
-  __encode_val="${__encode_val//$'\t'/%09}"
-  boop.pass "$__encode_val" "${2:-}"
+  local __boop_encode_val="$1"
+  __boop_encode_val="${__boop_encode_val//%/%25}"
+  __boop_encode_val="${__boop_encode_val//|/%7C}"
+  __boop_encode_val="${__boop_encode_val//=/%3D}"
+  __boop_encode_val="${__boop_encode_val//$'\n'/%0A}"
+  __boop_encode_val="${__boop_encode_val//$'\t'/%09}"
+  boop.pass "$__boop_encode_val" "${2:-}"
 }
 
 # Fast decode: reverses encode. Uses bash parameter expansion (no subshell).
@@ -474,13 +453,13 @@ __boop.encode() {
 # By decoding percent last, we guarantee that only sequences we encoded are
 # restored, and user data containing literal "%7C" survives the round-trip.
 __boop.decode() {
-  local __decode_val="$1"
-  __decode_val="${__decode_val//%09/$'\t'}"
-  __decode_val="${__decode_val//%0A/$'\n'}"
-  __decode_val="${__decode_val//%3D/=}"
-  __decode_val="${__decode_val//%7C/|}"
-  __decode_val="${__decode_val//%25/%}"
-  boop.pass "$__decode_val" "${2:-}"
+  local __boop_decode_val="$1"
+  __boop_decode_val="${__boop_decode_val//%09/$'\t'}"
+  __boop_decode_val="${__boop_decode_val//%0A/$'\n'}"
+  __boop_decode_val="${__boop_decode_val//%3D/=}"
+  __boop_decode_val="${__boop_decode_val//%7C/|}"
+  __boop_decode_val="${__boop_decode_val//%25/%}"
+  boop.pass "$__boop_decode_val" "${2:-}"
 }
 
 # ============================================================================
@@ -505,12 +484,12 @@ __boop.decode() {
 # Usage: __boop.validate "Box"                     # identifier (default)
 #        type=function __boop.validate "Box.calc"  # function name (dots ok)
 __boop.validate() {
-  local __validate_pat; local -l type; : "${type:=identifier}"
+  local __boop_validate_pat; local -l type; : "${type:=identifier}"
   case $type in
-    func|function) __validate_pat='^[A-Za-z_][A-Za-z0-9_.]*$' ;;
-    *)             __validate_pat='^[A-Za-z_][A-Za-z0-9_]*$' ;;
+    func|function) __boop_validate_pat='^[A-Za-z_][A-Za-z0-9_.]*$' ;;
+    *)             __boop_validate_pat='^[A-Za-z_][A-Za-z0-9_]*$' ;;
   esac
-  [[ "$1" =~ $__validate_pat ]] || _Crash "Invalid $type: '$1'"
+  [[ "$1" =~ $__boop_validate_pat ]] || _Crash "Invalid $type: '$1'"
 }
 
 # ============================================================================
@@ -549,18 +528,18 @@ __boop.setDefaultMode() {
 #   __boop.parse "Box" "parent" my_var             # nameref (no subshell)
 #   _OutMode=global __boop.parse ... # global variable
 __boop.parse() {
-  local __parse_key="$1" __parse_field="$2" __parse_target="${3:-}"
+  local __boop_parse_key="$1" __boop_parse_field="$2" __boop_parse_target="${3:-}"
 
-  __boop.validate "$__parse_key"
+  __boop.validate "$__boop_parse_key"
 
-  local __parse_descriptor="${__boop_registry[$__parse_key]:-}"
-  local __parse_pattern="\\|${__parse_field}=([^|]*)"
-  local __parse_value=""
-  if [[ "$__parse_descriptor" =~ $__parse_pattern ]]; then
-    __boop.decode "${BASH_REMATCH[1]}" __parse_value
+  local __boop_parse_descriptor="${__boop_registry[$__boop_parse_key]:-}"
+  local __boop_parse_pattern="\\|${__boop_parse_field}=([^|]*)"
+  local __boop_parse_value=""
+  if [[ "$__boop_parse_descriptor" =~ $__boop_parse_pattern ]]; then
+    __boop.decode "${BASH_REMATCH[1]}" __boop_parse_value
   fi
 
-  boop.pass "$__parse_value" "$__parse_target"
+  boop.pass "$__boop_parse_value" "$__boop_parse_target"
 }
 
 # ============================================================================
@@ -581,16 +560,16 @@ __boop.parse() {
 # impl as function (dots allowed). This is the only way methods enter the
 # registry, so validation here protects every downstream dispatch.
 __boop.registerMethod() {
-  local __regmethod_class="$1" __regmethod_method="$2"
-  local __regmethod_impl="${3:-$1.$2}"
+  local __boop_registerMethod_class="$1" __boop_registerMethod_method="$2"
+  local __boop_registerMethod_impl="${3:-$1.$2}"
 
-  __boop.validate "$__regmethod_class"
-  __boop.validate "$__regmethod_method"
-  type=function __boop.validate "$__regmethod_impl"
+  __boop.validate "$__boop_registerMethod_class"
+  __boop.validate "$__boop_registerMethod_method"
+  type=function __boop.validate "$__boop_registerMethod_impl"
 
-  declare -f "$__regmethod_impl" >/dev/null || _Crash "Function '$__regmethod_impl' does not exist"
+  declare -f "$__boop_registerMethod_impl" >/dev/null || _Crash "Function '$__boop_registerMethod_impl' does not exist"
 
-  __boop_methodRegistry["$__regmethod_class.$__regmethod_method"]="$__regmethod_impl"
+  __boop_methodRegistry["$__boop_registerMethod_class.$__boop_registerMethod_method"]="$__boop_registerMethod_impl"
 }
 
 # ============================================================================
@@ -614,32 +593,32 @@ __boop.registerMethod() {
 __boop.dispatch() {
   local _Self="${_Self:-${_Class:-boop}}" _Class="${_Class:-boop}"
   local -l __init; : "${__init:=false}"
-  local __dispatch_method="$1"; shift
+  local __boop_dispatch_method="$1"; shift
 
   __boop.validate "$_Self"
   __boop.validate "$_Class"
-  __boop.validate "$__dispatch_method"
+  __boop.validate "$__boop_dispatch_method"
 
   # Check cache first (direct lookup — O(1) in the common case)
-  local __dispatch_cachekey="$_Class.$__dispatch_method"
-  local __dispatch_impl="${__boop_methodRegistry[$__dispatch_cachekey]:-}"
+  local __boop_dispatch_cachekey="$_Class.$__boop_dispatch_method"
+  local __boop_dispatch_impl="${__boop_methodRegistry[$__boop_dispatch_cachekey]:-}"
 
   # Cache miss: walk the inheritance chain (parent → grandparent → ...).
   # When found in an ancestor, cache it under the calling class so this
   # walk only happens once per class+method combination.
-  if [[ -z "$__dispatch_impl" ]]; then
-    local __dispatch_current="$_Class"
-    while [[ -n "$__dispatch_current" ]]; do
-      __dispatch_impl="${__boop_methodRegistry[$__dispatch_current.$__dispatch_method]:-}"
-      if [[ -n "$__dispatch_impl" ]]; then
-        [[ "$__dispatch_current" != "$_Class" ]] && __boop_methodRegistry[$__dispatch_cachekey]="$__dispatch_impl"
+  if [[ -z "$__boop_dispatch_impl" ]]; then
+    local __boop_dispatch_current="$_Class"
+    while [[ -n "$__boop_dispatch_current" ]]; do
+      __boop_dispatch_impl="${__boop_methodRegistry[$__boop_dispatch_current.$__boop_dispatch_method]:-}"
+      if [[ -n "$__boop_dispatch_impl" ]]; then
+        [[ "$__boop_dispatch_current" != "$_Class" ]] && __boop_methodRegistry[$__boop_dispatch_cachekey]="$__boop_dispatch_impl"
         break
       fi
-      __boop.parse "$__dispatch_current" "parent" __dispatch_current
+      __boop.parse "$__boop_dispatch_current" "parent" __boop_dispatch_current
     done
   fi
 
-  [[ -n "$__dispatch_impl" ]] || _Crash "Method not found: $_Class.$__dispatch_method"
+  [[ -n "$__boop_dispatch_impl" ]] || _Crash "Method not found: $_Class.$__boop_dispatch_method"
 
   # If called from a stub (__init=true), bake a direct wrapper that replaces
   # the stub function. The baked wrapper hardcodes self, class, and the
@@ -666,7 +645,7 @@ __boop.dispatch() {
   #
   # EVAL ESCAPING NOTES:
   #
-  # At eval time, $_Self, $_Class, $__dispatch_impl, and $__dispatch_method
+  # At eval time, $_Self, $_Class, $__boop_dispatch_impl, and $__boop_dispatch_method
   # expand to their current values and get hardcoded into the wrapper.
   # \$ and \"-quoted expansions survive eval and expand at runtime instead.
   #
@@ -675,26 +654,26 @@ __boop.dispatch() {
   #                    — quotes force word boundary so .isa isn't swallowed
   #                         ^^^^ — hardcoded at eval time
   if [[ "$__init" == "true" ]]; then
-    eval "$_Self.$__dispatch_method() {
+    eval "$_Self.$__boop_dispatch_method() {
       # Tier 1: exact match or no ambient class — fast path (common case)
       if [[ \"\${_Class:-$_Class}\" == '$_Class' ]]; then
-        _Self='$_Self' _Class='$_Class' $__dispatch_impl \"\$@\"
+        _Self='$_Self' _Class='$_Class' $__boop_dispatch_impl \"\$@\"
       # Tier 2: ambient class is in the family — legitimate typecast
       #   Check: is this object an instance of the ambient class?
       #   Covers both upcasts (_Class=Box on a Cube) and downcasts.
       #   Uses __boop.isa directly to avoid triggering dispatch
       #   recursion through the baked wrapper system.
       elif _Self='$_Self' _Class='$_Class' __boop.isa \"\${_Class:-$_Class}\"; then
-        _Self='$_Self' _Class=\"\${_Class:-$_Class}\" __boop.dispatch $__dispatch_method \"\$@\"
+        _Self='$_Self' _Class=\"\${_Class:-$_Class}\" __boop.dispatch $__boop_dispatch_method \"\$@\"
       # Tier 3: unrelated class (leakage) — warn and use fast path
       else
-        _Class='$_Class' _Warn \"class leakage: \\\"\${_Class}\\\" is unrelated to $_Class in $_Self.$__dispatch_method — using $_Class\"
-        _Self='$_Self' _Class='$_Class' $__dispatch_impl \"\$@\"
+        _Class='$_Class' _Warn \"class leakage: \\\"\${_Class}\\\" is unrelated to $_Class in $_Self.$__boop_dispatch_method — using $_Class\"
+        _Self='$_Self' _Class='$_Class' $__boop_dispatch_impl \"\$@\"
       fi
     }"
   fi
 
-  _Self="$_Self" _Class="$_Class" "$__dispatch_impl" "$@"
+  _Self="$_Self" _Class="$_Class" "$__boop_dispatch_impl" "$@"
 }
 
 # ============================================================================
@@ -708,10 +687,10 @@ __boop.dispatch() {
 # and class definitions. Does NOT serialize baked wrapper functions —
 # those are regenerated on next access via the stub/bake mechanism.
 __boop.serialize() {
-  local __serialize_file="${1:-objects.dat}"
-  for __serialize_key in "${!__boop_registry[@]}"; do
-    printf "%s\t%s\n" "$__serialize_key" "${__boop_registry[$__serialize_key]}"
-  done > "$__serialize_file"
+  local __boop_serialize_file="${1:-objects.dat}"
+  for __boop_serialize_key in "${!__boop_registry[@]}"; do
+    printf "%s\t%s\n" "$__boop_serialize_key" "${__boop_registry[$__boop_serialize_key]}"
+  done > "$__boop_serialize_file"
 }
 
 # Load a previously serialized registry from a tab-delimited file.
@@ -723,13 +702,13 @@ __boop.serialize() {
 # __boop.refresh on each object after deserializing if you need
 # to call methods on them.
 __boop.deserialize() {
-  local __deserialize_file="${1:-objects.dat}"
-  [[ -f "$__deserialize_file" ]] || _Crash "File not found: $__deserialize_file"
-  local __deserialize_key __deserialize_descriptor
-  while IFS=$'\t' read -r __deserialize_key __deserialize_descriptor; do
-    __boop.validate "$__deserialize_key"
-    __boop_registry[$__deserialize_key]="$__deserialize_descriptor"
-  done < "$__deserialize_file"
+  local __boop_deserialize_file="${1:-objects.dat}"
+  [[ -f "$__boop_deserialize_file" ]] || _Crash "File not found: $__boop_deserialize_file"
+  local __boop_deserialize_key __boop_deserialize_descriptor
+  while IFS=$'\t' read -r __boop_deserialize_key __boop_deserialize_descriptor; do
+    __boop.validate "$__boop_deserialize_key"
+    __boop_registry[$__boop_deserialize_key]="$__boop_deserialize_descriptor"
+  done < "$__boop_deserialize_file"
 }
 
 # ============================================================================
@@ -755,16 +734,16 @@ __boop.get() {
 # descriptor reflects insertion order, with mutations preserving position.
 __boop.set() {
   local -I _Self _Class
-  local __set_prop="$1" __set_encoded
-  __boop.encode "$2" __set_encoded
+  local __boop_set_prop="$1" __boop_set_encoded
+  __boop.encode "$2" __boop_set_encoded
 
-  local __set_descriptor="${__boop_registry[$_Self]:-}"
+  local __boop_set_descriptor="${__boop_registry[$_Self]:-}"
 
-  if [[ "$__set_descriptor" =~ \|${__set_prop}=[^|]* ]]; then
-    local __set_old="${BASH_REMATCH[0]}"
-    __boop_registry[$_Self]="${__set_descriptor/${__set_old}/|${__set_prop}=${__set_encoded}}"
+  if [[ "$__boop_set_descriptor" =~ \|${__boop_set_prop}=[^|]* ]]; then
+    local __boop_set_old="${BASH_REMATCH[0]}"
+    __boop_registry[$_Self]="${__boop_set_descriptor/${__boop_set_old}/|${__boop_set_prop}=${__boop_set_encoded}}"
   else
-    __boop_registry[$_Self]="$__set_descriptor|$__set_prop=$__set_encoded"
+    __boop_registry[$_Self]="$__boop_set_descriptor|$__boop_set_prop=$__boop_set_encoded"
   fi
 }
 
@@ -780,17 +759,17 @@ __boop.set() {
 # for boolean checks: `$obj.isa Box && printf "it's a box"`
 __boop.isa() {
   local -I _Self _Class
-  local __isa_query="${1:-}"
+  local __boop_isa_query="${1:-}"
 
-  if [[ -z "$__isa_query" ]]; then
+  if [[ -z "$__boop_isa_query" ]]; then
     boop.pass "$_Class" ${into:-}
     return 0
   fi
 
-  local __isa_current="$_Class"
-  while [[ -n "$__isa_current" ]]; do
-    [[ "$__isa_current" == "$__isa_query" ]] && return 0
-    __boop.parse "$__isa_current" "parent" __isa_current
+  local __boop_isa_current="$_Class"
+  while [[ -n "$__boop_isa_current" ]]; do
+    [[ "$__boop_isa_current" == "$__boop_isa_query" ]] && return 0
+    __boop.parse "$__boop_isa_current" "parent" __boop_isa_current
   done
   return 1
 }
@@ -817,58 +796,58 @@ __boop.toString() {
   local -I _Self _Class
   local -l prettyPrint; : "${prettyPrint:=false}"
   [[ "${1:-}" == "pretty" ]] && prettyPrint=true
-  local __ts_descriptor="${__boop_registry[$_Self]:-}"
-  local __ts_field __ts_value __ts_decoded __ts_output
+  local __boop_toString_descriptor="${__boop_registry[$_Self]:-}"
+  local __boop_toString_field __boop_toString_value __boop_toString_decoded __boop_toString_output
 
   # Both modes iterate the descriptor by matching "|key=value" segments,
-  # then advancing past the match with ${__ts_descriptor#*"${BASH_REMATCH[0]}"}
+  # then advancing past the match with ${__boop_toString_descriptor#*"${BASH_REMATCH[0]}"}
   # to consume the string left-to-right without a second regex pass.
 
   if [[ "$prettyPrint" != "true" ]]; then
-    __ts_output="$_Class($_Self){"
-    while [[ "$__ts_descriptor" =~ \|([^=]+)=([^|]*) ]]; do
-      __ts_field="${BASH_REMATCH[1]}"
-      __ts_value="${BASH_REMATCH[2]}"
-      case "$__ts_field" in
+    __boop_toString_output="$_Class($_Self){"
+    while [[ "$__boop_toString_descriptor" =~ \|([^=]+)=([^|]*) ]]; do
+      __boop_toString_field="${BASH_REMATCH[1]}"
+      __boop_toString_value="${BASH_REMATCH[2]}"
+      case "$__boop_toString_field" in
         class|parent|methods|properties) ;;
         *)
-          __boop.decode "$__ts_value" __ts_decoded
-          __ts_output="$__ts_output $__ts_field=$__ts_decoded"
+          __boop.decode "$__boop_toString_value" __boop_toString_decoded
+          __boop_toString_output="$__boop_toString_output $__boop_toString_field=$__boop_toString_decoded"
           ;;
       esac
-      __ts_descriptor="${__ts_descriptor#*"${BASH_REMATCH[0]}"}"
+      __boop_toString_descriptor="${__boop_toString_descriptor#*"${BASH_REMATCH[0]}"}"
     done
-    boop.pass "$__ts_output }" ${into:-}
+    boop.pass "$__boop_toString_output }" ${into:-}
     return
   fi
 
   # Pretty print: two-pass for columnar alignment
-  local -i __ts_maxlen=0
-  local -a __ts_keys=() __ts_vals=()
-  while [[ "$__ts_descriptor" =~ \|([^=]+)=([^|]*) ]]; do
-    __ts_field="${BASH_REMATCH[1]}"
-    __ts_value="${BASH_REMATCH[2]}"
-    case "$__ts_field" in
+  local -i __boop_toString_maxlen=0
+  local -a __boop_toString_keys=() __boop_toString_vals=()
+  while [[ "$__boop_toString_descriptor" =~ \|([^=]+)=([^|]*) ]]; do
+    __boop_toString_field="${BASH_REMATCH[1]}"
+    __boop_toString_value="${BASH_REMATCH[2]}"
+    case "$__boop_toString_field" in
       class|parent|methods|properties) ;;
       *)
-        __boop.decode "$__ts_value" __ts_decoded
-        __ts_keys+=("$__ts_field")
-        __ts_vals+=("$__ts_decoded")
-        (( ${#__ts_field} > __ts_maxlen )) && __ts_maxlen=${#__ts_field} || true
+        __boop.decode "$__boop_toString_value" __boop_toString_decoded
+        __boop_toString_keys+=("$__boop_toString_field")
+        __boop_toString_vals+=("$__boop_toString_decoded")
+        (( ${#__boop_toString_field} > __boop_toString_maxlen )) && __boop_toString_maxlen=${#__boop_toString_field} || true
         ;;
     esac
-    __ts_descriptor="${__ts_descriptor#*"${BASH_REMATCH[0]}"}"
+    __boop_toString_descriptor="${__boop_toString_descriptor#*"${BASH_REMATCH[0]}"}"
   done
 
-  local -i __ts_i
-  printf -v __ts_output "%s(%s) {\n" "$_Class" "$_Self"
-  for (( __ts_i=0; __ts_i < ${#__ts_keys[@]}; __ts_i++ )); do
-    printf -v __ts_field "  %-${__ts_maxlen}s = %s\n" "${__ts_keys[$__ts_i]}" "${__ts_vals[$__ts_i]}"
-    __ts_output="$__ts_output$__ts_field"
+  local -i __boop_toString_i
+  printf -v __boop_toString_output "%s(%s) {\n" "$_Class" "$_Self"
+  for (( __boop_toString_i=0; __boop_toString_i < ${#__boop_toString_keys[@]}; __boop_toString_i++ )); do
+    printf -v __boop_toString_field "  %-${__boop_toString_maxlen}s = %s\n" "${__boop_toString_keys[$__boop_toString_i]}" "${__boop_toString_vals[$__boop_toString_i]}"
+    __boop_toString_output="$__boop_toString_output$__boop_toString_field"
   done
-  __ts_output="$__ts_output}"
+  __boop_toString_output="$__boop_toString_output}"
 
-  boop.pass "$__ts_output" ${into:-}
+  boop.pass "$__boop_toString_output" ${into:-}
 }
 
 # Object constructor. This is the beating heart of object creation.
@@ -893,25 +872,25 @@ __boop.new() {
   local _Self; printf -v _Self "_%x" "${EPOCHREALTIME//.}"
 
   # Build descriptor
-  local __new_descriptor="|class=$_Class"
+  local __boop_new_descriptor="|class=$_Class"
 
   # Parse arguments and encode values.
   # If a key already exists in the descriptor (e.g., a subclass passes
   # length= after the caller already passed length=), replace in-place
   # so parse always finds the correct value. Same logic as set().
-  local __new_encoded __new_prop __new_val
-  for __new_arg in "$@"; do
-    IFS='=' read -r __new_prop __new_val <<< "$__new_arg"
-    __boop.encode "$__new_val" __new_encoded
-    if [[ "$__new_descriptor" =~ \|${__new_prop}=[^|]* ]]; then
-      __new_descriptor="${__new_descriptor/${BASH_REMATCH[0]}/|${__new_prop}=${__new_encoded}}"
+  local __boop_new_encoded __boop_new_prop __boop_new_val
+  for __boop_new_arg in "$@"; do
+    IFS='=' read -r __boop_new_prop __boop_new_val <<< "$__boop_new_arg"
+    __boop.encode "$__boop_new_val" __boop_new_encoded
+    if [[ "$__boop_new_descriptor" =~ \|${__boop_new_prop}=[^|]* ]]; then
+      __boop_new_descriptor="${__boop_new_descriptor/${BASH_REMATCH[0]}/|${__boop_new_prop}=${__boop_new_encoded}}"
     else
-      __new_descriptor="$__new_descriptor|$__new_prop=$__new_encoded"
+      __boop_new_descriptor="$__boop_new_descriptor|$__boop_new_prop=$__boop_new_encoded"
     fi
   done
 
   # Register object
-  __boop_registry[$_Self]="$__new_descriptor"
+  __boop_registry[$_Self]="$__boop_new_descriptor"
 
   # Generate lazy stubs for all methods (walk inheritance chain)
   __boop.stubAll "$_Self" "$_Class"
@@ -925,9 +904,9 @@ __boop.new() {
 # Usage: _Self=$obj _Class=Cube __boop.dispatch super volume
 __boop.super() {
   local -I _Self _Class
-  local __super_parent; __boop.parse "$_Class" "parent" __super_parent
-  [[ -n "$__super_parent" ]] || _Crash "$_Class has no parent"
-  _Self="$_Self" _Class="$__super_parent" __boop.dispatch "$@"
+  local __boop_super_parent; __boop.parse "$_Class" "parent" __boop_super_parent
+  [[ -n "$__boop_super_parent" ]] || _Crash "$_Class has no parent"
+  _Self="$_Self" _Class="$__boop_super_parent" __boop.dispatch "$@"
 }
 
 # ============================================================================
@@ -950,31 +929,31 @@ __boop.super() {
 # Pass "force" as $3 to overwrite existing functions — used by refresh
 # to tear down baked wrappers and re-stub everything.
 __boop.stubAll() {
-  local __stub_self="$1" __stub_class="$2" __stub_force="${3:-}"
-  local __stub_current="$__stub_class" __stub_method __stub_methods
+  local __boop_stubAll_self="$1" __boop_stubAll_class="$2" __boop_stubAll_force="${3:-}"
+  local __boop_stubAll_current="$__boop_stubAll_class" __boop_stubAll_method __boop_stubAll_methods
 
   # Walk inheritance chain, stub all methods
-  while [[ -n "$__stub_current" ]]; do
-    __boop.parse "$__stub_current" "methods" __stub_methods
-    IFS=',' read -ra __stub_method_list <<< "$__stub_methods"
-    for __stub_method in "${__stub_method_list[@]}"; do
-      [[ -n "$__stub_method" ]] || continue
-      [[ "$__stub_force" != "force" ]] && declare -f "$__stub_self.$__stub_method" >/dev/null && continue
-      eval "$__stub_self.$__stub_method() { __init=true _Self='$__stub_self' _Class='$__stub_class' __boop.dispatch $__stub_method \"\$@\"; }"
+  while [[ -n "$__boop_stubAll_current" ]]; do
+    __boop.parse "$__boop_stubAll_current" "methods" __boop_stubAll_methods
+    IFS=',' read -ra __boop_stubAll_methodList <<< "$__boop_stubAll_methods"
+    for __boop_stubAll_method in "${__boop_stubAll_methodList[@]}"; do
+      [[ -n "$__boop_stubAll_method" ]] || continue
+      [[ "$__boop_stubAll_force" != "force" ]] && declare -f "$__boop_stubAll_self.$__boop_stubAll_method" >/dev/null && continue
+      eval "$__boop_stubAll_self.$__boop_stubAll_method() { __init=true _Self='$__boop_stubAll_self' _Class='$__boop_stubAll_class' __boop.dispatch $__boop_stubAll_method \"\$@\"; }"
     done
-    __boop.parse "$__stub_current" "parent" __stub_current
+    __boop.parse "$__boop_stubAll_current" "parent" __boop_stubAll_current
   done
 
   # Stub property accessors (get/set by property name)
-  local __stub_props __stub_prop
-  __boop.parse "$__stub_class" "properties" __stub_props
-  IFS=',' read -ra __stub_prop_list <<< "$__stub_props"
-  for __stub_prop in "${__stub_prop_list[@]}"; do
-    [[ -n "$__stub_prop" ]] || continue
-    [[ "$__stub_force" != "force" ]] && declare -f "$__stub_self.$__stub_prop" >/dev/null && continue
-    eval "$__stub_self.$__stub_prop() {
-      if ((\$#)); then _Self='$__stub_self' _Class='$__stub_class' __boop.dispatch set '$__stub_prop' \"\$1\"
-      else _Self='$__stub_self' _Class='$__stub_class' __boop.dispatch get '$__stub_prop'; fi
+  local __boop_stubAll_props __boop_stubAll_prop
+  __boop.parse "$__boop_stubAll_class" "properties" __boop_stubAll_props
+  IFS=',' read -ra __boop_stubAll_propList <<< "$__boop_stubAll_props"
+  for __boop_stubAll_prop in "${__boop_stubAll_propList[@]}"; do
+    [[ -n "$__boop_stubAll_prop" ]] || continue
+    [[ "$__boop_stubAll_force" != "force" ]] && declare -f "$__boop_stubAll_self.$__boop_stubAll_prop" >/dev/null && continue
+    eval "$__boop_stubAll_self.$__boop_stubAll_prop() {
+      if ((\$#)); then _Self='$__boop_stubAll_self' _Class='$__boop_stubAll_class' __boop.dispatch set '$__boop_stubAll_prop' \"\$1\"
+      else _Self='$__boop_stubAll_self' _Class='$__boop_stubAll_class' __boop.dispatch get '$__boop_stubAll_prop'; fi
     }"
   done
 }
@@ -984,10 +963,10 @@ __boop.stubAll() {
 # re-resolve via dispatch and re-bake. Useful after modifying the method
 # registry at runtime (e.g., monkey-patching a method implementation).
 __boop.refresh() {
-  local __refresh_self="$1"
-  local __refresh_class; __boop.parse "$__refresh_self" "class" __refresh_class
-  [[ -n "$__refresh_class" ]] || _Crash "Cannot refresh: no class for '$__refresh_self'"
-  __boop.stubAll "$__refresh_self" "$__refresh_class" force
+  local __boop_refresh_self="$1"
+  local __boop_refresh_class; __boop.parse "$__boop_refresh_self" "class" __boop_refresh_class
+  [[ -n "$__boop_refresh_class" ]] || _Crash "Cannot refresh: no class for '$__boop_refresh_self'"
+  __boop.stubAll "$__boop_refresh_self" "$__boop_refresh_class" force
 }
 
 # Finalize a class definition. Call this at the bottom of a class file
@@ -1008,30 +987,30 @@ __boop.refresh() {
 # lets class authors provide custom implementations that bypass dispatch
 # when called directly.
 __boop.registerClass() {
-  local __regclass_class="$1"
-  __boop.validate "$__regclass_class"
+  local __boop_registerClass_class="$1"
+  __boop.validate "$__boop_registerClass_class"
 
-  [[ -n "${__boop_registry[$__regclass_class]:-}" ]] || \
-    _Crash "No descriptor for class '$__regclass_class' — register it first"
+  [[ -n "${__boop_registry[$__boop_registerClass_class]:-}" ]] || 
+    _Crash "No descriptor for class '$__boop_registerClass_class' — register it first"
 
-  local __regclass_current="$__regclass_class" __regclass_method __regclass_methods
+  local __boop_registerClass_current="$__boop_registerClass_class" __boop_registerClass_method __boop_registerClass_methods
 
   # Walk inheritance chain, create ClassName.method wrappers
-  while [[ -n "$__regclass_current" ]]; do
-    __boop.parse "$__regclass_current" "methods" __regclass_methods
-    IFS=',' read -ra __regclass_method_list <<< "${__regclass_methods:-}"
-    for __regclass_method in "${__regclass_method_list[@]}"; do
-      [[ -n "$__regclass_method" ]] || continue
+  while [[ -n "$__boop_registerClass_current" ]]; do
+    __boop.parse "$__boop_registerClass_current" "methods" __boop_registerClass_methods
+    IFS=',' read -ra __boop_registerClass_methodList <<< "${__boop_registerClass_methods:-}"
+    for __boop_registerClass_method in "${__boop_registerClass_methodList[@]}"; do
+      [[ -n "$__boop_registerClass_method" ]] || continue
       # Don't overwrite — class author's definitions take priority
-      declare -f "$__regclass_class.$__regclass_method" >/dev/null && continue
-      eval "$__regclass_class.$__regclass_method() { _Class='$__regclass_class' __boop.dispatch $__regclass_method \"\$@\"; }"
+      declare -f "$__boop_registerClass_class.$__boop_registerClass_method" >/dev/null && continue
+      eval "$__boop_registerClass_class.$__boop_registerClass_method() { _Class='$__boop_registerClass_class' __boop.dispatch $__boop_registerClass_method \"\$@\"; }"
     done
-    __boop.parse "$__regclass_current" "parent" __regclass_current
+    __boop.parse "$__boop_registerClass_current" "parent" __boop_registerClass_current
   done
 
   # Make the class name itself a constructor
-  declare -f "$__regclass_class" >/dev/null || \
-    eval "$__regclass_class() { _Class='$__regclass_class' __boop.dispatch new \"\$@\"; }"
+  declare -f "$__boop_registerClass_class" >/dev/null || 
+    eval "$__boop_registerClass_class() { _Class='$__boop_registerClass_class' __boop.dispatch new \"\$@\"; }"
 }
 
 # Global convenience constructor. Slightly friendlier than the class-as-
@@ -1040,9 +1019,9 @@ __boop.registerClass() {
 # Usage: new Box length=5 width=3 height=7
 #        into=mybox new Cube size=4
 new() {
-  local __new_class="$1"; shift
-  __boop.validate "$__new_class"
-  _Class="$__new_class" __boop.dispatch new "$@"
+  local __boop_newGlobal_class="$1"; shift
+  __boop.validate "$__boop_newGlobal_class"
+  _Class="$__boop_newGlobal_class" __boop.dispatch new "$@"
 }
 
 # ============================================================================
@@ -1067,36 +1046,36 @@ new() {
 # The loading flag is unset after each successful source. If the source fails
 # (exit code != 0), we crash — a half-loaded class is worse than no class.
 __boop.import() {
-  local __import_class
-  for __import_class in "$@"; do
+  local __boop_import_class
+  for __boop_import_class in "$@"; do
     # Already loaded? Skip.
-    [[ -n "${__boop_registry[$__import_class]+set}" ]] && continue
+    [[ -n "${__boop_registry[$__boop_import_class]+set}" ]] && continue
 
     # Already loading? Skip (prevents circular recursion when a class
     # file sources boop as part of its own load sequence).
-    [[ -n "${__boop_loading[$__import_class]:-}" ]] && continue
-    __boop_loading[$__import_class]=1
+    [[ -n "${__boop_loading[$__boop_import_class]:-}" ]] && continue
+    __boop_loading[$__boop_import_class]=1
 
     # Check explicit path registry first
-    if [[ -n "${__boop_classPath[$__import_class]:-}" ]]; then
-      . "${__boop_classPath[$__import_class]}" || \
-        _Crash "Failed to load class '$__import_class' from ${__boop_classPath[$__import_class]}"
-      unset '__boop_loading[$__import_class]'
+    if [[ -n "${__boop_classPath[$__boop_import_class]:-}" ]]; then
+      . "${__boop_classPath[$__boop_import_class]}" || 
+        _Crash "Failed to load class '$__boop_import_class' from ${__boop_classPath[$__boop_import_class]}"
+      unset '__boop_loading[$__boop_import_class]'
       continue
     fi
 
     # Check __boop_dir (co-located with framework)
-    if [[ -f "$__boop_dir/$__import_class" ]]; then
-      . "$__boop_dir/$__import_class" || \
-        _Crash "Failed to load class '$__import_class' from $__boop_dir"
-      unset '__boop_loading[$__import_class]'
+    if [[ -f "$__boop_dir/$__boop_import_class" ]]; then
+      . "$__boop_dir/$__boop_import_class" || 
+        _Crash "Failed to load class '$__boop_import_class' from $__boop_dir"
+      unset '__boop_loading[$__boop_import_class]'
       continue
     fi
 
     # Fall through to PATH resolution
-    . "$__import_class" 2>/dev/null || \
-      _Crash "Class '$__import_class' not found (checked classPath, $__boop_dir, PATH)"
-    unset '__boop_loading[$__import_class]'
+    . "$__boop_import_class" 2>/dev/null || 
+      _Crash "Class '$__boop_import_class' not found (checked classPath, $__boop_dir, PATH)"
+    unset '__boop_loading[$__boop_import_class]'
   done
 }
 

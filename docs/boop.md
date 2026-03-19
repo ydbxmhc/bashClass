@@ -890,8 +890,7 @@ automatically skipped in the stack walk.
 | `_Error` | Log at error level (1). |
 | `_Crash` | Exit with tagged message to stderr. Supports `_Err` (exit code) and `_StackTrace` (frame count). |
 | `_LogLevel` | Set global or per-class log level. |
-| `__boop.log` | Core log function (use the wrappers above instead). |
-| `__boop.resolveLogLevel` | Resolve effective level for a class with caching. |
+| `__boop.log` | Core log function with level resolution and caching (use the wrappers above). |
 | `__boop.setLogLevel` | Set log level and invalidate cache. |
 
 ### Registration & Import
