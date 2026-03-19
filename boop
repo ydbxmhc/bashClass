@@ -1073,7 +1073,7 @@ __boop.import() {
     fi
 
     # Fall through to PATH resolution
-    . "$__boop_import_class" 2>/dev/null || 
+    . "$__boop_import_class" || 
       _Crash "Class '$__boop_import_class' not found (checked classPath, $__boop_dir, PATH)"
     unset '__boop_loading[$__boop_import_class]'
   done

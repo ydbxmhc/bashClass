@@ -168,11 +168,14 @@ __TestSuite._exec() {
       # guard checks ${_Class:-...} which would pick up our leaked value.
       # The if/else structure ensures set -e callers survive non-zero exits.
       local -i __TestSuite_exec_rc=0
-      if _Self="" _Class="" "$@" 2>/dev/null; then
+      local __TestSuite_exec_stderr; __TestSuite_exec_stderr=$(mktemp)
+      if _Self="" _Class="" "$@" 2>"$__TestSuite_exec_stderr"; then
         __TestSuite_exec_rc=0
       else
         __TestSuite_exec_rc=$?
       fi
+      [[ -s "$__TestSuite_exec_stderr" ]] && _Debug "$(<"$__TestSuite_exec_stderr")"
+      rm -f "$__TestSuite_exec_stderr"
       if (( __TestSuite_exec_rc == 0 )); then
         __TestSuite._pass "$__TestSuite_exec_self" "$__TestSuite_exec_desc"
       else
@@ -181,11 +184,14 @@ __TestSuite._exec() {
       ;;
     fail)
       local -i __TestSuite_exec_rc=0
-      if ( _Self="" _Class="" "$@" ) 2>/dev/null; then
+      local __TestSuite_exec_stderr; __TestSuite_exec_stderr=$(mktemp)
+      if ( _Self="" _Class="" "$@" ) 2>"$__TestSuite_exec_stderr"; then
         __TestSuite_exec_rc=0
       else
         __TestSuite_exec_rc=$?
       fi
+      [[ -s "$__TestSuite_exec_stderr" ]] && _Debug "$(<"$__TestSuite_exec_stderr")"
+      rm -f "$__TestSuite_exec_stderr"
       if (( __TestSuite_exec_rc != 0 )); then
         __TestSuite._pass "$__TestSuite_exec_self" "$__TestSuite_exec_desc"
       else

@@ -95,6 +95,41 @@ into=v $q.get "passed"; $t.assert_eq "queue passed count" "$v" "6"
 into=v $q.get "failed"; $t.assert_eq "queue failed count" "$v" "0"
 
 # ============================================================================
+# Stderr Capture — assert_ok/assert_fail capture stderr to _Debug
+# ============================================================================
+
+$t.section "Stderr Capture"
+
+# At default log level (warn), stderr from assert_ok is captured but silent.
+# At debug level, it should appear via _Debug.
+
+# Helper that writes to stderr and succeeds
+__test_stderr_cmd() { printf 'stderr capture test\n' >&2; return 0; }
+
+# At debug level, the captured stderr should come through _Debug
+__ts_lf=$(mktemp)
+_LogLevel debug
+$t.assert_ok "ok captures stderr" __test_stderr_cmd 2>"$__ts_lf"
+_LogLevel warn
+$t.assert_contains "stderr visible at debug" "$(<"$__ts_lf")" "stderr capture test"
+
+# At warn level, _Debug output is suppressed — file should be empty
+: > "$__ts_lf"
+$t.assert_ok "ok runs clean at warn" __test_stderr_cmd 2>"$__ts_lf"
+$t.assert_eq "stderr silent at warn" "$(<"$__ts_lf")" ""
+
+# assert_fail also captures stderr
+__test_stderr_fail() { printf 'fail stderr\n' >&2; return 1; }
+: > "$__ts_lf"
+_LogLevel debug
+$t.assert_fail "fail captures stderr" __test_stderr_fail 2>"$__ts_lf"
+_LogLevel warn
+$t.assert_contains "fail stderr visible at debug" "$(<"$__ts_lf")" "fail stderr"
+
+rm -f "$__ts_lf"
+unset -f __test_stderr_cmd __test_stderr_fail
+
+# ============================================================================
 # Multiple Suites Don't Interfere
 # ============================================================================
 
