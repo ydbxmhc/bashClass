@@ -44,30 +44,30 @@ __boop_registry["TestSuite"]="|class=TestSuite|parent=boop\
 
 # Print a PASS line (if verbose) and increment the pass counter.
 __TestSuite._pass() {
-  local __tsp_self="$1" __tsp_desc="$2"
-  local __tsp_verbose
-  __boop.parse "$__tsp_self" "verbose" __tsp_verbose
-  [[ "$__tsp_verbose" == "1" ]] && printf "  PASS: %s\n" "$__tsp_desc"
-  local __tsp_p
-  __boop.parse "$__tsp_self" "passed" __tsp_p
-  : "${__tsp_p:=0}"
-  (( __tsp_p++ ))
-  _Self="$__tsp_self" _Class=TestSuite __boop.dispatch set passed "$__tsp_p"
+  local __TestSuite_pass_self="$1" __TestSuite_pass_desc="$2"
+  local __TestSuite_pass_verbose
+  __boop.parse "$__TestSuite_pass_self" "verbose" __TestSuite_pass_verbose
+  [[ "$__TestSuite_pass_verbose" == "1" ]] && printf "  PASS: %s\n" "$__TestSuite_pass_desc"
+  local __TestSuite_pass_p
+  __boop.parse "$__TestSuite_pass_self" "passed" __TestSuite_pass_p
+  : "${__TestSuite_pass_p:=0}"
+  (( __TestSuite_pass_p++ ))
+  _Self="$__TestSuite_pass_self" _Class=TestSuite __boop.dispatch set passed "$__TestSuite_pass_p"
 }
 
 # Print a FAIL line and increment the fail counter.
 __TestSuite._fail() {
-  local __tsf_self="$1" __tsf_desc="$2" __tsf_detail="${3:-}"
-  if [[ -n "$__tsf_detail" ]]; then
-    printf "  FAIL: %s — %s\n" "$__tsf_desc" "$__tsf_detail"
+  local __TestSuite_fail_self="$1" __TestSuite_fail_desc="$2" __TestSuite_fail_detail="${3:-}"
+  if [[ -n "$__TestSuite_fail_detail" ]]; then
+    printf "  FAIL: %s — %s\n" "$__TestSuite_fail_desc" "$__TestSuite_fail_detail"
   else
-    printf "  FAIL: %s\n" "$__tsf_desc"
+    printf "  FAIL: %s\n" "$__TestSuite_fail_desc"
   fi
-  local __tsf_f
-  __boop.parse "$__tsf_self" "failed" __tsf_f
-  : "${__tsf_f:=0}"
-  (( __tsf_f++ ))
-  _Self="$__tsf_self" _Class=TestSuite __boop.dispatch set failed "$__tsf_f"
+  local __TestSuite_fail_f
+  __boop.parse "$__TestSuite_fail_self" "failed" __TestSuite_fail_f
+  : "${__TestSuite_fail_f:=0}"
+  (( __TestSuite_fail_f++ ))
+  _Self="$__TestSuite_fail_self" _Class=TestSuite __boop.dispatch set failed "$__TestSuite_fail_f"
 }
 
 # ============================================================================
@@ -142,23 +142,23 @@ TestSuite.section() {
 # or by $t.run for each queued assertion in queue mode.
 # Args: self type desc [arg1 arg2 ...]
 __TestSuite._exec() {
-  local __tsx_self="$1" __tsx_type="$2" __tsx_desc="$3"; shift 3
+  local __TestSuite_exec_self="$1" __TestSuite_exec_type="$2" __TestSuite_exec_desc="$3"; shift 3
 
-  case "$__tsx_type" in
+  case "$__TestSuite_exec_type" in
     eq)
-      local __tsx_actual="$1" __tsx_expected="$2"
-      if [[ "$__tsx_actual" == "$__tsx_expected" ]]; then
-        __TestSuite._pass "$__tsx_self" "$__tsx_desc"
+      local __TestSuite_exec_actual="$1" __TestSuite_exec_expected="$2"
+      if [[ "$__TestSuite_exec_actual" == "$__TestSuite_exec_expected" ]]; then
+        __TestSuite._pass "$__TestSuite_exec_self" "$__TestSuite_exec_desc"
       else
-        __TestSuite._fail "$__tsx_self" "$__tsx_desc" "expected '$__tsx_expected' got '$__tsx_actual'"
+        __TestSuite._fail "$__TestSuite_exec_self" "$__TestSuite_exec_desc" "expected '$__TestSuite_exec_expected' got '$__TestSuite_exec_actual'"
       fi
       ;;
     ne)
-      local __tsx_actual="$1" __tsx_expected="$2"
-      if [[ "$__tsx_actual" != "$__tsx_expected" ]]; then
-        __TestSuite._pass "$__tsx_self" "$__tsx_desc"
+      local __TestSuite_exec_actual="$1" __TestSuite_exec_expected="$2"
+      if [[ "$__TestSuite_exec_actual" != "$__TestSuite_exec_expected" ]]; then
+        __TestSuite._pass "$__TestSuite_exec_self" "$__TestSuite_exec_desc"
       else
-        __TestSuite._fail "$__tsx_self" "$__tsx_desc" "expected not '$__tsx_expected'"
+        __TestSuite._fail "$__TestSuite_exec_self" "$__TestSuite_exec_desc" "expected not '$__TestSuite_exec_expected'"
       fi
       ;;
     ok)
@@ -167,51 +167,51 @@ __TestSuite._exec() {
       # on user objects hardcode their own _Self/_Class, but the typecast
       # guard checks ${_Class:-...} which would pick up our leaked value.
       # The if/else structure ensures set -e callers survive non-zero exits.
-      local -i __tsx_rc=0
+      local -i __TestSuite_exec_rc=0
       if _Self="" _Class="" "$@" 2>/dev/null; then
-        __tsx_rc=0
+        __TestSuite_exec_rc=0
       else
-        __tsx_rc=$?
+        __TestSuite_exec_rc=$?
       fi
-      if (( __tsx_rc == 0 )); then
-        __TestSuite._pass "$__tsx_self" "$__tsx_desc"
+      if (( __TestSuite_exec_rc == 0 )); then
+        __TestSuite._pass "$__TestSuite_exec_self" "$__TestSuite_exec_desc"
       else
-        __TestSuite._fail "$__tsx_self" "$__tsx_desc" "exit code $__tsx_rc"
+        __TestSuite._fail "$__TestSuite_exec_self" "$__TestSuite_exec_desc" "exit code $__TestSuite_exec_rc"
       fi
       ;;
     fail)
-      local -i __tsx_rc=0
+      local -i __TestSuite_exec_rc=0
       if ( _Self="" _Class="" "$@" ) 2>/dev/null; then
-        __tsx_rc=0
+        __TestSuite_exec_rc=0
       else
-        __tsx_rc=$?
+        __TestSuite_exec_rc=$?
       fi
-      if (( __tsx_rc != 0 )); then
-        __TestSuite._pass "$__tsx_self" "$__tsx_desc"
+      if (( __TestSuite_exec_rc != 0 )); then
+        __TestSuite._pass "$__TestSuite_exec_self" "$__TestSuite_exec_desc"
       else
-        __TestSuite._fail "$__tsx_self" "$__tsx_desc" "expected non-zero exit, got 0"
+        __TestSuite._fail "$__TestSuite_exec_self" "$__TestSuite_exec_desc" "expected non-zero exit, got 0"
       fi
       ;;
     match)
-      local __tsx_value="$1" __tsx_pattern="$2"
-      if [[ "$__tsx_value" == $__tsx_pattern ]]; then
-        __TestSuite._pass "$__tsx_self" "$__tsx_desc"
+      local __TestSuite_exec_value="$1" __TestSuite_exec_pattern="$2"
+      if [[ "$__TestSuite_exec_value" == $__TestSuite_exec_pattern ]]; then
+        __TestSuite._pass "$__TestSuite_exec_self" "$__TestSuite_exec_desc"
       else
-        __TestSuite._fail "$__tsx_self" "$__tsx_desc" "'$__tsx_value' doesn't match '$__tsx_pattern'"
+        __TestSuite._fail "$__TestSuite_exec_self" "$__TestSuite_exec_desc" "'$__TestSuite_exec_value' doesn't match '$__TestSuite_exec_pattern'"
       fi
       ;;
     contains)
-      local __tsx_haystack="$1" __tsx_needle="$2"
-      if [[ "$__tsx_haystack" == *"$__tsx_needle"* ]]; then
-        __TestSuite._pass "$__tsx_self" "$__tsx_desc"
+      local __TestSuite_exec_haystack="$1" __TestSuite_exec_needle="$2"
+      if [[ "$__TestSuite_exec_haystack" == *"$__TestSuite_exec_needle"* ]]; then
+        __TestSuite._pass "$__TestSuite_exec_self" "$__TestSuite_exec_desc"
       else
-        __TestSuite._fail "$__tsx_self" "$__tsx_desc" "'$__tsx_haystack' doesn't contain '$__tsx_needle'"
+        __TestSuite._fail "$__TestSuite_exec_self" "$__TestSuite_exec_desc" "'$__TestSuite_exec_haystack' doesn't contain '$__TestSuite_exec_needle'"
       fi
       ;;
     info)
-      local __tsx_verbose
-      __boop.parse "$__tsx_self" "verbose" __tsx_verbose
-      [[ "$__tsx_verbose" == "1" ]] && printf "  INFO: %s\n" "$__tsx_desc"
+      local __TestSuite_exec_verbose
+      __boop.parse "$__TestSuite_exec_self" "verbose" __TestSuite_exec_verbose
+      [[ "$__TestSuite_exec_verbose" == "1" ]] && printf "  INFO: %s\n" "$__TestSuite_exec_desc"
       ;;
   esac
 }
@@ -223,28 +223,28 @@ __TestSuite._exec() {
 # Route an assertion: execute immediately or queue it.
 # Args: self type desc [arg1 arg2 ...]
 __TestSuite._route() {
-  local __tsr_self="$1" __tsr_type="$2"
-  local __tsr_mode
-  __boop.parse "$__tsr_self" "mode" __tsr_mode
+  local __TestSuite_route_self="$1" __TestSuite_route_type="$2"
+  local __TestSuite_route_mode
+  __boop.parse "$__TestSuite_route_self" "mode" __TestSuite_route_mode
 
-  if [[ "$__tsr_mode" == "immediate" ]]; then
+  if [[ "$__TestSuite_route_mode" == "immediate" ]]; then
     __TestSuite._exec "$@"
   else
     # Queue mode: store assertion as a Map in the queue List
-    local __tsr_map __tsr_queue
-    into=__tsr_map Map
-    _Self="" _Class="" $__tsr_map.set "type" "$__tsr_type"
-    _Self="" _Class="" $__tsr_map.set "desc" "$3"
+    local __TestSuite_route_map __TestSuite_route_queue
+    into=__TestSuite_route_map Map
+    _Self="" _Class="" $__TestSuite_route_map.set "type" "$__TestSuite_route_type"
+    _Self="" _Class="" $__TestSuite_route_map.set "desc" "$3"
     # Store remaining args as pipe-delimited (they're already simple strings)
     shift 3
-    local __tsr_args=""
-    local __tsr_i
-    for __tsr_i in "$@"; do
-      [[ -n "$__tsr_args" ]] && __tsr_args="$__tsr_args|$__tsr_i" || __tsr_args="$__tsr_i"
+    local __TestSuite_route_args=""
+    local __TestSuite_route_i
+    for __TestSuite_route_i in "$@"; do
+      [[ -n "$__TestSuite_route_args" ]] && __TestSuite_route_args="$__TestSuite_route_args|$__TestSuite_route_i" || __TestSuite_route_args="$__TestSuite_route_i"
     done
-    _Self="" _Class="" $__tsr_map.set "args" "$__tsr_args"
-    __boop.parse "$__tsr_self" "queue" __tsr_queue
-    _Self="" _Class="" $__tsr_queue.push "$__tsr_map"
+    _Self="" _Class="" $__TestSuite_route_map.set "args" "$__TestSuite_route_args"
+    __boop.parse "$__TestSuite_route_self" "queue" __TestSuite_route_queue
+    _Self="" _Class="" $__TestSuite_route_queue.push "$__TestSuite_route_map"
   fi
 }
 
