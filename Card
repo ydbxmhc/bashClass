@@ -27,7 +27,7 @@ Card.new() {
   [[ -n "$__Card_new_suit" ]] || _Crash "Card: suit= is required"
   [[ -n "$__Card_new_rank" ]] || _Crash "Card: rank= is required"
   into=__Card_new_self __boop.new suit="$__Card_new_suit" rank="$__Card_new_rank" faceUp="$__Card_new_faceUp"
-  __boop.return "$__Card_new_self" ${into:-}
+  boop.pass "$__Card_new_self" ${into:-}
 }
 
 Card.flip() {
@@ -44,9 +44,9 @@ Card.val() {
   local -I _Self _Class
   local __Card_val_rank; __boop.parse "$_Self" "rank" __Card_val_rank
   case "$__Card_val_rank" in
-    [2-9]) __boop.return "$__Card_val_rank" ${into:-} ;;
-    10)    __boop.return "10" ${into:-} ;;
-    *)     __boop.return "0" ${into:-} ;;
+    [2-9]) boop.pass "$__Card_val_rank" ${into:-} ;;
+    10)    boop.pass "10" ${into:-} ;;
+    *)     boop.pass "0" ${into:-} ;;
   esac
 }
 
@@ -54,13 +54,13 @@ Card.toString() {
   local -I _Self _Class
   local __Card_ts_fu; __boop.parse "$_Self" "faceUp" __Card_ts_fu
   if [[ "$__Card_ts_fu" != "1" ]]; then
-    __boop.return "[?]" ${into:-}
+    boop.pass "[?]" ${into:-}
     return
   fi
   local __Card_ts_rank __Card_ts_suit
   __boop.parse "$_Self" "rank" __Card_ts_rank
   __boop.parse "$_Self" "suit" __Card_ts_suit
-  __boop.return "${__Card_ts_rank}${__Card_ts_suit}" ${into:-}
+  boop.pass "${__Card_ts_rank}${__Card_ts_suit}" ${into:-}
 }
 
 __boop.registerMethod Card new      Card.new
@@ -83,7 +83,7 @@ FaceCard.new() {
 
 FaceCard.val() {
   local -I _Self _Class
-  __boop.return "10" ${into:-}
+  boop.pass "10" ${into:-}
 }
 
 __boop.registerMethod FaceCard new FaceCard.new
@@ -104,7 +104,7 @@ Ace.new() {
 
 Ace.val() {
   local -I _Self _Class
-  __boop.return "11" ${into:-}
+  boop.pass "11" ${into:-}
 }
 
 __boop.registerMethod Ace new Ace.new

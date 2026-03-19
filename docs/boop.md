@@ -16,9 +16,6 @@ the plumbing.
 - bash 5.0+ (associative arrays, `local -I`, `EPOCHREALTIME`, namerefs)
 - That's it. Seriously.
 
-The `bencode`/`bdecode` helpers use coreutils `base64` for binary-safe
-encoding, but the core framework doesn't touch it.
-
 macOS ships bash 3.2 (thanks, GPL3). `brew install bash` fixes that.
 If your users might be on macOS, tell them up front.
 
@@ -106,7 +103,7 @@ dispatch entirely.
 
 This is the part that makes boop feel different from "just bash functions."
 Every value-producing function in the framework routes through a single
-return handler (`__boop.return`). You choose how to receive the value.
+return handler (`boop.pass`). You choose how to receive the value.
 
 ### `into=` — The Recommended Way
 
@@ -131,22 +128,22 @@ into=vol $cube.volume
 printf "%s\n" "$vol"            # 64
 
 # Force stdout mode for one call — prints directly, no variable needed
-__boop_returnMode=stdout $cube.volume
+_OutMode=stdout $cube.volume
 printf "\n"                     # (add a newline if you want one)
 
 # That's a mouthful. Consider an alias:
-alias show='__boop_returnMode=stdout'
+alias show='_OutMode=stdout'
 show $cube.volume               # same thing, less typing
 
 # Or use the global side-channel and print that
 $cube.volume
-printf "%s\n" "$__boop_RETURN"  # 64
+printf "%s\n" "$_Out"  # 64
 
 # Subshell capture — classic bash, works anywhere
 printf "Volume: %s\n" "$( $cube.volume )"  # Volume: 64
 ```
 
-The first two avoid subshells entirely. The `__boop_returnMode=stdout`
+The first two avoid subshells entirely. The `_OutMode=stdout`
 prefix is a per-call override — it doesn't change the global default.
 
 ### Subshell Capture (Classic Bash)
@@ -182,18 +179,18 @@ into=val $matrix.itemAt 0 1           # "2"
 
 ```bash
 $cube.volume
-printf "%s\n" "$__boop_RETURN"  # "64"
+printf "%s\n" "$_Out"  # "64"
 ```
 
 When no `into=` is provided and you're in the main shell, the value
-lands in `__boop_RETURN`. It's a single flat global — the next
+lands in `_Out`. It's a single flat global — the next
 call overwrites it. Fine for quick one-offs, but `into=` is safer.
 
 ### Explicit Mode Override
 
 ```bash
-__boop_returnMode=stdout $cube.volume    # force stdout
-__boop_returnMode=nameref $cube.volume   # crash (no target!)
+_OutMode=stdout $cube.volume    # force stdout
+_OutMode=nameref $cube.volume   # crash (no target!)
 ```
 
 You can override the global mode per-call via environment prefix.
@@ -252,11 +249,6 @@ encoding — it's transparent:
 $b.set "notes" "width=3|height=7"
 into=n $b.get "notes"           # n="width=3|height=7" (clean)
 ```
-
-For binary data (null bytes, arbitrary byte sequences), use the
-`bencode`/`bdecode` helpers, which go through `base64`. These require
-a subshell (command substitution for the external tool), so they're
-slower — use only when you actually need binary safety.
 
 ---
 
@@ -404,7 +396,7 @@ Box.volume() {
   __boop.parse "$_Self" "width"  __Box_volume_w
   into=__Box_volume_vol required=3 Box.calc \
     "$__Box_volume_l" "$__Box_volume_h" "$__Box_volume_w"
-  __boop.return "$__Box_volume_vol" ${into:-}
+  boop.pass "$__Box_volume_vol" ${into:-}
 }
 
 Box.new() {
@@ -412,7 +404,7 @@ Box.new() {
   : "${_Class:=Box}"
   local __Box_new_self
   into=__Box_new_self __boop.new "$@"
-  __boop.return "$__Box_new_self" ${into:-}
+  boop.pass "$__Box_new_self" ${into:-}
 }
 
 # ... other methods ...
@@ -445,7 +437,7 @@ __boop.registerClass Box
 
 4. **Method functions**: Name them `ClassName.methodName`. Start with
    `local -I _Self _Class` to inherit the calling object's identity.
-   End value-producing methods with `__boop.return "$val" ${into:-}`.
+   End value-producing methods with `boop.pass "$val" ${into:-}`.
 
 5. **Register methods**: `__boop.registerMethod ClassName method ClassName.method`
    for each method. The implementing function must exist at registration time.
@@ -481,7 +473,7 @@ Cube.new() {
   # Delegate to base constructor with derived dimensions
   into=__Cube_new_self __boop.new "$@" \
     length=$__Cube_new_size width=$__Cube_new_size height=$__Cube_new_size
-  __boop.return "$__Cube_new_self" ${into:-}
+  boop.pass "$__Cube_new_self" ${into:-}
 }
 
 # Override methods as needed...
@@ -491,7 +483,7 @@ Cube.volume() {
   __boop.parse "$_Self" "size" __Cube_volume_size
   into=__Cube_volume_vol required=3 Box.calc \
     "$__Cube_volume_size" "$__Cube_volume_size" "$__Cube_volume_size"
-  __boop.return "$__Cube_volume_vol" ${into:-}
+  boop.pass "$__Cube_volume_vol" ${into:-}
 }
 
 # Register and finalize
@@ -512,7 +504,7 @@ These aren't suggestions — they prevent real bugs.
 | What | Convention | Why |
 |------|-----------|-----|
 | Local variables | `__ClassName_methodName_varname` | Prevents nameref collisions across the call stack. Bash namerefs resolve by name, not scope — if two functions both use `local val`, a nameref in the inner function can accidentally bind to the outer function's `val`. Prefixing makes names unique. |
-| Value return | `__boop.return "$val" ${into:-}` | Routes through the universal return handler. The `${into:-}` passes the caller's nameref target (if any) so the value lands directly in their variable. |
+| Value return | `boop.pass "$val" ${into:-}` | Routes through the universal return handler. The `${into:-}` passes the caller's nameref target (if any) so the value lands directly in their variable. |
 | Delegation capture | `into=__ClassName_method_localvar SomeCall` | Captures a sub-call's return value into a prefixed local. Same collision-prevention logic. |
 | Output | `printf`, never `echo` | `echo` interprets backslash escapes on some platforms. `printf` is predictable everywhere. |
 | Framework internals | `__boop_*` or `__boop.*` | Leading double underscore = hands off. |
@@ -785,7 +777,7 @@ MyStack.new() {
   into=__MyStack_new_self __boop.new "$@"
   declare -ga "__boop_data_${__MyStack_new_self}"
   $__MyStack_new_self.noIterators     # walls off all iterator methods
-  __boop.return "$__MyStack_new_self" ${into:-}
+  boop.pass "$__MyStack_new_self" ${into:-}
 }
 ```
 
@@ -877,7 +869,7 @@ automatically skipped in the stack walk.
 | Function | Description |
 |----------|-------------|
 | `__boop.new` | Object constructor. Generates ID, builds descriptor, registers, stubs methods. |
-| `__boop.return` | Universal return handler. Routes values via nameref, stdout, global, or filesystem. |
+| `boop.pass` | Universal return handler. Routes values via nameref, stdout, global, or filesystem. |
 | `__boop.dispatch` | Method dispatcher with MRO, caching, and lazy baking. |
 | `__boop.parse` | Extract a field from a descriptor string. Decodes values. |
 | `__boop.get` | Read a property from an object's descriptor. |
@@ -919,8 +911,6 @@ automatically skipped in the stack walk.
 |----------|-------------|
 | `__boop.encode` | Percent-encode pipes, equals, percents, newlines, tabs. |
 | `__boop.decode` | Reverse of encode. |
-| `__boop.bencode` | Base64 encode (binary-safe, requires subshell). |
-| `__boop.bdecode` | Base64 decode (binary-safe, requires subshell). |
 
 ### Serialization
 
@@ -945,9 +935,9 @@ automatically skipped in the stack walk.
 | `__boop_classPath` | Explicit path overrides for class file resolution. |
 | `__boop_loading` | In-progress load tracker (circular recursion prevention). |
 | `__boop_static` | Cross-call static storage for any function. |
-| `__boop_returnMode` | Current global return mode (default: "auto"). |
+| `_OutMode` | Current global return mode (default: "auto"). |
 | `__boop_dir` | Directory where boop lives (resolved at load time). |
-| `__boop_RETURN` | Side-channel for global return mode. |
+| `_Out` | Side-channel for global return mode. |
 | `__boop_rootPID` | Root process PID (for subshell detection). |
 | `__boop_loaded` | Framework initialization flag. |
 | `__boop_logLevel` | Global default log level (default: 2/warn). |

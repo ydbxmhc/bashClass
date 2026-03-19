@@ -18,7 +18,7 @@ if (( ! ${__boop_loaded:-0} )); then
 # GLOBALS - Process State
 # ============================================================================
 
-# Captured at load time so __boop.return can detect subshells later.
+# Captured at load time so boop.pass can detect subshells later.
 # If BASHPID != this value at call time, we're in a subshell and auto mode
 # switches to stdout (since globals can't escape a subshell boundary).
 declare -gi __boop_rootPID=$BASHPID
@@ -72,11 +72,11 @@ declare -gA __boop_static
 # GLOBALS - Configuration
 # ============================================================================
 
-# Controls how __boop.return delivers values when no explicit nameref
+# Controls how boop.pass delivers values when no explicit nameref
 # target is provided. Modes: auto (global in main shell, stdout in subshell),
 # nameref (requires target — crashes without one), stdout, global, filesystem.
-# Can be overridden per-call via environment: __boop_returnMode=stdout $obj.volume
-declare -g  __boop_returnMode="${__boop_returnMode:-auto}"
+# Can be overridden per-call via environment: _OutMode=stdout $obj.volume
+declare -g  _OutMode="${_OutMode:-auto}"
 
 # Absolute path to the directory containing this framework file. Used as the
 # second-priority search location for class imports (after __boop_classPath,
@@ -136,12 +136,12 @@ declare -g __boop_logFile="${TMPDIR:-/tmp}/boop_${$}.log"
 # GLOBALS - Return Values
 # ============================================================================
 
-# Side-channel for global return mode. When __boop.return is called
+# Side-channel for global return mode. When boop.pass is called
 # without a nameref target and the mode resolves to "global", the value
-# lands here. Callers read it after the call: $obj.volume; printf "%s" "$__boop_RETURN"
+# lands here. Callers read it after the call: $obj.volume; printf "%s" "$_Out"
 # Intentionally a single flat global — keeps the API simple. If you need
 # to capture a value without clobbering this, use into=varname instead.
-declare -g  __boop_RETURN=""
+declare -g  _Out=""
 
 # ============================================================================
 # GLOBALS - Initialization Flags
@@ -331,7 +331,7 @@ _LogLevel() { __boop.setLogLevel "$@"; }
 
 # Every function that produces a value calls this as its last act.
 # This is the single choke point for all value delivery in the framework.
-# Respects __boop_returnMode globally; auto mode uses context clues.
+# Respects _OutMode globally; auto mode uses context clues.
 #
 # When a nameref target ($2) is provided, it ALWAYS wins — the value is
 # written directly into the caller's named variable via bash nameref,
@@ -340,42 +340,70 @@ _LogLevel() { __boop.setLogLevel "$@"; }
 #
 # When no target is provided, the global mode governs:
 #   auto       → global in main shell, stdout in subshell (detected via BASHPID)
-#   global     → writes to __boop_RETURN
+#   global     → writes to _Out
 #   stdout     → printf to stdout (natural for $() capture)
 #   nameref    → crashes (target is required — this is intentional)
 #   filesystem → writes to a temp file keyed by caller function name + PID
 #
 # Usage:
-#   __boop.return "$value"              # uses global mode (auto default)
-#   __boop.return "$value" target_var   # nameref — always direct write
-__boop.return() {
-  local __return_val="$1" __return_target="${2:-}"
-  local __return_mode="$__boop_returnMode"
+#   boop.pass "$value"              # uses global mode (auto default)
+#   boop.pass "$value" target_var   # nameref — always direct write
+boop.pass() {
+  local __boop_pass_val="$1" __boop_pass_target="${2:-}"
+  local __return_mode="$_OutMode"
 
   # If a nameref target is explicitly provided, always use it.
-  # The global mode setting only governs calls with no target.
-  if [[ -n "$__return_target" ]]; then
-    local -n __return_ref="$__return_target"
-    __return_ref="$__return_val"
+  if [[ -n "$__boop_pass_target" ]]; then
+    local -n __boop_pass_ref="$__boop_pass_target"
+    local __boop_pass_mode="${_OutMode:-auto}"
     return
   fi
-
   if [[ "$__return_mode" == "auto" ]]; then
-    if [[ $BASHPID != $__boop_rootPID ]]; then __return_mode="stdout"
-    else __return_mode="global"
-    fi
+    [[ $BASHPID == $__boop_rootPID ]] && __return_mode="global" || __return_mode="stdout"
   fi
-
   case "$__return_mode" in
-    nameref) _Crash "nameref mode requires target variable" ;; # wouldn't be here if it had one!
-    stdout) printf "%s" "${__return_val:-}" ${_EOL:-}                  ;; # with line ending if set
-    global) __boop_RETURN="$__return_val" ;;
+    nameref)    _Crash "nameref mode requires target variable" ;; # wouldn't be here if it had one!
+    stdout)     printf "%s" "${__boop_pass_val:-}" ${_EOL:-}   ;; # with line ending if set
+    global)     _Out="$__boop_pass_val"                        ;; # the fallback default
     filesystem)
-      # TODO: __boop.returnPath from call stack introspection
-      printf "%s" "$__return_val" >| "${__boop_tmpdir:-/tmp}/__boop_${FUNCNAME[1]}_$BASHPID"
+      # TODO: boop.passPath from call stack introspection
+      printf "%s" "$__boop_pass_val" >| "${__boop_tmpdir:-/tmp}/__boop_${FUNCNAME[1]}_$BASHPID"
       ;;
     *) _Crash "Invalid return mode: $__return_mode" ;;
   esac
+}
+
+# _OutMode — get or set the output delivery mode for boop.pass.
+#
+# Controls how boop.pass delivers values when no explicit into= target
+# is provided. Works as both a variable and a function — you can't
+# really get it wrong:
+#
+#   _OutMode            # print current mode
+#   _OutMode stdout     # set mode and print it
+#   _OutMode=stdout     # set mode directly (no output)
+#   echo "$_OutMode"    # read mode directly
+#
+# Modes:
+#   auto        default — global in main shell, stdout in subshells
+#   global      always write to _Out (the default side-channel)
+#   stdout      always print to stdout (good for CLI use)
+#   nameref     requires into= — crashes without one
+#   filesystem  write to temp file keyed by caller + PID
+#
+# Validation: invalid mode crashes immediately with a clear message
+# rather than failing later inside boop.pass.
+#
+# Typically set once at the top of a script or in ~/.bash_profile:
+#   _OutMode=stdout
+#   _EOL=$'\n'
+_OutMode() {
+  if [[ -n "${1:-}" ]]; then
+    case "$1" in auto|global|stdout|nameref|filesystem) _OutMode="$1"          ;;
+    *) _Crash "invalid _OutMode: '$1' (auto|global|stdout|nameref|filesystem)" ;;
+    esac
+  fi
+  boop.pass "$_OutMode"
 }
 
 # ============================================================================
@@ -397,7 +425,7 @@ __boop.encode() {
   __encode_val="${__encode_val//=/%3D}"
   __encode_val="${__encode_val//$'\n'/%0A}"
   __encode_val="${__encode_val//$'\t'/%09}"
-  __boop.return "$__encode_val" "${2:-}"
+  boop.pass "$__encode_val" "${2:-}"
 }
 
 # Fast decode: reverses encode. Uses bash parameter expansion (no subshell).
@@ -414,52 +442,7 @@ __boop.decode() {
   __decode_val="${__decode_val//%3D/=}"
   __decode_val="${__decode_val//%7C/|}"
   __decode_val="${__decode_val//%25/%}"
-  __boop.return "$__decode_val" "${2:-}"
-}
-
-# Binary-safe encode: base64 via external tool.
-# Unlike encode/decode, this requires a subshell (command substitution for
-# base64), so it's slower — use only when values may contain null bytes or
-# arbitrary binary data that bash variables can't hold natively.
-# The -w0 flag disables line wrapping so the output is a single token.
-#
-# Accepts a typecast prefix to select input source:
-#   input=string (default) — encode the first positional argument
-#   input=file             — encode the contents of the file at $1
-#   input=-                — encode from stdin (pipe-friendly)
-#
-# Usage: __boop.bencode "string"                  # encode string
-#        input=file __boop.bencode /path/to/file  # encode file contents
-#        input=- __boop.bencode                   # encode from stdin
-__boop.bencode() {
-  local -l input; : "${input:=string}"
-  local __bencode_val
-  case $input in
-    file) [[ -f "$1" ]] || _Crash "File not found: $1"
-          __bencode_val=$(base64 -w0 < "$1") ;;
-    -)    __bencode_val=$(base64 -w0) ;;
-    *)    __bencode_val=$(printf '%s' "$1" | base64 -w0) ;;
-  esac
-  __boop.return "$__bencode_val" ${into:-}
-}
-
-# Binary-safe decode: base64 via external tool.
-# Mirror of bencode — same subshell cost, same typecast interface.
-# TODO: See TODO.md "Binary-Safe Encode/Decode Output Mode"
-#
-# Usage: __boop.bdecode "encoded_string"                  # decode string
-#        input=file __boop.bdecode /path/to/encoded.dat   # decode from file
-#        input=- __boop.bdecode                           # decode from stdin
-__boop.bdecode() {
-  local -l input; : "${input:=string}"
-  local __bdecode_val
-  case $input in
-    file) [[ -f "$1" ]] || _Crash "File not found: $1"
-          __bdecode_val=$(base64 -d < "$1") ;;
-    -)    __bdecode_val=$(base64 -d) ;;
-    *)    __bdecode_val=$(printf '%s' "$1" | base64 -d) ;;
-  esac
-  __boop.return "$__bdecode_val" ${into:-}
+  boop.pass "$__decode_val" "${2:-}"
 }
 
 # ============================================================================
@@ -472,7 +455,7 @@ __boop.bdecode() {
 # Validate and reject — never sanitize and proceed.
 #
 # In identifier mode (default): allows [A-Za-z_][A-Za-z0-9_]* — no dots.
-# In function mode: allows dots in the name (e.g., "Box.calc", "__boop.return")
+# In function mode: allows dots in the name (e.g., "Box.calc", "boop.pass")
 # because bash functions can contain dots, and our dispatch system relies on them.
 #
 # The type= typecast uses `local -l` for case-insensitive matching, so
@@ -497,11 +480,11 @@ __boop.validate() {
 # ============================================================================
 
 # Set global default return mode. Affects all subsequent calls to
-# __boop.return that don't have an explicit nameref target.
+# boop.pass that don't have an explicit nameref target.
 # This is a process-wide setting — use with intention.
 __boop.setDefaultMode() {
   case "$1" in
-    auto|nameref|stdout|global|filesystem) __boop_returnMode="$1" ;;
+    auto|nameref|stdout|global|filesystem) _OutMode="$1" ;;
     *) _Crash "Invalid mode: $1 (use: auto, nameref, stdout, global, filesystem)" ;;
   esac
 }
@@ -526,7 +509,7 @@ __boop.setDefaultMode() {
 # Usage:
 #   value=$(__boop.parse "Box" "parent")           # stdout (subshell)
 #   __boop.parse "Box" "parent" my_var             # nameref (no subshell)
-#   __boop_returnMode=global __boop.parse ... # global variable
+#   _OutMode=global __boop.parse ... # global variable
 __boop.parse() {
   local __parse_key="$1" __parse_field="$2" __parse_target="${3:-}"
 
@@ -539,7 +522,7 @@ __boop.parse() {
     __boop.decode "${BASH_REMATCH[1]}" __parse_value
   fi
 
-  __boop.return "$__parse_value" "$__parse_target"
+  boop.pass "$__parse_value" "$__parse_target"
 }
 
 # ============================================================================
@@ -748,13 +731,13 @@ __boop.set() {
 }
 
 # Type checking with ancestry walk.
-# No args: returns the object's class name (via __boop.return).
+# No args: returns the object's class name (via boop.pass).
 # With arg: walks the inheritance chain and returns 0 (true) if the
 # object's class matches or inherits from the queried class, 1 (false)
 # otherwise. The walk follows "parent" fields in class descriptors
 # up to the root (boop, whose parent is empty string).
 #
-# Note: isa with a query does NOT call __boop.return — it
+# Note: isa with a query does NOT call boop.pass — it
 # communicates via exit code only (0/1), which is the bash convention
 # for boolean checks: `$obj.isa Box && printf "it's a box"`
 __boop.isa() {
@@ -762,7 +745,7 @@ __boop.isa() {
   local __isa_query="${1:-}"
 
   if [[ -z "$__isa_query" ]]; then
-    __boop.return "$_Class" ${into:-}
+    boop.pass "$_Class" ${into:-}
     return 0
   fi
 
@@ -817,7 +800,7 @@ __boop.toString() {
       esac
       __ts_descriptor="${__ts_descriptor#*"${BASH_REMATCH[0]}"}"
     done
-    __boop.return "$__ts_output }" ${into:-}
+    boop.pass "$__ts_output }" ${into:-}
     return
   fi
 
@@ -847,7 +830,7 @@ __boop.toString() {
   done
   __ts_output="$__ts_output}"
 
-  __boop.return "$__ts_output" ${into:-}
+  boop.pass "$__ts_output" ${into:-}
 }
 
 # Object constructor. This is the beating heart of object creation.
@@ -895,7 +878,7 @@ __boop.new() {
   # Generate lazy stubs for all methods (walk inheritance chain)
   __boop.stubAll "$_Self" "$_Class"
 
-  __boop.return "$_Self" ${into:-}
+  boop.pass "$_Self" ${into:-}
 }
 
 # Call a method on the parent class. Looks up the current class's parent

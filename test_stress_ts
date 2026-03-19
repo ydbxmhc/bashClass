@@ -15,8 +15,8 @@ into=t TestSuite name="Stress Tests"
 # Setup: create base objects
 # ============================================================================
 
-new Box length=5 width=3 height=7; box="$__boop_RETURN"
-new Cube size=4 unit=cm; cube="$__boop_RETURN"
+new Box length=5 width=3 height=7; box="$_Out"
+new Cube size=4 unit=cm; cube="$_Out"
 
 # ============================================================================
 # SECTION 1: validate — input validation
@@ -45,38 +45,38 @@ $t.assert_fail "misspelled typecast" bash -c '. boop Cube; typ=function __boop.v
 $t.section "return modes"
 
 # Auto mode: global in main shell
-__boop_returnMode=auto
-__boop.return "hello_auto"
-$t.assert_eq "auto mode in main shell → global" "$__boop_RETURN" "hello_auto"
+_OutMode=auto
+boop.pass "hello_auto"
+$t.assert_eq "auto mode in main shell → global" "$_Out" "hello_auto"
 
 # Auto mode: stdout in subshell
-__sub_out=$( __boop.return "hello_sub" )
+__sub_out=$( boop.pass "hello_sub" )
 $t.assert_eq "auto mode in subshell → stdout" "$__sub_out" "hello_sub"
 
 # Explicit global
-__boop_returnMode=global
-__boop.return "hello_global"
-$t.assert_eq "explicit global mode" "$__boop_RETURN" "hello_global"
+_OutMode=global
+boop.pass "hello_global"
+$t.assert_eq "explicit global mode" "$_Out" "hello_global"
 
 # Explicit stdout
-$t.assert_ok "explicit stdout mode" bash -c '. boop Cube; __boop_returnMode=stdout; out=$(__boop.return "hello_stdout"); [ "$out" = "hello_stdout" ]'
+$t.assert_ok "explicit stdout mode" bash -c '. boop Cube; _OutMode=stdout; out=$(boop.pass "hello_stdout"); [ "$out" = "hello_stdout" ]'
 
 # Explicit nameref
-__boop_returnMode=auto
+_OutMode=auto
 local_target=""
-__boop.return "hello_nameref" local_target
+boop.pass "hello_nameref" local_target
 $t.assert_eq "nameref mode" "$local_target" "hello_nameref"
 
 # Nameref with no target (should crash)
-$t.assert_fail "nameref mode, no target" bash -c '. boop Cube; __boop_returnMode=nameref; __boop.return "boom"'
+$t.assert_fail "nameref mode, no target" bash -c '. boop Cube; _OutMode=nameref; boop.pass "boom"'
 
 # Nameref in subshell (should work)
-$t.assert_ok "nameref in subshell" bash -c '. boop Cube; __boop_returnMode=nameref; __boop.return "boom" myvar'
+$t.assert_ok "nameref in subshell" bash -c '. boop Cube; _OutMode=nameref; boop.pass "boom" myvar'
 
 # Filesystem mode
-__boop_returnMode=filesystem
+_OutMode=filesystem
 __boop_tmpdir="/tmp"
-__boop.return "hello_fs"
+boop.pass "hello_fs"
 __fs_found=0
 for f in /tmp/__boop_*; do
   [[ -f "$f" ]] && __fs_found=1 && rm -f "$f"
@@ -84,10 +84,10 @@ done
 $t.assert_ok "filesystem mode wrote a file" test "$__fs_found" -eq 1
 
 # Invalid mode
-$t.assert_fail "invalid return mode: banana" bash -c '. boop Cube; __boop_returnMode=banana; __boop.return "boom"'
+$t.assert_fail "invalid return mode: banana" bash -c '. boop Cube; _OutMode=banana; boop.pass "boom"'
 
 # Reset
-__boop_returnMode=auto
+_OutMode=auto
 
 # ============================================================================
 # SECTION 3: encode/decode — edge cases
@@ -163,37 +163,37 @@ $t.assert_fail "new nonexistent class" bash -c '. boop Cube; new Sphere size=5'
 $t.assert_fail "new with invalid class name" bash -c '. boop Cube; new "bad class" size=5'
 
 # new with no args (should still work — empty object)
-new Box; __empty_box="$__boop_RETURN"
+new Box; __empty_box="$_Out"
 $t.assert_match "new Box with no args creates object" "$__empty_box" "_*"
 
 # Property with special chars in value
 new Box length=5 width=3 height=7 color="red|blue=green%100"
-__special_box="$__boop_RETURN"
+__special_box="$_Out"
 $__special_box.color
-$t.assert_eq "special chars in constructor arg" "$__boop_RETURN" "red|blue=green%100"
+$t.assert_eq "special chars in constructor arg" "$_Out" "red|blue=green%100"
 
 # Class-as-constructor
-Box length=1 width=1 height=1; __cbox="$__boop_RETURN"
+Box length=1 width=1 height=1; __cbox="$_Out"
 $__cbox.volume
-$t.assert_eq "Box class-as-constructor" "$__boop_RETURN" "1"
+$t.assert_eq "Box class-as-constructor" "$_Out" "1"
 
-Cube size=3; __ccube="$__boop_RETURN"
+Cube size=3; __ccube="$_Out"
 $__ccube.volume
-$t.assert_eq "Cube class-as-constructor" "$__boop_RETURN" "27"
+$t.assert_eq "Cube class-as-constructor" "$_Out" "27"
 
 # Explicit dispatch constructor
-_Class=Box __boop.dispatch new length=2 width=3 height=4; __dbox="$__boop_RETURN"
+_Class=Box __boop.dispatch new length=2 width=3 height=4; __dbox="$_Out"
 $__dbox.volume
-$t.assert_eq "explicit dispatch constructor Box" "$__boop_RETURN" "24"
+$t.assert_eq "explicit dispatch constructor Box" "$_Out" "24"
 
-_Class=Cube __boop.dispatch new size=5; __dcube="$__boop_RETURN"
+_Class=Cube __boop.dispatch new size=5; __dcube="$_Out"
 $__dcube.volume
-$t.assert_eq "explicit dispatch constructor Cube" "$__boop_RETURN" "125"
+$t.assert_eq "explicit dispatch constructor Cube" "$_Out" "125"
 
 # Duplicate property in args (last one wins)
-new Box length=5 width=3 height=7 length=99; __dup_box="$__boop_RETURN"
+new Box length=5 width=3 height=7 length=99; __dup_box="$_Out"
 $__dup_box.length
-$t.info "duplicate prop length=5 then length=99 → '$__boop_RETURN'"
+$t.info "duplicate prop length=5 then length=99 → '$_Out'"
 
 # ============================================================================
 # SECTION 8: get/set — edge cases
@@ -201,21 +201,21 @@ $t.info "duplicate prop length=5 then length=99 → '$__boop_RETURN'"
 
 $t.section "get/set"
 $box.get "nosuchprop"
-$t.assert_eq "get nonexistent property returns empty" "$__boop_RETURN" ""
+$t.assert_eq "get nonexistent property returns empty" "$_Out" ""
 $box.set "emptyval" ""
 $box.get "emptyval"
-$t.assert_eq "set/get empty string" "$__boop_RETURN" ""
+$t.assert_eq "set/get empty string" "$_Out" ""
 $box.set "crazy" "line1
 line2	|col=100%"
 $box.get "crazy"
-$t.assert_eq "set/get value with all special chars" "$__boop_RETURN" "line1
+$t.assert_eq "set/get value with all special chars" "$_Out" "line1
 line2	|col=100%"
 $box.set "length" "42"
 $box.get "length"
-$t.assert_eq "overwrite existing property" "$__boop_RETURN" "42"
+$t.assert_eq "overwrite existing property" "$_Out" "42"
 $box.length 77
 $box.length
-$t.assert_eq "shorthand set/get" "$__boop_RETURN" "77"
+$t.assert_eq "shorthand set/get" "$_Out" "77"
 
 # ============================================================================
 # SECTION 9: isa — edge cases
@@ -223,10 +223,10 @@ $t.assert_eq "shorthand set/get" "$__boop_RETURN" "77"
 
 $t.section "isa"
 $cube.isa
-$t.assert_eq "isa no-arg returns class name" "$__boop_RETURN" "Cube"
+$t.assert_eq "isa no-arg returns class name" "$_Out" "Cube"
 $t.assert_fail "isa Sphere returns false" $cube.isa "Sphere"
 $cube.isa ""
-$t.assert_eq "isa empty string returns class name" "$__boop_RETURN" "Cube"
+$t.assert_eq "isa empty string returns class name" "$_Out" "Cube"
 $t.assert_ok "isa boop from Cube (full chain)" $cube.isa boop
 
 # ============================================================================
@@ -234,29 +234,29 @@ $t.assert_ok "isa boop from Cube (full chain)" $cube.isa boop
 # ============================================================================
 
 $t.section "toString"
-new boop; __bare="$__boop_RETURN"
+new boop; __bare="$_Out"
 $__bare.toString
-$t.assert_contains "bare boop toString" "$__boop_RETURN" "boop("
+$t.assert_contains "bare boop toString" "$_Out" "boop("
 
 new Box length=5 width=3 height=7 color="red|blue"
-__pp_box="$__boop_RETURN"
+__pp_box="$_Out"
 prettyPrint=true $__pp_box.toString
-$t.info "pretty with special chars: $__boop_RETURN"
+$t.info "pretty with special chars: $_Out"
 
 # Misspelled typecast should not crash
 prettyprint=true $cube.toString
-$t.assert_contains "misspelled prettyprint still works (compact)" "$__boop_RETURN" "{"
+$t.assert_contains "misspelled prettyprint still works (compact)" "$_Out" "{"
 
 # ============================================================================
 # SECTION 11: Subshell behavior
 # ============================================================================
 
 $t.section "subshell traps"
-__boop_RETURN="before_subshell"
+_Out="before_subshell"
 ( new Box length=99 width=99 height=99 ) > /dev/null
-$t.assert_eq "subshell new doesn't leak to parent global" "$__boop_RETURN" "before_subshell"
+$t.assert_eq "subshell new doesn't leak to parent global" "$_Out" "before_subshell"
 
-__sub_obj=$( new Box length=1 width=1 height=1; printf "%s" "$__boop_RETURN" )
+__sub_obj=$( new Box length=1 width=1 height=1; printf "%s" "$_Out" )
 if [[ -z "${__boop_registry[$__sub_obj]:-}" ]]; then
   $t.assert_ok "subshell object not in parent registry" true
 else
@@ -271,7 +271,7 @@ $t.assert_eq "method in subshell returns via stdout" "$__sub_vol" "64"
 # ============================================================================
 
 $t.section "lazy stubs"
-new Box length=2 width=3 height=4; __stub_box="$__boop_RETURN"
+new Box length=2 width=3 height=4; __stub_box="$_Out"
 __stub_def=$(declare -f "$__stub_box.volume")
 $t.assert_contains "stub contains __init=true before first call" "$__stub_def" "__init=true"
 $__stub_box.volume
@@ -284,19 +284,19 @@ $t.assert_contains "baked wrapper calls Box.volume directly" "$__baked_def" "Box
 # ============================================================================
 
 $t.section "typecasting"
-new Cube size=5; __tc="$__boop_RETURN"
+new Cube size=5; __tc="$_Out"
 $__tc.volume
-$t.assert_eq "Cube volume normal" "$__boop_RETURN" "125"
+$t.assert_eq "Cube volume normal" "$_Out" "125"
 _Class=Box $__tc.volume
-$t.assert_eq "Cube volume typecast to Box" "$__boop_RETURN" "125"
+$t.assert_eq "Cube volume typecast to Box" "$_Out" "125"
 # Typecast to nonexistent class — tier 3 (unrelated class) silently ignores
 # the bogus class and uses the baked class instead. This is correct behavior:
 # leakage/bogus typecasts don't crash, they just get ignored.
 _Class=Sphere $__tc.volume
-$t.assert_eq "typecast to nonexistent class uses baked class" "$__boop_RETURN" "125"
+$t.assert_eq "typecast to nonexistent class uses baked class" "$_Out" "125"
 
-_Class=Box $__tc.side; __tc_side="$__boop_RETURN"
-$__tc.side; __tc_side2="$__boop_RETURN"
+_Class=Box $__tc.side; __tc_side="$_Out"
+$__tc.side; __tc_side2="$_Out"
 $t.assert_eq "typecast to Box.side" "$__tc_side" "25"
 $t.assert_eq "normal Cube.side after typecast" "$__tc_side2" "25"
 
@@ -305,28 +305,14 @@ $t.assert_eq "normal Cube.side after typecast" "$__tc_side2" "25"
 # ============================================================================
 
 $t.section "super"
-$t.assert_fail "super from root class" bash -c '. boop Cube; new boop; obj=$__boop_RETURN; $obj.super volume'
-$t.assert_fail "super volume from Box (boop has no volume)" bash -c '. boop Cube; new Box length=1 width=1 height=1; obj=$__boop_RETURN; _Self=$obj _Class=Box __boop.dispatch super volume'
+$t.assert_fail "super from root class" bash -c '. boop Cube; new boop; obj=$_Out; $obj.super volume'
+$t.assert_fail "super volume from Box (boop has no volume)" bash -c '. boop Cube; new Box length=1 width=1 height=1; obj=$_Out; _Self=$obj _Class=Box __boop.dispatch super volume'
+
 
 # ============================================================================
-# SECTION 15: bencode/bdecode — bad inputs
+# SECTION 15: bencode/bdecode (removed)
 # ============================================================================
-
-$t.section "bencode/bdecode"
-__boop.bencode ""
-__boop.bdecode "$__boop_RETURN"
-$t.assert_eq "bencode/bdecode empty string" "$__boop_RETURN" ""
-
-__boop.bencode "hello"; __orig="$__boop_RETURN"
-inpt=file __boop.bencode "hello"
-$t.assert_eq "misspelled typecast falls through to string mode" "$__boop_RETURN" "$__orig"
-
-$t.assert_fail "bencode nonexistent file" bash -c '. boop Cube; input=file __boop.bencode /tmp/no_such_file_ever'
-
-# bdecode with invalid base64
-__bdec_rc=0
-bash -c '. boop Cube; __boop.bdecode "not-valid-base64!!!"' 2>/dev/null || __bdec_rc=$?
-$t.info "bdecode invalid base64 exit code: $__bdec_rc (0 means base64 -d is lenient)"
+# $t.assert_eq "misspelled typecast falls through to string mode" "$_Out" "$__orig"
 
 # ============================================================================
 # SECTION 16: setDefaultMode — bad inputs
@@ -352,14 +338,14 @@ $t.assert_fail "registerClass with no descriptor" bash -c '. boop Cube; __boop.r
 # ============================================================================
 
 $t.section "refresh"
-new Box length=3 width=4 height=5; __rbox="$__boop_RETURN"
+new Box length=3 width=4 height=5; __rbox="$_Out"
 $__rbox.volume
-$t.assert_eq "pre-refresh volume" "$__boop_RETURN" "60"
+$t.assert_eq "pre-refresh volume" "$_Out" "60"
 __boop.refresh "$__rbox"
 __rdef=$(declare -f "$__rbox.volume")
 $t.assert_contains "refresh re-stubbed the method" "$__rdef" "__init=true"
 $__rbox.volume
-$t.assert_eq "post-refresh volume still correct" "$__boop_RETURN" "60"
+$t.assert_eq "post-refresh volume still correct" "$_Out" "60"
 $t.assert_fail "refresh nonexistent object" bash -c '. boop Cube; __boop.refresh "no_such_obj"'
 
 # ============================================================================
@@ -367,23 +353,23 @@ $t.assert_fail "refresh nonexistent object" bash -c '. boop Cube; __boop.refresh
 # ============================================================================
 
 $t.section "return modes through object methods"
-new Box length=6 width=7 height=8; __rm_box="$__boop_RETURN"
+new Box length=6 width=7 height=8; __rm_box="$_Out"
 
-__boop_returnMode=auto
+_OutMode=auto
 $__rm_box.volume
-$t.assert_eq "auto/global: volume" "$__boop_RETURN" "336"
+$t.assert_eq "auto/global: volume" "$_Out" "336"
 
-__boop_returnMode=global
+_OutMode=global
 $__rm_box.volume
-$t.assert_eq "explicit global: volume" "$__boop_RETURN" "336"
+$t.assert_eq "explicit global: volume" "$_Out" "336"
 
-$t.assert_ok "stdout mode: volume" bash -c '. boop Cube; new Box length=6 width=7 height=8; b=$__boop_RETURN; __boop_returnMode=stdout; out=$($b.volume); [ "$out" = "336" ]'
+$t.assert_ok "stdout mode: volume" bash -c '. boop Cube; new Box length=6 width=7 height=8; b=$_Out; _OutMode=stdout; out=$($b.volume); [ "$out" = "336" ]'
 
-__boop_returnMode=auto
+_OutMode=auto
 $__rm_box.get length
-$t.assert_eq "get length via global" "$__boop_RETURN" "6"
+$t.assert_eq "get length via global" "$_Out" "6"
 
-__boop_returnMode=auto
+_OutMode=auto
 
 # ============================================================================
 # SECTION 20: Serialization — round-trip
@@ -403,7 +389,7 @@ $t.assert_fail "deserialize nonexistent file" bash -c '. boop Cube; __boop.deser
 
 $t.section "deep inheritance"
 $cube.get "size"
-$t.assert_eq "Cube.get (inherited 2 levels) = size" "$__boop_RETURN" "4"
+$t.assert_eq "Cube.get (inherited 2 levels) = size" "$_Out" "4"
 $t.assert_ok "Cube isa boop (2 levels)" $cube.isa boop
 
 # ============================================================================
@@ -415,7 +401,7 @@ declare -A __seen_ids
 __dupes=0
 for i in {1..50}; do
   new Box length=$i width=$i height=$i
-  __id="$__boop_RETURN"
+  __id="$_Out"
   if [[ -n "${__seen_ids[$__id]:-}" ]]; then (( __dupes++ )); fi
   __seen_ids[$__id]=1
 done
@@ -445,7 +431,7 @@ $t.assert_eq "crash with _StackTrace=0 still exits" "$__crash_rc" "1"
 # ============================================================================
 
 $t.section "into typecast"
-new Box length=5 width=3 height=7; __rt_box="$__boop_RETURN"
+new Box length=5 width=3 height=7; __rt_box="$_Out"
 
 into=__rt_vol $__rt_box.volume
 $t.assert_eq "into on volume = 105" "$__rt_vol" "105"
@@ -467,7 +453,7 @@ $t.assert_contains "into on toString pretty contains newlines" "$__rt_pretty" "
 "
 
 # into through delegation chain: Cube.top → side → Box.area → Box.calc
-new Cube size=4; __rt_cube="$__boop_RETURN"
+new Cube size=4; __rt_cube="$_Out"
 into=__rt_top $__rt_cube.top
 $t.assert_eq "into through Cube.top chain = 16" "$__rt_top" "16"
 
@@ -477,10 +463,10 @@ $t.assert_eq "into through Cube.bottom → side = 16" "$__rt_bottom" "16"
 into=__rt_newobj new Box length=1 width=1 height=1
 $t.assert_match "into on new returns valid object ID" "$__rt_newobj" "_[0-9a-f]*"
 
-# into does NOT pollute __boop_RETURN when used
-__boop_RETURN="sentinel"
+# into does NOT pollute _Out when used
+_Out="sentinel"
 into=__rt_check $__rt_box.volume
-$t.assert_eq "into bypasses __boop_RETURN" "$__boop_RETURN" "sentinel"
+$t.assert_eq "into bypasses _Out" "$_Out" "sentinel"
 
 # into with typecast to parent class
 into=__rt_tc _Class=Box $__rt_cube.volume
@@ -497,13 +483,13 @@ $t.assert_fail "calc rejects letters" bash -c '. boop Cube; Box.calc 5 abc 7'
 $t.assert_fail "calc rejects empty arg" bash -c '. boop Cube; Box.calc 5 "" 7'
 $t.assert_fail "calc rejects float" bash -c '. boop Cube; Box.calc 5 3.5 7'
 
-$t.assert_ok "calc single arg" bash -c '. boop Cube; Box.calc 42; [ "$__boop_RETURN" = "42" ]'
-$t.assert_ok "calc 2*3*7" bash -c '. boop Cube; Box.calc 2 3 7; [ "$__boop_RETURN" = "42" ]'
+$t.assert_ok "calc single arg" bash -c '. boop Cube; Box.calc 42; [ "$_Out" = "42" ]'
+$t.assert_ok "calc 2*3*7" bash -c '. boop Cube; Box.calc 2 3 7; [ "$_Out" = "42" ]'
 
 $t.assert_fail "calc required=3 with 2 args" bash -c '. boop Cube; required=3 Box.calc 5 3'
 $t.assert_ok "calc required=2 with 2 args" bash -c '. boop Cube; required=2 Box.calc 5 3'
 
-$t.assert_fail "volume after setting dimension to 0" bash -c '. boop Cube; new Box length=5 width=3 height=7; b=$__boop_RETURN; $b.set height 0; $b.volume'
+$t.assert_fail "volume after setting dimension to 0" bash -c '. boop Cube; new Box length=5 width=3 height=7; b=$_Out; $b.set height 0; $b.volume'
 
 # ============================================================================
 # SECTION 26: into edge cases
@@ -515,7 +501,7 @@ $t.section "into edge cases"
 __rt_sub=$(
   __boop_rootPID=$BASHPID
   new Box length=2 width=3 height=4
-  __rt_sub_b="$__boop_RETURN"
+  __rt_sub_b="$_Out"
   __rt_sub_vol=""
   into=__rt_sub_vol $__rt_sub_b.volume
   printf "%s" "$__rt_sub_vol"
@@ -523,12 +509,12 @@ __rt_sub=$(
 $t.assert_eq "into in subshell = 24" "$__rt_sub" "24"
 
 # into unset — falls through to global mode
-new Box length=2 width=5 height=3; __rt_fb="$__boop_RETURN"
+new Box length=2 width=5 height=3; __rt_fb="$_Out"
 $__rt_fb.volume
-$t.assert_eq "no into falls through to global = 30" "$__boop_RETURN" "30"
+$t.assert_eq "no into falls through to global = 30" "$_Out" "30"
 
 # into with same var name at two levels doesn't collide
-new Cube size=3; __rt_nest="$__boop_RETURN"
+new Cube size=3; __rt_nest="$_Out"
 into=__rt_nest_vol $__rt_nest.volume
 $t.assert_eq "nested into chain no collision = 27" "$__rt_nest_vol" "27"
 
@@ -550,7 +536,7 @@ if (( __bench_count > 0 )); then
   __bc_start=$EPOCHREALTIME
   for (( __bi=0; __bi < __bench_count; __bi++ )); do
     new Cube size=$(( __bi + 1 )) unit=cm
-    __bench_objs+=("$__boop_RETURN")
+    __bench_objs+=("$_Out")
   done
   __bc_end=$EPOCHREALTIME
   $t.info "Creation: $(awk "BEGIN{printf \"%.3f\", $__bc_end - $__bc_start}")s ($__bench_count objects)"

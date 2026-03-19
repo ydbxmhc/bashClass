@@ -533,7 +533,7 @@ __Math.fromParts() {
 
   local __fp_self
   into=__fp_self _Class=Math __boop.new "digits=$__fp_digits" "scale=$__fp_scale" "neg=$__fp_neg"
-  __boop.return "$__fp_self" "${4:-}"
+  boop.pass "$__fp_self" "${4:-}"
 }
 
 # ============================================================================
@@ -776,7 +776,7 @@ __Math.i_pow() {
     into=__pow_result _Self="$__pow_result" _Class=Math __Math.i_mul "$_Self"
   done
 
-  __boop.return "$__pow_result" ${into:-}
+  boop.pass "$__pow_result" ${into:-}
 }
 
 
@@ -896,7 +896,7 @@ Math.toInt() {
   __Math.resolve "$_Self" __ti_d __ti_s __ti_n
 
   if (( __ti_s >= ${#__ti_d} )); then
-    __boop.return "0" ${into:-}; return
+    boop.pass "0" ${into:-}; return
   fi
 
   local __ti_int="${__ti_d:0:${#__ti_d}-__ti_s}"
@@ -904,7 +904,7 @@ Math.toInt() {
   __ti_int="${__ti_int#"${__ti_int%%[!0]*}"}"
   : "${__ti_int:=0}"
   (( __ti_n )) && [[ "$__ti_int" != "0" ]] && __ti_int="-${__ti_int}"
-  __boop.return "$__ti_int" ${into:-}
+  boop.pass "$__ti_int" ${into:-}
 }
 
 # Return the decimal string representation. "3.14", "-0.5", "42", etc.
@@ -933,14 +933,14 @@ Math.val() {
   fi
 
   (( __val_n )) && [[ "$__val_result" != "0" ]] && __val_result="-${__val_result}"
-  __boop.return "$__val_result" ${into:-}
+  boop.pass "$__val_result" ${into:-}
 }
 
 Math.toString() {
   local -I _Self _Class
   local __ts_val
   into=__ts_val _Self="$_Self" _Class="$_Class" Math.val
-  __boop.return "Math($_Self){ $__ts_val }" ${into:-}
+  boop.pass "Math($_Self){ $__ts_val }" ${into:-}
 }
 
 # Change scale (decimal places). Pads with zeros or rounds to fit.
@@ -962,7 +962,7 @@ Math.toScale() {
     # Bypass fromParts to preserve trailing zeros
     local __tsc_self
     into=__tsc_self _Class=Math __boop.new "digits=$__tsc_d" "scale=$__tsc_target" "neg=$__tsc_n"
-    __boop.return "$__tsc_self" ${into:-}
+    boop.pass "$__tsc_self" ${into:-}
   elif (( __tsc_target < __tsc_s )); then
     local -i __tsc_sigdigits=$(( ${#__tsc_d} - (__tsc_s - __tsc_target) ))
     (( __tsc_sigdigits < 1 )) && __tsc_sigdigits=1
@@ -981,7 +981,7 @@ Math.toScale() {
       __tsc_rd="${__tsc_rd}${__tsc_zeros2}"
       into=${into:-} _Class=Math __boop.new "digits=$__tsc_rd" "scale=$__tsc_target" "neg=$__tsc_rn"
     else
-      __boop.return "$__tsc_rounded" ${into:-}
+      boop.pass "$__tsc_rounded" ${into:-}
     fi
   else
     __Math.fromParts "$__tsc_d" $__tsc_s $__tsc_n ${into:-}
@@ -999,7 +999,7 @@ Math.format() {
   into=__fmt_str _Self="$_Self" _Class="$_Class" Math.val
   local __fmt_result
   printf -v __fmt_result "$1" "$__fmt_str"
-  __boop.return "$__fmt_result" ${into:-}
+  boop.pass "$__fmt_result" ${into:-}
 }
 
 
@@ -1156,7 +1156,7 @@ __Math.arctan_recip() {
   # Check cache
   local __at_cachekey="Math.arctan_recip.${__at_n}.${__at_prec}"
   if [[ -n "${__boop_static[$__at_cachekey]:-}" ]]; then
-    __boop.return "${__boop_static[$__at_cachekey]}" "${3:-}"
+    boop.pass "${__boop_static[$__at_cachekey]}" "${3:-}"
     return
   fi
 
@@ -1256,7 +1256,7 @@ __Math.arctan_recip() {
   __Math.fromParts "$__at_sd" $__at_ss $__at_sn __at_result
 
   __boop_static[$__at_cachekey]="$__at_result"
-  __boop.return "$__at_result" "${3:-}"
+  boop.pass "$__at_result" "${3:-}"
 }
 
 # Calculate pi to the specified precision using Machin's formula:
@@ -1280,7 +1280,7 @@ Math.pi() {
   # Check cache
   local __pi_cachekey="Math.pi.${__pi_prec}"
   if [[ -n "${__boop_static[$__pi_cachekey]:-}" ]]; then
-    __boop.return "${__boop_static[$__pi_cachekey]}" ${into:-}
+    boop.pass "${__boop_static[$__pi_cachekey]}" ${into:-}
     return
   fi
 
@@ -1327,7 +1327,7 @@ Math.pi() {
   __Math.fromParts "$__pi_td" $__pi_ts $__pi_tn __pi_result
 
   __boop_static[$__pi_cachekey]="$__pi_result"
-  __boop.return "$__pi_result" ${into:-}
+  boop.pass "$__pi_result" ${into:-}
 }
 
 
@@ -1431,10 +1431,10 @@ __Math.formatVal() {
   fi
 
   (( __fv_n )) && [[ "$__fv_result" != "0" ]] && __fv_result="-${__fv_result}"
-  __boop.return "$__fv_result" "${4:-}"
+  boop.pass "$__fv_result" "${4:-}"
 }
 
-# Internal: static binary op. Returns plain value string via __boop.return.
+# Internal: static binary op. Returns plain value string via boop.pass.
 # Uses native $(( )) fast path when operands fit in 64-bit.
 __Math.staticBinOp() {
   local __sbo_op="$1"
@@ -1533,7 +1533,7 @@ Math.pow()      { if [[ -n "${_Self:-}" ]]; then local -I _Self _Class; __Math.i
   local __spow_tmp; into=__spow_tmp Math.new "$1"
   local __spow_result; into=__spow_result _Self="$__spow_tmp" _Class=Math __Math.i_pow "$2"
   local __spow_val; into=__spow_val _Self="$__spow_result" _Class=Math Math.val
-  __boop.return "$__spow_val" ${into:-}; fi; }
+  boop.pass "$__spow_val" ${into:-}; fi; }
 
 # Symbol aliases — same functions, shorter names.
 # The +, *, / characters require the `function` keyword form inside eval.
@@ -1700,7 +1700,7 @@ Math.RPN() {
   done
 
   (( __rpn_sp != 1 )) && _Crash "Math.RPN: invalid expression (${__rpn_sp} values remain)"
-  __boop.return "${__rpn_stack[0]}" ${into:-}
+  boop.pass "${__rpn_stack[0]}" ${into:-}
 }
 
 # Math.DO — infix expression evaluator with operator precedence and parens.

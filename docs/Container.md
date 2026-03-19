@@ -200,7 +200,7 @@ MyStack.new() {
   into=__MyStack_new_self __boop.new "$@"
   declare -ga "__boop_data_${__MyStack_new_self}"
   $__MyStack_new_self.noIterators
-  __boop.return "$__MyStack_new_self" ${into:-}
+  boop.pass "$__MyStack_new_self" ${into:-}
 }
 
 # Later:

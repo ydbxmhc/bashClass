@@ -247,10 +247,10 @@ printf "%s\n" "$value"
 
 ### Value Returns
 
-All value-producing functions route through `__boop.return`:
+All value-producing functions route through `boop.pass`:
 
 ```bash
-__boop.return "$value" ${into:-}
+boop.pass "$value" ${into:-}
 ```
 
 The `${into:-}` passes the caller's nameref target if one was

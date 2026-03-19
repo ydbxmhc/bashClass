@@ -114,15 +114,6 @@ $enc.set "color" "col1	col2"
 into=v $enc.get "color"; $t.assert_eq "tabs" "$v" "col1	col2"
 
 # ============================================================================
-# Binary-safe Encoding
-# ============================================================================
-
-$t.section "Binary-safe Encoding"
-into=enc_val __boop.bencode "hello|world=foo%bar"
-into=dec_val __boop.bdecode "$enc_val"
-$t.assert_eq "bencode/bdecode round-trip" "$dec_val" "hello|world=foo%bar"
-
-# ============================================================================
 # Global new Function
 # ============================================================================
 

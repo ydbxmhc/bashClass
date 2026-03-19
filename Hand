@@ -18,7 +18,7 @@ Hand.new() {
   local -I _Class; _Class=Hand
   local __Hand_new_self
   into=__Hand_new_self List.new
-  __boop.return "$__Hand_new_self" ${into:-}
+  boop.pass "$__Hand_new_self" ${into:-}
 }
 
 Hand.total() {
@@ -35,7 +35,7 @@ Hand.total() {
   while (( __Hand_total_sum > 21 && __Hand_total_aces > 0 )); do
     (( __Hand_total_sum -= 10 )); (( __Hand_total_aces-- ))
   done
-  __boop.return "$__Hand_total_sum" ${into:-}
+  boop.pass "$__Hand_total_sum" ${into:-}
 }
 
 Hand.isBust() {
@@ -72,7 +72,7 @@ Hand.show() {
     into=__Hand_show_total _Self="$_Self" _Class=Hand Hand.total
     __Hand_show_out="$__Hand_show_label: $__Hand_show_out  [$__Hand_show_total]"
   fi
-  __boop.return "$__Hand_show_out" ${into:-}
+  boop.pass "$__Hand_show_out" ${into:-}
 }
 
 __boop.registerMethod Hand new          Hand.new

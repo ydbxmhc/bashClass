@@ -56,7 +56,7 @@ List.new() {
   into=__List_new_self __boop.new type=indexed "$@"
   declare -ga "__boop_data_${__List_new_self}"
   eval "__boop_data_${__List_new_self}+=()"
-  __boop.return "$__List_new_self" ${into:-}
+  boop.pass "$__List_new_self" ${into:-}
 }
 
 # Retrieve an element by integer index.
@@ -85,10 +85,10 @@ List.get() {
   local -i __List_get_len=0; [[ -n "${!__List_get_arr[@]}" ]] && __List_get_len=${#__List_get_arr[@]}
   (( __List_get_idx < 0 )) && (( __List_get_idx += __List_get_len ))
   if (( __List_get_idx < 0 || __List_get_idx >= __List_get_len )); then
-    __boop.return "" ${into:-}
+    boop.pass "" ${into:-}
     return
   fi
-  __boop.return "${__List_get_arr[$__List_get_idx]}" ${into:-}
+  boop.pass "${__List_get_arr[$__List_get_idx]}" ${into:-}
 }
 
 # Store a value at a specific index.
@@ -150,15 +150,15 @@ List.delete() {
 # Return the number of elements in the list.
 #
 # Uses bash's native ${#array[@]} — O(1) since bash tracks array length
-# internally. Routes through __boop.return for consistent value delivery.
+# internally. Routes through boop.pass for consistent value delivery.
 #
 # Usage: into=len $list.length
-#        $list.length; printf "%s\n" "$__boop_RETURN"
+#        $list.length; printf "%s\n" "$_Out"
 List.length() {
   local -I _Self _Class
   local -n __List_length_arr="__boop_data_${_Self}"
   local -i __List_length_len=0; [[ -n "${!__List_length_arr[@]}" ]] && __List_length_len=${#__List_length_arr[@]}
-  __boop.return "$__List_length_len" ${into:-}
+  boop.pass "$__List_length_len" ${into:-}
 }
 
 # Remove all elements from the list.
@@ -219,7 +219,7 @@ List.push() {
 # already at the end.
 #
 # Usage: into=val $list.pop
-#        $list.pop; printf "%s\n" "$__boop_RETURN"
+#        $list.pop; printf "%s\n" "$_Out"
 List.pop() {
   local -I _Self _Class
   local -n __List_pop_arr="__boop_data_${_Self}"
@@ -227,7 +227,7 @@ List.pop() {
   (( __List_pop_len == 0 )) && _Crash "pop from empty List"
   local __List_pop_val="${__List_pop_arr[-1]}"
   unset '__List_pop_arr[-1]'
-  __boop.return "$__List_pop_val" ${into:-}
+  boop.pass "$__List_pop_val" ${into:-}
 }
 
 # Remove and return the first element (queue-style FIFO).
@@ -238,7 +238,7 @@ List.pop() {
 # consider whether the access pattern justifies the cost.
 #
 # Usage: into=val $list.shift
-#        $list.shift; printf "%s\n" "$__boop_RETURN"
+#        $list.shift; printf "%s\n" "$_Out"
 List.shift() {
   local -I _Self _Class
   local -n __List_shift_arr="__boop_data_${_Self}"
@@ -246,7 +246,7 @@ List.shift() {
   (( __List_shift_len == 0 )) && _Crash "shift from empty List"
   local __List_shift_val="${__List_shift_arr[0]}"
   __List_shift_arr=("${__List_shift_arr[@]:1}")
-  __boop.return "$__List_shift_val" ${into:-}
+  boop.pass "$__List_shift_val" ${into:-}
 }
 
 # Prepend one or more elements to the beginning of the list.
@@ -286,11 +286,11 @@ List.slice() {
   (( __List_slice_start < 0 )) && (( __List_slice_start += __List_slice_len ))
   (( __List_slice_end < 0 )) && (( __List_slice_end += __List_slice_len ))
   local -i __List_slice_count=$(( __List_slice_end - __List_slice_start ))
-  (( __List_slice_count <= 0 )) && { __boop.return "" ${into:-}; return; }
+  (( __List_slice_count <= 0 )) && { boop.pass "" ${into:-}; return; }
   local __List_slice_out
   printf -v __List_slice_out "%s\n" "${__List_slice_arr[@]:$__List_slice_start:$__List_slice_count}"
   __List_slice_out="${__List_slice_out%$'\n'}"
-  __boop.return "$__List_slice_out" ${into:-}
+  boop.pass "$__List_slice_out" ${into:-}
 }
 
 # Serialize all elements to a newline-delimited string.
@@ -310,12 +310,12 @@ List.toArray() {
   local -n __List_toArray_arr="__boop_data_${_Self}"
   local __List_toArray_out
   if ! [[ -n "${!__List_toArray_arr[@]}" ]] || (( ${#__List_toArray_arr[@]} == 0 )); then
-    __boop.return "" ${into:-}
+    boop.pass "" ${into:-}
     return
   fi
   printf -v __List_toArray_out "%s\n" "${__List_toArray_arr[@]}"
   __List_toArray_out="${__List_toArray_out%$'\n'}"
-  __boop.return "$__List_toArray_out" ${into:-}
+  boop.pass "$__List_toArray_out" ${into:-}
 }
 
 # Human-readable representation of the list and its contents.
@@ -344,7 +344,7 @@ List.toString() {
     __List_ts_out="$__List_ts_out\"${__List_ts_arr[$__List_ts_i]}\""
   done
   __List_ts_out="$__List_ts_out ]"
-  __boop.return "$__List_ts_out" ${into:-}
+  boop.pass "$__List_ts_out" ${into:-}
 }
 
 # Iterate over all elements, calling a user function for each.

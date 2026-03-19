@@ -52,18 +52,19 @@ reveal() {
 printf '
   ╔══════════════════════════════════╗
   ║         ♠  BLACKJACK  ♠          ║
-  ║     powered by boop/boop    ║
+  ║         powered by boop!         ║
   ╚══════════════════════════════════╝
 \n'
 
 declare -i bankroll=100 round=0
+declare -l input
 
 while (( bankroll > 0 )); do
   printf "  Bankroll: \$%d\n" "$bankroll"
   printf "  Bet (or 'q' to quit): "
   read -r input
 
-  [[ "$input" == "q" || "$input" == "Q" ]] && break
+  [[ "$input" == "q" ]] && break
 
   if [[ ! "$input" =~ ^[0-9]+$ ]] || (( input < 1 )); then
     printf "  Invalid bet.\n\n"; continue
@@ -77,7 +78,7 @@ while (( bankroll > 0 )); do
   printf "\n  ── Round %d ──\n\n" "$round"
 
   # Fresh deck each round
-  into=deck Deck
+  into=deck   Deck
   into=player Hand
   into=house  Hand
 

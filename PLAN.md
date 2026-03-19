@@ -195,7 +195,6 @@ Post it with a straight face and let the thread do the work.
 
 ## Running Notes / @@ Backlog
 
-- `bdecode` TODO: `output=file` support for binary-safe round-trip
-- `__boop.return` filesystem mode: `__boop.returnPath` from call stack introspection
+- `boop.pass` filesystem mode: `boop.passPath` from call stack introspection
 - Doubly-linked List: decide before implementing LinkedList @@
 

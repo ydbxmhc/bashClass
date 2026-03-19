@@ -31,7 +31,7 @@ Box.calc() {
     (( __Box_calc_tot *= __Box_calc_arg ))
   done
 
-  __boop.return "$__Box_calc_tot" ${into:-}
+  boop.pass "$__Box_calc_tot" ${into:-}
 }
 
 # Calculate area (2D) — thin wrapper, passes into through
@@ -47,7 +47,7 @@ Box.top() {
   __boop.parse "$_Self" "length" __Box_top_l
   __boop.parse "$_Self" "width" __Box_top_w
   into=__Box_top_val _Self="$_Self" _Class="$_Class" __boop.dispatch area "$__Box_top_l" "$__Box_top_w"
-  __boop.return "$__Box_top_val" ${into:-}
+  boop.pass "$__Box_top_val" ${into:-}
 }
 
 # Calculate end face area
@@ -57,7 +57,7 @@ Box.end() {
   __boop.parse "$_Self" "height" __Box_end_h
   __boop.parse "$_Self" "width" __Box_end_w
   into=__Box_end_val _Self="$_Self" _Class="$_Class" __boop.dispatch area "$__Box_end_h" "$__Box_end_w"
-  __boop.return "$__Box_end_val" ${into:-}
+  boop.pass "$__Box_end_val" ${into:-}
 }
 
 # Calculate side face area
@@ -67,7 +67,7 @@ Box.side() {
   __boop.parse "$_Self" "height" __Box_side_h
   __boop.parse "$_Self" "length" __Box_side_l
   into=__Box_side_val _Self="$_Self" _Class="$_Class" __boop.dispatch area "$__Box_side_h" "$__Box_side_l"
-  __boop.return "$__Box_side_val" ${into:-}
+  boop.pass "$__Box_side_val" ${into:-}
 }
 
 # Calculate bottom face area (same as top)
@@ -75,7 +75,7 @@ Box.bottom() {
   local -I _Self _Class
   local __Box_bottom_val
   into=__Box_bottom_val _Self="$_Self" _Class="$_Class" __boop.dispatch top
-  __boop.return "$__Box_bottom_val" ${into:-}
+  boop.pass "$__Box_bottom_val" ${into:-}
 }
 
 # Calculate volume (3D)
@@ -86,7 +86,7 @@ Box.volume() {
   __boop.parse "$_Self" "height" __Box_volume_h
   __boop.parse "$_Self" "width" __Box_volume_w
   into=__Box_volume_vol required=3 Box.calc "$__Box_volume_l" "$__Box_volume_h" "$__Box_volume_w"
-  __boop.return "$__Box_volume_vol" ${into:-}
+  boop.pass "$__Box_volume_vol" ${into:-}
 }
 
 # Box constructor — delegates to base class.
@@ -95,7 +95,7 @@ Box.new() {
   : "${_Class:=Box}"
   local __Box_new_self
   into=__Box_new_self __boop.new "$@"
-  __boop.return "$__Box_new_self" ${into:-}
+  boop.pass "$__Box_new_self" ${into:-}
 }
 
 # ============================================================================

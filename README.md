@@ -45,9 +45,6 @@ $c.toString pretty
 macOS ships bash 3.2 (GPL2). `brew install bash` fixes that. If your
 users might be on macOS, tell them up front.
 
-The `bencode`/`bdecode` convenience wrappers use coreutils `base64` if
-available, but the framework itself doesn't require it.
-
 ## Install
 
 ```bash
@@ -73,7 +70,7 @@ vol=$( $cube.volume )               # vol="64"
 
 # Global side-channel (overwritten by next call)
 $cube.volume
-printf "%s\n" "$__boop_RETURN"  # 64
+printf "%s\n" "$_Out"  # 64
 ```
 
 `into=` is the fast path. Use it.
@@ -190,14 +187,14 @@ MyClass.new() {
   local -I _Class; : "${_Class:=MyClass}"
   local __MyClass_new_self
   into=__MyClass_new_self __boop.new "$@"
-  __boop.return "$__MyClass_new_self" ${into:-}
+  boop.pass "$__MyClass_new_self" ${into:-}
 }
 
 MyClass.greet() {
   local -I _Self _Class
   local __MyClass_greet_name
   __boop.parse "$_Self" "name" __MyClass_greet_name
-  __boop.return "Hello, $__MyClass_greet_name" ${into:-}
+  boop.pass "Hello, $__MyClass_greet_name" ${into:-}
 }
 
 __boop.registerMethod MyClass new   MyClass.new
@@ -219,7 +216,7 @@ and all the gotchas.
 ## Conventions
 
 - Local variables: `__ClassName_methodName_varname` (prevents nameref collisions)
-- Value return: `__boop.return "$val" ${into:-}`
+- Value return: `boop.pass "$val" ${into:-}`
 - Output: `printf` everywhere, never `echo`
 - Framework internals: `__boop_*` prefix (hands off)
 

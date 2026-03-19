@@ -20,7 +20,7 @@ Deck.new() {
   into=__Deck_new_self List.new "$@"
   _Self="$__Deck_new_self" _Class=Deck Deck.fill
   _Self="$__Deck_new_self" _Class=Deck Deck.shuffle
-  __boop.return "$__Deck_new_self" ${into:-}
+  boop.pass "$__Deck_new_self" ${into:-}
 }
 
 Deck.fill() {
@@ -58,7 +58,7 @@ Deck.shuffle() {
 Deck.draw() {
   local -I _Self _Class
   local __Deck_draw_card; into=__Deck_draw_card $_Self.pop
-  __boop.return "$__Deck_draw_card" ${into:-}
+  boop.pass "$__Deck_draw_card" ${into:-}
 }
 
 __boop.registerMethod Deck new     Deck.new

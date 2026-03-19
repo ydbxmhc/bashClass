@@ -241,17 +241,6 @@ This could be:
 
 ---
 
-## Binary-Safe Encode/Decode Output Mode
-
-`__boop.bdecode` currently returns decoded data via the standard
-return mechanism, but bash variables silently drop null bytes. For true
-binary-safe round-trip, need `output=file` support that writes decoded
-data directly to a file without passing through a variable.
-
-Source: `boop` bencode/bdecode section.
-
----
-
 ## Stderr Redirection Audit
 
 Several places in the codebase use `2>/dev/null` to suppress errors.
@@ -420,7 +409,7 @@ Source: PLAN.md Phase 5.
 
 ## Return System Filesystem Mode
 
-`__boop.returnPath` — use call stack introspection to determine a
+`boop.passPath` — use call stack introspection to determine a
 filesystem-backed return path. Would allow returning data via temp files
 instead of variables, useful for large payloads.
 
@@ -474,13 +463,13 @@ single-argument identity (`Math.add 5` returns 5).
 ## Return System: Default to stdout + Newline Control
 
 Change `auto` mode so main shell defaults to stdout (with newline)
-instead of the `__boop_RETURN` side-channel. Add a global
+instead of the `_Out` side-channel. Add a global
 `__boop_returnNewline` flag (default on) controlling whether
 stdout output includes a trailing newline.
 
 Existing code that relies on the implicit global (e.g.,
 `test_stress_ts`) should be updated to use explicit
-`into=__boop_RETURN` — code should say where to put values.
+`into=_Out` — code should say where to put values.
 
 `into=` always wins regardless of mode. The mode only matters when
 no explicit target is given.

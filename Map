@@ -52,7 +52,7 @@ Map.new() {
   declare -ga "__boop_keys_${__Map_new_self}"
   eval "__boop_data_${__Map_new_self}+=()"
   eval "__boop_keys_${__Map_new_self}+=()"
-  __boop.return "$__Map_new_self" ${into:-}
+  boop.pass "$__Map_new_self" ${into:-}
 }
 
 # Retrieve a value by its string key.
@@ -64,7 +64,7 @@ Map.get() {
   local -I _Self _Class
   local __Map_get_key="$1"
   local -n __Map_get_arr="__boop_data_${_Self}"
-  __boop.return "${__Map_get_arr[$__Map_get_key]:-}" ${into:-}
+  boop.pass "${__Map_get_arr[$__Map_get_key]:-}" ${into:-}
 }
 
 # Store a key-value pair in the map.
@@ -120,7 +120,7 @@ Map.length() {
   local -I _Self _Class
   local -n __Map_length_arr="__boop_data_${_Self}"
   local -i __Map_length_len=0; [[ -n "${!__Map_length_arr[@]}" ]] && __Map_length_len=${#__Map_length_arr[@]}
-  __boop.return "$__Map_length_len" ${into:-}
+  boop.pass "$__Map_length_len" ${into:-}
 }
 
 # Remove all key-value pairs from the map.
@@ -152,12 +152,12 @@ Map.keys() {
   local -n __Map_keys_keys="__boop_keys_${_Self}"
   local __Map_keys_out
   if ! [[ -n "${!__Map_keys_keys[@]}" ]] || (( ${#__Map_keys_keys[@]} == 0 )); then
-    __boop.return "" ${into:-}
+    boop.pass "" ${into:-}
     return
   fi
   printf -v __Map_keys_out "%s\n" "${__Map_keys_keys[@]}"
   __Map_keys_out="${__Map_keys_out%$'\n'}"
-  __boop.return "$__Map_keys_out" ${into:-}
+  boop.pass "$__Map_keys_out" ${into:-}
 }
 
 # Return all values as a newline-delimited string in insertion order.
@@ -172,7 +172,7 @@ Map.values() {
   local -n __Map_values_keys="__boop_keys_${_Self}"
   local __Map_values_out=""
   if ! [[ -n "${!__Map_values_keys[@]}" ]] || (( ${#__Map_values_keys[@]} == 0 )); then
-    __boop.return "" ${into:-}
+    boop.pass "" ${into:-}
     return
   fi
   local __Map_values_k __Map_values_first=1
@@ -182,7 +182,7 @@ Map.values() {
     __Map_values_out="$__Map_values_out${__Map_values_arr[$__Map_values_k]}"
     __Map_values_first=0
   done
-  __boop.return "$__Map_values_out" ${into:-}
+  boop.pass "$__Map_values_out" ${into:-}
 }
 
 # Serialize all entries as newline-delimited "key=value" lines in insertion order.
@@ -201,7 +201,7 @@ Map.toArray() {
       __Map_toArray_first=0
     done
   fi
-  __boop.return "$__Map_toArray_out" ${into:-}
+  boop.pass "$__Map_toArray_out" ${into:-}
 }
 
 # Human-readable representation in insertion order.
@@ -222,7 +222,7 @@ Map.toString() {
     done
   fi
   __Map_ts_out="$__Map_ts_out }"
-  __boop.return "$__Map_ts_out" ${into:-}
+  boop.pass "$__Map_ts_out" ${into:-}
 }
 
 # Iterate over all entries in insertion order, calling a user function for each.
