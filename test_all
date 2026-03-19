@@ -1,8 +1,36 @@
 #!/bin/bash
-# Run all TestSuite-based test files.
-# Exit with nonzero if any suite fails.
+# Run all TestSuite-based test files and coding standards checks.
+# Exit with nonzero if any suite or check fails.
 
 rc=0
 for f in test_*_ts; do printf '\n%s\n' "$f..."; "./$f" || rc=1; done
+
+# ============================================================================
+# Naming convention compliance check
+#
+# All local variables in class/framework functions must use the
+# __ClassName_methodName_varname convention. This grep catches any
+# double-underscore-lowercase prefix that isn't a known class or
+# framework name — i.e., shorthand prefixes like __log_, __ts_, etc.
+#
+# Excluded (compliant):
+#   __boop_ __Crash_ __Container_ __Iterator_ __Iter_ __List_ __Map_
+#   __Math_ __Box_ __Cube_ __Card_ __Deck_ __Hand_ __TestSuite_
+#   __BJ_ __FC_ __init (typecast local, intentionally short)
+#   Lines starting with # (comments)
+#
+# Math is excluded until its variable naming sweep is complete.
+# ============================================================================
+printf '\nnaming convention check...\n'
+__nc_files="boop Box Cube Card Deck Hand Container List Map TestSuite blackjack"
+__nc_exclude='__boop_\|__boop\.\|__Crash_\|__Container_\|__Iterator_\|__Iter_\|__List_\|__Map_\|__Math_\|__Box_\|__Cube_\|__Card_\|__Deck_\|__Hand_\|__TestSuite_\|__BJ_\|__FC_\|__init'
+__nc_hits=$(grep -rn '__[a-z]\+_' $__nc_files 2>/dev/null | grep -v "$__nc_exclude" | grep -v '#')
+if [[ -n "$__nc_hits" ]]; then
+  printf '  FAIL: non-compliant variable names found:\n%s\n' "$__nc_hits"
+  rc=1
+else
+  printf '  PASS: all variable names follow convention\n'
+fi
+
 exit $rc
 
