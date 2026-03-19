@@ -464,7 +464,7 @@ single-argument identity (`Math.add 5` returns 5).
 
 Change `auto` mode so main shell defaults to stdout (with newline)
 instead of the `_Out` side-channel. Add a global
-`__boop_returnNewline` flag (default on) controlling whether
+`_OutNewline` flag (default on) controlling whether
 stdout output includes a trailing newline.
 
 Existing code that relies on the implicit global (e.g.,
