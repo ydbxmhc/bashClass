@@ -68,33 +68,33 @@ declare -gi __Math_FAST_DIGITS=18
 # Convert a digits/scale/neg triple to a signed bash integer.
 # Returns 0 (success) or 1 (too large). Result via nameref $4.
 __Math.toInt64() {
-  local __ti_d="$1"
-  local -i __ti_s="$2" __ti_n="$3"
-  local -n __ti_out="$4"
-  (( ${#__ti_d} > __Math_FAST_DIGITS )) && return 1
+  local __Math_toInt64_d="$1"
+  local -i __Math_toInt64_s="$2" __Math_toInt64_n="$3"
+  local -n __Math_toInt64_out="$4"
+  (( ${#__Math_toInt64_d} > __Math_FAST_DIGITS )) && return 1
   # Reconstruct the scaled integer: digits IS the scaled integer
   # (e.g., digits="314" scale=2 means the integer 314 represents 3.14)
-  __ti_out=$(( __ti_n ? -( 10#$__ti_d ) : 10#$__ti_d ))
+  __Math_toInt64_out=$(( __Math_toInt64_n ? -( 10#$__Math_toInt64_d ) : 10#$__Math_toInt64_d ))
   return 0
 }
 
 # Convert a signed bash integer + scale back to digits/scale/neg triple.
 # Result via namerefs $3, $4, $5.
 __Math.fromInt64() {
-  local -i __fi_val="$1" __fi_scale="$2"
-  local -n __fi_od="$3" __fi_os="$4" __fi_on="$5"
-  __fi_os=$__fi_scale
-  if (( __fi_val < 0 )); then
-    __fi_on=1
-    __fi_od="${__fi_val#-}"
+  local -i __Math_fromInt64_val="$1" __Math_fromInt64_scale="$2"
+  local -n __Math_fromInt64_od="$3" __Math_fromInt64_os="$4" __Math_fromInt64_on="$5"
+  __Math_fromInt64_os=$__Math_fromInt64_scale
+  if (( __Math_fromInt64_val < 0 )); then
+    __Math_fromInt64_on=1
+    __Math_fromInt64_od="${__Math_fromInt64_val#-}"
   else
-    __fi_on=0
-    __fi_od="$__fi_val"
+    __Math_fromInt64_on=0
+    __Math_fromInt64_od="$__Math_fromInt64_val"
   fi
   # Strip leading zeros
-  __fi_od="${__fi_od#"${__fi_od%%[!0]*}"}"
-  : "${__fi_od:=0}"
-  [[ "$__fi_od" == "0" ]] && __fi_on=0
+  __Math_fromInt64_od="${__Math_fromInt64_od#"${__Math_fromInt64_od%%[!0]*}"}"
+  : "${__Math_fromInt64_od:=0}"
+  [[ "$__Math_fromInt64_od" == "0" ]] && __Math_fromInt64_on=0
 }
 
 
@@ -122,135 +122,135 @@ declare -gi __Math_BASE=1000000000
 # Compare two unsigned digit strings numerically.
 # Returns via exit code: 0 if equal, 1 if A > B, 2 if A < B.
 __Math.strCmp() {
-  local __cmp_a="$1" __cmp_b="$2"
+  local __Math_strCmp_a="$1" __Math_strCmp_b="$2"
   # Pad shorter string to match length in one shot via printf
-  local -i __cmp_la=${#__cmp_a} __cmp_lb=${#__cmp_b}
-  if (( __cmp_la < __cmp_lb )); then
-    local -i __cmp_need=$(( __cmp_lb - __cmp_la ))
-    local __cmp_pad
-    printf -v __cmp_pad "%0${__cmp_need}d" 0
-    __cmp_a="${__cmp_pad}${__cmp_a}"
-  elif (( __cmp_lb < __cmp_la )); then
-    local -i __cmp_need=$(( __cmp_la - __cmp_lb ))
-    local __cmp_pad
-    printf -v __cmp_pad "%0${__cmp_need}d" 0
-    __cmp_b="${__cmp_pad}${__cmp_b}"
+  local -i __Math_strCmp_la=${#__Math_strCmp_a} __Math_strCmp_lb=${#__Math_strCmp_b}
+  if (( __Math_strCmp_la < __Math_strCmp_lb )); then
+    local -i __Math_strCmp_need=$(( __Math_strCmp_lb - __Math_strCmp_la ))
+    local __Math_strCmp_pad
+    printf -v __Math_strCmp_pad "%0${__Math_strCmp_need}d" 0
+    __Math_strCmp_a="${__Math_strCmp_pad}${__Math_strCmp_a}"
+  elif (( __Math_strCmp_lb < __Math_strCmp_la )); then
+    local -i __Math_strCmp_need=$(( __Math_strCmp_la - __Math_strCmp_lb ))
+    local __Math_strCmp_pad
+    printf -v __Math_strCmp_pad "%0${__Math_strCmp_need}d" 0
+    __Math_strCmp_b="${__Math_strCmp_pad}${__Math_strCmp_b}"
   fi
-  [[ "$__cmp_a" == "$__cmp_b" ]] && return 0
-  [[ "$__cmp_a" > "$__cmp_b" ]] && return 1
+  [[ "$__Math_strCmp_a" == "$__Math_strCmp_b" ]] && return 0
+  [[ "$__Math_strCmp_a" > "$__Math_strCmp_b" ]] && return 1
   return 2
 }
 
 # Add two unsigned digit strings. Chunked: processes 9 digits at a time.
 __Math.strAdd() {
-  local __add_a="$1" __add_b="$2"
-  local -n __add_result="$3"
+  local __Math_iAdd_a="$1" __Math_iAdd_b="$2"
+  local -n __Math_iAdd_result="$3"
 
   # Pad to same length, then to chunk boundary — all in one shot
-  local -i __add_la=${#__add_a} __add_lb=${#__add_b} __add_maxlen __add_padlen
-  (( __add_maxlen = __add_la > __add_lb ? __add_la : __add_lb ))
+  local -i __Math_iAdd_la=${#__Math_iAdd_a} __Math_iAdd_lb=${#__Math_iAdd_b} __Math_iAdd_maxlen __Math_iAdd_padlen
+  (( __Math_iAdd_maxlen = __Math_iAdd_la > __Math_iAdd_lb ? __Math_iAdd_la : __Math_iAdd_lb ))
   # Round up to next chunk boundary
-  (( __add_padlen = (__add_maxlen + __Math_CHUNK - 1) / __Math_CHUNK * __Math_CHUNK ))
-  if (( __add_la < __add_padlen )); then
-    local -i __add_need=$(( __add_padlen - __add_la ))
-    local __add_zeros
-    printf -v __add_zeros "%0${__add_need}d" 0
-    __add_a="${__add_zeros}${__add_a}"
+  (( __Math_iAdd_padlen = (__Math_iAdd_maxlen + __Math_CHUNK - 1) / __Math_CHUNK * __Math_CHUNK ))
+  if (( __Math_iAdd_la < __Math_iAdd_padlen )); then
+    local -i __Math_iAdd_need=$(( __Math_iAdd_padlen - __Math_iAdd_la ))
+    local __Math_iAdd_zeros
+    printf -v __Math_iAdd_zeros "%0${__Math_iAdd_need}d" 0
+    __Math_iAdd_a="${__Math_iAdd_zeros}${__Math_iAdd_a}"
   fi
-  if (( __add_lb < __add_padlen )); then
-    local -i __add_need=$(( __add_padlen - __add_lb ))
-    local __add_zeros
-    printf -v __add_zeros "%0${__add_need}d" 0
-    __add_b="${__add_zeros}${__add_b}"
+  if (( __Math_iAdd_lb < __Math_iAdd_padlen )); then
+    local -i __Math_iAdd_need=$(( __Math_iAdd_padlen - __Math_iAdd_lb ))
+    local __Math_iAdd_zeros
+    printf -v __Math_iAdd_zeros "%0${__Math_iAdd_need}d" 0
+    __Math_iAdd_b="${__Math_iAdd_zeros}${__Math_iAdd_b}"
   fi
 
-  local -i __add_carry=0 __add_pos __add_len=${#__add_a} __add_sum
-  local __add_fmt
-  __add_result=""
-  for (( __add_pos = __add_len - __Math_CHUNK; __add_pos >= 0; __add_pos -= __Math_CHUNK )); do
-    __add_sum=$(( 10#${__add_a:__add_pos:__Math_CHUNK} + 10#${__add_b:__add_pos:__Math_CHUNK} + __add_carry ))
-    __add_carry=$(( __add_sum / __Math_BASE ))
-    printf -v __add_fmt "%09d" $(( __add_sum % __Math_BASE ))
-    __add_result="${__add_fmt}${__add_result}"
+  local -i __Math_iAdd_carry=0 __Math_iAdd_pos __Math_iAdd_len=${#__Math_iAdd_a} __Math_iAdd_sum
+  local __Math_iAdd_fmt
+  __Math_iAdd_result=""
+  for (( __Math_iAdd_pos = __Math_iAdd_len - __Math_CHUNK; __Math_iAdd_pos >= 0; __Math_iAdd_pos -= __Math_CHUNK )); do
+    __Math_iAdd_sum=$(( 10#${__Math_iAdd_a:__Math_iAdd_pos:__Math_CHUNK} + 10#${__Math_iAdd_b:__Math_iAdd_pos:__Math_CHUNK} + __Math_iAdd_carry ))
+    __Math_iAdd_carry=$(( __Math_iAdd_sum / __Math_BASE ))
+    printf -v __Math_iAdd_fmt "%09d" $(( __Math_iAdd_sum % __Math_BASE ))
+    __Math_iAdd_result="${__Math_iAdd_fmt}${__Math_iAdd_result}"
   done
-  (( __add_carry )) && __add_result="${__add_carry}${__add_result}"
-  __add_result="${__add_result#"${__add_result%%[!0]*}"}"
-  : "${__add_result:=0}"
+  (( __Math_iAdd_carry )) && __Math_iAdd_result="${__Math_iAdd_carry}${__Math_iAdd_result}"
+  __Math_iAdd_result="${__Math_iAdd_result#"${__Math_iAdd_result%%[!0]*}"}"
+  : "${__Math_iAdd_result:=0}"
 }
 
 # Subtract two unsigned digit strings (A - B). Assumes A >= B. Chunked.
 __Math.strSub() {
-  local __sub_a="$1" __sub_b="$2"
-  local -n __sub_result="$3"
+  local __Math_iSub_a="$1" __Math_iSub_b="$2"
+  local -n __Math_iSub_result="$3"
 
   # Pad to same length, then to chunk boundary — all in one shot
-  local -i __sub_la=${#__sub_a} __sub_lb=${#__sub_b} __sub_maxlen __sub_padlen
-  (( __sub_maxlen = __sub_la > __sub_lb ? __sub_la : __sub_lb ))
-  (( __sub_padlen = (__sub_maxlen + __Math_CHUNK - 1) / __Math_CHUNK * __Math_CHUNK ))
-  if (( __sub_la < __sub_padlen )); then
-    local -i __sub_need=$(( __sub_padlen - __sub_la ))
-    local __sub_zeros
-    printf -v __sub_zeros "%0${__sub_need}d" 0
-    __sub_a="${__sub_zeros}${__sub_a}"
+  local -i __Math_iSub_la=${#__Math_iSub_a} __Math_iSub_lb=${#__Math_iSub_b} __Math_iSub_maxlen __Math_iSub_padlen
+  (( __Math_iSub_maxlen = __Math_iSub_la > __Math_iSub_lb ? __Math_iSub_la : __Math_iSub_lb ))
+  (( __Math_iSub_padlen = (__Math_iSub_maxlen + __Math_CHUNK - 1) / __Math_CHUNK * __Math_CHUNK ))
+  if (( __Math_iSub_la < __Math_iSub_padlen )); then
+    local -i __Math_iSub_need=$(( __Math_iSub_padlen - __Math_iSub_la ))
+    local __Math_iSub_zeros
+    printf -v __Math_iSub_zeros "%0${__Math_iSub_need}d" 0
+    __Math_iSub_a="${__Math_iSub_zeros}${__Math_iSub_a}"
   fi
-  if (( __sub_lb < __sub_padlen )); then
-    local -i __sub_need=$(( __sub_padlen - __sub_lb ))
-    local __sub_zeros
-    printf -v __sub_zeros "%0${__sub_need}d" 0
-    __sub_b="${__sub_zeros}${__sub_b}"
+  if (( __Math_iSub_lb < __Math_iSub_padlen )); then
+    local -i __Math_iSub_need=$(( __Math_iSub_padlen - __Math_iSub_lb ))
+    local __Math_iSub_zeros
+    printf -v __Math_iSub_zeros "%0${__Math_iSub_need}d" 0
+    __Math_iSub_b="${__Math_iSub_zeros}${__Math_iSub_b}"
   fi
 
-  local -i __sub_borrow=0 __sub_pos __sub_len=${#__sub_a} __sub_diff
-  local __sub_fmt
-  __sub_result=""
-  for (( __sub_pos = __sub_len - __Math_CHUNK; __sub_pos >= 0; __sub_pos -= __Math_CHUNK )); do
-    __sub_diff=$(( 10#${__sub_a:__sub_pos:__Math_CHUNK} - 10#${__sub_b:__sub_pos:__Math_CHUNK} - __sub_borrow ))
-    if (( __sub_diff < 0 )); then
-      (( __sub_diff += __Math_BASE ))
-      __sub_borrow=1
+  local -i __Math_iSub_borrow=0 __Math_iSub_pos __Math_iSub_len=${#__Math_iSub_a} __Math_iSub_diff
+  local __Math_iSub_fmt
+  __Math_iSub_result=""
+  for (( __Math_iSub_pos = __Math_iSub_len - __Math_CHUNK; __Math_iSub_pos >= 0; __Math_iSub_pos -= __Math_CHUNK )); do
+    __Math_iSub_diff=$(( 10#${__Math_iSub_a:__Math_iSub_pos:__Math_CHUNK} - 10#${__Math_iSub_b:__Math_iSub_pos:__Math_CHUNK} - __Math_iSub_borrow ))
+    if (( __Math_iSub_diff < 0 )); then
+      (( __Math_iSub_diff += __Math_BASE ))
+      __Math_iSub_borrow=1
     else
-      __sub_borrow=0
+      __Math_iSub_borrow=0
     fi
-    printf -v __sub_fmt "%09d" $__sub_diff
-    __sub_result="${__sub_fmt}${__sub_result}"
+    printf -v __Math_iSub_fmt "%09d" $__Math_iSub_diff
+    __Math_iSub_result="${__Math_iSub_fmt}${__Math_iSub_result}"
   done
-  __sub_result="${__sub_result#"${__sub_result%%[!0]*}"}"
-  : "${__sub_result:=0}"
+  __Math_iSub_result="${__Math_iSub_result#"${__Math_iSub_result%%[!0]*}"}"
+  : "${__Math_iSub_result:=0}"
 }
 
 # Multiply two unsigned digit strings. Chunked grade-school method.
 # Splits both operands into 9-digit chunks, multiplies chunk pairs,
 # and accumulates with proper positional shifts.
 __Math.strMul() {
-  local __mul_a="$1" __mul_b="$2"
-  local -n __mul_result="$3"
+  local __Math_iMul_a="$1" __Math_iMul_b="$2"
+  local -n __Math_iMul_result="$3"
 
-  [[ "$__mul_a" == "0" || "$__mul_b" == "0" ]] && { __mul_result="0"; return; }
+  [[ "$__Math_iMul_a" == "0" || "$__Math_iMul_b" == "0" ]] && { __Math_iMul_result="0"; return; }
 
   # Pad to chunk boundaries in one shot
-  local -i __mul_rem_a=$(( ${#__mul_a} % __Math_CHUNK ))
-  if (( __mul_rem_a )); then
-    local -i __mul_need_a=$(( __Math_CHUNK - __mul_rem_a ))
-    local __mul_zeros_a
-    printf -v __mul_zeros_a "%0${__mul_need_a}d" 0
-    __mul_a="${__mul_zeros_a}${__mul_a}"
+  local -i __Math_iMul_rem_a=$(( ${#__Math_iMul_a} % __Math_CHUNK ))
+  if (( __Math_iMul_rem_a )); then
+    local -i __Math_iMul_need_a=$(( __Math_CHUNK - __Math_iMul_rem_a ))
+    local __Math_iMul_zeros_a
+    printf -v __Math_iMul_zeros_a "%0${__Math_iMul_need_a}d" 0
+    __Math_iMul_a="${__Math_iMul_zeros_a}${__Math_iMul_a}"
   fi
-  local -i __mul_rem_b=$(( ${#__mul_b} % __Math_CHUNK ))
-  if (( __mul_rem_b )); then
-    local -i __mul_need_b=$(( __Math_CHUNK - __mul_rem_b ))
-    local __mul_zeros_b
-    printf -v __mul_zeros_b "%0${__mul_need_b}d" 0
-    __mul_b="${__mul_zeros_b}${__mul_b}"
+  local -i __Math_iMul_rem_b=$(( ${#__Math_iMul_b} % __Math_CHUNK ))
+  if (( __Math_iMul_rem_b )); then
+    local -i __Math_iMul_need_b=$(( __Math_CHUNK - __Math_iMul_rem_b ))
+    local __Math_iMul_zeros_b
+    printf -v __Math_iMul_zeros_b "%0${__Math_iMul_need_b}d" 0
+    __Math_iMul_b="${__Math_iMul_zeros_b}${__Math_iMul_b}"
   fi
 
-  local -i __mul_na=$(( ${#__mul_a} / __Math_CHUNK ))
-  local -i __mul_nb=$(( ${#__mul_b} / __Math_CHUNK ))
-  local -i __mul_nresult=$(( __mul_na + __mul_nb ))
+  local -i __Math_iMul_na=$(( ${#__Math_iMul_a} / __Math_CHUNK ))
+  local -i __Math_iMul_nb=$(( ${#__Math_iMul_b} / __Math_CHUNK ))
+  local -i __Math_iMul_nresult=$(( __Math_iMul_na + __Math_iMul_nb ))
 
   # Result accumulator as array of chunks
-  local -a __mul_acc=()
-  local -i __mul_k
-  for (( __mul_k=0; __mul_k < __mul_nresult; __mul_k++ )); do __mul_acc[$__mul_k]=0; done
+  local -a __Math_iMul_acc=()
+  local -i __Math_iMul_k
+  for (( __Math_iMul_k=0; __Math_iMul_k < __Math_iMul_nresult; __Math_iMul_k++ )); do __Math_iMul_acc[$__Math_iMul_k]=0; done
 
   # Multiply each chunk pair and accumulate.
   # Chunks are indexed left-to-right in the string but represent
@@ -261,69 +261,69 @@ __Math.strMul() {
   # out the same as standard grade-school with the shift being i+j
   # from the right... actually, let's just index from the RIGHT to
   # keep it simple and match the standard algorithm.
-  local -i __mul_i __mul_j __mul_ca __mul_cb __mul_prod __mul_pos
-  for (( __mul_i = __mul_na - 1; __mul_i >= 0; __mul_i-- )); do
-    __mul_ca=10#${__mul_a:__mul_i*__Math_CHUNK:__Math_CHUNK}
-    (( __mul_ca == 0 )) && continue
-    local -i __mul_carry=0
-    for (( __mul_j = __mul_nb - 1; __mul_j >= 0; __mul_j-- )); do
-      __mul_cb=10#${__mul_b:__mul_j*__Math_CHUNK:__Math_CHUNK}
+  local -i __Math_iMul_i __Math_iMul_j __Math_iMul_ca __Math_iMul_cb __Math_iMul_prod __Math_iMul_pos
+  for (( __Math_iMul_i = __Math_iMul_na - 1; __Math_iMul_i >= 0; __Math_iMul_i-- )); do
+    __Math_iMul_ca=10#${__Math_iMul_a:__Math_iMul_i*__Math_CHUNK:__Math_CHUNK}
+    (( __Math_iMul_ca == 0 )) && continue
+    local -i __Math_iMul_carry=0
+    for (( __Math_iMul_j = __Math_iMul_nb - 1; __Math_iMul_j >= 0; __Math_iMul_j-- )); do
+      __Math_iMul_cb=10#${__Math_iMul_b:__Math_iMul_j*__Math_CHUNK:__Math_CHUNK}
       # Position in result: distance from right end
       # A chunk i (0=leftmost) is at position (na-1-i) from right
       # B chunk j (0=leftmost) is at position (nb-1-j) from right
       # Result position from right = (na-1-i) + (nb-1-j)
       # Result index (0=leftmost) = nresult-1 - pos_from_right
-      __mul_pos=$(( __mul_nresult - 1 - (__mul_na - 1 - __mul_i) - (__mul_nb - 1 - __mul_j) ))
-      __mul_prod=$(( __mul_ca * __mul_cb + __mul_acc[__mul_pos] + __mul_carry ))
-      __mul_acc[$__mul_pos]=$(( __mul_prod % __Math_BASE ))
-      __mul_carry=$(( __mul_prod / __Math_BASE ))
+      __Math_iMul_pos=$(( __Math_iMul_nresult - 1 - (__Math_iMul_na - 1 - __Math_iMul_i) - (__Math_iMul_nb - 1 - __Math_iMul_j) ))
+      __Math_iMul_prod=$(( __Math_iMul_ca * __Math_iMul_cb + __Math_iMul_acc[__Math_iMul_pos] + __Math_iMul_carry ))
+      __Math_iMul_acc[$__Math_iMul_pos]=$(( __Math_iMul_prod % __Math_BASE ))
+      __Math_iMul_carry=$(( __Math_iMul_prod / __Math_BASE ))
     done
-    if (( __mul_carry )); then
-      (( __mul_acc[__mul_pos - 1] += __mul_carry ))
+    if (( __Math_iMul_carry )); then
+      (( __Math_iMul_acc[__Math_iMul_pos - 1] += __Math_iMul_carry ))
     fi
   done
 
   # Convert accumulator back to digit string (index 0 = most significant)
-  __mul_result=""
-  local __mul_chunk
-  for (( __mul_k = 0; __mul_k < __mul_nresult; __mul_k++ )); do
-    printf -v __mul_chunk "%09d" ${__mul_acc[$__mul_k]}
-    __mul_result="${__mul_result}${__mul_chunk}"
+  __Math_iMul_result=""
+  local __Math_iMul_chunk
+  for (( __Math_iMul_k = 0; __Math_iMul_k < __Math_iMul_nresult; __Math_iMul_k++ )); do
+    printf -v __Math_iMul_chunk "%09d" ${__Math_iMul_acc[$__Math_iMul_k]}
+    __Math_iMul_result="${__Math_iMul_result}${__Math_iMul_chunk}"
   done
-  __mul_result="${__mul_result#"${__mul_result%%[!0]*}"}"
-  : "${__mul_result:=0}"
+  __Math_iMul_result="${__Math_iMul_result#"${__Math_iMul_result%%[!0]*}"}"
+  : "${__Math_iMul_result:=0}"
 }
 
 # Multiply an unsigned digit string by a small integer (0-999999999).
 # Chunked for speed. Returns result via nameref $3.
 __Math.strMulSmall() {
-  local __muls_a="$1"
-  local -i __muls_n="$2"
-  local -n __muls_result="$3"
+  local __Math_strMulSmall_a="$1"
+  local -i __Math_strMulSmall_n="$2"
+  local -n __Math_strMulSmall_result="$3"
 
-  (( __muls_n == 0 )) && { __muls_result="0"; return; }
-  (( __muls_n == 1 )) && { __muls_result="$__muls_a"; return; }
+  (( __Math_strMulSmall_n == 0 )) && { __Math_strMulSmall_result="0"; return; }
+  (( __Math_strMulSmall_n == 1 )) && { __Math_strMulSmall_result="$__Math_strMulSmall_a"; return; }
 
-  local -i __muls_rem=$(( ${#__muls_a} % __Math_CHUNK ))
-  if (( __muls_rem )); then
-    local -i __muls_need=$(( __Math_CHUNK - __muls_rem ))
-    local __muls_zeros
-    printf -v __muls_zeros "%0${__muls_need}d" 0
-    __muls_a="${__muls_zeros}${__muls_a}"
+  local -i __Math_strMulSmall_rem=$(( ${#__Math_strMulSmall_a} % __Math_CHUNK ))
+  if (( __Math_strMulSmall_rem )); then
+    local -i __Math_strMulSmall_need=$(( __Math_CHUNK - __Math_strMulSmall_rem ))
+    local __Math_strMulSmall_zeros
+    printf -v __Math_strMulSmall_zeros "%0${__Math_strMulSmall_need}d" 0
+    __Math_strMulSmall_a="${__Math_strMulSmall_zeros}${__Math_strMulSmall_a}"
   fi
 
-  local -i __muls_carry=0 __muls_pos __muls_len=${#__muls_a} __muls_prod
-  __muls_result=""
-  local __muls_fmt
-  for (( __muls_pos = __muls_len - __Math_CHUNK; __muls_pos >= 0; __muls_pos -= __Math_CHUNK )); do
-    __muls_prod=$(( 10#${__muls_a:__muls_pos:__Math_CHUNK} * __muls_n + __muls_carry ))
-    __muls_carry=$(( __muls_prod / __Math_BASE ))
-    printf -v __muls_fmt "%09d" $(( __muls_prod % __Math_BASE ))
-    __muls_result="${__muls_fmt}${__muls_result}"
+  local -i __Math_strMulSmall_carry=0 __Math_strMulSmall_pos __Math_strMulSmall_len=${#__Math_strMulSmall_a} __Math_strMulSmall_prod
+  __Math_strMulSmall_result=""
+  local __Math_strMulSmall_fmt
+  for (( __Math_strMulSmall_pos = __Math_strMulSmall_len - __Math_CHUNK; __Math_strMulSmall_pos >= 0; __Math_strMulSmall_pos -= __Math_CHUNK )); do
+    __Math_strMulSmall_prod=$(( 10#${__Math_strMulSmall_a:__Math_strMulSmall_pos:__Math_CHUNK} * __Math_strMulSmall_n + __Math_strMulSmall_carry ))
+    __Math_strMulSmall_carry=$(( __Math_strMulSmall_prod / __Math_BASE ))
+    printf -v __Math_strMulSmall_fmt "%09d" $(( __Math_strMulSmall_prod % __Math_BASE ))
+    __Math_strMulSmall_result="${__Math_strMulSmall_fmt}${__Math_strMulSmall_result}"
   done
-  (( __muls_carry )) && __muls_result="${__muls_carry}${__muls_result}"
-  __muls_result="${__muls_result#"${__muls_result%%[!0]*}"}"
-  : "${__muls_result:=0}"
+  (( __Math_strMulSmall_carry )) && __Math_strMulSmall_result="${__Math_strMulSmall_carry}${__Math_strMulSmall_result}"
+  __Math_strMulSmall_result="${__Math_strMulSmall_result#"${__Math_strMulSmall_result%%[!0]*}"}"
+  : "${__Math_strMulSmall_result:=0}"
 }
 
 # Divide unsigned digit string A by unsigned digit string B.
@@ -331,67 +331,67 @@ __Math.strMulSmall() {
 # (each step depends on the previous remainder), so it stays per-digit.
 # The trial-multiply and subtract steps use chunked strMulSmall/strSub.
 __Math.strDiv() {
-  local __div_a="$1" __div_b="$2"
-  local -n __div_quotient="$3"
-  local -i __div_maxdigits="${4:-$__Math_precision}"
-  local -n __div_qscale="$5"
+  local __Math_iDiv_a="$1" __Math_iDiv_b="$2"
+  local -n __Math_iDiv_quotient="$3"
+  local -i __Math_iDiv_maxdigits="${4:-$__Math_precision}"
+  local -n __Math_iDiv_qscale="$5"
 
-  [[ "$__div_b" == "0" ]] && _Crash "Math: division by zero"
-  [[ "$__div_a" == "0" ]] && { __div_quotient="0"; __div_qscale=0; return; }
+  [[ "$__Math_iDiv_b" == "0" ]] && _Crash "Math: division by zero"
+  [[ "$__Math_iDiv_a" == "0" ]] && { __Math_iDiv_quotient="0"; __Math_iDiv_qscale=0; return; }
 
-  local __div_remainder="0"
-  local -i __div_alen=${#__div_a} __div_pos=0 __div_qdigits=0
-  local -i __div_past_decimal=0
-  __div_quotient=""
-  __div_qscale=0
+  local __Math_iDiv_remainder="0"
+  local -i __Math_iDiv_alen=${#__Math_iDiv_a} __Math_iDiv_pos=0 __Math_iDiv_qdigits=0
+  local -i __Math_iDiv_past_decimal=0
+  __Math_iDiv_quotient=""
+  __Math_iDiv_qscale=0
 
-  while (( __div_qdigits < __div_maxdigits )); do
-    if (( __div_pos < __div_alen )); then
-      __div_remainder="${__div_remainder}${__div_a:__div_pos:1}"
-      (( __div_pos++ ))
+  while (( __Math_iDiv_qdigits < __Math_iDiv_maxdigits )); do
+    if (( __Math_iDiv_pos < __Math_iDiv_alen )); then
+      __Math_iDiv_remainder="${__Math_iDiv_remainder}${__Math_iDiv_a:__Math_iDiv_pos:1}"
+      (( __Math_iDiv_pos++ ))
     else
-      __div_remainder="${__div_remainder}0"
-      (( __div_past_decimal++ ))
+      __Math_iDiv_remainder="${__Math_iDiv_remainder}0"
+      (( __Math_iDiv_past_decimal++ ))
     fi
 
-    local __div_rem_stripped="${__div_remainder#"${__div_remainder%%[!0]*}"}"
-    : "${__div_rem_stripped:=0}"
-    __div_remainder="$__div_rem_stripped"
+    local __Math_iDiv_rem_stripped="${__Math_iDiv_remainder#"${__Math_iDiv_remainder%%[!0]*}"}"
+    : "${__Math_iDiv_rem_stripped:=0}"
+    __Math_iDiv_remainder="$__Math_iDiv_rem_stripped"
 
     # Binary search for quotient digit (0-9)
-    local -i __div_lo=0 __div_hi=9 __div_mid __div_qd=0
-    while (( __div_lo <= __div_hi )); do
-      __div_mid=$(( (__div_lo + __div_hi) / 2 ))
-      local __div_trial
-      __Math.strMulSmall "$__div_b" $__div_mid __div_trial
-      __Math.strCmp "$__div_trial" "$__div_remainder"
-      local -i __div_cmprc=$?
-      if (( __div_cmprc == 0 )); then __div_qd=$__div_mid; break
-      elif (( __div_cmprc == 2 )); then __div_qd=$__div_mid; __div_lo=$(( __div_mid + 1 ))
-      else __div_hi=$(( __div_mid - 1 ))
+    local -i __Math_iDiv_lo=0 __Math_iDiv_hi=9 __Math_iDiv_mid __Math_iDiv_qd=0
+    while (( __Math_iDiv_lo <= __Math_iDiv_hi )); do
+      __Math_iDiv_mid=$(( (__Math_iDiv_lo + __Math_iDiv_hi) / 2 ))
+      local __Math_iDiv_trial
+      __Math.strMulSmall "$__Math_iDiv_b" $__Math_iDiv_mid __Math_iDiv_trial
+      __Math.strCmp "$__Math_iDiv_trial" "$__Math_iDiv_remainder"
+      local -i __Math_iDiv_cmprc=$?
+      if (( __Math_iDiv_cmprc == 0 )); then __Math_iDiv_qd=$__Math_iDiv_mid; break
+      elif (( __Math_iDiv_cmprc == 2 )); then __Math_iDiv_qd=$__Math_iDiv_mid; __Math_iDiv_lo=$(( __Math_iDiv_mid + 1 ))
+      else __Math_iDiv_hi=$(( __Math_iDiv_mid - 1 ))
       fi
     done
 
-    if (( __div_qd == 0 && __div_qdigits == 0 )); then
+    if (( __Math_iDiv_qd == 0 && __Math_iDiv_qdigits == 0 )); then
       # Leading zero — don't count as a quotient digit, but track
       # fractional position so the scale stays correct.
-      (( __div_past_decimal > 0 )) && (( __div_qscale++ ))
+      (( __Math_iDiv_past_decimal > 0 )) && (( __Math_iDiv_qscale++ ))
     else
-      __div_quotient="${__div_quotient}${__div_qd}"
-      (( __div_qdigits++ ))
-      (( __div_past_decimal > 0 )) && (( __div_qscale++ ))
+      __Math_iDiv_quotient="${__Math_iDiv_quotient}${__Math_iDiv_qd}"
+      (( __Math_iDiv_qdigits++ ))
+      (( __Math_iDiv_past_decimal > 0 )) && (( __Math_iDiv_qscale++ ))
     fi
 
-    if (( __div_qd > 0 )); then
-      local __div_sub_val
-      __Math.strMulSmall "$__div_b" $__div_qd __div_sub_val
-      __Math.strSub "$__div_remainder" "$__div_sub_val" __div_remainder
+    if (( __Math_iDiv_qd > 0 )); then
+      local __Math_iDiv_sub_val
+      __Math.strMulSmall "$__Math_iDiv_b" $__Math_iDiv_qd __Math_iDiv_sub_val
+      __Math.strSub "$__Math_iDiv_remainder" "$__Math_iDiv_sub_val" __Math_iDiv_remainder
     fi
 
-    [[ "$__div_remainder" == "0" ]] && (( __div_pos >= __div_alen )) && break
+    [[ "$__Math_iDiv_remainder" == "0" ]] && (( __Math_iDiv_pos >= __Math_iDiv_alen )) && break
   done
 
-  : "${__div_quotient:=0}"
+  : "${__Math_iDiv_quotient:=0}"
 }
 
 
@@ -401,9 +401,9 @@ __Math.strDiv() {
 
 # Strip leading zeros from a digit string, preserving at least "0".
 __Math.stripLeading() {
-  local __sl_val="$1"
-  __sl_val="${__sl_val#"${__sl_val%%[!0]*}"}"
-  printf '%s' "${__sl_val:-0}"
+  local __Math_stripLeading_val="$1"
+  __Math_stripLeading_val="${__Math_stripLeading_val#"${__Math_stripLeading_val%%[!0]*}"}"
+  printf '%s' "${__Math_stripLeading_val:-0}"
 }
 
 # Resolve a Math argument to its digits/scale/neg triple.
@@ -429,14 +429,14 @@ __Math.stripLeading() {
 # Returns: nothing (results via namerefs)
 # Crashes: if input is not a valid number or recognized object ID
 __Math.resolve() {
-  local __res_input="$1"
-  local -n __res_digits="$2" __res_scale="$3" __res_neg="$4"
+  local __Math_resolve_input="$1"
+  local -n __Math_resolve_digits="$2" __Math_resolve_scale="$3" __Math_resolve_neg="$4"
 
   # Object ID — already validated, extract from descriptor
-  if [[ "$__res_input" == _* && -n "${__boop_registry[$__res_input]:-}" ]]; then
-    __boop.parse "$__res_input" "digits" __res_digits
-    __boop.parse "$__res_input" "scale" __res_scale
-    __boop.parse "$__res_input" "neg" __res_neg
+  if [[ "$__Math_resolve_input" == _* && -n "${__boop_registry[$__Math_resolve_input]:-}" ]]; then
+    __boop.parse "$__Math_resolve_input" "digits" __Math_resolve_digits
+    __boop.parse "$__Math_resolve_input" "scale" __Math_resolve_scale
+    __boop.parse "$__Math_resolve_input" "neg" __Math_resolve_neg
     return
   fi
 
@@ -446,94 +446,94 @@ __Math.resolve() {
   #   group 3: decimal point ("." or empty)
   #   group 4: fractional digits (may be empty if integer exists)
   # The -n check ensures at least one digit is present somewhere.
-  if ! [[ "${__res_input:-}" =~ ^[[:space:]]*(-?)([0-9]*)([.]*)([0-9]*)[[:space:]]*$ \
+  if ! [[ "${__Math_resolve_input:-}" =~ ^[[:space:]]*(-?)([0-9]*)([.]*)([0-9]*)[[:space:]]*$ \
        && -n "${BASH_REMATCH[2]:-}${BASH_REMATCH[4]:-}" ]]; then
     _Crash "Math: invalid number '$1' — expected a numeric value like '3.14' or '-42'"
   fi
 
-  __res_neg=${#BASH_REMATCH[1]}                                  # "-" → length 1; empty → 0
-  local __res_int="${BASH_REMATCH[2]}"                           # digits before the dot
-  local __res_frac="${BASH_REMATCH[4]}"                          # digits after the dot
+  __Math_resolve_neg=${#BASH_REMATCH[1]}                                  # "-" → length 1; empty → 0
+  local __Math_resolve_int="${BASH_REMATCH[2]}"                           # digits before the dot
+  local __Math_resolve_frac="${BASH_REMATCH[4]}"                          # digits after the dot
 
   # Default empty integer part to zero (e.g., ".5")
-  if [[ -z "$__res_int" ]]; then
+  if [[ -z "$__Math_resolve_int" ]]; then
     _Debug "__Math.resolve: no integer part in '$1', defaulting to 0"
-    __res_int=0
+    __Math_resolve_int=0
   fi
 
   # Default empty fraction to zero when a dot was present (e.g., "1.")
-  if [[ -z "$__res_frac" && -n "${BASH_REMATCH[3]}" ]]; then
+  if [[ -z "$__Math_resolve_frac" && -n "${BASH_REMATCH[3]}" ]]; then
     _Debug "__Math.resolve: no fraction in '$1', defaulting to 0"
-    __res_frac=0
+    __Math_resolve_frac=0
   fi
 
-  __res_int="${__res_int#"${__res_int%%[!0]*}"}"                 # strip leading zeros
-  : "${__res_int:=0}"                                            # keep at least "0"
+  __Math_resolve_int="${__Math_resolve_int#"${__Math_resolve_int%%[!0]*}"}"                 # strip leading zeros
+  : "${__Math_resolve_int:=0}"                                            # keep at least "0"
 
-  __res_digits="${__res_int}${__res_frac}"                       # concatenate for arithmetic
-  __res_scale=${#__res_frac}                                     # precision = fraction length
+  __Math_resolve_digits="${__Math_resolve_int}${__Math_resolve_frac}"                       # concatenate for arithmetic
+  __Math_resolve_scale=${#__Math_resolve_frac}                                     # precision = fraction length
 
-  [[ "${__res_digits//0/}" == "" ]] && __res_neg=0               # no negative zero
+  [[ "${__Math_resolve_digits//0/}" == "" ]] && __Math_resolve_neg=0               # no negative zero
 }
 
 # Align two numbers to the same scale by padding the shorter one with
 # trailing zeros on the digit string. This makes the digit strings
 # directly comparable and addable/subtractable.
 __Math.alignScale() {
-  local -n __as_dA="$1" __as_sA="$2" __as_dB="$3" __as_sB="$4"
-  local -i __as_diff
-  local __as_pad
-  if (( __as_sA < __as_sB )); then
-    __as_diff=$(( __as_sB - __as_sA ))
-    printf -v __as_pad "%0${__as_diff}d" 0
-    __as_dA="${__as_dA}${__as_pad}"
-    __as_sA=$__as_sB
-  elif (( __as_sB < __as_sA )); then
-    __as_diff=$(( __as_sA - __as_sB ))
-    printf -v __as_pad "%0${__as_diff}d" 0
-    __as_dB="${__as_dB}${__as_pad}"
-    __as_sB=$__as_sA
+  local -n __Math_alignScale_dA="$1" __Math_alignScale_sA="$2" __Math_alignScale_dB="$3" __Math_alignScale_sB="$4"
+  local -i __Math_alignScale_diff
+  local __Math_alignScale_pad
+  if (( __Math_alignScale_sA < __Math_alignScale_sB )); then
+    __Math_alignScale_diff=$(( __Math_alignScale_sB - __Math_alignScale_sA ))
+    printf -v __Math_alignScale_pad "%0${__Math_alignScale_diff}d" 0
+    __Math_alignScale_dA="${__Math_alignScale_dA}${__Math_alignScale_pad}"
+    __Math_alignScale_sA=$__Math_alignScale_sB
+  elif (( __Math_alignScale_sB < __Math_alignScale_sA )); then
+    __Math_alignScale_diff=$(( __Math_alignScale_sA - __Math_alignScale_sB ))
+    printf -v __Math_alignScale_pad "%0${__Math_alignScale_diff}d" 0
+    __Math_alignScale_dB="${__Math_alignScale_dB}${__Math_alignScale_pad}"
+    __Math_alignScale_sB=$__Math_alignScale_sA
   fi
 }
 
 # Build a Math object from raw components. Strips leading zeros,
 # normalizes negative zero, registers in boop.
 __Math.fromParts() {
-  local __fp_digits="$1"
-  local -i __fp_scale="$2" __fp_neg="$3"
+  local __Math_fromParts_digits="$1"
+  local -i __Math_fromParts_scale="$2" __Math_fromParts_neg="$3"
 
   # Strip leading zeros (inline — no subshell)
-  __fp_digits="${__fp_digits#"${__fp_digits%%[!0]*}"}"
-  : "${__fp_digits:=0}"
+  __Math_fromParts_digits="${__Math_fromParts_digits#"${__Math_fromParts_digits%%[!0]*}"}"
+  : "${__Math_fromParts_digits:=0}"
 
   # Strip trailing zeros past the decimal point.
   # Uses parameter expansion to find the trailing zeros suffix,
   # then trims by length in one shot instead of one-char-at-a-time.
-  if (( __fp_scale > 0 )); then
-    local __fp_tz="${__fp_digits%%[!0]*}"  # won't work — need trailing
+  if (( __Math_fromParts_scale > 0 )); then
+    local __Math_fromParts_tz="${__Math_fromParts_digits%%[!0]*}"  # won't work — need trailing
     # Reverse approach: strip trailing zeros via suffix removal
-    local __fp_stripped="${__fp_digits%"${__fp_digits##*[!0]}"}"
-    # __fp_stripped is everything up to and including the last non-zero
+    local __Math_fromParts_stripped="${__Math_fromParts_digits%"${__Math_fromParts_digits##*[!0]}"}"
+    # __Math_fromParts_stripped is everything up to and including the last non-zero
     # Actually: ${var##*[!0]} gives the trailing zeros suffix
-    local __fp_tail="${__fp_digits##*[!0]}"
-    local -i __fp_taillen=${#__fp_tail}
-    if (( __fp_taillen > 0 && __fp_taillen <= __fp_scale )); then
-      __fp_digits="${__fp_digits:0:${#__fp_digits}-__fp_taillen}"
-      (( __fp_scale -= __fp_taillen ))
-    elif (( __fp_taillen > __fp_scale )); then
+    local __Math_fromParts_tail="${__Math_fromParts_digits##*[!0]}"
+    local -i __Math_fromParts_taillen=${#__Math_fromParts_tail}
+    if (( __Math_fromParts_taillen > 0 && __Math_fromParts_taillen <= __Math_fromParts_scale )); then
+      __Math_fromParts_digits="${__Math_fromParts_digits:0:${#__Math_fromParts_digits}-__Math_fromParts_taillen}"
+      (( __Math_fromParts_scale -= __Math_fromParts_taillen ))
+    elif (( __Math_fromParts_taillen > __Math_fromParts_scale )); then
       # Only strip up to scale zeros (don't eat into integer part)
-      __fp_digits="${__fp_digits:0:${#__fp_digits}-__fp_scale}"
-      __fp_scale=0
+      __Math_fromParts_digits="${__Math_fromParts_digits:0:${#__Math_fromParts_digits}-__Math_fromParts_scale}"
+      __Math_fromParts_scale=0
     fi
-    : "${__fp_digits:=0}"
+    : "${__Math_fromParts_digits:=0}"
   fi
 
   # No negative zero
-  [[ "$__fp_digits" == "0" ]] && __fp_neg=0
+  [[ "$__Math_fromParts_digits" == "0" ]] && __Math_fromParts_neg=0
 
-  local __fp_self
-  into=__fp_self _Class=Math __boop.new "digits=$__fp_digits" "scale=$__fp_scale" "neg=$__fp_neg"
-  boop.pass "$__fp_self" "${4:-}"
+  local __Math_fromParts_self
+  into=__Math_fromParts_self _Class=Math __boop.new "digits=$__Math_fromParts_digits" "scale=$__Math_fromParts_scale" "neg=$__Math_fromParts_neg"
+  boop.pass "$__Math_fromParts_self" "${4:-}"
 }
 
 # ============================================================================
@@ -568,64 +568,64 @@ Math.new() {
 # Fast path: if both operands fit in 64-bit, uses native $(( )).
 __Math.i_add() {
   local -I _Self _Class
-  local __add_dA __add_dB
-  local -i __add_sA __add_sB __add_nA __add_nB
-  __Math.resolve "$_Self" __add_dA __add_sA __add_nA
-  __Math.resolve "$1" __add_dB __add_sB __add_nB
+  local __Math_iAdd_dA __Math_iAdd_dB
+  local -i __Math_iAdd_sA __Math_iAdd_sB __Math_iAdd_nA __Math_iAdd_nB
+  __Math.resolve "$_Self" __Math_iAdd_dA __Math_iAdd_sA __Math_iAdd_nA
+  __Math.resolve "$1" __Math_iAdd_dB __Math_iAdd_sB __Math_iAdd_nB
 
   # Fast path: native integer arithmetic
-  local -i __add_iA __add_iB
-  if __Math.toInt64 "$__add_dA" $__add_sA $__add_nA __add_iA \
-  && __Math.toInt64 "$__add_dB" $__add_sB $__add_nB __add_iB; then
-    __Math.alignScale __add_dA __add_sA __add_dB __add_sB
-    __Math.toInt64 "$__add_dA" $__add_sA $__add_nA __add_iA
-    __Math.toInt64 "$__add_dB" $__add_sB $__add_nB __add_iB
-    local __add_fd; local -i __add_fs __add_fn
-    __Math.fromInt64 $(( __add_iA + __add_iB )) $__add_sA __add_fd __add_fs __add_fn
-    __Math.fromParts "$__add_fd" $__add_fs $__add_fn ${into:-}
+  local -i __Math_iAdd_iA __Math_iAdd_iB
+  if __Math.toInt64 "$__Math_iAdd_dA" $__Math_iAdd_sA $__Math_iAdd_nA __Math_iAdd_iA \
+  && __Math.toInt64 "$__Math_iAdd_dB" $__Math_iAdd_sB $__Math_iAdd_nB __Math_iAdd_iB; then
+    __Math.alignScale __Math_iAdd_dA __Math_iAdd_sA __Math_iAdd_dB __Math_iAdd_sB
+    __Math.toInt64 "$__Math_iAdd_dA" $__Math_iAdd_sA $__Math_iAdd_nA __Math_iAdd_iA
+    __Math.toInt64 "$__Math_iAdd_dB" $__Math_iAdd_sB $__Math_iAdd_nB __Math_iAdd_iB
+    local __Math_iAdd_fd; local -i __Math_iAdd_fs __Math_iAdd_fn
+    __Math.fromInt64 $(( __Math_iAdd_iA + __Math_iAdd_iB )) $__Math_iAdd_sA __Math_iAdd_fd __Math_iAdd_fs __Math_iAdd_fn
+    __Math.fromParts "$__Math_iAdd_fd" $__Math_iAdd_fs $__Math_iAdd_fn ${into:-}
     return
   fi
 
-  __Math.alignScale __add_dA __add_sA __add_dB __add_sB
+  __Math.alignScale __Math_iAdd_dA __Math_iAdd_sA __Math_iAdd_dB __Math_iAdd_sB
 
-  local __add_rd
-  local -i __add_rn
+  local __Math_iAdd_rd
+  local -i __Math_iAdd_rn
 
-  if (( __add_nA == __add_nB )); then
-    __Math.strAdd "$__add_dA" "$__add_dB" __add_rd
-    __add_rn=$__add_nA
+  if (( __Math_iAdd_nA == __Math_iAdd_nB )); then
+    __Math.strAdd "$__Math_iAdd_dA" "$__Math_iAdd_dB" __Math_iAdd_rd
+    __Math_iAdd_rn=$__Math_iAdd_nA
   else
-    __Math.strCmp "$__add_dA" "$__add_dB"
-    local -i __add_cmp=$?
-    if (( __add_cmp == 0 )); then
-      __Math.fromParts "0" $__add_sA 0 ${into:-}; return
-    elif (( __add_cmp == 1 )); then
-      __Math.strSub "$__add_dA" "$__add_dB" __add_rd
-      __add_rn=$__add_nA
+    __Math.strCmp "$__Math_iAdd_dA" "$__Math_iAdd_dB"
+    local -i __Math_iAdd_cmp=$?
+    if (( __Math_iAdd_cmp == 0 )); then
+      __Math.fromParts "0" $__Math_iAdd_sA 0 ${into:-}; return
+    elif (( __Math_iAdd_cmp == 1 )); then
+      __Math.strSub "$__Math_iAdd_dA" "$__Math_iAdd_dB" __Math_iAdd_rd
+      __Math_iAdd_rn=$__Math_iAdd_nA
     else
-      __Math.strSub "$__add_dB" "$__add_dA" __add_rd
-      __add_rn=$__add_nB
+      __Math.strSub "$__Math_iAdd_dB" "$__Math_iAdd_dA" __Math_iAdd_rd
+      __Math_iAdd_rn=$__Math_iAdd_nB
     fi
   fi
 
-  __Math.fromParts "$__add_rd" $__add_sA $__add_rn ${into:-}
+  __Math.fromParts "$__Math_iAdd_rd" $__Math_iAdd_sA $__Math_iAdd_rn ${into:-}
 }
 
 # Subtract: self - arg. Flip sign of arg and add.
 __Math.i_sub() {
   local -I _Self _Class
-  local __sub_dB
-  local -i __sub_sB __sub_nB
-  __Math.resolve "$1" __sub_dB __sub_sB __sub_nB
+  local __Math_iSub_dB
+  local -i __Math_iSub_sB __Math_iSub_nB
+  __Math.resolve "$1" __Math_iSub_dB __Math_iSub_sB __Math_iSub_nB
 
   # Flip sign and add
-  (( __sub_nB = !__sub_nB ))
-  [[ "$__sub_dB" == "0" ]] && __sub_nB=0
+  (( __Math_iSub_nB = !__Math_iSub_nB ))
+  [[ "$__Math_iSub_dB" == "0" ]] && __Math_iSub_nB=0
 
   # Build a temporary negated value and add
-  local __sub_tmp
-  __Math.fromParts "$__sub_dB" $__sub_sB $__sub_nB __sub_tmp
-  _Self="$_Self" _Class=Math __Math.i_add "$__sub_tmp"
+  local __Math_iSub_tmp
+  __Math.fromParts "$__Math_iSub_dB" $__Math_iSub_sB $__Math_iSub_nB __Math_iSub_tmp
+  _Self="$_Self" _Class=Math __Math.i_add "$__Math_iSub_tmp"
 }
 
 # Multiply: self * arg.
@@ -634,26 +634,26 @@ __Math.i_sub() {
 # Fast path: if combined digit count ≤ 18, uses native $(( )).
 __Math.i_mul() {
   local -I _Self _Class
-  local __mul_dA __mul_dB
-  local -i __mul_sA __mul_sB __mul_nA __mul_nB
-  __Math.resolve "$_Self" __mul_dA __mul_sA __mul_nA
-  __Math.resolve "$1" __mul_dB __mul_sB __mul_nB
+  local __Math_iMul_dA __Math_iMul_dB
+  local -i __Math_iMul_sA __Math_iMul_sB __Math_iMul_nA __Math_iMul_nB
+  __Math.resolve "$_Self" __Math_iMul_dA __Math_iMul_sA __Math_iMul_nA
+  __Math.resolve "$1" __Math_iMul_dB __Math_iMul_sB __Math_iMul_nB
 
   # Fast path: combined digits fit in 64-bit product
-  if (( ${#__mul_dA} + ${#__mul_dB} <= __Math_FAST_DIGITS )); then
-    local -i __mul_iA __mul_iB
-    __Math.toInt64 "$__mul_dA" $__mul_sA $__mul_nA __mul_iA
-    __Math.toInt64 "$__mul_dB" $__mul_sB $__mul_nB __mul_iB
-    local __mul_fd; local -i __mul_fs __mul_fn
-    __Math.fromInt64 $(( __mul_iA * __mul_iB )) $(( __mul_sA + __mul_sB )) __mul_fd __mul_fs __mul_fn
-    __Math.fromParts "$__mul_fd" $__mul_fs $__mul_fn ${into:-}
+  if (( ${#__Math_iMul_dA} + ${#__Math_iMul_dB} <= __Math_FAST_DIGITS )); then
+    local -i __Math_iMul_iA __Math_iMul_iB
+    __Math.toInt64 "$__Math_iMul_dA" $__Math_iMul_sA $__Math_iMul_nA __Math_iMul_iA
+    __Math.toInt64 "$__Math_iMul_dB" $__Math_iMul_sB $__Math_iMul_nB __Math_iMul_iB
+    local __Math_iMul_fd; local -i __Math_iMul_fs __Math_iMul_fn
+    __Math.fromInt64 $(( __Math_iMul_iA * __Math_iMul_iB )) $(( __Math_iMul_sA + __Math_iMul_sB )) __Math_iMul_fd __Math_iMul_fs __Math_iMul_fn
+    __Math.fromParts "$__Math_iMul_fd" $__Math_iMul_fs $__Math_iMul_fn ${into:-}
     return
   fi
 
-  local __mul_rd
-  __Math.strMul "$__mul_dA" "$__mul_dB" __mul_rd
-  local -i __mul_rn=$(( __mul_nA != __mul_nB ? 1 : 0 ))
-  __Math.fromParts "$__mul_rd" $(( __mul_sA + __mul_sB )) $__mul_rn ${into:-}
+  local __Math_iMul_rd
+  __Math.strMul "$__Math_iMul_dA" "$__Math_iMul_dB" __Math_iMul_rd
+  local -i __Math_iMul_rn=$(( __Math_iMul_nA != __Math_iMul_nB ? 1 : 0 ))
+  __Math.fromParts "$__Math_iMul_rd" $(( __Math_iMul_sA + __Math_iMul_sB )) $__Math_iMul_rn ${into:-}
 }
 
 # Divide: self / arg.
@@ -664,60 +664,60 @@ __Math.i_div() {
   local -I _Self _Class
   local -i precision; : "${precision:=$__Math_precision}"
 
-  local __div_dA __div_dB
-  local -i __div_sA __div_sB __div_nA __div_nB
-  __Math.resolve "$_Self" __div_dA __div_sA __div_nA
-  __Math.resolve "$1" __div_dB __div_sB __div_nB
+  local __Math_iDiv_dA __Math_iDiv_dB
+  local -i __Math_iDiv_sA __Math_iDiv_sB __Math_iDiv_nA __Math_iDiv_nB
+  __Math.resolve "$_Self" __Math_iDiv_dA __Math_iDiv_sA __Math_iDiv_nA
+  __Math.resolve "$1" __Math_iDiv_dB __Math_iDiv_sB __Math_iDiv_nB
 
-  [[ "$__div_dB" == "0" ]] && _Crash "Math: division by zero"
+  [[ "$__Math_iDiv_dB" == "0" ]] && _Crash "Math: division by zero"
 
   # Fast path: native integer division when operands are small enough.
   # After align, we multiply dividend by 10^extra for fractional digits.
   # Total digit count of (aligned_dividend * 10^extra) must fit in 64-bit.
-  local -i __div_extra=$(( precision > 6 ? precision : 6 ))
-  local -i __div_maxA=${#__div_dA} __div_maxB=${#__div_dB}
-  (( __div_maxA < __div_maxB )) && __div_maxA=$__div_maxB
-  if (( __div_maxA + __div_extra <= __Math_FAST_DIGITS )); then
-    __Math.alignScale __div_dA __div_sA __div_dB __div_sB
-    local -i __div_iA __div_iB
-    __Math.toInt64 "$__div_dA" $__div_sA $__div_nA __div_iA
-    __Math.toInt64 "$__div_dB" $__div_sB $__div_nB __div_iB
-    local __div_pow
-    printf -v __div_pow "1%0${__div_extra}d" 0
-    local -i __div_mul=10#$__div_pow
+  local -i __Math_iDiv_extra=$(( precision > 6 ? precision : 6 ))
+  local -i __Math_iDiv_maxA=${#__Math_iDiv_dA} __Math_iDiv_maxB=${#__Math_iDiv_dB}
+  (( __Math_iDiv_maxA < __Math_iDiv_maxB )) && __Math_iDiv_maxA=$__Math_iDiv_maxB
+  if (( __Math_iDiv_maxA + __Math_iDiv_extra <= __Math_FAST_DIGITS )); then
+    __Math.alignScale __Math_iDiv_dA __Math_iDiv_sA __Math_iDiv_dB __Math_iDiv_sB
+    local -i __Math_iDiv_iA __Math_iDiv_iB
+    __Math.toInt64 "$__Math_iDiv_dA" $__Math_iDiv_sA $__Math_iDiv_nA __Math_iDiv_iA
+    __Math.toInt64 "$__Math_iDiv_dB" $__Math_iDiv_sB $__Math_iDiv_nB __Math_iDiv_iB
+    local __Math_iDiv_pow
+    printf -v __Math_iDiv_pow "1%0${__Math_iDiv_extra}d" 0
+    local -i __Math_iDiv_mul=10#$__Math_iDiv_pow
     # Preserve sign, operate on magnitudes
-    local -i __div_absA=${__div_iA#-} __div_absB=${__div_iB#-}
-    local -i __div_raw=$(( (__div_absA * __div_mul) / __div_absB ))
-    local -i __div_rn=$(( __div_nA != __div_nB ? 1 : 0 ))
-    local __div_fd; local -i __div_fs __div_fn
-    __Math.fromInt64 $__div_raw $__div_extra __div_fd __div_fs __div_fn
-    (( __div_rn )) && __div_fn=$__div_rn
-    [[ "$__div_fd" == "0" ]] && __div_fn=0
-    __Math.fromParts "$__div_fd" $__div_fs $__div_fn ${into:-}
+    local -i __Math_iDiv_absA=${__Math_iDiv_iA#-} __Math_iDiv_absB=${__Math_iDiv_iB#-}
+    local -i __Math_iDiv_raw=$(( (__Math_iDiv_absA * __Math_iDiv_mul) / __Math_iDiv_absB ))
+    local -i __Math_iDiv_rn=$(( __Math_iDiv_nA != __Math_iDiv_nB ? 1 : 0 ))
+    local __Math_iDiv_fd; local -i __Math_iDiv_fs __Math_iDiv_fn
+    __Math.fromInt64 $__Math_iDiv_raw $__Math_iDiv_extra __Math_iDiv_fd __Math_iDiv_fs __Math_iDiv_fn
+    (( __Math_iDiv_rn )) && __Math_iDiv_fn=$__Math_iDiv_rn
+    [[ "$__Math_iDiv_fd" == "0" ]] && __Math_iDiv_fn=0
+    __Math.fromParts "$__Math_iDiv_fd" $__Math_iDiv_fs $__Math_iDiv_fn ${into:-}
     return
   fi
 
   # Align scales so we're dividing integers of the same magnitude
-  __Math.alignScale __div_dA __div_sA __div_dB __div_sB
+  __Math.alignScale __Math_iDiv_dA __Math_iDiv_sA __Math_iDiv_dB __Math_iDiv_sB
 
   # Perform string division — operates on pure digit strings, returns
   # quotient digits and how many of them are past the decimal point
-  local __div_q
-  local -i __div_qs
-  __Math.strDiv "$__div_dA" "$__div_dB" __div_q $((precision + 2)) __div_qs
+  local __Math_iDiv_q
+  local -i __Math_iDiv_qs
+  __Math.strDiv "$__Math_iDiv_dA" "$__Math_iDiv_dB" __Math_iDiv_q $((precision + 2)) __Math_iDiv_qs
 
-  local -i __div_rn=$(( __div_nA != __div_nB ? 1 : 0 ))
+  local -i __Math_iDiv_rn=$(( __Math_iDiv_nA != __Math_iDiv_nB ? 1 : 0 ))
 
   # Round or truncate to requested precision
   # Truncate to requested precision
-  if (( ${#__div_q} > precision )); then
-    local -i __div_removed=$(( ${#__div_q} - precision ))
-    __div_q="${__div_q:0:precision}"
-    (( __div_qs -= __div_removed ))
-    (( __div_qs < 0 )) && __div_qs=0
+  if (( ${#__Math_iDiv_q} > precision )); then
+    local -i __Math_iDiv_removed=$(( ${#__Math_iDiv_q} - precision ))
+    __Math_iDiv_q="${__Math_iDiv_q:0:precision}"
+    (( __Math_iDiv_qs -= __Math_iDiv_removed ))
+    (( __Math_iDiv_qs < 0 )) && __Math_iDiv_qs=0
   fi
 
-  __Math.fromParts "$__div_q" $__div_qs $__div_rn ${into:-}
+  __Math.fromParts "$__Math_iDiv_q" $__Math_iDiv_qs $__Math_iDiv_rn ${into:-}
 }
 
 # Square: self * self. Convenience wrapper — same as mul with self as arg.
@@ -731,24 +731,24 @@ __Math.i_square() {
 # a full strMod implementation. For now, crashes if operands are too large.
 __Math.i_mod() {
   local -I _Self _Class
-  local __mod_dA __mod_dB
-  local -i __mod_sA __mod_sB __mod_nA __mod_nB
-  __Math.resolve "$_Self" __mod_dA __mod_sA __mod_nA
-  __Math.resolve "$1" __mod_dB __mod_sB __mod_nB
+  local __Math_iMod_dA __Math_iMod_dB
+  local -i __Math_iMod_sA __Math_iMod_sB __Math_iMod_nA __Math_iMod_nB
+  __Math.resolve "$_Self" __Math_iMod_dA __Math_iMod_sA __Math_iMod_nA
+  __Math.resolve "$1" __Math_iMod_dB __Math_iMod_sB __Math_iMod_nB
 
-  [[ "$__mod_dB" == "0" ]] && _Crash "Math: modulo by zero"
+  [[ "$__Math_iMod_dB" == "0" ]] && _Crash "Math: modulo by zero"
 
-  __Math.alignScale __mod_dA __mod_sA __mod_dB __mod_sB
+  __Math.alignScale __Math_iMod_dA __Math_iMod_sA __Math_iMod_dB __Math_iMod_sB
 
-  local -i __mod_iA __mod_iB
-  __Math.toInt64 "$__mod_dA" $__mod_sA $__mod_nA __mod_iA \
+  local -i __Math_iMod_iA __Math_iMod_iB
+  __Math.toInt64 "$__Math_iMod_dA" $__Math_iMod_sA $__Math_iMod_nA __Math_iMod_iA \
     || _Crash "Math: mod operand too large for native arithmetic"
-  __Math.toInt64 "$__mod_dB" $__mod_sB $__mod_nB __mod_iB \
+  __Math.toInt64 "$__Math_iMod_dB" $__Math_iMod_sB $__Math_iMod_nB __Math_iMod_iB \
     || _Crash "Math: mod operand too large for native arithmetic"
 
-  local __mod_fd; local -i __mod_fs __mod_fn
-  __Math.fromInt64 $(( __mod_iA % __mod_iB )) $__mod_sA __mod_fd __mod_fs __mod_fn
-  __Math.fromParts "$__mod_fd" $__mod_fs $__mod_fn ${into:-}
+  local __Math_iMod_fd; local -i __Math_iMod_fs __Math_iMod_fn
+  __Math.fromInt64 $(( __Math_iMod_iA % __Math_iMod_iB )) $__Math_iMod_sA __Math_iMod_fd __Math_iMod_fs __Math_iMod_fn
+  __Math.fromParts "$__Math_iMod_fd" $__Math_iMod_fs $__Math_iMod_fn ${into:-}
 }
 
 # Power: self ^ arg (non-negative integer exponent only).
@@ -757,26 +757,26 @@ __Math.i_mod() {
 # bases gracefully fall back to arbitrary precision.
 __Math.i_pow() {
   local -I _Self _Class
-  local __pow_dB
-  local -i __pow_sB __pow_nB
-  __Math.resolve "$1" __pow_dB __pow_sB __pow_nB
+  local __Math_iPow_dB
+  local -i __Math_iPow_sB __Math_iPow_nB
+  __Math.resolve "$1" __Math_iPow_dB __Math_iPow_sB __Math_iPow_nB
 
-  (( __pow_sB != 0 )) && _Crash "Math: fractional exponents not supported"
-  (( __pow_nB )) && _Crash "Math: negative exponents not supported"
+  (( __Math_iPow_sB != 0 )) && _Crash "Math: fractional exponents not supported"
+  (( __Math_iPow_nB )) && _Crash "Math: negative exponents not supported"
 
   # Exponent is a plain integer
-  local -i __pow_exp=10#$__pow_dB
+  local -i __Math_iPow_exp=10#$__Math_iPow_dB
 
   # Start with 1
-  local __pow_result
-  into=__pow_result Math.new 1
+  local __Math_iPow_result
+  into=__Math_iPow_result Math.new 1
 
-  local -i __pow_i
-  for (( __pow_i=0; __pow_i < __pow_exp; __pow_i++ )); do
-    into=__pow_result _Self="$__pow_result" _Class=Math __Math.i_mul "$_Self"
+  local -i __Math_iPow_i
+  for (( __Math_iPow_i=0; __Math_iPow_i < __Math_iPow_exp; __Math_iPow_i++ )); do
+    into=__Math_iPow_result _Self="$__Math_iPow_result" _Class=Math __Math.i_mul "$_Self"
   done
 
-  boop.pass "$__pow_result" ${into:-}
+  boop.pass "$__Math_iPow_result" ${into:-}
 }
 
 
@@ -788,28 +788,28 @@ __Math.i_pow() {
 # This is the workhorse — eq/lt/gt/le/ge are wrappers.
 Math.cmp() {
   local -I _Self _Class
-  local __cmp_dA __cmp_dB
-  local -i __cmp_sA __cmp_sB __cmp_nA __cmp_nB
-  __Math.resolve "$_Self" __cmp_dA __cmp_sA __cmp_nA
-  __Math.resolve "$1" __cmp_dB __cmp_sB __cmp_nB
+  local __Math_strCmp_dA __Math_strCmp_dB
+  local -i __Math_strCmp_sA __Math_strCmp_sB __Math_strCmp_nA __Math_strCmp_nB
+  __Math.resolve "$_Self" __Math_strCmp_dA __Math_strCmp_sA __Math_strCmp_nA
+  __Math.resolve "$1" __Math_strCmp_dB __Math_strCmp_sB __Math_strCmp_nB
 
   # Different signs: negative < positive
-  if (( __cmp_nA != __cmp_nB )); then
+  if (( __Math_strCmp_nA != __Math_strCmp_nB )); then
     # Both zero check
-    [[ "$__cmp_dA" == "0" && "$__cmp_dB" == "0" ]] && return 0
-    (( __cmp_nA )) && return 2 || return 1
+    [[ "$__Math_strCmp_dA" == "0" && "$__Math_strCmp_dB" == "0" ]] && return 0
+    (( __Math_strCmp_nA )) && return 2 || return 1
   fi
 
-  __Math.alignScale __cmp_dA __cmp_sA __cmp_dB __cmp_sB
-  __Math.strCmp "$__cmp_dA" "$__cmp_dB"
-  local -i __cmp_rc=$?
+  __Math.alignScale __Math_strCmp_dA __Math_strCmp_sA __Math_strCmp_dB __Math_strCmp_sB
+  __Math.strCmp "$__Math_strCmp_dA" "$__Math_strCmp_dB"
+  local -i __Math_strCmp_rc=$?
 
   # If negative, flip the comparison (larger magnitude = smaller value)
-  if (( __cmp_nA )); then
-    (( __cmp_rc == 1 )) && return 2
-    (( __cmp_rc == 2 )) && return 1
+  if (( __Math_strCmp_nA )); then
+    (( __Math_strCmp_rc == 1 )) && return 2
+    (( __Math_strCmp_rc == 2 )) && return 1
   fi
-  return $__cmp_rc
+  return $__Math_strCmp_rc
 }
 
 Math.eq() { local -I _Self _Class; _Self="$_Self" _Class="$_Class" Math.cmp "$1"; (( $? == 0 )); }
@@ -824,123 +824,123 @@ Math.ge() { local -I _Self _Class; _Self="$_Self" _Class="$_Class" Math.cmp "$1"
 
 Math.isZero() {
   local -I _Self _Class
-  local __iz_d; local -i __iz_s __iz_n
-  __Math.resolve "$_Self" __iz_d __iz_s __iz_n
-  [[ "$__iz_d" == "0" ]]
+  local __Math_isZero_d; local -i __Math_isZero_s __Math_isZero_n
+  __Math.resolve "$_Self" __Math_isZero_d __Math_isZero_s __Math_isZero_n
+  [[ "$__Math_isZero_d" == "0" ]]
 }
 
 __Math.i_abs() {
   local -I _Self _Class
-  local __abs_d; local -i __abs_s __abs_n
-  __Math.resolve "$_Self" __abs_d __abs_s __abs_n
-  __Math.fromParts "$__abs_d" $__abs_s 0 ${into:-}
+  local __Math_iAbs_d; local -i __Math_iAbs_s __Math_iAbs_n
+  __Math.resolve "$_Self" __Math_iAbs_d __Math_iAbs_s __Math_iAbs_n
+  __Math.fromParts "$__Math_iAbs_d" $__Math_iAbs_s 0 ${into:-}
 }
 
 __Math.i_neg() {
   local -I _Self _Class
-  local __neg_d; local -i __neg_s __neg_n
-  __Math.resolve "$_Self" __neg_d __neg_s __neg_n
-  [[ "$__neg_d" == "0" ]] && __neg_n=0 || (( __neg_n = !__neg_n ))
-  __Math.fromParts "$__neg_d" $__neg_s $__neg_n ${into:-}
+  local __Math_iNeg_d; local -i __Math_iNeg_s __Math_iNeg_n
+  __Math.resolve "$_Self" __Math_iNeg_d __Math_iNeg_s __Math_iNeg_n
+  [[ "$__Math_iNeg_d" == "0" ]] && __Math_iNeg_n=0 || (( __Math_iNeg_n = !__Math_iNeg_n ))
+  __Math.fromParts "$__Math_iNeg_d" $__Math_iNeg_s $__Math_iNeg_n ${into:-}
 }
 
 # Round to N significant digits. Returns a new Math object.
 # Uses round-half-up: if the digit past the cut point is >= 5, bump up.
 Math.round() {
   local -I _Self _Class
-  local -i __rnd_prec="${1:-$__Math_precision}"
-  local __rnd_d; local -i __rnd_s __rnd_n
-  __Math.resolve "$_Self" __rnd_d __rnd_s __rnd_n
+  local -i __Math_round_prec="${1:-$__Math_precision}"
+  local __Math_round_d; local -i __Math_round_s __Math_round_n
+  __Math.resolve "$_Self" __Math_round_d __Math_round_s __Math_round_n
 
-  local -i __rnd_len=${#__rnd_d}
-  (( __rnd_len <= __rnd_prec )) && { __Math.fromParts "$__rnd_d" $__rnd_s $__rnd_n ${into:-}; return; }
+  local -i __Math_round_len=${#__Math_round_d}
+  (( __Math_round_len <= __Math_round_prec )) && { __Math.fromParts "$__Math_round_d" $__Math_round_s $__Math_round_n ${into:-}; return; }
 
   # Digit just past the cut point decides rounding
-  local -i __rnd_check=${__rnd_d:__rnd_prec:1}
-  __rnd_d="${__rnd_d:0:__rnd_prec}"
+  local -i __Math_round_check=${__Math_round_d:__Math_round_prec:1}
+  __Math_round_d="${__Math_round_d:0:__Math_round_prec}"
 
-  if (( __rnd_check >= 5 )); then
+  if (( __Math_round_check >= 5 )); then
     # Increment the last kept digit. If it's 9, carry propagates.
-    local -i __rnd_last=${__rnd_d: -1}
-    if (( __rnd_last < 9 )); then
+    local -i __Math_round_last=${__Math_round_d: -1}
+    if (( __Math_round_last < 9 )); then
       # Simple case: just bump the last digit
-      __rnd_d="${__rnd_d:0:${#__rnd_d}-1}$(( __rnd_last + 1 ))"
+      __Math_round_d="${__Math_round_d:0:${#__Math_round_d}-1}$(( __Math_round_last + 1 ))"
     else
       # Last digit is 9 — need to propagate carry through trailing 9s
-      __rnd_d="${__rnd_d:0:${#__rnd_d}-1}"
-      if [[ "$__rnd_d" == *[!9]* ]]; then
-        local __rnd_nines="${__rnd_d##*[!9]}"
-        local -i __rnd_hlen=$(( ${#__rnd_d} - ${#__rnd_nines} ))
-        local -i __rnd_bump=$(( ${__rnd_d:__rnd_hlen-1:1} + 1 ))
-        printf -v __rnd_d '%s%d%0*d' "${__rnd_d:0:__rnd_hlen-1}" $__rnd_bump ${#__rnd_nines} 0
+      __Math_round_d="${__Math_round_d:0:${#__Math_round_d}-1}"
+      if [[ "$__Math_round_d" == *[!9]* ]]; then
+        local __Math_round_nines="${__Math_round_d##*[!9]}"
+        local -i __Math_round_hlen=$(( ${#__Math_round_d} - ${#__Math_round_nines} ))
+        local -i __Math_round_bump=$(( ${__Math_round_d:__Math_round_hlen-1:1} + 1 ))
+        printf -v __Math_round_d '%s%d%0*d' "${__Math_round_d:0:__Math_round_hlen-1}" $__Math_round_bump ${#__Math_round_nines} 0
       else
         # Entire prefix is 9s — carry extends the number
-        printf -v __rnd_d '1%0*d' ${#__rnd_d} 0
+        printf -v __Math_round_d '1%0*d' ${#__Math_round_d} 0
       fi
-      __rnd_d="${__rnd_d}0"
+      __Math_round_d="${__Math_round_d}0"
     fi
   fi
 
-  # Adjust scale: we removed (__rnd_len - __rnd_prec) digits from the end
-  local -i __rnd_removed=$(( __rnd_len - __rnd_prec ))
-  (( __rnd_s = __rnd_s - __rnd_removed ))
-  (( __rnd_s < 0 )) && __rnd_s=0
+  # Adjust scale: we removed (__Math_round_len - __Math_round_prec) digits from the end
+  local -i __Math_round_removed=$(( __Math_round_len - __Math_round_prec ))
+  (( __Math_round_s = __Math_round_s - __Math_round_removed ))
+  (( __Math_round_s < 0 )) && __Math_round_s=0
 
-  __Math.fromParts "$__rnd_d" $__rnd_s $__rnd_n ${into:-}
+  __Math.fromParts "$__Math_round_d" $__Math_round_s $__Math_round_n ${into:-}
 }
 
 # Truncate to integer string.
 Math.toInt() {
   local -I _Self _Class
-  local __ti_d; local -i __ti_s __ti_n
-  __Math.resolve "$_Self" __ti_d __ti_s __ti_n
+  local __Math_toInt64_d; local -i __Math_toInt64_s __Math_toInt64_n
+  __Math.resolve "$_Self" __Math_toInt64_d __Math_toInt64_s __Math_toInt64_n
 
-  if (( __ti_s >= ${#__ti_d} )); then
+  if (( __Math_toInt64_s >= ${#__Math_toInt64_d} )); then
     boop.pass "0" ${into:-}; return
   fi
 
-  local __ti_int="${__ti_d:0:${#__ti_d}-__ti_s}"
+  local __Math_toInt64_int="${__Math_toInt64_d:0:${#__Math_toInt64_d}-__Math_toInt64_s}"
   # Inline stripLeading — no subshell
-  __ti_int="${__ti_int#"${__ti_int%%[!0]*}"}"
-  : "${__ti_int:=0}"
-  (( __ti_n )) && [[ "$__ti_int" != "0" ]] && __ti_int="-${__ti_int}"
-  boop.pass "$__ti_int" ${into:-}
+  __Math_toInt64_int="${__Math_toInt64_int#"${__Math_toInt64_int%%[!0]*}"}"
+  : "${__Math_toInt64_int:=0}"
+  (( __Math_toInt64_n )) && [[ "$__Math_toInt64_int" != "0" ]] && __Math_toInt64_int="-${__Math_toInt64_int}"
+  boop.pass "$__Math_toInt64_int" ${into:-}
 }
 
 # Return the decimal string representation. "3.14", "-0.5", "42", etc.
 Math.val() {
   local -I _Self _Class
-  local __val_d; local -i __val_s __val_n
-  __Math.resolve "$_Self" __val_d __val_s __val_n
+  local __Math_val_d; local -i __Math_val_s __Math_val_n
+  __Math.resolve "$_Self" __Math_val_d __Math_val_s __Math_val_n
 
-  local __val_result
-  if (( __val_s == 0 )); then
-    __val_result="$__val_d"
-  elif (( __val_s >= ${#__val_d} )); then
+  local __Math_val_result
+  if (( __Math_val_s == 0 )); then
+    __Math_val_result="$__Math_val_d"
+  elif (( __Math_val_s >= ${#__Math_val_d} )); then
     # All digits are fractional — pad with leading zeros in one shot
-    local -i __val_need=$(( __val_s - ${#__val_d} ))
-    local __val_pad
-    if (( __val_need > 0 )); then
-      printf -v __val_pad "%0${__val_need}d" 0
-      __val_pad="${__val_pad}${__val_d}"
+    local -i __Math_val_need=$(( __Math_val_s - ${#__Math_val_d} ))
+    local __Math_val_pad
+    if (( __Math_val_need > 0 )); then
+      printf -v __Math_val_pad "%0${__Math_val_need}d" 0
+      __Math_val_pad="${__Math_val_pad}${__Math_val_d}"
     else
-      __val_pad="$__val_d"
+      __Math_val_pad="$__Math_val_d"
     fi
-    __val_result="0.${__val_pad}"
+    __Math_val_result="0.${__Math_val_pad}"
   else
-    local -i __val_split=$(( ${#__val_d} - __val_s ))
-    __val_result="${__val_d:0:__val_split}.${__val_d:__val_split}"
+    local -i __Math_val_split=$(( ${#__Math_val_d} - __Math_val_s ))
+    __Math_val_result="${__Math_val_d:0:__Math_val_split}.${__Math_val_d:__Math_val_split}"
   fi
 
-  (( __val_n )) && [[ "$__val_result" != "0" ]] && __val_result="-${__val_result}"
-  boop.pass "$__val_result" ${into:-}
+  (( __Math_val_n )) && [[ "$__Math_val_result" != "0" ]] && __Math_val_result="-${__Math_val_result}"
+  boop.pass "$__Math_val_result" ${into:-}
 }
 
 Math.toString() {
   local -I _Self _Class
-  local __ts_val
-  into=__ts_val _Self="$_Self" _Class="$_Class" Math.val
-  boop.pass "Math($_Self){ $__ts_val }" ${into:-}
+  local __Math_toString_val
+  into=__Math_toString_val _Self="$_Self" _Class="$_Class" Math.val
+  boop.pass "Math($_Self){ $__Math_toString_val }" ${into:-}
 }
 
 # Change scale (decimal places). Pads with zeros or rounds to fit.
@@ -949,42 +949,42 @@ Math.toString() {
 # Usage: into=r $m.toScale 4    # force 4 decimal places
 Math.toScale() {
   local -I _Self _Class
-  local -i __tsc_target="${1:-0}"
-  local __tsc_d; local -i __tsc_s __tsc_n
-  __Math.resolve "$_Self" __tsc_d __tsc_s __tsc_n
+  local -i __Math_toScale_target="${1:-0}"
+  local __Math_toScale_d; local -i __Math_toScale_s __Math_toScale_n
+  __Math.resolve "$_Self" __Math_toScale_d __Math_toScale_s __Math_toScale_n
 
-  if (( __tsc_target > __tsc_s )); then
+  if (( __Math_toScale_target > __Math_toScale_s )); then
     # Pad with trailing zeros
-    local -i __tsc_diff=$(( __tsc_target - __tsc_s ))
-    local __tsc_pad
-    printf -v __tsc_pad "%0${__tsc_diff}d" 0
-    __tsc_d="${__tsc_d}${__tsc_pad}"
+    local -i __Math_toScale_diff=$(( __Math_toScale_target - __Math_toScale_s ))
+    local __Math_toScale_pad
+    printf -v __Math_toScale_pad "%0${__Math_toScale_diff}d" 0
+    __Math_toScale_d="${__Math_toScale_d}${__Math_toScale_pad}"
     # Bypass fromParts to preserve trailing zeros
-    local __tsc_self
-    into=__tsc_self _Class=Math __boop.new "digits=$__tsc_d" "scale=$__tsc_target" "neg=$__tsc_n"
-    boop.pass "$__tsc_self" ${into:-}
-  elif (( __tsc_target < __tsc_s )); then
-    local -i __tsc_sigdigits=$(( ${#__tsc_d} - (__tsc_s - __tsc_target) ))
-    (( __tsc_sigdigits < 1 )) && __tsc_sigdigits=1
-    local __tsc_tmp
-    __Math.fromParts "$__tsc_d" $__tsc_s $__tsc_n __tsc_tmp
-    local __tsc_rounded
-    into=__tsc_rounded _Self="$__tsc_tmp" _Class=Math Math.round $__tsc_sigdigits
+    local __Math_toScale_self
+    into=__Math_toScale_self _Class=Math __boop.new "digits=$__Math_toScale_d" "scale=$__Math_toScale_target" "neg=$__Math_toScale_n"
+    boop.pass "$__Math_toScale_self" ${into:-}
+  elif (( __Math_toScale_target < __Math_toScale_s )); then
+    local -i __Math_toScale_sigdigits=$(( ${#__Math_toScale_d} - (__Math_toScale_s - __Math_toScale_target) ))
+    (( __Math_toScale_sigdigits < 1 )) && __Math_toScale_sigdigits=1
+    local __Math_toScale_tmp
+    __Math.fromParts "$__Math_toScale_d" $__Math_toScale_s $__Math_toScale_n __Math_toScale_tmp
+    local __Math_toScale_rounded
+    into=__Math_toScale_rounded _Self="$__Math_toScale_tmp" _Class=Math Math.round $__Math_toScale_sigdigits
     # Rounding carry (e.g., 999.999 → 1000) can reduce scale below target.
     # If that happened, pad back up to the requested scale.
-    local __tsc_rd; local -i __tsc_rs __tsc_rn
-    __Math.resolve "$__tsc_rounded" __tsc_rd __tsc_rs __tsc_rn
-    if (( __tsc_rs < __tsc_target )); then
-      local -i __tsc_pad2=$(( __tsc_target - __tsc_rs ))
-      local __tsc_zeros2
-      printf -v __tsc_zeros2 "%0${__tsc_pad2}d" 0
-      __tsc_rd="${__tsc_rd}${__tsc_zeros2}"
-      into=${into:-} _Class=Math __boop.new "digits=$__tsc_rd" "scale=$__tsc_target" "neg=$__tsc_rn"
+    local __Math_toScale_rd; local -i __Math_toScale_rs __Math_toScale_rn
+    __Math.resolve "$__Math_toScale_rounded" __Math_toScale_rd __Math_toScale_rs __Math_toScale_rn
+    if (( __Math_toScale_rs < __Math_toScale_target )); then
+      local -i __Math_toScale_pad2=$(( __Math_toScale_target - __Math_toScale_rs ))
+      local __Math_toScale_zeros2
+      printf -v __Math_toScale_zeros2 "%0${__Math_toScale_pad2}d" 0
+      __Math_toScale_rd="${__Math_toScale_rd}${__Math_toScale_zeros2}"
+      into=${into:-} _Class=Math __boop.new "digits=$__Math_toScale_rd" "scale=$__Math_toScale_target" "neg=$__Math_toScale_rn"
     else
-      boop.pass "$__tsc_rounded" ${into:-}
+      boop.pass "$__Math_toScale_rounded" ${into:-}
     fi
   else
-    __Math.fromParts "$__tsc_d" $__tsc_s $__tsc_n ${into:-}
+    __Math.fromParts "$__Math_toScale_d" $__Math_toScale_s $__Math_toScale_n ${into:-}
   fi
 }
 
@@ -995,11 +995,11 @@ Math.toScale() {
 #        into=s $m.format "%.2f"       # "3.14"
 Math.format() {
   local -I _Self _Class
-  local __fmt_str
-  into=__fmt_str _Self="$_Self" _Class="$_Class" Math.val
-  local __fmt_result
-  printf -v __fmt_result "$1" "$__fmt_str"
-  boop.pass "$__fmt_result" ${into:-}
+  local __Math_format_str
+  into=__Math_format_str _Self="$_Self" _Class="$_Class" Math.val
+  local __Math_format_result
+  printf -v __Math_format_result "$1" "$__Math_format_str"
+  boop.pass "$__Math_format_result" ${into:-}
 }
 
 
@@ -1022,68 +1022,68 @@ Math.format() {
 # Aligns scales, then delegates to strAdd or strSub based on sign.
 # Same logic as Math.add but without object creation or resolution.
 __Math.rawAdd() {
-  local __ra_dA="$1" __ra_dB="$4"
-  local -i __ra_sA="$2" __ra_nA="$3" __ra_sB="$5" __ra_nB="$6"
-  local -n __ra_od="$7" __ra_os="$8" __ra_on="$9"
+  local __Math_rawAdd_dA="$1" __Math_rawAdd_dB="$4"
+  local -i __Math_rawAdd_sA="$2" __Math_rawAdd_nA="$3" __Math_rawAdd_sB="$5" __Math_rawAdd_nB="$6"
+  local -n __Math_rawAdd_od="$7" __Math_rawAdd_os="$8" __Math_rawAdd_on="$9"
 
-  __Math.alignScale __ra_dA __ra_sA __ra_dB __ra_sB
+  __Math.alignScale __Math_rawAdd_dA __Math_rawAdd_sA __Math_rawAdd_dB __Math_rawAdd_sB
 
-  if (( __ra_nA == __ra_nB )); then
-    __Math.strAdd "$__ra_dA" "$__ra_dB" __ra_od
-    __ra_on=$__ra_nA
+  if (( __Math_rawAdd_nA == __Math_rawAdd_nB )); then
+    __Math.strAdd "$__Math_rawAdd_dA" "$__Math_rawAdd_dB" __Math_rawAdd_od
+    __Math_rawAdd_on=$__Math_rawAdd_nA
   else
-    __Math.strCmp "$__ra_dA" "$__ra_dB"
-    local -i __ra_cmp=$?
-    if (( __ra_cmp == 0 )); then
-      __ra_od="0"; __ra_os=$__ra_sA; __ra_on=0; return
-    elif (( __ra_cmp == 1 )); then
-      __Math.strSub "$__ra_dA" "$__ra_dB" __ra_od
-      __ra_on=$__ra_nA
+    __Math.strCmp "$__Math_rawAdd_dA" "$__Math_rawAdd_dB"
+    local -i __Math_rawAdd_cmp=$?
+    if (( __Math_rawAdd_cmp == 0 )); then
+      __Math_rawAdd_od="0"; __Math_rawAdd_os=$__Math_rawAdd_sA; __Math_rawAdd_on=0; return
+    elif (( __Math_rawAdd_cmp == 1 )); then
+      __Math.strSub "$__Math_rawAdd_dA" "$__Math_rawAdd_dB" __Math_rawAdd_od
+      __Math_rawAdd_on=$__Math_rawAdd_nA
     else
-      __Math.strSub "$__ra_dB" "$__ra_dA" __ra_od
-      __ra_on=$__ra_nB
+      __Math.strSub "$__Math_rawAdd_dB" "$__Math_rawAdd_dA" __Math_rawAdd_od
+      __Math_rawAdd_on=$__Math_rawAdd_nB
     fi
   fi
-  __ra_os=$__ra_sA
+  __Math_rawAdd_os=$__Math_rawAdd_sA
   # Strip leading zeros
-  __ra_od="${__ra_od#"${__ra_od%%[!0]*}"}"
-  : "${__ra_od:=0}"
-  [[ "$__ra_od" == "0" ]] && __ra_on=0
+  __Math_rawAdd_od="${__Math_rawAdd_od#"${__Math_rawAdd_od%%[!0]*}"}"
+  : "${__Math_rawAdd_od:=0}"
+  [[ "$__Math_rawAdd_od" == "0" ]] && __Math_rawAdd_on=0
 }
 
 # Raw sub: (dA,sA,nA) - (dB,sB,nB) → flip sign of B and rawAdd.
 __Math.rawSub() {
-  local -i __rs_nB="$6"
-  (( __rs_nB = !__rs_nB ))
-  [[ "$4" == "0" ]] && __rs_nB=0
-  __Math.rawAdd "$1" "$2" "$3" "$4" "$5" $__rs_nB "$7" "$8" "$9"
+  local -i __Math_rawSub_nB="$6"
+  (( __Math_rawSub_nB = !__Math_rawSub_nB ))
+  [[ "$4" == "0" ]] && __Math_rawSub_nB=0
+  __Math.rawAdd "$1" "$2" "$3" "$4" "$5" $__Math_rawSub_nB "$7" "$8" "$9"
 }
 
 # Raw mul: (dA,sA,nA) * (dB,sB,nB) → (dR,sR,nR)
 # Result scale = scaleA + scaleB. Sign = XOR of input signs.
 __Math.rawMul() {
-  local __rm_dA="$1" __rm_dB="$4"
-  local -i __rm_sA="$2" __rm_nA="$3" __rm_sB="$5" __rm_nB="$6"
-  local -n __rm_od="$7" __rm_os="$8" __rm_on="$9"
+  local __Math_rawMul_dA="$1" __Math_rawMul_dB="$4"
+  local -i __Math_rawMul_sA="$2" __Math_rawMul_nA="$3" __Math_rawMul_sB="$5" __Math_rawMul_nB="$6"
+  local -n __Math_rawMul_od="$7" __Math_rawMul_os="$8" __Math_rawMul_on="$9"
 
-  __Math.strMul "$__rm_dA" "$__rm_dB" __rm_od
-  __rm_os=$(( __rm_sA + __rm_sB ))
-  __rm_on=$(( __rm_nA != __rm_nB ? 1 : 0 ))
-  [[ "$__rm_od" == "0" ]] && __rm_on=0
+  __Math.strMul "$__Math_rawMul_dA" "$__Math_rawMul_dB" __Math_rawMul_od
+  __Math_rawMul_os=$(( __Math_rawMul_sA + __Math_rawMul_sB ))
+  __Math_rawMul_on=$(( __Math_rawMul_nA != __Math_rawMul_nB ? 1 : 0 ))
+  [[ "$__Math_rawMul_od" == "0" ]] && __Math_rawMul_on=0
 }
 
 # Raw mul by small integer: (dA,sA,nA) * int → (dR,sR,nR)
 # Handles negative multiplier by splitting sign from magnitude.
 __Math.rawMulSmall() {
-  local __rms_dA="$1"
-  local -i __rms_sA="$2" __rms_nA="$3" __rms_n="$4"
-  local -n __rms_od="$5" __rms_os="$6" __rms_on="$7"
+  local __Math_rawMulSmall_dA="$1"
+  local -i __Math_rawMulSmall_sA="$2" __Math_rawMulSmall_nA="$3" __Math_rawMulSmall_n="$4"
+  local -n __Math_rawMulSmall_od="$5" __Math_rawMulSmall_os="$6" __Math_rawMulSmall_on="$7"
 
-  local -i __rms_abs_n=${__rms_n#-}
-  __Math.strMulSmall "$__rms_dA" $__rms_abs_n __rms_od
-  __rms_os=$__rms_sA
-  __rms_on=$(( (__rms_n < 0) != __rms_nA ? 1 : 0 ))
-  [[ "$__rms_od" == "0" ]] && __rms_on=0
+  local -i __Math_rawMulSmall_abs_n=${__Math_rawMulSmall_n#-}
+  __Math.strMulSmall "$__Math_rawMulSmall_dA" $__Math_rawMulSmall_abs_n __Math_rawMulSmall_od
+  __Math_rawMulSmall_os=$__Math_rawMulSmall_sA
+  __Math_rawMulSmall_on=$(( (__Math_rawMulSmall_n < 0) != __Math_rawMulSmall_nA ? 1 : 0 ))
+  [[ "$__Math_rawMulSmall_od" == "0" ]] && __Math_rawMulSmall_on=0
 }
 
 # Raw div: (dA,sA,nA) / (dB,sB,nB) → (dR,sR,nR)
@@ -1091,40 +1091,40 @@ __Math.rawMulSmall() {
 # the requested precision. Same logic as Math.div but without objects.
 # $10 = precision (default __Math_precision).
 __Math.rawDiv() {
-  local __rd_dA="$1" __rd_dB="$4"
-  local -i __rd_sA="$2" __rd_nA="$3" __rd_sB="$5" __rd_nB="$6"
-  local -n __rd_od="${7}" __rd_os="${8}" __rd_on="${9}"
-  local -i __rd_prec="${10:-$__Math_precision}"
+  local __Math_rawDiv_dA="$1" __Math_rawDiv_dB="$4"
+  local -i __Math_rawDiv_sA="$2" __Math_rawDiv_nA="$3" __Math_rawDiv_sB="$5" __Math_rawDiv_nB="$6"
+  local -n __Math_rawDiv_od="${7}" __Math_rawDiv_os="${8}" __Math_rawDiv_on="${9}"
+  local -i __Math_rawDiv_prec="${10:-$__Math_precision}"
 
-  [[ "$__rd_dB" == "0" ]] && _Crash "Math: division by zero"
+  [[ "$__Math_rawDiv_dB" == "0" ]] && _Crash "Math: division by zero"
 
-  __Math.alignScale __rd_dA __rd_sA __rd_dB __rd_sB
+  __Math.alignScale __Math_rawDiv_dA __Math_rawDiv_sA __Math_rawDiv_dB __Math_rawDiv_sB
 
-  local -i __rd_qs
-  __Math.strDiv "$__rd_dA" "$__rd_dB" __rd_od $((__rd_prec + 2)) __rd_qs
+  local -i __Math_rawDiv_qs
+  __Math.strDiv "$__Math_rawDiv_dA" "$__Math_rawDiv_dB" __Math_rawDiv_od $((__Math_rawDiv_prec + 2)) __Math_rawDiv_qs
 
-  __rd_on=$(( __rd_nA != __rd_nB ? 1 : 0 ))
+  __Math_rawDiv_on=$(( __Math_rawDiv_nA != __Math_rawDiv_nB ? 1 : 0 ))
 
   # Truncate to requested precision
-  if (( ${#__rd_od} > __rd_prec )); then
-    local -i __rd_removed=$(( ${#__rd_od} - __rd_prec ))
-    __rd_od="${__rd_od:0:__rd_prec}"
-    (( __rd_qs -= __rd_removed ))
-    (( __rd_qs < 0 )) && __rd_qs=0
+  if (( ${#__Math_rawDiv_od} > __Math_rawDiv_prec )); then
+    local -i __Math_rawDiv_removed=$(( ${#__Math_rawDiv_od} - __Math_rawDiv_prec ))
+    __Math_rawDiv_od="${__Math_rawDiv_od:0:__Math_rawDiv_prec}"
+    (( __Math_rawDiv_qs -= __Math_rawDiv_removed ))
+    (( __Math_rawDiv_qs < 0 )) && __Math_rawDiv_qs=0
   fi
 
-  __rd_os=$__rd_qs
-  [[ "$__rd_od" == "0" ]] && __rd_on=0
+  __Math_rawDiv_os=$__Math_rawDiv_qs
+  [[ "$__Math_rawDiv_od" == "0" ]] && __Math_rawDiv_on=0
 }
 
 # Raw div by small integer: (dA,sA,nA) / int → (dR,sR,nR)
 # Converts the small int to a triple and delegates to rawDiv.
 # $8 = precision override.
 __Math.rawDivSmall() {
-  local -i __rds_n="${4}"
-  local -i __rds_nB=0
-  (( __rds_n < 0 )) && { __rds_nB=1; __rds_n=$(( -__rds_n )); }
-  __Math.rawDiv "$1" "$2" "$3" "$__rds_n" 0 $__rds_nB "$5" "$6" "$7" "${8:-}"
+  local -i __Math_rawDivSmall_n="${4}"
+  local -i __Math_rawDivSmall_nB=0
+  (( __Math_rawDivSmall_n < 0 )) && { __Math_rawDivSmall_nB=1; __Math_rawDivSmall_n=$(( -__Math_rawDivSmall_n )); }
+  __Math.rawDiv "$1" "$2" "$3" "$__Math_rawDivSmall_n" 0 $__Math_rawDivSmall_nB "$5" "$6" "$7" "${8:-}"
 }
 
 # ============================================================================
@@ -1149,114 +1149,114 @@ __Math.rawDivSmall() {
 # $2 = optional precision override
 # $3 = optional nameref target for result (object ID)
 __Math.arctan_recip() {
-  local -i __at_n="$1"
-  local -i __at_prec="${2:-$__Math_precision}"
-  local -i __at_workprec=$(( __at_prec + 15 ))
+  local -i __Math_arctan_n="$1"
+  local -i __Math_arctan_prec="${2:-$__Math_precision}"
+  local -i __Math_arctan_workprec=$(( __Math_arctan_prec + 15 ))
 
   # Check cache
-  local __at_cachekey="Math.arctan_recip.${__at_n}.${__at_prec}"
-  if [[ -n "${__boop_static[$__at_cachekey]:-}" ]]; then
-    boop.pass "${__boop_static[$__at_cachekey]}" "${3:-}"
+  local __Math_arctan_cachekey="Math.arctan_recip.${__Math_arctan_n}.${__Math_arctan_prec}"
+  if [[ -n "${__boop_static[$__Math_arctan_cachekey]:-}" ]]; then
+    boop.pass "${__boop_static[$__Math_arctan_cachekey]}" "${3:-}"
     return
   fi
 
   # All work done on raw triples: digits, scale, neg
   # term = power = 1/n
-  local __at_pd __at_td __at_sd __at_dd
-  local -i __at_ps __at_ts __at_ss __at_ds
-  local -i __at_pn __at_tn __at_sn __at_dn
+  local __Math_arctan_pd __Math_arctan_td __Math_arctan_sd __Math_arctan_dd
+  local -i __Math_arctan_ps __Math_arctan_ts __Math_arctan_ss __Math_arctan_ds
+  local -i __Math_arctan_pn __Math_arctan_tn __Math_arctan_sn __Math_arctan_dn
 
   # 1/n → power triple
-  __Math.rawDiv "1" 0 0 "$__at_n" 0 0 __at_pd __at_ps __at_pn $__at_workprec
+  __Math.rawDiv "1" 0 0 "$__Math_arctan_n" 0 0 __Math_arctan_pd __Math_arctan_ps __Math_arctan_pn $__Math_arctan_workprec
 
   # Pad to working precision — exact divisions like 1/5 = 0.2 return
   # minimal digit strings. Without padding, the power accumulator
   # carries only 1 significant digit through every multiply, and
   # precision is lost catastrophically.
-  if (( ${#__at_pd} < __at_workprec )); then
-    local -i __at_padneed=$(( __at_workprec - ${#__at_pd} ))
-    local __at_padzeros
-    printf -v __at_padzeros "%0${__at_padneed}d" 0
-    __at_pd="${__at_pd}${__at_padzeros}"
-    (( __at_ps += __at_padneed ))
+  if (( ${#__Math_arctan_pd} < __Math_arctan_workprec )); then
+    local -i __Math_arctan_padneed=$(( __Math_arctan_workprec - ${#__Math_arctan_pd} ))
+    local __Math_arctan_padzeros
+    printf -v __Math_arctan_padzeros "%0${__Math_arctan_padneed}d" 0
+    __Math_arctan_pd="${__Math_arctan_pd}${__Math_arctan_padzeros}"
+    (( __Math_arctan_ps += __Math_arctan_padneed ))
   fi
 
   # sum = power (copy)
-  __at_sd="$__at_pd"; __at_ss=$__at_ps; __at_sn=$__at_pn
+  __Math_arctan_sd="$__Math_arctan_pd"; __Math_arctan_ss=$__Math_arctan_ps; __Math_arctan_sn=$__Math_arctan_pn
 
   # inv_nsq = 1/n² — precomputed multiplier for stepping power
-  local __at_id
-  local -i __at_is __at_in
-  local -i __at_nsq=$(( __at_n * __at_n ))
-  __Math.rawDiv "1" 0 0 "$__at_nsq" 0 0 __at_id __at_is __at_in $__at_workprec
+  local __Math_arctan_id
+  local -i __Math_arctan_is __Math_arctan_in
+  local -i __Math_arctan_nsq=$(( __Math_arctan_n * __Math_arctan_n ))
+  __Math.rawDiv "1" 0 0 "$__Math_arctan_nsq" 0 0 __Math_arctan_id __Math_arctan_is __Math_arctan_in $__Math_arctan_workprec
 
   # Same padding for inv_nsq
-  if (( ${#__at_id} < __at_workprec )); then
-    local -i __at_idpadneed=$(( __at_workprec - ${#__at_id} ))
-    local __at_idpadzeros
-    printf -v __at_idpadzeros "%0${__at_idpadneed}d" 0
-    __at_id="${__at_id}${__at_idpadzeros}"
-    (( __at_is += __at_idpadneed ))
+  if (( ${#__Math_arctan_id} < __Math_arctan_workprec )); then
+    local -i __Math_arctan_idpadneed=$(( __Math_arctan_workprec - ${#__Math_arctan_id} ))
+    local __Math_arctan_idpadzeros
+    printf -v __Math_arctan_idpadzeros "%0${__Math_arctan_idpadneed}d" 0
+    __Math_arctan_id="${__Math_arctan_id}${__Math_arctan_idpadzeros}"
+    (( __Math_arctan_is += __Math_arctan_idpadneed ))
   fi
 
-  local -i __at_k=1 __at_sign=-1
+  local -i __Math_arctan_k=1 __Math_arctan_sign=-1
 
   while true; do
     # power *= inv_nsq
-    __Math.rawMul "$__at_pd" $__at_ps $__at_pn "$__at_id" $__at_is $__at_in __at_pd __at_ps __at_pn
+    __Math.rawMul "$__Math_arctan_pd" $__Math_arctan_ps $__Math_arctan_pn "$__Math_arctan_id" $__Math_arctan_is $__Math_arctan_in __Math_arctan_pd __Math_arctan_ps __Math_arctan_pn
 
     # Trim power to working precision to prevent digit string bloat.
     # Multiplication doubles the digit count each time; without trimming,
     # strings grow without bound and strMul becomes O(n²) on length.
-    if (( ${#__at_pd} > __at_workprec )); then
-      local -i __at_trim=$(( ${#__at_pd} - __at_workprec ))
-      __at_pd="${__at_pd:0:__at_workprec}"
-      (( __at_ps -= __at_trim ))
-      (( __at_ps < 0 )) && __at_ps=0
+    if (( ${#__Math_arctan_pd} > __Math_arctan_workprec )); then
+      local -i __Math_arctan_trim=$(( ${#__Math_arctan_pd} - __Math_arctan_workprec ))
+      __Math_arctan_pd="${__Math_arctan_pd:0:__Math_arctan_workprec}"
+      (( __Math_arctan_ps -= __Math_arctan_trim ))
+      (( __Math_arctan_ps < 0 )) && __Math_arctan_ps=0
     fi
 
     # term = power / (2k+1)
-    local -i __at_divisor=$(( 2 * __at_k + 1 ))
-    __Math.rawDivSmall "$__at_pd" $__at_ps $__at_pn $__at_divisor __at_td __at_ts __at_tn $__at_workprec
+    local -i __Math_arctan_divisor=$(( 2 * __Math_arctan_k + 1 ))
+    __Math.rawDivSmall "$__Math_arctan_pd" $__Math_arctan_ps $__Math_arctan_pn $__Math_arctan_divisor __Math_arctan_td __Math_arctan_ts __Math_arctan_tn $__Math_arctan_workprec
 
     # Convergence check: if all significant digits of term are beyond
     # our precision, the term won't affect the sum. Check by comparing
     # the number of leading zeros in the fractional part.
-    local -i __at_intdigits=$(( ${#__at_td} - __at_ts ))
-    (( __at_intdigits < 0 )) && __at_intdigits=0
+    local -i __Math_arctan_intdigits=$(( ${#__Math_arctan_td} - __Math_arctan_ts ))
+    (( __Math_arctan_intdigits < 0 )) && __Math_arctan_intdigits=0
     # If the term has no integer part and enough leading fractional zeros, stop
-    if (( __at_intdigits == 0 )); then
+    if (( __Math_arctan_intdigits == 0 )); then
       # Count leading zeros: pad digits to scale length, count prefix zeros
-      local __at_padded="$__at_td"
-      if (( ${#__at_padded} < __at_ts )); then
-        local -i __at_pneed=$(( __at_ts - ${#__at_padded} ))
-        local __at_pz
-        printf -v __at_pz "%0${__at_pneed}d" 0
-        __at_padded="${__at_pz}${__at_padded}"
+      local __Math_arctan_padded="$__Math_arctan_td"
+      if (( ${#__Math_arctan_padded} < __Math_arctan_ts )); then
+        local -i __Math_arctan_pneed=$(( __Math_arctan_ts - ${#__Math_arctan_padded} ))
+        local __Math_arctan_pz
+        printf -v __Math_arctan_pz "%0${__Math_arctan_pneed}d" 0
+        __Math_arctan_padded="${__Math_arctan_pz}${__Math_arctan_padded}"
       fi
-      local __at_lz="${__at_padded%%[!0]*}"
-      if (( ${#__at_lz} >= __at_prec )); then
+      local __Math_arctan_lz="${__Math_arctan_padded%%[!0]*}"
+      if (( ${#__Math_arctan_lz} >= __Math_arctan_prec )); then
         break
       fi
     fi
 
     # Alternating sign: subtract odd terms, add even terms
-    if (( __at_sign < 0 )); then
-      __Math.rawSub "$__at_sd" $__at_ss $__at_sn "$__at_td" $__at_ts $__at_tn __at_sd __at_ss __at_sn
+    if (( __Math_arctan_sign < 0 )); then
+      __Math.rawSub "$__Math_arctan_sd" $__Math_arctan_ss $__Math_arctan_sn "$__Math_arctan_td" $__Math_arctan_ts $__Math_arctan_tn __Math_arctan_sd __Math_arctan_ss __Math_arctan_sn
     else
-      __Math.rawAdd "$__at_sd" $__at_ss $__at_sn "$__at_td" $__at_ts $__at_tn __at_sd __at_ss __at_sn
+      __Math.rawAdd "$__Math_arctan_sd" $__Math_arctan_ss $__Math_arctan_sn "$__Math_arctan_td" $__Math_arctan_ts $__Math_arctan_tn __Math_arctan_sd __Math_arctan_ss __Math_arctan_sn
     fi
 
-    (( __at_sign = -__at_sign ))
-    (( __at_k++ ))
+    (( __Math_arctan_sign = -__Math_arctan_sign ))
+    (( __Math_arctan_k++ ))
   done
 
   # Wrap final result in a Math object for the public API
-  local __at_result
-  __Math.fromParts "$__at_sd" $__at_ss $__at_sn __at_result
+  local __Math_arctan_result
+  __Math.fromParts "$__Math_arctan_sd" $__Math_arctan_ss $__Math_arctan_sn __Math_arctan_result
 
-  __boop_static[$__at_cachekey]="$__at_result"
-  boop.pass "$__at_result" "${3:-}"
+  __boop_static[$__Math_arctan_cachekey]="$__Math_arctan_result"
+  boop.pass "$__Math_arctan_result" "${3:-}"
 }
 
 # Calculate pi to the specified precision using Machin's formula:
@@ -1275,59 +1275,59 @@ __Math.arctan_recip() {
 #        into=pi Math.pi 100       # 100 significant digits
 #        into=pi Math.pi 1000      # go big
 Math.pi() {
-  local -i __pi_prec="${1:-$__Math_precision}"
+  local -i __Math_pi_prec="${1:-$__Math_precision}"
 
   # Check cache
-  local __pi_cachekey="Math.pi.${__pi_prec}"
-  if [[ -n "${__boop_static[$__pi_cachekey]:-}" ]]; then
-    boop.pass "${__boop_static[$__pi_cachekey]}" ${into:-}
+  local __Math_pi_cachekey="Math.pi.${__Math_pi_prec}"
+  if [[ -n "${__boop_static[$__Math_pi_cachekey]:-}" ]]; then
+    boop.pass "${__boop_static[$__Math_pi_cachekey]}" ${into:-}
     return
   fi
 
-  local -i __pi_workprec=$(( __pi_prec + 15 ))
+  local -i __Math_pi_workprec=$(( __Math_pi_prec + 15 ))
 
   # arctan(1/5) and arctan(1/239) — raw triple loops internally
-  local __pi_at5 __pi_at239
-  __Math.arctan_recip 5 $__pi_workprec __pi_at5
-  __Math.arctan_recip 239 $__pi_workprec __pi_at239
+  local __Math_pi_at5 __Math_pi_at239
+  __Math.arctan_recip 5 $__Math_pi_workprec __Math_pi_at5
+  __Math.arctan_recip 239 $__Math_pi_workprec __Math_pi_at239
 
   # Extract raw triples from the arctan results for final arithmetic
-  local __pi_d5 __pi_d239
-  local -i __pi_s5 __pi_n5 __pi_s239 __pi_n239
-  __Math.resolve "$__pi_at5" __pi_d5 __pi_s5 __pi_n5
-  __Math.resolve "$__pi_at239" __pi_d239 __pi_s239 __pi_n239
+  local __Math_pi_d5 __Math_pi_d239
+  local -i __Math_pi_s5 __Math_pi_n5 __Math_pi_s239 __Math_pi_n239
+  __Math.resolve "$__Math_pi_at5" __Math_pi_d5 __Math_pi_s5 __Math_pi_n5
+  __Math.resolve "$__Math_pi_at239" __Math_pi_d239 __Math_pi_s239 __Math_pi_n239
 
   # 16 * arctan(1/5)
-  local __pi_rd1
-  local -i __pi_rs1 __pi_rn1
-  __Math.rawMulSmall "$__pi_d5" $__pi_s5 $__pi_n5 16 __pi_rd1 __pi_rs1 __pi_rn1
+  local __Math_pi_rd1
+  local -i __Math_pi_rs1 __Math_pi_rn1
+  __Math.rawMulSmall "$__Math_pi_d5" $__Math_pi_s5 $__Math_pi_n5 16 __Math_pi_rd1 __Math_pi_rs1 __Math_pi_rn1
 
   # 4 * arctan(1/239)
-  local __pi_rd2
-  local -i __pi_rs2 __pi_rn2
-  __Math.rawMulSmall "$__pi_d239" $__pi_s239 $__pi_n239 4 __pi_rd2 __pi_rs2 __pi_rn2
+  local __Math_pi_rd2
+  local -i __Math_pi_rs2 __Math_pi_rn2
+  __Math.rawMulSmall "$__Math_pi_d239" $__Math_pi_s239 $__Math_pi_n239 4 __Math_pi_rd2 __Math_pi_rs2 __Math_pi_rn2
 
   # pi = 16*arctan(1/5) - 4*arctan(1/239)
-  local __pi_rd
-  local -i __pi_rs __pi_rn
-  __Math.rawSub "$__pi_rd1" $__pi_rs1 $__pi_rn1 "$__pi_rd2" $__pi_rs2 $__pi_rn2 __pi_rd __pi_rs __pi_rn
+  local __Math_pi_rd
+  local -i __Math_pi_rs __Math_pi_rn
+  __Math.rawSub "$__Math_pi_rd1" $__Math_pi_rs1 $__Math_pi_rn1 "$__Math_pi_rd2" $__Math_pi_rs2 $__Math_pi_rn2 __Math_pi_rd __Math_pi_rs __Math_pi_rn
 
   # Build object, truncate to requested precision
-  local __pi_result
-  __Math.fromParts "$__pi_rd" $__pi_rs $__pi_rn __pi_result
+  local __Math_pi_result
+  __Math.fromParts "$__Math_pi_rd" $__Math_pi_rs $__Math_pi_rn __Math_pi_result
 
-  local __pi_td; local -i __pi_ts __pi_tn
-  __Math.resolve "$__pi_result" __pi_td __pi_ts __pi_tn
-  if (( ${#__pi_td} > __pi_prec )); then
-    local -i __pi_cut=$(( ${#__pi_td} - __pi_prec ))
-    __pi_td="${__pi_td:0:__pi_prec}"
-    (( __pi_ts -= __pi_cut ))
-    (( __pi_ts < 0 )) && __pi_ts=0
+  local __Math_pi_td; local -i __Math_pi_ts __Math_pi_tn
+  __Math.resolve "$__Math_pi_result" __Math_pi_td __Math_pi_ts __Math_pi_tn
+  if (( ${#__Math_pi_td} > __Math_pi_prec )); then
+    local -i __Math_pi_cut=$(( ${#__Math_pi_td} - __Math_pi_prec ))
+    __Math_pi_td="${__Math_pi_td:0:__Math_pi_prec}"
+    (( __Math_pi_ts -= __Math_pi_cut ))
+    (( __Math_pi_ts < 0 )) && __Math_pi_ts=0
   fi
-  __Math.fromParts "$__pi_td" $__pi_ts $__pi_tn __pi_result
+  __Math.fromParts "$__Math_pi_td" $__Math_pi_ts $__Math_pi_tn __Math_pi_result
 
-  __boop_static[$__pi_cachekey]="$__pi_result"
-  boop.pass "$__pi_result" ${into:-}
+  __boop_static[$__Math_pi_cachekey]="$__Math_pi_result"
+  boop.pass "$__Math_pi_result" ${into:-}
 }
 
 
@@ -1390,131 +1390,131 @@ __boop.registerClass Math
 # Same logic as Math.val but operates on raw components, no object needed.
 # Strips trailing zeros past the decimal point for clean output.
 __Math.formatVal() {
-  local __fv_d="$1"
-  local -i __fv_s="$2" __fv_n="$3"
+  local __Math_formatVal_d="$1"
+  local -i __Math_formatVal_s="$2" __Math_formatVal_n="$3"
 
   # Strip leading zeros from digits (inline — no subshell)
-  __fv_d="${__fv_d#"${__fv_d%%[!0]*}"}"
-  : "${__fv_d:=0}"
+  __Math_formatVal_d="${__Math_formatVal_d#"${__Math_formatVal_d%%[!0]*}"}"
+  : "${__Math_formatVal_d:=0}"
 
   # Strip trailing zeros past decimal in one shot via suffix detection
-  if (( __fv_s > 0 )); then
-    local __fv_tail="${__fv_d##*[!0]}"
-    local -i __fv_taillen=${#__fv_tail}
-    if (( __fv_taillen > 0 && __fv_taillen <= __fv_s )); then
-      __fv_d="${__fv_d:0:${#__fv_d}-__fv_taillen}"
-      (( __fv_s -= __fv_taillen ))
-    elif (( __fv_taillen > __fv_s )); then
-      __fv_d="${__fv_d:0:${#__fv_d}-__fv_s}"
-      __fv_s=0
+  if (( __Math_formatVal_s > 0 )); then
+    local __Math_formatVal_tail="${__Math_formatVal_d##*[!0]}"
+    local -i __Math_formatVal_taillen=${#__Math_formatVal_tail}
+    if (( __Math_formatVal_taillen > 0 && __Math_formatVal_taillen <= __Math_formatVal_s )); then
+      __Math_formatVal_d="${__Math_formatVal_d:0:${#__Math_formatVal_d}-__Math_formatVal_taillen}"
+      (( __Math_formatVal_s -= __Math_formatVal_taillen ))
+    elif (( __Math_formatVal_taillen > __Math_formatVal_s )); then
+      __Math_formatVal_d="${__Math_formatVal_d:0:${#__Math_formatVal_d}-__Math_formatVal_s}"
+      __Math_formatVal_s=0
     fi
-    : "${__fv_d:=0}"
+    : "${__Math_formatVal_d:=0}"
   fi
 
-  local __fv_result
-  if (( __fv_s == 0 )); then
-    __fv_result="$__fv_d"
-  elif (( __fv_s >= ${#__fv_d} )); then
+  local __Math_formatVal_result
+  if (( __Math_formatVal_s == 0 )); then
+    __Math_formatVal_result="$__Math_formatVal_d"
+  elif (( __Math_formatVal_s >= ${#__Math_formatVal_d} )); then
     # Pad with leading zeros in one shot via printf
-    local -i __fv_need=$(( __fv_s - ${#__fv_d} ))
-    local __fv_pad
-    if (( __fv_need > 0 )); then
-      printf -v __fv_pad "%0${__fv_need}d" 0
-      __fv_pad="${__fv_pad}${__fv_d}"
+    local -i __Math_formatVal_need=$(( __Math_formatVal_s - ${#__Math_formatVal_d} ))
+    local __Math_formatVal_pad
+    if (( __Math_formatVal_need > 0 )); then
+      printf -v __Math_formatVal_pad "%0${__Math_formatVal_need}d" 0
+      __Math_formatVal_pad="${__Math_formatVal_pad}${__Math_formatVal_d}"
     else
-      __fv_pad="$__fv_d"
+      __Math_formatVal_pad="$__Math_formatVal_d"
     fi
-    __fv_result="0.${__fv_pad}"
+    __Math_formatVal_result="0.${__Math_formatVal_pad}"
   else
-    local -i __fv_split=$(( ${#__fv_d} - __fv_s ))
-    __fv_result="${__fv_d:0:__fv_split}.${__fv_d:__fv_split}"
+    local -i __Math_formatVal_split=$(( ${#__Math_formatVal_d} - __Math_formatVal_s ))
+    __Math_formatVal_result="${__Math_formatVal_d:0:__Math_formatVal_split}.${__Math_formatVal_d:__Math_formatVal_split}"
   fi
 
-  (( __fv_n )) && [[ "$__fv_result" != "0" ]] && __fv_result="-${__fv_result}"
-  boop.pass "$__fv_result" "${4:-}"
+  (( __Math_formatVal_n )) && [[ "$__Math_formatVal_result" != "0" ]] && __Math_formatVal_result="-${__Math_formatVal_result}"
+  boop.pass "$__Math_formatVal_result" "${4:-}"
 }
 
 # Internal: static binary op. Returns plain value string via boop.pass.
 # Uses native $(( )) fast path when operands fit in 64-bit.
 __Math.staticBinOp() {
-  local __sbo_op="$1"
-  local __sbo_dA __sbo_dB
-  local -i __sbo_sA __sbo_sB __sbo_nA __sbo_nB
-  __Math.resolve "$2" __sbo_dA __sbo_sA __sbo_nA
-  __Math.resolve "$3" __sbo_dB __sbo_sB __sbo_nB
+  local __Math_staticBinOp_op="$1"
+  local __Math_staticBinOp_dA __Math_staticBinOp_dB
+  local -i __Math_staticBinOp_sA __Math_staticBinOp_sB __Math_staticBinOp_nA __Math_staticBinOp_nB
+  __Math.resolve "$2" __Math_staticBinOp_dA __Math_staticBinOp_sA __Math_staticBinOp_nA
+  __Math.resolve "$3" __Math_staticBinOp_dB __Math_staticBinOp_sB __Math_staticBinOp_nB
 
-  local __sbo_rd
-  local -i __sbo_rs __sbo_rn
+  local __Math_staticBinOp_rd
+  local -i __Math_staticBinOp_rs __Math_staticBinOp_rn
 
   # Fast path for add/sub/mul/mod when operands fit in 64-bit
-  case "$__sbo_op" in
+  case "$__Math_staticBinOp_op" in
     add|sub|mod)
-      if (( ${#__sbo_dA} <= __Math_FAST_DIGITS && ${#__sbo_dB} <= __Math_FAST_DIGITS )); then
-        __Math.alignScale __sbo_dA __sbo_sA __sbo_dB __sbo_sB
-        if (( ${#__sbo_dA} <= __Math_FAST_DIGITS )); then
-          local -i __sbo_iA __sbo_iB
-          __Math.toInt64 "$__sbo_dA" $__sbo_sA $__sbo_nA __sbo_iA
-          __Math.toInt64 "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_iB
-          case "$__sbo_op" in
-            add) __Math.fromInt64 $(( __sbo_iA + __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
-            sub) __Math.fromInt64 $(( __sbo_iA - __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
-            mod) [[ "$__sbo_dB" == "0" ]] && _Crash "Math: modulo by zero"
-                 __Math.fromInt64 $(( __sbo_iA % __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
+      if (( ${#__Math_staticBinOp_dA} <= __Math_FAST_DIGITS && ${#__Math_staticBinOp_dB} <= __Math_FAST_DIGITS )); then
+        __Math.alignScale __Math_staticBinOp_dA __Math_staticBinOp_sA __Math_staticBinOp_dB __Math_staticBinOp_sB
+        if (( ${#__Math_staticBinOp_dA} <= __Math_FAST_DIGITS )); then
+          local -i __Math_staticBinOp_iA __Math_staticBinOp_iB
+          __Math.toInt64 "$__Math_staticBinOp_dA" $__Math_staticBinOp_sA $__Math_staticBinOp_nA __Math_staticBinOp_iA
+          __Math.toInt64 "$__Math_staticBinOp_dB" $__Math_staticBinOp_sB $__Math_staticBinOp_nB __Math_staticBinOp_iB
+          case "$__Math_staticBinOp_op" in
+            add) __Math.fromInt64 $(( __Math_staticBinOp_iA + __Math_staticBinOp_iB )) $__Math_staticBinOp_sA __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn ;;
+            sub) __Math.fromInt64 $(( __Math_staticBinOp_iA - __Math_staticBinOp_iB )) $__Math_staticBinOp_sA __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn ;;
+            mod) [[ "$__Math_staticBinOp_dB" == "0" ]] && _Crash "Math: modulo by zero"
+                 __Math.fromInt64 $(( __Math_staticBinOp_iA % __Math_staticBinOp_iB )) $__Math_staticBinOp_sA __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn ;;
           esac
-          __Math.formatVal "$__sbo_rd" $__sbo_rs $__sbo_rn ${into:-}
+          __Math.formatVal "$__Math_staticBinOp_rd" $__Math_staticBinOp_rs $__Math_staticBinOp_rn ${into:-}
           return
         fi
       fi ;;
     mul)
-      if (( ${#__sbo_dA} + ${#__sbo_dB} <= __Math_FAST_DIGITS )); then
-        local -i __sbo_iA __sbo_iB
-        __Math.toInt64 "$__sbo_dA" $__sbo_sA $__sbo_nA __sbo_iA
-        __Math.toInt64 "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_iB
-        __Math.fromInt64 $(( __sbo_iA * __sbo_iB )) $(( __sbo_sA + __sbo_sB )) __sbo_rd __sbo_rs __sbo_rn
-        __Math.formatVal "$__sbo_rd" $__sbo_rs $__sbo_rn ${into:-}
+      if (( ${#__Math_staticBinOp_dA} + ${#__Math_staticBinOp_dB} <= __Math_FAST_DIGITS )); then
+        local -i __Math_staticBinOp_iA __Math_staticBinOp_iB
+        __Math.toInt64 "$__Math_staticBinOp_dA" $__Math_staticBinOp_sA $__Math_staticBinOp_nA __Math_staticBinOp_iA
+        __Math.toInt64 "$__Math_staticBinOp_dB" $__Math_staticBinOp_sB $__Math_staticBinOp_nB __Math_staticBinOp_iB
+        __Math.fromInt64 $(( __Math_staticBinOp_iA * __Math_staticBinOp_iB )) $(( __Math_staticBinOp_sA + __Math_staticBinOp_sB )) __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn
+        __Math.formatVal "$__Math_staticBinOp_rd" $__Math_staticBinOp_rs $__Math_staticBinOp_rn ${into:-}
         return
       fi ;;
   esac
 
   # Slow path: arbitrary precision string engine
-  case "$__sbo_op" in
-    add) __Math.alignScale __sbo_dA __sbo_sA __sbo_dB __sbo_sB
-         __Math.rawAdd "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn ;;
-    sub) __Math.alignScale __sbo_dA __sbo_sA __sbo_dB __sbo_sB
-         __Math.rawSub "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn ;;
-    mul) __Math.rawMul "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn ;;
-    div) local -i __sbo_prec=${precision:-$__Math_precision}
-         __Math.rawDiv "$__sbo_dA" $__sbo_sA $__sbo_nA "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_rd __sbo_rs __sbo_rn $__sbo_prec ;;
-    mod) [[ "$__sbo_dB" == "0" ]] && _Crash "Math: modulo by zero"
-         __Math.alignScale __sbo_dA __sbo_sA __sbo_dB __sbo_sB
-         local -i __sbo_iA __sbo_iB
-         __Math.toInt64 "$__sbo_dA" $__sbo_sA $__sbo_nA __sbo_iA \
+  case "$__Math_staticBinOp_op" in
+    add) __Math.alignScale __Math_staticBinOp_dA __Math_staticBinOp_sA __Math_staticBinOp_dB __Math_staticBinOp_sB
+         __Math.rawAdd "$__Math_staticBinOp_dA" $__Math_staticBinOp_sA $__Math_staticBinOp_nA "$__Math_staticBinOp_dB" $__Math_staticBinOp_sB $__Math_staticBinOp_nB __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn ;;
+    sub) __Math.alignScale __Math_staticBinOp_dA __Math_staticBinOp_sA __Math_staticBinOp_dB __Math_staticBinOp_sB
+         __Math.rawSub "$__Math_staticBinOp_dA" $__Math_staticBinOp_sA $__Math_staticBinOp_nA "$__Math_staticBinOp_dB" $__Math_staticBinOp_sB $__Math_staticBinOp_nB __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn ;;
+    mul) __Math.rawMul "$__Math_staticBinOp_dA" $__Math_staticBinOp_sA $__Math_staticBinOp_nA "$__Math_staticBinOp_dB" $__Math_staticBinOp_sB $__Math_staticBinOp_nB __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn ;;
+    div) local -i __Math_staticBinOp_prec=${precision:-$__Math_precision}
+         __Math.rawDiv "$__Math_staticBinOp_dA" $__Math_staticBinOp_sA $__Math_staticBinOp_nA "$__Math_staticBinOp_dB" $__Math_staticBinOp_sB $__Math_staticBinOp_nB __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn $__Math_staticBinOp_prec ;;
+    mod) [[ "$__Math_staticBinOp_dB" == "0" ]] && _Crash "Math: modulo by zero"
+         __Math.alignScale __Math_staticBinOp_dA __Math_staticBinOp_sA __Math_staticBinOp_dB __Math_staticBinOp_sB
+         local -i __Math_staticBinOp_iA __Math_staticBinOp_iB
+         __Math.toInt64 "$__Math_staticBinOp_dA" $__Math_staticBinOp_sA $__Math_staticBinOp_nA __Math_staticBinOp_iA \
            || _Crash "Math: mod operand too large for native arithmetic"
-         __Math.toInt64 "$__sbo_dB" $__sbo_sB $__sbo_nB __sbo_iB \
+         __Math.toInt64 "$__Math_staticBinOp_dB" $__Math_staticBinOp_sB $__Math_staticBinOp_nB __Math_staticBinOp_iB \
            || _Crash "Math: mod operand too large for native arithmetic"
-         __Math.fromInt64 $(( __sbo_iA % __sbo_iB )) $__sbo_sA __sbo_rd __sbo_rs __sbo_rn ;;
+         __Math.fromInt64 $(( __Math_staticBinOp_iA % __Math_staticBinOp_iB )) $__Math_staticBinOp_sA __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn ;;
   esac
 
-  __Math.formatVal "$__sbo_rd" $__sbo_rs $__sbo_rn ${into:-}
+  __Math.formatVal "$__Math_staticBinOp_rd" $__Math_staticBinOp_rs $__Math_staticBinOp_rn ${into:-}
 }
 
 # Internal: static unary op. Returns plain value string.
 __Math.staticUnaryOp() {
-  local __suo_op="$1"
-  local __suo_d
-  local -i __suo_s __suo_n
-  __Math.resolve "$2" __suo_d __suo_s __suo_n
+  local __Math_staticUnaryOp_op="$1"
+  local __Math_staticUnaryOp_d
+  local -i __Math_staticUnaryOp_s __Math_staticUnaryOp_n
+  __Math.resolve "$2" __Math_staticUnaryOp_d __Math_staticUnaryOp_s __Math_staticUnaryOp_n
 
-  case "$__suo_op" in
-    abs)    __suo_n=0 ;;
-    neg)    [[ "$__suo_d" == "0" ]] && __suo_n=0 || (( __suo_n = !__suo_n )) ;;
-    square) local __suo_rd; local -i __suo_rs __suo_rn
-            __Math.rawMul "$__suo_d" $__suo_s $__suo_n "$__suo_d" $__suo_s $__suo_n __suo_rd __suo_rs __suo_rn
-            __Math.formatVal "$__suo_rd" $__suo_rs 0 ${into:-}
+  case "$__Math_staticUnaryOp_op" in
+    abs)    __Math_staticUnaryOp_n=0 ;;
+    neg)    [[ "$__Math_staticUnaryOp_d" == "0" ]] && __Math_staticUnaryOp_n=0 || (( __Math_staticUnaryOp_n = !__Math_staticUnaryOp_n )) ;;
+    square) local __Math_staticUnaryOp_rd; local -i __Math_staticUnaryOp_rs __Math_staticUnaryOp_rn
+            __Math.rawMul "$__Math_staticUnaryOp_d" $__Math_staticUnaryOp_s $__Math_staticUnaryOp_n "$__Math_staticUnaryOp_d" $__Math_staticUnaryOp_s $__Math_staticUnaryOp_n __Math_staticUnaryOp_rd __Math_staticUnaryOp_rs __Math_staticUnaryOp_rn
+            __Math.formatVal "$__Math_staticUnaryOp_rd" $__Math_staticUnaryOp_rs 0 ${into:-}
             return ;;
   esac
 
-  __Math.formatVal "$__suo_d" $__suo_s $__suo_n ${into:-}
+  __Math.formatVal "$__Math_staticUnaryOp_d" $__Math_staticUnaryOp_s $__Math_staticUnaryOp_n ${into:-}
 }
 
 # Dual-mode wrappers: static (no self) returns value string,
@@ -1530,10 +1530,10 @@ Math.neg()      { if [[ -n "${_Self:-}" ]]; then local -I _Self _Class; __Math.i
 Math.mod()      { if [[ -n "${_Self:-}" ]]; then local -I _Self _Class; __Math.i_mod "$@"; else __Math.staticBinOp mod "$@"; fi; }
 Math.pow()      { if [[ -n "${_Self:-}" ]]; then local -I _Self _Class; __Math.i_pow "$@"; else
   # Static pow: create temp object, call i_pow, extract value
-  local __spow_tmp; into=__spow_tmp Math.new "$1"
-  local __spow_result; into=__spow_result _Self="$__spow_tmp" _Class=Math __Math.i_pow "$2"
-  local __spow_val; into=__spow_val _Self="$__spow_result" _Class=Math Math.val
-  boop.pass "$__spow_val" ${into:-}; fi; }
+  local __Math_staticPow_tmp; into=__Math_staticPow_tmp Math.new "$1"
+  local __Math_staticPow_result; into=__Math_staticPow_result _Self="$__Math_staticPow_tmp" _Class=Math __Math.i_pow "$2"
+  local __Math_staticPow_val; into=__Math_staticPow_val _Self="$__Math_staticPow_result" _Class=Math Math.val
+  boop.pass "$__Math_staticPow_val" ${into:-}; fi; }
 
 # Symbol aliases — same functions, shorter names.
 # The +, *, / characters require the `function` keyword form inside eval.
@@ -1554,35 +1554,35 @@ eval 'function Math.^  { Math.pow "$@"; }'
 # Classify a token as operator, paren, or operand.
 # Sets the nameref $2 to: "op", "lparen", "rparen", or "num".
 __Math.tokenType() {
-  local -n __tt_out="$2"
+  local -n __Math_tokenType_out="$2"
   case "$1" in
-    +|-|x|'*'|/) __tt_out="op" ;;
-    '(') __tt_out="lparen" ;;
-    ')') __tt_out="rparen" ;;
-    *) __tt_out="num" ;;
+    +|-|x|'*'|/) __Math_tokenType_out="op" ;;
+    '(') __Math_tokenType_out="lparen" ;;
+    ')') __Math_tokenType_out="rparen" ;;
+    *) __Math_tokenType_out="num" ;;
   esac
 }
 
 # Operator precedence: + and - are 1, x and / are 2.
 # Sets nameref $2 to the precedence level.
 __Math.precedence() {
-  local -n __prec_out="$2"
+  local -n __Math_precedence_out="$2"
   case "$1" in
-    +|-) __prec_out=1 ;;
-    x|'*'|/) __prec_out=2 ;;
-    *) __prec_out=0 ;;
+    +|-) __Math_precedence_out=1 ;;
+    x|'*'|/) __Math_precedence_out=2 ;;
+    *) __Math_precedence_out=0 ;;
   esac
 }
 
 # Apply a binary operator to two value strings. Returns value string via nameref $4.
 __Math.applyOp() {
-  local __ao_op="$1" __ao_a="$2" __ao_b="$3"
-  local -n __ao_out="$4"
-  case "$__ao_op" in
-    +)     into=__ao_out __Math.staticBinOp add "$__ao_a" "$__ao_b" ;;
-    -)     into=__ao_out __Math.staticBinOp sub "$__ao_a" "$__ao_b" ;;
-    x|'*') into=__ao_out __Math.staticBinOp mul "$__ao_a" "$__ao_b" ;;
-    /)     into=__ao_out __Math.staticBinOp div "$__ao_a" "$__ao_b" ;;
+  local __Math_applyOp_op="$1" __Math_applyOp_a="$2" __Math_applyOp_b="$3"
+  local -n __Math_applyOp_out="$4"
+  case "$__Math_applyOp_op" in
+    +)     into=__Math_applyOp_out __Math.staticBinOp add "$__Math_applyOp_a" "$__Math_applyOp_b" ;;
+    -)     into=__Math_applyOp_out __Math.staticBinOp sub "$__Math_applyOp_a" "$__Math_applyOp_b" ;;
+    x|'*') into=__Math_applyOp_out __Math.staticBinOp mul "$__Math_applyOp_a" "$__Math_applyOp_b" ;;
+    /)     into=__Math_applyOp_out __Math.staticBinOp div "$__Math_applyOp_a" "$__Math_applyOp_b" ;;
   esac
 }
 
@@ -1599,53 +1599,53 @@ __Math.applyOp() {
 # $1 = input string
 # $2 = nameref to output array
 __Math.tokenize() {
-  local __tz_str="$1"
-  local -n __tz_out="$2"
-  __tz_out=()
-  local -i __tz_osp=0
-  local __tz_prev=""
+  local __Math_tokenize_str="$1"
+  local -n __Math_tokenize_out="$2"
+  __Math_tokenize_out=()
+  local -i __Math_tokenize_osp=0
+  local __Math_tokenize_prev=""
 
-  while [[ -n "$__tz_str" ]]; do
+  while [[ -n "$__Math_tokenize_str" ]]; do
     # Skip whitespace
-    if [[ "$__tz_str" =~ ^[[:space:]]+ ]]; then
-      __tz_str="${__tz_str:${#BASH_REMATCH[0]}}"
+    if [[ "$__Math_tokenize_str" =~ ^[[:space:]]+ ]]; then
+      __Math_tokenize_str="${__Math_tokenize_str:${#BASH_REMATCH[0]}}"
       continue
     fi
 
     # Number with leading minus (negative) — only when prev is empty, op, or (
-    if [[ ( -z "$__tz_prev" || "$__tz_prev" == "op" || "$__tz_prev" == "(" ) \
-          && "$__tz_str" =~ ^-[0-9.]+ ]]; then
-      __tz_out[$__tz_osp]="${BASH_REMATCH[0]}"; (( __tz_osp++ ))
-      __tz_str="${__tz_str:${#BASH_REMATCH[0]}}"
-      __tz_prev="num"
+    if [[ ( -z "$__Math_tokenize_prev" || "$__Math_tokenize_prev" == "op" || "$__Math_tokenize_prev" == "(" ) \
+          && "$__Math_tokenize_str" =~ ^-[0-9.]+ ]]; then
+      __Math_tokenize_out[$__Math_tokenize_osp]="${BASH_REMATCH[0]}"; (( __Math_tokenize_osp++ ))
+      __Math_tokenize_str="${__Math_tokenize_str:${#BASH_REMATCH[0]}}"
+      __Math_tokenize_prev="num"
 
     # Positive number
-    elif [[ "$__tz_str" =~ ^[0-9.]+ ]]; then
-      __tz_out[$__tz_osp]="${BASH_REMATCH[0]}"; (( __tz_osp++ ))
-      __tz_str="${__tz_str:${#BASH_REMATCH[0]}}"
-      __tz_prev="num"
+    elif [[ "$__Math_tokenize_str" =~ ^[0-9.]+ ]]; then
+      __Math_tokenize_out[$__Math_tokenize_osp]="${BASH_REMATCH[0]}"; (( __Math_tokenize_osp++ ))
+      __Math_tokenize_str="${__Math_tokenize_str:${#BASH_REMATCH[0]}}"
+      __Math_tokenize_prev="num"
 
     # Open paren
-    elif [[ "${__tz_str:0:1}" == "(" ]]; then
-      __tz_out[$__tz_osp]="("; (( __tz_osp++ ))
-      __tz_str="${__tz_str:1}"
-      __tz_prev="("
+    elif [[ "${__Math_tokenize_str:0:1}" == "(" ]]; then
+      __Math_tokenize_out[$__Math_tokenize_osp]="("; (( __Math_tokenize_osp++ ))
+      __Math_tokenize_str="${__Math_tokenize_str:1}"
+      __Math_tokenize_prev="("
 
     # Close paren
-    elif [[ "${__tz_str:0:1}" == ")" ]]; then
-      __tz_out[$__tz_osp]=")"; (( __tz_osp++ ))
-      __tz_str="${__tz_str:1}"
-      __tz_prev=")"
+    elif [[ "${__Math_tokenize_str:0:1}" == ")" ]]; then
+      __Math_tokenize_out[$__Math_tokenize_osp]=")"; (( __Math_tokenize_osp++ ))
+      __Math_tokenize_str="${__Math_tokenize_str:1}"
+      __Math_tokenize_prev=")"
 
     # Operator: + - x * /
-    elif [[ "$__tz_str" =~ ^[+x*/-] ]]; then
-      __tz_out[$__tz_osp]="${BASH_REMATCH[0]}"; (( __tz_osp++ ))
-      __tz_str="${__tz_str:1}"
-      __tz_prev="op"
+    elif [[ "$__Math_tokenize_str" =~ ^[+x*/-] ]]; then
+      __Math_tokenize_out[$__Math_tokenize_osp]="${BASH_REMATCH[0]}"; (( __Math_tokenize_osp++ ))
+      __Math_tokenize_str="${__Math_tokenize_str:1}"
+      __Math_tokenize_prev="op"
 
     # Unknown character — skip it
     else
-      __tz_str="${__tz_str:1}"
+      __Math_tokenize_str="${__Math_tokenize_str:1}"
     fi
   done
 }
@@ -1673,34 +1673,34 @@ __Math.tokenize() {
 #   into=v Math.RPN 10 3 /                        # 3.33333...
 Math.RPN() {
   local IFS=' '
-  local -a __rpn_tokens
-  read -ra __rpn_tokens <<< "$*"
+  local -a __Math_RPN_tokens
+  read -ra __Math_RPN_tokens <<< "$*"
 
-  local -a __rpn_stack=()
-  local -i __rpn_sp=0
-  local __rpn_tok __rpn_type
+  local -a __Math_RPN_stack=()
+  local -i __Math_RPN_sp=0
+  local __Math_RPN_tok __Math_RPN_type
 
-  for __rpn_tok in "${__rpn_tokens[@]}"; do
-    __Math.tokenType "$__rpn_tok" __rpn_type
+  for __Math_RPN_tok in "${__Math_RPN_tokens[@]}"; do
+    __Math.tokenType "$__Math_RPN_tok" __Math_RPN_type
 
-    if [[ "$__rpn_type" == "num" ]]; then
-      __rpn_stack[$__rpn_sp]="$__rpn_tok"
-      (( __rpn_sp++ ))
-    elif [[ "$__rpn_type" == "op" ]]; then
-      (( __rpn_sp < 2 )) && _Crash "Math.RPN: not enough operands for '$__rpn_tok'"
-      (( __rpn_sp-- ))
-      local __rpn_b="${__rpn_stack[$__rpn_sp]}"
-      (( __rpn_sp-- ))
-      local __rpn_a="${__rpn_stack[$__rpn_sp]}"
-      local __rpn_r
-      __Math.applyOp "$__rpn_tok" "$__rpn_a" "$__rpn_b" __rpn_r
-      __rpn_stack[$__rpn_sp]="$__rpn_r"
-      (( __rpn_sp++ ))
+    if [[ "$__Math_RPN_type" == "num" ]]; then
+      __Math_RPN_stack[$__Math_RPN_sp]="$__Math_RPN_tok"
+      (( __Math_RPN_sp++ ))
+    elif [[ "$__Math_RPN_type" == "op" ]]; then
+      (( __Math_RPN_sp < 2 )) && _Crash "Math.RPN: not enough operands for '$__Math_RPN_tok'"
+      (( __Math_RPN_sp-- ))
+      local __Math_RPN_b="${__Math_RPN_stack[$__Math_RPN_sp]}"
+      (( __Math_RPN_sp-- ))
+      local __Math_RPN_a="${__Math_RPN_stack[$__Math_RPN_sp]}"
+      local __Math_RPN_r
+      __Math.applyOp "$__Math_RPN_tok" "$__Math_RPN_a" "$__Math_RPN_b" __Math_RPN_r
+      __Math_RPN_stack[$__Math_RPN_sp]="$__Math_RPN_r"
+      (( __Math_RPN_sp++ ))
     fi
   done
 
-  (( __rpn_sp != 1 )) && _Crash "Math.RPN: invalid expression (${__rpn_sp} values remain)"
-  boop.pass "${__rpn_stack[0]}" ${into:-}
+  (( __Math_RPN_sp != 1 )) && _Crash "Math.RPN: invalid expression (${__Math_RPN_sp} values remain)"
+  boop.pass "${__Math_RPN_stack[0]}" ${into:-}
 }
 
 # Math.DO — infix expression evaluator with operator precedence and parens.
@@ -1731,58 +1731,58 @@ Math.RPN() {
 Math.DO() {
   # Collapse all args into one string, tokenize with boundary splitting
   local IFS=' '
-  local -a __do_tokens
-  __Math.tokenize "$*" __do_tokens
+  local -a __Math_DO_tokens
+  __Math.tokenize "$*" __Math_DO_tokens
 
   # Shunting-yard: convert infix tokens to RPN token array
-  local -a __do_ops=() __do_rpn=()
-  local -i __do_osp=0 __do_rsp=0
-  local __do_tok __do_type __do_prec __do_top_prec
+  local -a __Math_DO_ops=() __Math_DO_rpn=()
+  local -i __Math_DO_osp=0 __Math_DO_rsp=0
+  local __Math_DO_tok __Math_DO_type __Math_DO_prec __Math_DO_top_prec
 
-  for __do_tok in "${__do_tokens[@]}"; do
-    __Math.tokenType "$__do_tok" __do_type
+  for __Math_DO_tok in "${__Math_DO_tokens[@]}"; do
+    __Math.tokenType "$__Math_DO_tok" __Math_DO_type
 
-    case "$__do_type" in
+    case "$__Math_DO_type" in
       num)
-        __do_rpn[$__do_rsp]="$__do_tok"
-        (( __do_rsp++ ))
+        __Math_DO_rpn[$__Math_DO_rsp]="$__Math_DO_tok"
+        (( __Math_DO_rsp++ ))
         ;;
       op)
-        __Math.precedence "$__do_tok" __do_prec
-        while (( __do_osp > 0 )); do
-          local __do_top="${__do_ops[$(( __do_osp - 1 ))]}"
-          [[ "$__do_top" == "(" ]] && break
-          __Math.precedence "$__do_top" __do_top_prec
-          (( __do_top_prec < __do_prec )) && break
-          (( __do_osp-- ))
-          __do_rpn[$__do_rsp]="$__do_top"
-          (( __do_rsp++ ))
+        __Math.precedence "$__Math_DO_tok" __Math_DO_prec
+        while (( __Math_DO_osp > 0 )); do
+          local __Math_DO_top="${__Math_DO_ops[$(( __Math_DO_osp - 1 ))]}"
+          [[ "$__Math_DO_top" == "(" ]] && break
+          __Math.precedence "$__Math_DO_top" __Math_DO_top_prec
+          (( __Math_DO_top_prec < __Math_DO_prec )) && break
+          (( __Math_DO_osp-- ))
+          __Math_DO_rpn[$__Math_DO_rsp]="$__Math_DO_top"
+          (( __Math_DO_rsp++ ))
         done
-        __do_ops[$__do_osp]="$__do_tok"
-        (( __do_osp++ ))
+        __Math_DO_ops[$__Math_DO_osp]="$__Math_DO_tok"
+        (( __Math_DO_osp++ ))
         ;;
       lparen)
-        __do_ops[$__do_osp]="("
-        (( __do_osp++ ))
+        __Math_DO_ops[$__Math_DO_osp]="("
+        (( __Math_DO_osp++ ))
         ;;
       rparen)
-        while (( __do_osp > 0 )) && [[ "${__do_ops[$(( __do_osp - 1 ))]}" != "(" ]]; do
-          (( __do_osp-- ))
-          __do_rpn[$__do_rsp]="${__do_ops[$__do_osp]}"
-          (( __do_rsp++ ))
+        while (( __Math_DO_osp > 0 )) && [[ "${__Math_DO_ops[$(( __Math_DO_osp - 1 ))]}" != "(" ]]; do
+          (( __Math_DO_osp-- ))
+          __Math_DO_rpn[$__Math_DO_rsp]="${__Math_DO_ops[$__Math_DO_osp]}"
+          (( __Math_DO_rsp++ ))
         done
-        (( __do_osp > 0 )) && (( __do_osp-- ))  # discard the "("
+        (( __Math_DO_osp > 0 )) && (( __Math_DO_osp-- ))  # discard the "("
         ;;
     esac
   done
 
   # Drain remaining operators onto the RPN output
-  while (( __do_osp > 0 )); do
-    (( __do_osp-- ))
-    __do_rpn[$__do_rsp]="${__do_ops[$__do_osp]}"
-    (( __do_rsp++ ))
+  while (( __Math_DO_osp > 0 )); do
+    (( __Math_DO_osp-- ))
+    __Math_DO_rpn[$__Math_DO_rsp]="${__Math_DO_ops[$__Math_DO_osp]}"
+    (( __Math_DO_rsp++ ))
   done
 
   # Evaluate via the shared RPN engine
-  Math.RPN "${__do_rpn[@]}"
+  Math.RPN "${__Math_DO_rpn[@]}"
 }

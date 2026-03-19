@@ -19,10 +19,10 @@ for f in test_*_ts; do printf '\n%s\n' "$f..."; "./$f" || rc=1; done
 #   __BJ_ __FC_ __init (typecast local, intentionally short)
 #   Lines starting with # (comments)
 #
-# Math is excluded until its variable naming sweep is complete.
+# Math is included — its variable naming sweep is complete.
 # ============================================================================
 printf '\nnaming convention check...\n'
-__nc_files="boop Box Cube Card Deck Hand Container List Map TestSuite blackjack"
+__nc_files="boop Box Cube Card Deck Hand Container List Map Math TestSuite blackjack"
 __nc_exclude='__boop_\|__boop\.\|__Crash_\|__Container_\|__Iterator_\|__Iter_\|__List_\|__Map_\|__Math_\|__Box_\|__Cube_\|__Card_\|__Deck_\|__Hand_\|__TestSuite_\|__BJ_\|__FC_\|__init'
 __nc_hits=$(grep -rn '__[a-z]\+_' $__nc_files 2>/dev/null | grep -v "$__nc_exclude" | grep -v '#')
 if [[ -n "$__nc_hits" ]]; then
