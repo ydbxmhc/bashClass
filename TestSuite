@@ -382,15 +382,15 @@ TestSuite.summary() {
 # Register Methods & Finalize
 # ============================================================================
 
-__boop.registerMethod TestSuite new             TestSuite.new
-__boop.registerMethod TestSuite section         TestSuite.section
-__boop.registerMethod TestSuite run             TestSuite.run
-__boop.registerMethod TestSuite summary         TestSuite.summary
-__boop.registerMethod TestSuite assert_eq       TestSuite.assert_eq
-__boop.registerMethod TestSuite assert_ne       TestSuite.assert_ne
-__boop.registerMethod TestSuite assert_ok       TestSuite.assert_ok
-__boop.registerMethod TestSuite assert_fail     TestSuite.assert_fail
-__boop.registerMethod TestSuite assert_match    TestSuite.assert_match
-__boop.registerMethod TestSuite assert_contains TestSuite.assert_contains
-__boop.registerMethod TestSuite info            TestSuite.info
+__boop.registerMethod TestSuite new
+__boop.registerMethod TestSuite section
+__boop.registerMethod TestSuite run
+__boop.registerMethod TestSuite summary
+__boop.registerMethod TestSuite assert_eq
+__boop.registerMethod TestSuite assert_ne
+__boop.registerMethod TestSuite assert_ok
+__boop.registerMethod TestSuite assert_fail
+__boop.registerMethod TestSuite assert_match
+__boop.registerMethod TestSuite assert_contains
+__boop.registerMethod TestSuite info
 __boop.registerClass TestSuite

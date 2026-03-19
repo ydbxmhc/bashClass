@@ -197,8 +197,8 @@ MyClass.greet() {
   boop.pass "Hello, $__MyClass_greet_name" ${into:-}
 }
 
-__boop.registerMethod MyClass new   MyClass.new
-__boop.registerMethod MyClass greet MyClass.greet
+__boop.registerMethod MyClass new
+__boop.registerMethod MyClass greet
 __boop.registerClass MyClass
 ```
 

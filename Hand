@@ -75,9 +75,9 @@ Hand.show() {
   boop.pass "$__Hand_show_out" ${into:-}
 }
 
-__boop.registerMethod Hand new          Hand.new
-__boop.registerMethod Hand total        Hand.total
-__boop.registerMethod Hand isBust       Hand.isBust
-__boop.registerMethod Hand isBlackjack  Hand.isBlackjack
-__boop.registerMethod Hand show         Hand.show
+__boop.registerMethod Hand new
+__boop.registerMethod Hand total
+__boop.registerMethod Hand isBust
+__boop.registerMethod Hand isBlackjack
+__boop.registerMethod Hand show
 __boop.registerClass Hand

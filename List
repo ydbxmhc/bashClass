@@ -374,19 +374,19 @@ List.each() {
 # Register Methods & Finalize
 # ============================================================================
 
-__boop.registerMethod List new List.new
-__boop.registerMethod List get List.get
-__boop.registerMethod List set List.set
-__boop.registerMethod List delete List.delete
-__boop.registerMethod List length List.length
-__boop.registerMethod List clear List.clear
-__boop.registerMethod List has List.has
-__boop.registerMethod List push List.push
-__boop.registerMethod List pop List.pop
-__boop.registerMethod List shift List.shift
-__boop.registerMethod List unshift List.unshift
-__boop.registerMethod List slice List.slice
-__boop.registerMethod List toArray List.toArray
-__boop.registerMethod List toString List.toString
-__boop.registerMethod List each List.each
+__boop.registerMethod List new
+__boop.registerMethod List get
+__boop.registerMethod List set
+__boop.registerMethod List delete
+__boop.registerMethod List length
+__boop.registerMethod List clear
+__boop.registerMethod List has
+__boop.registerMethod List push
+__boop.registerMethod List pop
+__boop.registerMethod List shift
+__boop.registerMethod List unshift
+__boop.registerMethod List slice
+__boop.registerMethod List toArray
+__boop.registerMethod List toString
+__boop.registerMethod List each
 __boop.registerClass List

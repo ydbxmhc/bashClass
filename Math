@@ -1335,7 +1335,7 @@ Math.pi() {
 # Register Methods & Finalize
 # ============================================================================
 
-__boop.registerMethod Math new Math.new
+__boop.registerMethod Math new
 __boop.registerMethod Math add __Math.i_add
 __boop.registerMethod Math sub __Math.i_sub
 __boop.registerMethod Math subtract __Math.i_sub
@@ -1348,19 +1348,19 @@ __boop.registerMethod Math mod __Math.i_mod
 __boop.registerMethod Math pow __Math.i_pow
 __boop.registerMethod Math abs __Math.i_abs
 __boop.registerMethod Math neg __Math.i_neg
-__boop.registerMethod Math eq Math.eq
-__boop.registerMethod Math lt Math.lt
-__boop.registerMethod Math gt Math.gt
-__boop.registerMethod Math le Math.le
-__boop.registerMethod Math ge Math.ge
-__boop.registerMethod Math cmp Math.cmp
-__boop.registerMethod Math round Math.round
-__boop.registerMethod Math toInt Math.toInt
-__boop.registerMethod Math toScale Math.toScale
-__boop.registerMethod Math format Math.format
-__boop.registerMethod Math val Math.val
-__boop.registerMethod Math toString Math.toString
-__boop.registerMethod Math isZero Math.isZero
+__boop.registerMethod Math eq
+__boop.registerMethod Math lt
+__boop.registerMethod Math gt
+__boop.registerMethod Math le
+__boop.registerMethod Math ge
+__boop.registerMethod Math cmp
+__boop.registerMethod Math round
+__boop.registerMethod Math toInt
+__boop.registerMethod Math toScale
+__boop.registerMethod Math format
+__boop.registerMethod Math val
+__boop.registerMethod Math toString
+__boop.registerMethod Math isZero
 __boop.registerClass Math
 
 # ============================================================================

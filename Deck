@@ -61,8 +61,8 @@ Deck.draw() {
   boop.pass "$__Deck_draw_card" ${into:-}
 }
 
-__boop.registerMethod Deck new     Deck.new
-__boop.registerMethod Deck fill    Deck.fill
-__boop.registerMethod Deck shuffle Deck.shuffle
-__boop.registerMethod Deck draw    Deck.draw
+__boop.registerMethod Deck new
+__boop.registerMethod Deck fill
+__boop.registerMethod Deck shuffle
+__boop.registerMethod Deck draw
 __boop.registerClass Deck

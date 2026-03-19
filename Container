@@ -573,43 +573,43 @@ Iterator.reset() {
 # Register Container Methods & Finalize
 # ============================================================================
 
-__boop.registerMethod Container itemAt Container.itemAt
-__boop.registerMethod Container setAt Container.setAt
-__boop.registerMethod Container get Container.get
-__boop.registerMethod Container set Container.set
-__boop.registerMethod Container delete Container.delete
-__boop.registerMethod Container length Container.length
-__boop.registerMethod Container clear Container.clear
-__boop.registerMethod Container has Container.has
-__boop.registerMethod Container toArray Container.toArray
-__boop.registerMethod Container each Container.each
-__boop.registerMethod Container isEmpty Container.isEmpty
-__boop.registerMethod Container iterator Container.iterator
-__boop.registerMethod Container next Container.next
-__boop.registerMethod Container prev Container.prev
-__boop.registerMethod Container hasNext Container.hasNext
-__boop.registerMethod Container hasPrev Container.hasPrev
-__boop.registerMethod Container current Container.current
-__boop.registerMethod Container iterIndex Container.iterIndex
-__boop.registerMethod Container iterReset Container.iterReset
-__boop.registerMethod Container noIterators Container.noIterators
-__boop.registerMethod Container new Container.new
-__boop.registerMethod Container destroy Container.destroy
-__boop.registerMethod Container toString Container.toString
+__boop.registerMethod Container itemAt
+__boop.registerMethod Container setAt
+__boop.registerMethod Container get
+__boop.registerMethod Container set
+__boop.registerMethod Container delete
+__boop.registerMethod Container length
+__boop.registerMethod Container clear
+__boop.registerMethod Container has
+__boop.registerMethod Container toArray
+__boop.registerMethod Container each
+__boop.registerMethod Container isEmpty
+__boop.registerMethod Container iterator
+__boop.registerMethod Container next
+__boop.registerMethod Container prev
+__boop.registerMethod Container hasNext
+__boop.registerMethod Container hasPrev
+__boop.registerMethod Container current
+__boop.registerMethod Container iterIndex
+__boop.registerMethod Container iterReset
+__boop.registerMethod Container noIterators
+__boop.registerMethod Container new
+__boop.registerMethod Container destroy
+__boop.registerMethod Container toString
 __boop.registerClass Container
 
 # ============================================================================
 # Register Iterator Methods & Finalize
 # ============================================================================
 
-__boop.registerMethod Iterator new      Iterator.new
-__boop.registerMethod Iterator hasNext  Iterator.hasNext
-__boop.registerMethod Iterator hasPrev  Iterator.hasPrev
-__boop.registerMethod Iterator next     Iterator.next
-__boop.registerMethod Iterator prev     Iterator.prev
-__boop.registerMethod Iterator current  Iterator.current
-__boop.registerMethod Iterator index    Iterator.index
-__boop.registerMethod Iterator reset    Iterator.reset
+__boop.registerMethod Iterator new
+__boop.registerMethod Iterator hasNext
+__boop.registerMethod Iterator hasPrev
+__boop.registerMethod Iterator next
+__boop.registerMethod Iterator prev
+__boop.registerMethod Iterator current
+__boop.registerMethod Iterator index
+__boop.registerMethod Iterator reset
 __boop.registerClass Iterator
 
 # ============================================================================

@@ -102,12 +102,12 @@ Box.new() {
 # Register Methods & Finalize
 # ============================================================================
 
-__boop.registerMethod Box calc Box.calc
-__boop.registerMethod Box area Box.area
-__boop.registerMethod Box top Box.top
-__boop.registerMethod Box end Box.end
-__boop.registerMethod Box side Box.side
-__boop.registerMethod Box bottom Box.bottom
-__boop.registerMethod Box volume Box.volume
-__boop.registerMethod Box new Box.new
+__boop.registerMethod Box calc
+__boop.registerMethod Box area
+__boop.registerMethod Box top
+__boop.registerMethod Box end
+__boop.registerMethod Box side
+__boop.registerMethod Box bottom
+__boop.registerMethod Box volume
+__boop.registerMethod Box new
 __boop.registerClass Box

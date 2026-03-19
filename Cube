@@ -85,10 +85,10 @@ Cube.volume() {
 # Register Methods & Finalize
 # ============================================================================
 
-__boop.registerMethod Cube new Cube.new
-__boop.registerMethod Cube side Cube.side
-__boop.registerMethod Cube top Cube.top
-__boop.registerMethod Cube end Cube.end
-__boop.registerMethod Cube bottom Cube.bottom
-__boop.registerMethod Cube volume Cube.volume
+__boop.registerMethod Cube new
+__boop.registerMethod Cube side
+__boop.registerMethod Cube top
+__boop.registerMethod Cube end
+__boop.registerMethod Cube bottom
+__boop.registerMethod Cube volume
 __boop.registerClass Cube

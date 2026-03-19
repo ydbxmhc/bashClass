@@ -247,16 +247,16 @@ Map.each() {
 # Register Methods & Finalize
 # ============================================================================
 
-__boop.registerMethod Map new Map.new
-__boop.registerMethod Map get Map.get
-__boop.registerMethod Map set Map.set
-__boop.registerMethod Map delete Map.delete
-__boop.registerMethod Map length Map.length
-__boop.registerMethod Map clear Map.clear
-__boop.registerMethod Map has Map.has
-__boop.registerMethod Map keys Map.keys
-__boop.registerMethod Map values Map.values
-__boop.registerMethod Map toArray Map.toArray
-__boop.registerMethod Map toString Map.toString
-__boop.registerMethod Map each Map.each
+__boop.registerMethod Map new
+__boop.registerMethod Map get
+__boop.registerMethod Map set
+__boop.registerMethod Map delete
+__boop.registerMethod Map length
+__boop.registerMethod Map clear
+__boop.registerMethod Map has
+__boop.registerMethod Map keys
+__boop.registerMethod Map values
+__boop.registerMethod Map toArray
+__boop.registerMethod Map toString
+__boop.registerMethod Map each
 __boop.registerClass Map

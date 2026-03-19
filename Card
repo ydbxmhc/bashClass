@@ -63,10 +63,10 @@ Card.toString() {
   boop.pass "${__Card_ts_rank}${__Card_ts_suit}" ${into:-}
 }
 
-__boop.registerMethod Card new      Card.new
-__boop.registerMethod Card flip     Card.flip
-__boop.registerMethod Card val      Card.val
-__boop.registerMethod Card toString Card.toString
+__boop.registerMethod Card new
+__boop.registerMethod Card flip
+__boop.registerMethod Card val
+__boop.registerMethod Card toString
 __boop.registerClass Card
 
 # ═════════════════════════════════════════════════════════════════════
@@ -86,8 +86,8 @@ FaceCard.val() {
   boop.pass "10" ${into:-}
 }
 
-__boop.registerMethod FaceCard new FaceCard.new
-__boop.registerMethod FaceCard val FaceCard.val
+__boop.registerMethod FaceCard new
+__boop.registerMethod FaceCard val
 __boop.registerClass FaceCard
 
 # ═════════════════════════════════════════════════════════════════════
@@ -107,6 +107,6 @@ Ace.val() {
   boop.pass "11" ${into:-}
 }
 
-__boop.registerMethod Ace new Ace.new
-__boop.registerMethod Ace val Ace.val
+__boop.registerMethod Ace new
+__boop.registerMethod Ace val
 __boop.registerClass Ace
