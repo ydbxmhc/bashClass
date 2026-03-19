@@ -1080,6 +1080,105 @@ __boop.import() {
 }
 
 # ============================================================================
+# ============================================================================
+# CLASS DECLARATION — PUBLIC API
+# ============================================================================
+
+# Declare a class in one call. Builds the registry descriptor, registers
+# all methods (standard and custom-impl), and bakes the dispatch wrappers.
+#
+# Replaces the manual three-step pattern (write __boop_registry, call
+# registerMethod N times, call registerClass) with a single declaration.
+#
+# Arguments: all args are joined into one string, then parsed as
+#   whitespace-separated tokens. First token is the class name.
+#   Remaining tokens are key:value pairs:
+#
+#   isa:Parent       — parent class (default: boop)
+#   has:p1,p2,p3     — property names (comma-separated)
+#   public:m1,m2,m3  — methods with standard Class.method impl
+#   custom:m=fn,...   — methods with explicit impl (m=implFunction)
+#
+# Tokens can appear in any order. Multiple tokens of the same key are
+# merged (so you can split long lists across multiple args).
+#
+# Usage:
+#   boopClass Hand isa:List public:new,total,isBust,isBlackjack,show has:type
+#
+#   boopClass Math isa:boop \
+#     public:new,eq,lt,gt,le,ge,cmp,round,toInt,toScale,format,val,toString,isZero \
+#     custom:add=__Math.i_add,sub=__Math.i_sub,mul=__Math.i_mul \
+#     has:digits,scale,neg
+#
+# For methods registered on a DIFFERENT class (e.g., Container adding
+# methods to boop), use __boop.registerMethod directly — boopClass
+# declares one class at a time.
+boopClass() {
+  local __boopClass_input="$*"                         # join all args
+  local __boopClass_class="" __boopClass_parent="boop"
+  local __boopClass_public="" __boopClass_custom="" __boopClass_has=""
+  local __boopClass_token __boopClass_key __boopClass_val
+
+  for __boopClass_token in $__boopClass_input; do      # word-split on whitespace
+    case "$__boopClass_token" in
+      isa:*)    __boopClass_parent="${__boopClass_token#isa:}" ;;
+      has:*)    __boopClass_val="${__boopClass_token#has:}"
+                __boopClass_has="${__boopClass_has:+$__boopClass_has,}$__boopClass_val" ;;
+      public:*) __boopClass_val="${__boopClass_token#public:}"
+                __boopClass_public="${__boopClass_public:+$__boopClass_public,}$__boopClass_val" ;;
+      custom:*) __boopClass_val="${__boopClass_token#custom:}"
+                __boopClass_custom="${__boopClass_custom:+$__boopClass_custom,}$__boopClass_val" ;;
+      *)        # First bare word is the class name; extras are an error
+                if [[ -z "$__boopClass_class" ]]; then
+                  __boopClass_class="$__boopClass_token"
+                else
+                  _Crash "boopClass: unexpected token '$__boopClass_token' (class already set to '$__boopClass_class')"
+                fi ;;
+    esac
+  done
+
+  [[ -n "$__boopClass_class" ]] || _Crash "boopClass: no class name given"
+
+  # Build the combined method list for the descriptor (public + custom names)
+  local __boopClass_allMethods="$__boopClass_public"
+  local __boopClass_entry __boopClass_mname
+  if [[ -n "$__boopClass_custom" ]]; then
+    IFS=',' read -ra __boopClass_customArr <<< "$__boopClass_custom"
+    for __boopClass_entry in "${__boopClass_customArr[@]}"; do
+      __boopClass_mname="${__boopClass_entry%%=*}"       # name before the =
+      __boopClass_allMethods="${__boopClass_allMethods:+$__boopClass_allMethods,}$__boopClass_mname"
+    done
+  fi
+
+  # Write the registry descriptor
+  __boop_registry["$__boopClass_class"]="|class=$__boopClass_class|parent=$__boopClass_parent|methods=$__boopClass_allMethods|properties=$__boopClass_has"
+
+  # Register public methods (default impl: Class.method)
+  if [[ -n "$__boopClass_public" ]]; then
+    IFS=',' read -ra __boopClass_pubArr <<< "$__boopClass_public"
+    for __boopClass_mname in "${__boopClass_pubArr[@]}"; do
+      [[ -n "$__boopClass_mname" ]] || continue
+      __boop.registerMethod "$__boopClass_class" "$__boopClass_mname"
+    done
+  fi
+
+  # Register custom methods (explicit impl)
+  if [[ -n "$__boopClass_custom" ]]; then
+    local __boopClass_impl
+    IFS=',' read -ra __boopClass_customArr <<< "$__boopClass_custom"
+    for __boopClass_entry in "${__boopClass_customArr[@]}"; do
+      __boopClass_mname="${__boopClass_entry%%=*}"
+      __boopClass_impl="${__boopClass_entry#*=}"
+      [[ -n "$__boopClass_mname" && -n "$__boopClass_impl" ]] || \
+        _Crash "boopClass: bad custom entry '$__boopClass_entry' — expected name=impl"
+      __boop.registerMethod "$__boopClass_class" "$__boopClass_mname" "$__boopClass_impl"
+    done
+  fi
+
+  # Bake dispatch wrappers
+  __boop.registerClass "$__boopClass_class"
+}
+
 # REGISTER BASE CLASS
 # ============================================================================
 
