@@ -126,6 +126,20 @@ $t.assert_fail "fail captures stderr" __test_stderr_fail 2>"$__ts_lf"
 _LogLevel warn
 $t.assert_contains "fail stderr visible at debug" "$(<"$__ts_lf")" "fail stderr"
 
+# Visible output test — let _Debug hit the terminal, then verify it happened.
+# We run in a subshell so we can capture everything (stdout + stderr) and
+# check the combined output contains both the PASS line and the debug output.
+__ts_visible=$(bash -c '
+  . boop TestSuite
+  into=s TestSuite name="Stderr Visible"
+  _LogLevel debug
+  __stderr_cmd() { printf "visible_stderr_marker\n" >&2; return 0; }
+  $s.assert_ok "visible capture" __stderr_cmd
+  $s.summary
+' 2>&1)
+$t.assert_contains "debug output visible in terminal" "$__ts_visible" "visible_stderr_marker"
+$t.assert_contains "assertion still passes" "$__ts_visible" "All tests passed"
+
 rm -f "$__ts_lf"
 unset -f __test_stderr_cmd __test_stderr_fail
 
