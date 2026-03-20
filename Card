@@ -15,7 +15,7 @@ __boop_registry["Card"]="|class=Card|parent=boop\
 |properties=suit,rank,faceUp"
 
 Card.new() {
-  local -I _Class; : "${_Class:=Card}"
+  local _Class="${_Class:-Card}"; : "${_Class:=Card}"
   local __Card_new_self __Card_new_suit="" __Card_new_rank="" __Card_new_faceUp=0
   for __Card_new_arg in "$@"; do
     case "$__Card_new_arg" in
@@ -31,7 +31,7 @@ Card.new() {
 }
 
 Card.flip() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Card}"
   local __Card_flip_fu; __boop.parse "$_Self" "faceUp" __Card_flip_fu
   if [[ "$__Card_flip_fu" == "1" ]]; then
     $_Self.set faceUp 0
@@ -41,7 +41,7 @@ Card.flip() {
 }
 
 Card.val() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Card}"
   local __Card_val_rank; __boop.parse "$_Self" "rank" __Card_val_rank
   case "$__Card_val_rank" in
     [2-9]) boop.pass "$__Card_val_rank" ${into:-} ;;
@@ -51,7 +51,7 @@ Card.val() {
 }
 
 Card.toString() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Card}"
   local __Card_ts_fu; __boop.parse "$_Self" "faceUp" __Card_ts_fu
   if [[ "$__Card_ts_fu" != "1" ]]; then
     boop.pass "[?]" ${into:-}
@@ -78,11 +78,11 @@ __boop_registry["FaceCard"]="|class=FaceCard|parent=Card\
 |properties=suit,rank,faceUp"
 
 FaceCard.new() {
-  local -I _Class; _Class=FaceCard; Card.new "$@"
+  local _Class="${_Class:-FaceCard}"; Card.new "$@"
 }
 
 FaceCard.val() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Card}"
   boop.pass "10" ${into:-}
 }
 
@@ -99,11 +99,11 @@ __boop_registry["Ace"]="|class=Ace|parent=Card\
 |properties=suit,rank,faceUp"
 
 Ace.new() {
-  local -I _Class; _Class=Ace; Card.new "$@"
+  local _Class="${_Class:-Ace}"; Card.new "$@"
 }
 
 Ace.val() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Card}"
   boop.pass "11" ${into:-}
 }
 

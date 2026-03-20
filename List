@@ -50,8 +50,7 @@ __boop_registry["List"]="|class=List|parent=Container|methods=new,get,set,delete
 # Usage: into=mylist List
 #        into=mylist _Class=List __boop.dispatch new
 List.new() {
-  local -I _Class
-  : "${_Class:=List}"
+  local _Class="${_Class:-List}"
   local __List_new_self
   into=__List_new_self __boop.new type=indexed "$@"
   declare -ga "__boop_data_${__List_new_self}"
@@ -79,7 +78,7 @@ List.new() {
 #        into=val $list.get -1     # last element
 #        $list.get 99              # empty string (no crash)
 List.get() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-List}"
   local -i __List_get_idx="$1"
   local -n __List_get_arr="__boop_data_${_Self}"
   local -i __List_get_len=0; [[ -n "${!__List_get_arr[@]}" ]] && __List_get_len=${#__List_get_arr[@]}
@@ -108,7 +107,7 @@ List.get() {
 #        $list.set -1 "new_last"    # replace last element
 #        $list.set 5 "append"       # append if length is 5
 List.set() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-List}"
   local -i __List_set_idx="$1"
   local __List_set_val="$2"
   local -n __List_set_arr="__boop_data_${_Self}"
@@ -136,7 +135,7 @@ List.set() {
 # Usage: $list.delete 0     # remove first, shift everything down
 #        $list.delete -1    # remove last (same as pop, but no return)
 List.delete() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-List}"
   local -i __List_del_idx="$1"
   local -n __List_del_arr="__boop_data_${_Self}"
   local -i __List_del_len=0; [[ -n "${!__List_del_arr[@]}" ]] && __List_del_len=${#__List_del_arr[@]}
@@ -155,7 +154,7 @@ List.delete() {
 # Usage: into=len $list.length
 #        $list.length; printf "%s\n" "$_Out"
 List.length() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-List}"
   local -n __List_length_arr="__boop_data_${_Self}"
   local -i __List_length_len=0; [[ -n "${!__List_length_arr[@]}" ]] && __List_length_len=${#__List_length_arr[@]}
   boop.pass "$__List_length_len" ${into:-}
@@ -168,7 +167,7 @@ List.length() {
 #
 # Usage: $list.clear
 List.clear() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-List}"
   local -n __List_clear_arr="__boop_data_${_Self}"
   __List_clear_arr=()
 }
@@ -184,7 +183,7 @@ List.clear() {
 #        $list.has -1 && printf "not empty"
 #        $list.has 99 || printf "out of range"
 List.has() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-List}"
   local -i __List_has_idx="$1"
   local -n __List_has_arr="__boop_data_${_Self}"
   local -i __List_has_len=0; [[ -n "${!__List_has_arr[@]}" ]] && __List_has_len=${#__List_has_arr[@]}
@@ -204,7 +203,7 @@ List.has() {
 # Usage: $list.push "alpha"
 #        $list.push "a" "b" "c"    # append three at once
 List.push() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-List}"
   local -n __List_push_arr="__boop_data_${_Self}"
   __List_push_arr+=("$@")
 }
@@ -221,7 +220,7 @@ List.push() {
 # Usage: into=val $list.pop
 #        $list.pop; printf "%s\n" "$_Out"
 List.pop() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-List}"
   local -n __List_pop_arr="__boop_data_${_Self}"
   local -i __List_pop_len=0; [[ -n "${!__List_pop_arr[@]}" ]] && __List_pop_len=${#__List_pop_arr[@]}
   (( __List_pop_len == 0 )) && _Crash "pop from empty List"
@@ -240,7 +239,7 @@ List.pop() {
 # Usage: into=val $list.shift
 #        $list.shift; printf "%s\n" "$_Out"
 List.shift() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-List}"
   local -n __List_shift_arr="__boop_data_${_Self}"
   local -i __List_shift_len=0; [[ -n "${!__List_shift_arr[@]}" ]] && __List_shift_len=${#__List_shift_arr[@]}
   (( __List_shift_len == 0 )) && _Crash "shift from empty List"
@@ -258,7 +257,7 @@ List.shift() {
 # Usage: $list.unshift "first"
 #        $list.unshift "a" "b"    # "a" becomes index 0, "b" index 1
 List.unshift() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-List}"
   local -n __List_unshift_arr="__boop_data_${_Self}"
   __List_unshift_arr=("$@" "${__List_unshift_arr[@]+"${__List_unshift_arr[@]}"}")
 }
@@ -278,7 +277,7 @@ List.unshift() {
 #        into=s $list.slice 2      # index 2 through end
 #        into=s $list.slice -2     # last two elements
 List.slice() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-List}"
   local -i __List_slice_start="${1:-0}" __List_slice_end
   local -n __List_slice_arr="__boop_data_${_Self}"
   local -i __List_slice_len=0; [[ -n "${!__List_slice_arr[@]}" ]] && __List_slice_len=${#__List_slice_arr[@]}
@@ -306,7 +305,7 @@ List.slice() {
 #
 # Usage: into=all $list.toArray
 List.toArray() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-List}"
   local -n __List_toArray_arr="__boop_data_${_Self}"
   local __List_toArray_out
   if ! [[ -n "${!__List_toArray_arr[@]}" ]] || (( ${#__List_toArray_arr[@]} == 0 )); then
@@ -334,7 +333,7 @@ List.toArray() {
 # Usage: $list.toString
 #        into=s $list.toString; printf "%s\n" "$s"
 List.toString() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-List}"
   local -n __List_ts_arr="__boop_data_${_Self}"
   local -i __List_ts_len=0; [[ -n "${!__List_ts_arr[@]}" ]] && __List_ts_len=${#__List_ts_arr[@]}
   local __List_ts_out="List($_Self)[ "
@@ -360,7 +359,7 @@ List.toString() {
 #                                  #        my_callback 1 "beta"
 #                                  #        ...
 List.each() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-List}"
   local __List_each_fn="$1"
   local -n __List_each_arr="__boop_data_${_Self}"
   [[ -n "${!__List_each_arr[@]}" ]] || return 0

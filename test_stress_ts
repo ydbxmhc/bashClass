@@ -267,17 +267,19 @@ __sub_vol=$( $cube.volume )
 $t.assert_eq "method in subshell returns via stdout" "$__sub_vol" "64"
 
 # ============================================================================
-# SECTION 12: Lazy stubs and baking
+# SECTION 12: Direct wrappers (no lazy stubs)
 # ============================================================================
 
-$t.section "lazy stubs"
+$t.section "direct wrappers"
 new Box length=2 width=3 height=4; __stub_box="$_Out"
-__stub_def=$(declare -f "$__stub_box.volume")
-$t.assert_contains "stub contains __init=true before first call" "$__stub_def" "__init=true"
+__wrap_def=$(declare -f "$__stub_box.volume")
+# Wrappers are final from creation — no __init, no dispatch, direct call
+$t.assert_contains "wrapper calls Box.volume directly" "$__wrap_def" "Box.volume"
+$t.assert_fail "wrapper does not contain __init" test "${__wrap_def}" != "${__wrap_def/__init/}"
+$t.assert_fail "wrapper does not contain dispatch" test "${__wrap_def}" != "${__wrap_def/dispatch/}"
 $__stub_box.volume
-__baked_def=$(declare -f "$__stub_box.volume")
-$t.assert_fail "baked wrapper does not contain __init=true" test "${__baked_def}" != "${__baked_def/__init=true/}"
-$t.assert_contains "baked wrapper calls Box.volume directly" "$__baked_def" "Box.volume"
+__wrap_def2=$(declare -f "$__stub_box.volume")
+$t.assert_eq "wrapper unchanged after first call" "$__wrap_def" "$__wrap_def2"
 
 # ============================================================================
 # SECTION 13: Typecasting
@@ -301,7 +303,24 @@ $t.assert_eq "typecast to Box.side" "$__tc_side" "25"
 $t.assert_eq "normal Cube.side after typecast" "$__tc_side2" "25"
 
 # ============================================================================
-# SECTION 14: super — edge cases
+# SECTION 14: _Delegate and cross-object calls
+# ============================================================================
+
+$t.section "_Delegate and cross-object calls"
+
+# Setup: two unrelated objects — a Cube and a Box
+new Cube size=4; __del_cube="$_Out"
+new Box length=2 width=3 height=5; __del_box="$_Out"
+# _Delegate returns the correct value
+into=__del_dval _Delegate $__del_box.volume
+$t.assert_eq "_Delegate returns correct value via into" "$__del_dval" "30"
+
+# _Delegate with isa across object boundaries
+$t.assert_ok "_Delegate isa on unrelated object" _Delegate $__del_box.isa Box
+$t.assert_fail "_Delegate isa wrong class" _Delegate $__del_box.isa Cube
+
+# ============================================================================
+# SECTION 15: super — edge cases
 # ============================================================================
 
 $t.section "super"
@@ -310,12 +329,12 @@ $t.assert_fail "super volume from Box (boop has no volume)" bash -c '. boop Cube
 
 
 # ============================================================================
-# SECTION 15: bencode/bdecode (removed)
+# SECTION 16: bencode/bdecode (removed)
 # ============================================================================
 # $t.assert_eq "misspelled typecast falls through to string mode" "$_Out" "$__orig"
 
 # ============================================================================
-# SECTION 16: setDefaultMode — bad inputs
+# SECTION 17: setDefaultMode — bad inputs
 # ============================================================================
 
 $t.section "setDefaultMode"
@@ -326,7 +345,7 @@ for mode in auto nameref stdout global filesystem; do
 done
 
 # ============================================================================
-# SECTION 17: registerClass — bad inputs
+# SECTION 18: registerClass — bad inputs
 # ============================================================================
 
 $t.section "registerClass"
@@ -334,7 +353,7 @@ $t.assert_fail "registerClass with invalid name" bash -c '. boop Cube; __boop.re
 $t.assert_fail "registerClass with no descriptor" bash -c '. boop Cube; __boop.registerClass "Phantom"'
 
 # ============================================================================
-# SECTION 18: refresh — re-stubbing
+# SECTION 19: refresh — re-stubbing
 # ============================================================================
 
 $t.section "refresh"
@@ -343,13 +362,15 @@ $__rbox.volume
 $t.assert_eq "pre-refresh volume" "$_Out" "60"
 __boop.refresh "$__rbox"
 __rdef=$(declare -f "$__rbox.volume")
-$t.assert_contains "refresh re-stubbed the method" "$__rdef" "__init=true"
+# After refresh, wrapper is regenerated — still a direct wrapper, no dispatch
+$t.assert_contains "refresh re-wrapped the method" "$__rdef" "Box.volume"
+$t.assert_fail "refresh wrapper has no dispatch" test "${__rdef}" != "${__rdef/dispatch/}"
 $__rbox.volume
 $t.assert_eq "post-refresh volume still correct" "$_Out" "60"
 $t.assert_fail "refresh nonexistent object" bash -c '. boop Cube; __boop.refresh "no_such_obj"'
 
 # ============================================================================
-# SECTION 19: Return modes through the full stack
+# SECTION 20: Return modes through the full stack
 # ============================================================================
 
 $t.section "return modes through object methods"
@@ -372,7 +393,7 @@ $t.assert_eq "get length via global" "$_Out" "6"
 _OutMode=auto
 
 # ============================================================================
-# SECTION 20: Serialization — round-trip
+# SECTION 21: Serialization — round-trip
 # ============================================================================
 
 $t.section "serialization"
@@ -384,7 +405,7 @@ rm -f "$__ser_file"
 $t.assert_fail "deserialize nonexistent file" bash -c '. boop Cube; __boop.deserialize /tmp/no_such_file_ever'
 
 # ============================================================================
-# SECTION 21: Multiple inheritance chain depth
+# SECTION 22: Multiple inheritance chain depth
 # ============================================================================
 
 $t.section "deep inheritance"
@@ -393,7 +414,7 @@ $t.assert_eq "Cube.get (inherited 2 levels) = size" "$_Out" "4"
 $t.assert_ok "Cube isa boop (2 levels)" $cube.isa boop
 
 # ============================================================================
-# SECTION 22: Rapid object creation — timing and uniqueness
+# SECTION 23: Rapid object creation — timing and uniqueness
 # ============================================================================
 
 $t.section "rapid creation"
@@ -409,7 +430,7 @@ $t.assert_eq "50 rapid objects, all unique IDs" "$__dupes" "0"
 unset __seen_ids
 
 # ============================================================================
-# SECTION 23: _Crash — unified crash handler
+# SECTION 24: _Crash — unified crash handler
 # ============================================================================
 
 $t.section "_Crash"
@@ -427,7 +448,7 @@ bash -c '. boop Cube; _StackTrace=0 _Crash "no trace"' 2>/dev/null || __crash_rc
 $t.assert_eq "crash with _StackTrace=0 still exits" "$__crash_rc" "1"
 
 # ============================================================================
-# SECTION 24: into typecast — named return through the full stack
+# SECTION 25: into typecast — named return through the full stack
 # ============================================================================
 
 $t.section "into typecast"
@@ -473,7 +494,7 @@ into=__rt_tc _Class=Box $__rt_cube.volume
 $t.assert_eq "into with typecast to Box = 64" "$__rt_tc" "64"
 
 # ============================================================================
-# SECTION 25: Nonzero integer validation — Box.calc
+# SECTION 26: Nonzero integer validation — Box.calc
 # ============================================================================
 
 $t.section "nonzero validation"
@@ -492,7 +513,7 @@ $t.assert_ok "calc required=2 with 2 args" bash -c '. boop Cube; required=2 Box.
 $t.assert_fail "volume after setting dimension to 0" bash -c '. boop Cube; new Box length=5 width=3 height=7; b=$_Out; $b.set height 0; $b.volume'
 
 # ============================================================================
-# SECTION 26: into edge cases
+# SECTION 27: into edge cases
 # ============================================================================
 
 $t.section "into edge cases"
@@ -525,7 +546,7 @@ $t.assert_eq "sequential into: top=15" "$__rt_a" "15"
 $t.assert_eq "sequential into: side=35" "$__rt_b" "35"
 
 # ============================================================================
-# SECTION 27: Bulk benchmark (optional — pass count as $1)
+# SECTION 28: Bulk benchmark (optional — pass count as $1)
 # ============================================================================
 
 if (( __bench_count > 0 )); then

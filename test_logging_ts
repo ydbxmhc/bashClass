@@ -110,7 +110,7 @@ $t.section "Caller context"
 
 # Define a temporary test method on Box
 Box.test_log() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Box}"
   _Warn "from method"
 }
 

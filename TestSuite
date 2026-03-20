@@ -75,8 +75,7 @@ __TestSuite._fail() {
 # ============================================================================
 
 TestSuite.new() {
-  local -I _Class
-  : "${_Class:=TestSuite}"
+  local _Class="${_Class:-TestSuite}"
   local __TS_new_self __TS_new_name="" __TS_new_mode="immediate"
   local __TS_new_verbose="${TESTSUITE_VERBOSE:-0}"
 
@@ -112,7 +111,7 @@ TestSuite.new() {
 # ============================================================================
 
 TestSuite.section() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-TestSuite}"
   local __TS_sec_name="$1"
 
   local __TS_sec_verbose
@@ -163,9 +162,9 @@ __TestSuite._exec() {
       ;;
     ok)
       # Clear _Self/_Class so the user's command doesn't see TestSuite's
-      # identity leaking through the local -I chain. The baked wrappers
-      # on user objects hardcode their own _Self/_Class, but the typecast
-      # guard checks ${_Class:-...} which would pick up our leaked value.
+      # identity leaking through the call chain. The wrappers on user
+      # objects hardcode their own _Self/_Class, but clearing them here
+      # prevents any ambient context from interfering.
       # The if/else structure ensures set -e callers survive non-zero exits.
       local -i __TestSuite_exec_rc=0
       local __TestSuite_exec_stderr; __TestSuite_exec_stderr=$(mktemp)
@@ -259,37 +258,37 @@ __TestSuite._route() {
 # ============================================================================
 
 TestSuite.assert_eq() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-TestSuite}"
   __TestSuite._route "$_Self" eq "$@"
 }
 
 TestSuite.assert_ne() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-TestSuite}"
   __TestSuite._route "$_Self" ne "$@"
 }
 
 TestSuite.assert_ok() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-TestSuite}"
   __TestSuite._route "$_Self" ok "$@"
 }
 
 TestSuite.assert_fail() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-TestSuite}"
   __TestSuite._route "$_Self" fail "$@"
 }
 
 TestSuite.assert_match() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-TestSuite}"
   __TestSuite._route "$_Self" match "$@"
 }
 
 TestSuite.assert_contains() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-TestSuite}"
   __TestSuite._route "$_Self" contains "$@"
 }
 
 TestSuite.info() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-TestSuite}"
   local __TS_info_verbose
   __boop.parse "$_Self" "verbose" __TS_info_verbose
   [[ "$__TS_info_verbose" == "1" ]] && printf "  INFO: %s\n" "$1"
@@ -300,7 +299,7 @@ TestSuite.info() {
 # ============================================================================
 
 TestSuite.run() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-TestSuite}"
   local __TS_run_self="$_Self"
   local __TS_run_queue __TS_run_len
   __boop.parse "$__TS_run_self" "queue" __TS_run_queue
@@ -342,7 +341,7 @@ TestSuite.run() {
 # ============================================================================
 
 TestSuite.summary() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-TestSuite}"
 
   local __TS_sum_verbose
   __boop.parse "$_Self" "verbose" __TS_sum_verbose

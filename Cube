@@ -19,8 +19,7 @@ __boop_registry["Cube"]="|class=Cube|parent=Box|methods=new,side,top,end,bottom,
 
 # Cube constructor - sets all dimensions equal to size
 Cube.new() {
-  local -I _Class
-  : "${_Class:=Cube}"
+  local _Class="${_Class:-Cube}"
   local __Cube_new_size="" __Cube_new_self
 
   # Extract size from arguments
@@ -41,7 +40,7 @@ Cube.new() {
 
 # Calculate side face area (all faces equal for cube)
 Cube.side() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Cube}"
   local __Cube_side_size __Cube_side_val
   __boop.parse "$_Self" "size" __Cube_side_size
   into=__Cube_side_val _Self="$_Self" _Class=Box __boop.dispatch area "$__Cube_side_size" "$__Cube_side_size"
@@ -50,7 +49,7 @@ Cube.side() {
 
 # Top face (same as side for cube)
 Cube.top() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Cube}"
   local __Cube_top_val
   into=__Cube_top_val _Self="$_Self" _Class="$_Class" __boop.dispatch side
   boop.pass "$__Cube_top_val" ${into:-}
@@ -58,7 +57,7 @@ Cube.top() {
 
 # End face (same as side for cube)
 Cube.end() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Cube}"
   local __Cube_end_val
   into=__Cube_end_val _Self="$_Self" _Class="$_Class" __boop.dispatch side
   boop.pass "$__Cube_end_val" ${into:-}
@@ -66,7 +65,7 @@ Cube.end() {
 
 # Bottom face (same as side for cube)
 Cube.bottom() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Cube}"
   local __Cube_bottom_val
   into=__Cube_bottom_val _Self="$_Self" _Class="$_Class" __boop.dispatch side
   boop.pass "$__Cube_bottom_val" ${into:-}
@@ -74,7 +73,7 @@ Cube.bottom() {
 
 # Calculate volume
 Cube.volume() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Cube}"
   local __Cube_volume_size __Cube_volume_vol
   __boop.parse "$_Self" "size" __Cube_volume_size
   into=__Cube_volume_vol required=3 Box.calc "$__Cube_volume_size" "$__Cube_volume_size" "$__Cube_volume_size"

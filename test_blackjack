@@ -183,23 +183,45 @@ $t.assert_eq "36 plain cards (9 per suit)" "$_num_plain" "36"
 
 $t.section "Deck Shuffle"
 
-into=d1 Deck
-into=d2 Deck
-declare _d1_first _d2_first _d1_last _d2_last
-into=_d1_first $d1.get 0
-into=_d2_first $d2.get 0
-into=_d1_last $d1.get 51
-into=_d2_last $d2.get 51
-# At least one of first or last should differ (astronomically unlikely both match)
-declare _d1f_rank _d2f_rank _d1l_rank _d2l_rank
-__boop.parse "$_d1_first" "rank" _d1f_rank
-__boop.parse "$_d2_first" "rank" _d2f_rank
-__boop.parse "$_d1_last" "rank" _d1l_rank
-__boop.parse "$_d2_last" "rank" _d2l_rank
-declare _differ=0
-[[ "$_d1f_rank" != "$_d2f_rank" ]] && _differ=1
-[[ "$_d1l_rank" != "$_d2l_rank" ]] && _differ=1
-$t.assert_eq "two decks differ after shuffle" "$_differ" "1"
+# Build one unshuffled reference deck and one shuffled deck.
+# Walk all 52 cards, count how many are displaced from their
+# default fill position. A Fisher-Yates shuffle on 52 cards
+# displaces nearly all of them — fewer than 26 displaced would
+# be suspicious. If the first shuffle is unlucky, try once more.
+into=d_ref Deck
+# Unshuffle the reference deck by re-filling without shuffling
+_Self="$d_ref" _Class=Deck Deck.fill
+
+into=d_shuf Deck
+
+__shuf_check() {
+  local __shuf_ref="$1" __shuf_test="$2"
+  local -i __shuf_displaced=0 __shuf_i
+  local __shuf_ref_card __shuf_test_card __shuf_ref_rank __shuf_test_rank __shuf_ref_suit __shuf_test_suit
+  for (( __shuf_i=0; __shuf_i < 52; __shuf_i++ )); do
+    into=__shuf_ref_card _Delegate $__shuf_ref.get $__shuf_i
+    into=__shuf_test_card _Delegate $__shuf_test.get $__shuf_i
+    __boop.parse "$__shuf_ref_card" "rank" __shuf_ref_rank
+    __boop.parse "$__shuf_test_card" "rank" __shuf_test_rank
+    __boop.parse "$__shuf_ref_card" "suit" __shuf_ref_suit
+    __boop.parse "$__shuf_test_card" "suit" __shuf_test_suit
+    [[ "$__shuf_ref_rank" != "$__shuf_test_rank" || "$__shuf_ref_suit" != "$__shuf_test_suit" ]] && (( __shuf_displaced++ ))
+  done
+  printf "%d" "$__shuf_displaced"
+}
+
+__shuf_displaced=$(__shuf_check "$d_ref" "$d_shuf")
+$t.info "displaced cards (first shuffle): $__shuf_displaced"
+
+# If fewer than 26 displaced, reshuffle and try once more
+if (( __shuf_displaced < 45 )); then
+  _Self="$d_shuf" _Class=Deck Deck.shuffle
+  __shuf_displaced=$(__shuf_check "$d_ref" "$d_shuf")
+  $t.info "displaced cards (second shuffle): $__shuf_displaced"
+fi
+
+$t.assert_ok "shuffle displaces at least 45 of 52 cards" test "$__shuf_displaced" -ge 45
+unset -f __shuf_check
 
 # ============================================================================
 # Hand Basics

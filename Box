@@ -19,7 +19,7 @@ __boop_registry["Box"]="|class=Box|parent=boop|methods=calc,area,top,end,side,bo
 
 # Generic multiplication calculator
 Box.calc() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Box}"
   local -i __Box_calc_tot=1 required="${required:-0}"
 
   if ((required)); then
@@ -36,13 +36,13 @@ Box.calc() {
 
 # Calculate area (2D) — thin wrapper, passes into through
 Box.area() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Box}"
   required=2 into=${into:-} Box.calc "$@"
 }
 
 # Calculate top face area
 Box.top() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Box}"
   local __Box_top_l __Box_top_w __Box_top_val
   __boop.parse "$_Self" "length" __Box_top_l
   __boop.parse "$_Self" "width" __Box_top_w
@@ -52,7 +52,7 @@ Box.top() {
 
 # Calculate end face area
 Box.end() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Box}"
   local __Box_end_h __Box_end_w __Box_end_val
   __boop.parse "$_Self" "height" __Box_end_h
   __boop.parse "$_Self" "width" __Box_end_w
@@ -62,7 +62,7 @@ Box.end() {
 
 # Calculate side face area
 Box.side() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Box}"
   local __Box_side_h __Box_side_l __Box_side_val
   __boop.parse "$_Self" "height" __Box_side_h
   __boop.parse "$_Self" "length" __Box_side_l
@@ -72,7 +72,7 @@ Box.side() {
 
 # Calculate bottom face area (same as top)
 Box.bottom() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Box}"
   local __Box_bottom_val
   into=__Box_bottom_val _Self="$_Self" _Class="$_Class" __boop.dispatch top
   boop.pass "$__Box_bottom_val" ${into:-}
@@ -80,7 +80,7 @@ Box.bottom() {
 
 # Calculate volume (3D)
 Box.volume() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Box}"
   local __Box_volume_l __Box_volume_h __Box_volume_w __Box_volume_vol
   __boop.parse "$_Self" "length" __Box_volume_l
   __boop.parse "$_Self" "height" __Box_volume_h
@@ -91,8 +91,7 @@ Box.volume() {
 
 # Box constructor — delegates to base class.
 Box.new() {
-  local -I _Class
-  : "${_Class:=Box}"
+  local _Class="${_Class:-Box}"
   local __Box_new_self
   into=__Box_new_self __boop.new "$@"
   boop.pass "$__Box_new_self" ${into:-}

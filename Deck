@@ -15,7 +15,7 @@ __boop_registry["Deck"]="|class=Deck|parent=List\
 |properties=type"
 
 Deck.new() {
-  local -I _Class; _Class=Deck
+  local _Class="${_Class:-Deck}"; _Class=Deck
   local __Deck_new_self
   into=__Deck_new_self List.new "$@"
   _Self="$__Deck_new_self" _Class=Deck Deck.fill
@@ -24,7 +24,7 @@ Deck.new() {
 }
 
 Deck.fill() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Deck}"
   $_Self.clear
   local __Deck_fill_suits=("♠" "♥" "♦" "♣") __Deck_fill_s __Deck_fill_r __Deck_fill_c
   for __Deck_fill_s in "${__Deck_fill_suits[@]}"; do
@@ -42,7 +42,7 @@ Deck.fill() {
 }
 
 Deck.shuffle() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Deck}"
   local -i __Deck_shuf_len __Deck_shuf_i __Deck_shuf_j
   local __Deck_shuf_a __Deck_shuf_b
   into=__Deck_shuf_len $_Self.length
@@ -56,7 +56,7 @@ Deck.shuffle() {
 }
 
 Deck.draw() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Deck}"
   local __Deck_draw_card; into=__Deck_draw_card $_Self.pop
   boop.pass "$__Deck_draw_card" ${into:-}
 }

@@ -233,7 +233,7 @@ __boop.log() {
   (( __boop_log_level ==  0 )) && _Crash "$@" # level 0 = Crash; die loud, right now
   (( __boop_log_level == -1 )) && return 0    # explicit silent; nothing to do
   [[ -n "${__boop_logLevelName[$__boop_log_level]+set}" ]] || _Crash "invalid log level: '$__boop_log_level'"
-  local -I _Class                       # inherit caller's class context
+  local _Class="${_Class:-}"                # pick up caller's class context if set
 
   local __boop_log_class="${_Class:-boop}"   # fall back to "boop" if no class in scope
   local __boop_log_threshold
@@ -583,97 +583,57 @@ __boop.registerMethod() {
 # it finds a registered implementation, then caches the result under the
 # original class so the walk never happens again for that pair.
 #
-# Lazy baking: when called with __init=true (set by stub functions), dispatch
-# evals a baked wrapper onto $self that calls the resolved implementation
-# directly on all future invocations — no dispatch overhead after first call.
-# The baked wrapper includes a typecast guard: if the caller overrides _Class=
-# (e.g., _Class=Box $cube.volume), the wrapper detects the mismatch and falls
-# back to full dispatch so the typecast resolves correctly. This means normal
-# calls are fast (direct function call) and typecasts always work (dispatch).
+# Unified dispatcher with MRO resolution and direct call-through.
+#
+# Resolves a method name to its implementing function by checking the
+# method registry cache first (O(1)), then walking the inheritance chain
+# on cache miss. Caches the result so the walk never repeats for that
+# class+method pair.
+#
+# After resolution, calls the impl directly. No baking, no stubs, no
+# tiers — wrappers are written at creation time by registerClass (for
+# class-level functions) and wrapperAll (for object instances).
+#
+# Dispatch is still called by:
+#   - Constructor shorthands (Box() → dispatch new)
+#   - Property accessors (get/set routing)
+#   - __boop.super (parent method resolution)
+#   - Any explicit MRO lookup
+#
+# It is NOT called by normal method invocations — those go through
+# the direct wrappers written at creation time.
 __boop.dispatch() {
-  local _Self="${_Self:-${_Class:-boop}}" _Class="${_Class:-boop}"
-  local -l __init; : "${__init:=false}"
+  local __boop_dispatch_class="${_Class:-boop}"
+  local _Self="${_Self:-${__boop_dispatch_class}}"
   local __boop_dispatch_method="$1"; shift
 
   __boop.validate "$_Self"
-  __boop.validate "$_Class"
+  __boop.validate "$__boop_dispatch_class"
   __boop.validate "$__boop_dispatch_method"
 
   # Check cache first (direct lookup — O(1) in the common case)
-  local __boop_dispatch_cachekey="$_Class.$__boop_dispatch_method"
+  local __boop_dispatch_cachekey="$__boop_dispatch_class.$__boop_dispatch_method"
   local __boop_dispatch_impl="${__boop_methodRegistry[$__boop_dispatch_cachekey]:-}"
 
   # Cache miss: walk the inheritance chain (parent → grandparent → ...).
   # When found in an ancestor, cache it under the calling class so this
   # walk only happens once per class+method combination.
   if [[ -z "$__boop_dispatch_impl" ]]; then
-    local __boop_dispatch_current="$_Class"
+    local __boop_dispatch_current="$__boop_dispatch_class"
     while [[ -n "$__boop_dispatch_current" ]]; do
       __boop_dispatch_impl="${__boop_methodRegistry[$__boop_dispatch_current.$__boop_dispatch_method]:-}"
       if [[ -n "$__boop_dispatch_impl" ]]; then
-        [[ "$__boop_dispatch_current" != "$_Class" ]] && __boop_methodRegistry[$__boop_dispatch_cachekey]="$__boop_dispatch_impl"
+        [[ "$__boop_dispatch_current" != "$__boop_dispatch_class" ]] && __boop_methodRegistry[$__boop_dispatch_cachekey]="$__boop_dispatch_impl"
         break
       fi
       __boop.parse "$__boop_dispatch_current" "parent" __boop_dispatch_current
     done
   fi
 
-  [[ -n "$__boop_dispatch_impl" ]] || _Crash "Method not found: $_Class.$__boop_dispatch_method"
+  [[ -n "$__boop_dispatch_impl" ]] || _Crash "Method not found: $__boop_dispatch_class.$__boop_dispatch_method"
 
-  # If called from a stub (__init=true), bake a direct wrapper that replaces
-  # the stub function. The baked wrapper hardcodes self, class, and the
-  # resolved impl — no dispatch overhead on subsequent calls.
-  #
-  # TYPECAST vs LEAKAGE DETECTION (three-tier):
-  #
-  # The baked wrapper must handle three cases when the ambient class
-  # differs from the baked class:
-  #
-  #   1. Exact match (common case): ambient class == baked class, or no
-  #      ambient class at all. Use the fast path — direct function call
-  #      with hardcoded self/class/impl. Zero dispatch overhead.
-  #
-  #   2. Family member: ambient class is in the baked class's inheritance
-  #      chain (e.g., _Class=FaceCard on a Card object). This is a
-  #      legitimate typecast — let dispatch resolve the method via MRO
-  #      starting from the ambient class.
-  #
-  #   3. Unrelated class: ambient class is NOT in the family tree (e.g.,
-  #      _Class=Hand leaking into a Card method via local -I in a Hand
-  #      method). This is leakage — ignore it and use the fast path.
-  #      See TODO above for future configurable behavior (warn/strict).
-  #
-  # EVAL ESCAPING NOTES:
-  #
-  # At eval time, $_Self, $_Class, $__boop_dispatch_impl, and $__boop_dispatch_method
-  # expand to their current values and get hardcoded into the wrapper.
-  # \$ and \"-quoted expansions survive eval and expand at runtime instead.
-  #
-  #   "${_Class:-Card}".isa Card
-  #    ^^^^^^^^^^^^^^^^ — runtime expansion: ambient class, defaulting to baked
-  #                    — quotes force word boundary so .isa isn't swallowed
-  #                         ^^^^ — hardcoded at eval time
-  if [[ "$__init" == "true" ]]; then
-    eval "$_Self.$__boop_dispatch_method() {
-      # Tier 1: exact match or no ambient class — fast path (common case)
-      if [[ \"\${_Class:-$_Class}\" == '$_Class' ]]; then
-        _Self='$_Self' _Class='$_Class' $__boop_dispatch_impl \"\$@\"
-      # Tier 2: ambient class is in the family — legitimate typecast
-      #   Check: is this object an instance of the ambient class?
-      #   Covers both upcasts (_Class=Box on a Cube) and downcasts.
-      #   Uses __boop.isa directly to avoid triggering dispatch
-      #   recursion through the baked wrapper system.
-      elif _Self='$_Self' _Class='$_Class' __boop.isa \"\${_Class:-$_Class}\"; then
-        _Self='$_Self' _Class=\"\${_Class:-$_Class}\" __boop.dispatch $__boop_dispatch_method \"\$@\"
-      # Tier 3: unrelated class (leakage) — warn and use fast path
-      else
-        _Class='$_Class' _Warn \"class leakage: \\\"\${_Class}\\\" is unrelated to $_Class in $_Self.$__boop_dispatch_method — using $_Class. (Did you mean to use _Delegate?)\"
-        _Self='$_Self' _Class='$_Class' $__boop_dispatch_impl \"\$@\"
-      fi
-    }"
-  fi
-
-  _Self="$_Self" _Class="$_Class" "$__boop_dispatch_impl" "$@"
+  # Call the resolved implementation directly
+  _Self="$_Self" _Class="$__boop_dispatch_class" $__boop_dispatch_impl "$@"
 }
 
 # ============================================================================
@@ -684,8 +644,8 @@ __boop.dispatch() {
 #   key<TAB>descriptor
 # where key is an object ID or class name and descriptor is the raw
 # pipe-delimited string. This captures the full state of all objects
-# and class definitions. Does NOT serialize baked wrapper functions —
-# those are regenerated on next access via the stub/bake mechanism.
+# and class definitions. Does NOT serialize wrapper functions —
+# those are regenerated by wrapperAll after deserializing.
 __boop.serialize() {
   local __boop_serialize_file="${1:-objects.dat}"
   for __boop_serialize_key in "${!__boop_registry[@]}"; do
@@ -698,9 +658,8 @@ __boop.serialize() {
 # tampered data files. Existing registry entries with the same key
 # are overwritten — last write wins.
 # NOTE: This restores descriptor data only. Object wrapper functions
-# (stubs/baked) are NOT recreated — call __boop.stubAll or
-# __boop.refresh on each object after deserializing if you need
-# to call methods on them.
+# are NOT recreated — call __boop.backfillMethods or __boop.refresh on
+# each object after deserializing if you need to call methods on them.
 __boop.deserialize() {
   local __boop_deserialize_file="${1:-objects.dat}"
   [[ -f "$__boop_deserialize_file" ]] || _Crash "File not found: $__boop_deserialize_file"
@@ -720,7 +679,7 @@ __boop.deserialize() {
 # The ${into:-} passes through the caller's nameref target (if any)
 # so the value lands directly in their variable without touching the global.
 __boop.get() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-boop}"
   __boop.parse "$_Self" "$1" ${into:-}
 }
 
@@ -733,7 +692,7 @@ __boop.get() {
 # exist, it's appended to the end. This means property order in the
 # descriptor reflects insertion order, with mutations preserving position.
 __boop.set() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-boop}"
   local __boop_set_prop="$1" __boop_set_encoded
   __boop.encode "$2" __boop_set_encoded
 
@@ -758,7 +717,7 @@ __boop.set() {
 # communicates via exit code only (0/1), which is the bash convention
 # for boolean checks: `$obj.isa Box && printf "it's a box"`
 __boop.isa() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-boop}"
   local __boop_isa_query="${1:-}"
 
   if [[ -z "$__boop_isa_query" ]]; then
@@ -793,7 +752,7 @@ __boop.isa() {
 #        $obj.toString pretty             # columnar with newlines
 #        prettyPrint=true $obj.toString    # same, via environment
 __boop.toString() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-boop}"
   local -l prettyPrint; : "${prettyPrint:=false}"
   [[ "${1:-}" == "pretty" ]] && prettyPrint=true
   local __boop_toString_descriptor="${__boop_registry[$_Self]:-}"
@@ -857,16 +816,15 @@ __boop.toString() {
 # 2. Builds a pipe-delimited descriptor from the class name and any
 #    key=value arguments, encoding values for safe storage.
 # 3. Registers the descriptor in __boop_registry.
-# 4. Generates lazy stubs for all methods and property accessors via
-#    __boop.stubAll. Stubs are tiny eval'd functions that call
-#    dispatch with __init=true on first use, triggering the bake
-#    mechanism that replaces them with direct wrappers.
+# 4. Generates direct wrappers for all methods and property accessors
+#    via __boop.backfillMethods. Each wrapper is a one-hop delegation to the
+#    class-level function — no dispatch overhead on normal calls.
 #
 # Arguments are key=value pairs. Duplicate keys are allowed — both
 # end up in the descriptor, but get/parse will match the first one.
 # (This is documented behavior, not a bug.)
 __boop.new() {
-  local -I _Class; : "${_Class:=boop}"
+  local _Class="${_Class:-boop}"
 
   # Generate unique object ID
   local _Self; printf -v _Self "_%x" "${EPOCHREALTIME//.}"
@@ -892,8 +850,8 @@ __boop.new() {
   # Register object
   __boop_registry[$_Self]="$__boop_new_descriptor"
 
-  # Generate lazy stubs for all methods (walk inheritance chain)
-  __boop.stubAll "$_Self" "$_Class"
+  # Generate direct wrappers for all methods (walk inheritance chain)
+  __boop.backfillMethods "$_Self" "$_Class"
 
   boop.pass "$_Self" ${into:-}
 }
@@ -903,7 +861,7 @@ __boop.new() {
 # Crashes if the class has no parent (you're already at the root — nowhere to go).
 # Usage: _Self=$obj _Class=Cube __boop.dispatch super volume
 __boop.super() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-boop}"
   local __boop_super_parent; __boop.parse "$_Class" "parent" __boop_super_parent
   [[ -n "$__boop_super_parent" ]] || _Crash "$_Class has no parent"
   _Self="$_Self" _Class="$__boop_super_parent" __boop.dispatch "$@"
@@ -913,60 +871,65 @@ __boop.super() {
 # STUB GENERATION & CLASS REGISTRATION
 # ============================================================================
 
-# Generate lazy stubs for all methods and property accessors on an object.
-# Walks the full inheritance chain so inherited methods get stubs too.
+# Generate direct wrappers for all methods and property accessors on an
+# object. Walks the full inheritance chain so inherited methods get
+# wrappers too.
 #
-# Method stubs: tiny eval'd functions that call dispatch with __init=true.
-# On first invocation, dispatch resolves the method via MRO and bakes a
-# direct wrapper that replaces the stub. Cost: one eval per method at
-# object creation time, one dispatch on first call, then zero overhead.
+# Method wrappers: one-hop delegation to the class-level function.
+# The class-level function is either the author's real impl (e.g.,
+# Box.volume) or a wrapper that registerClass created for inherited
+# methods. No dispatch on normal calls — zero overhead after creation.
 #
-# Property stubs: dual-purpose get/set accessors. Called with no args,
-# they dispatch to "get" with the property name. Called with one arg,
-# they dispatch to "set". This gives you $obj.length (get) and
+#   $obj.volume() { _Self='$id' Box.volume "$@"; }
+#
+# Property wrappers: dual-purpose get/set accessors. Called with no
+# args, they dispatch to "get" with the property name. Called with one
+# arg, they dispatch to "set". This gives you $obj.length (get) and
 # $obj.length 42 (set) syntax.
 #
 # Pass "force" as $3 to overwrite existing functions — used by refresh
-# to tear down baked wrappers and re-stub everything.
-__boop.stubAll() {
-  local __boop_stubAll_self="$1" __boop_stubAll_class="$2" __boop_stubAll_force="${3:-}"
-  local __boop_stubAll_current="$__boop_stubAll_class" __boop_stubAll_method __boop_stubAll_methods
+# to tear down wrappers and regenerate everything.
+__boop.backfillMethods() {
+  local __boop_backfillMethods_self="$1" __boop_backfillMethods_class="$2" __boop_backfillMethods_force="${3:-}"
+  local __boop_backfillMethods_current="$__boop_backfillMethods_class" __boop_backfillMethods_method __boop_backfillMethods_tmp
 
-  # Walk inheritance chain, stub all methods
-  while [[ -n "$__boop_stubAll_current" ]]; do
-    __boop.parse "$__boop_stubAll_current" "methods" __boop_stubAll_methods
-    IFS=',' read -ra __boop_stubAll_methodList <<< "$__boop_stubAll_methods"
-    for __boop_stubAll_method in "${__boop_stubAll_methodList[@]}"; do
-      [[ -n "$__boop_stubAll_method" ]] || continue
-      [[ "$__boop_stubAll_force" != "force" ]] && declare -f "$__boop_stubAll_self.$__boop_stubAll_method" >/dev/null && continue
-      eval "$__boop_stubAll_self.$__boop_stubAll_method() { __init=true _Self='$__boop_stubAll_self' _Class='$__boop_stubAll_class' __boop.dispatch $__boop_stubAll_method \"\$@\"; }"
+  # Walk inheritance chain, create direct wrappers for all methods
+  while [[ -n "$__boop_backfillMethods_current" ]]; do
+    __boop.parse "$__boop_backfillMethods_current" "methods" __boop_backfillMethods_tmp
+    IFS=',' read -ra __boop_backfillMethods_methodList <<< "$__boop_backfillMethods_tmp"
+    for __boop_backfillMethods_method in "${__boop_backfillMethods_methodList[@]}"; do
+      [[ -n "$__boop_backfillMethods_method" ]] || continue
+      [[ "$__boop_backfillMethods_force" != "force" ]] && declare -f "$__boop_backfillMethods_self.$__boop_backfillMethods_method" >/dev/null && continue
+      # Direct one-hop wrapper: object → class-level function
+      # _Class is set so methods using local -I _Class don't hit
+      # unbound variable errors under set -u
+      eval "$__boop_backfillMethods_self.$__boop_backfillMethods_method() { _Self='$__boop_backfillMethods_self' _Class='$__boop_backfillMethods_class' $__boop_backfillMethods_class.$__boop_backfillMethods_method \"\$@\"; }"
     done
-    __boop.parse "$__boop_stubAll_current" "parent" __boop_stubAll_current
+    __boop.parse "$__boop_backfillMethods_current" "parent" __boop_backfillMethods_current
   done
 
-  # Stub property accessors (get/set by property name)
-  local __boop_stubAll_props __boop_stubAll_prop
-  __boop.parse "$__boop_stubAll_class" "properties" __boop_stubAll_props
-  IFS=',' read -ra __boop_stubAll_propList <<< "$__boop_stubAll_props"
-  for __boop_stubAll_prop in "${__boop_stubAll_propList[@]}"; do
-    [[ -n "$__boop_stubAll_prop" ]] || continue
-    [[ "$__boop_stubAll_force" != "force" ]] && declare -f "$__boop_stubAll_self.$__boop_stubAll_prop" >/dev/null && continue
-    eval "$__boop_stubAll_self.$__boop_stubAll_prop() {
-      if ((\$#)); then _Self='$__boop_stubAll_self' _Class='$__boop_stubAll_class' __boop.dispatch set '$__boop_stubAll_prop' \"\$1\"
-      else _Self='$__boop_stubAll_self' _Class='$__boop_stubAll_class' __boop.dispatch get '$__boop_stubAll_prop'; fi
+  # Property accessors (get/set by property name)
+  local __boop_backfillMethods_props __boop_backfillMethods_prop
+  __boop.parse "$__boop_backfillMethods_class" "properties" __boop_backfillMethods_props
+  IFS=',' read -ra __boop_backfillMethods_propList <<< "$__boop_backfillMethods_props"
+  for __boop_backfillMethods_prop in "${__boop_backfillMethods_propList[@]}"; do
+    [[ -n "$__boop_backfillMethods_prop" ]] || continue
+    [[ "$__boop_backfillMethods_force" != "force" ]] && declare -f "$__boop_backfillMethods_self.$__boop_backfillMethods_prop" >/dev/null && continue
+    eval "$__boop_backfillMethods_self.$__boop_backfillMethods_prop() {
+      if ((\$#)); then _Self='$__boop_backfillMethods_self' _Class='$__boop_backfillMethods_class' __boop.dispatch set '$__boop_backfillMethods_prop' \"\$1\"
+      else _Self='$__boop_backfillMethods_self' _Class='$__boop_backfillMethods_class' __boop.dispatch get '$__boop_backfillMethods_prop'; fi
     }"
   done
 }
 
-# Re-stub all methods on an existing object. Tears down baked wrappers
-# and replaces them with fresh stubs. The next call to any method will
-# re-resolve via dispatch and re-bake. Useful after modifying the method
+# Re-wrap all methods on an existing object. Tears down existing wrappers
+# and replaces them with fresh ones. Useful after modifying the method
 # registry at runtime (e.g., monkey-patching a method implementation).
 __boop.refresh() {
   local __boop_refresh_self="$1"
   local __boop_refresh_class; __boop.parse "$__boop_refresh_self" "class" __boop_refresh_class
   [[ -n "$__boop_refresh_class" ]] || _Crash "Cannot refresh: no class for '$__boop_refresh_self'"
-  __boop.stubAll "$__boop_refresh_self" "$__boop_refresh_class" force
+  __boop.backfillMethods "$__boop_refresh_self" "$__boop_refresh_class" force
 }
 
 # Finalize a class definition. Call this at the bottom of a class file
@@ -974,10 +937,11 @@ __boop.refresh() {
 #
 # What it does:
 # 1. Walks the inheritance chain collecting all method names.
-# 2. For each method, creates a ClassName.method() wrapper that dispatches
-#    with the class hardcoded. These wrappers let you call Box.volume()
-#    as a class-level method (useful for static-style calls and as the
-#    target of __boop.registerMethod).
+# 2. For each inherited method where ClassName.method doesn't already
+#    exist, resolves the impl via the method registry (MRO walk) and
+#    creates a direct class-level wrapper:
+#      Box.toString() { _Self=$_Self _Class='Box' __boop.toString "$@"; }
+#    These are one-hop delegations — no dispatch on normal calls.
 # 3. If the class name itself isn't already a function, creates a
 #    constructor shorthand: Box() { _Class=Box __boop.dispatch new "$@"; }
 #    This enables the clean `Box length=5 width=3 height=7` syntax.
@@ -993,9 +957,10 @@ __boop.registerClass() {
   [[ -n "${__boop_registry[$__boop_registerClass_class]:-}" ]] || 
     _Crash "No descriptor for class '$__boop_registerClass_class' — register it first"
 
-  local __boop_registerClass_current="$__boop_registerClass_class" __boop_registerClass_method __boop_registerClass_methods
+  local __boop_registerClass_current="$__boop_registerClass_class"
+  local __boop_registerClass_method __boop_registerClass_methods __boop_registerClass_impl
 
-  # Walk inheritance chain, create ClassName.method wrappers
+  # Walk inheritance chain, create direct class-level wrappers
   while [[ -n "$__boop_registerClass_current" ]]; do
     __boop.parse "$__boop_registerClass_current" "methods" __boop_registerClass_methods
     IFS=',' read -ra __boop_registerClass_methodList <<< "${__boop_registerClass_methods:-}"
@@ -1003,12 +968,26 @@ __boop.registerClass() {
       [[ -n "$__boop_registerClass_method" ]] || continue
       # Don't overwrite — class author's definitions take priority
       declare -f "$__boop_registerClass_class.$__boop_registerClass_method" >/dev/null && continue
-      eval "$__boop_registerClass_class.$__boop_registerClass_method() { _Class='$__boop_registerClass_class' __boop.dispatch $__boop_registerClass_method \"\$@\"; }"
+      # Resolve the impl via MRO: check this ancestor's registry entry,
+      # then walk up if needed. Cache the result for future lookups.
+      __boop_registerClass_impl="${__boop_methodRegistry[$__boop_registerClass_current.$__boop_registerClass_method]:-}"
+      if [[ -z "$__boop_registerClass_impl" ]]; then
+        # Walk further up from this ancestor to find the impl
+        local __boop_registerClass_walk="$__boop_registerClass_current"
+        while [[ -n "$__boop_registerClass_walk" ]]; do
+          __boop_registerClass_impl="${__boop_methodRegistry[$__boop_registerClass_walk.$__boop_registerClass_method]:-}"
+          [[ -n "$__boop_registerClass_impl" ]] && break
+          __boop.parse "$__boop_registerClass_walk" "parent" __boop_registerClass_walk
+        done
+      fi
+      [[ -n "$__boop_registerClass_impl" ]] || continue
+      # Direct wrapper: passes _Self through from runtime, hardcodes _Class
+      eval "$__boop_registerClass_class.$__boop_registerClass_method() { _Self=\"\$_Self\" _Class='$__boop_registerClass_class' $__boop_registerClass_impl \"\$@\"; }"
     done
     __boop.parse "$__boop_registerClass_current" "parent" __boop_registerClass_current
   done
 
-  # Make the class name itself a constructor
+  # Make the class name itself a constructor (still uses dispatch for new)
   declare -f "$__boop_registerClass_class" >/dev/null || 
     eval "$__boop_registerClass_class() { _Class='$__boop_registerClass_class' __boop.dispatch new \"\$@\"; }"
 }

@@ -1,36 +1,68 @@
 #!/bin/bash
 
-# Hand — blackjack hand with scoring
+# Hand — blackjack hand with scoring.
+#
+# A Hand is a List of Card objects that knows how to score itself
+# using blackjack rules. It inherits all of List's collection
+# behavior (push, get, length, etc.) and adds scoring methods.
+#
+# Inheritance: boop → Container → List → Hand
+#
+# Properties:
+#   type  — container type tag (inherited from List)
+#
+# Methods:
+#   new          — create an empty hand (delegates to List.new)
+#   total        — sum card values with ace adjustment (11→1 if bust)
+#   isBust       — true if total > 21
+#   isBlackjack  — true if exactly 2 cards totaling 21
+#   show         — formatted string: "Label: [A♠] [K♥]  [21]"
+#
+# Usage:
+#   . boop Hand
+#   into=h Hand
+#   $h.push "$card1"
+#   $h.push "$card2"
+#   into=t $h.total        # → 21
+#   $h.isBlackjack && printf "Blackjack!\n"
+#   into=s $h.show         # → "Hand: [A♠] [K♥]  [21]"
 
+# Load guard — skip if already registered
 [[ -n "${__boop_registry[Hand]+set}" ]] && return 2>/dev/null
 
 . boop List Card
 
 # ═════════════════════════════════════════════════════════════════════
-# Hand extends List — holds cards, computes score
+# Method Implementations
 # ═════════════════════════════════════════════════════════════════════
 
-__boop_registry["Hand"]="|class=Hand|parent=List\
-|methods=new,total,isBust,isBlackjack,show\
-|properties=type"
-
+# Create a new empty Hand. Delegates to List.new for the actual
+# collection setup, then tags it as a Hand.
 Hand.new() {
-  local -I _Class; _Class=Hand
+  local _Class="${_Class:-Hand}"
   local __Hand_new_self
   into=__Hand_new_self List.new
   boop.pass "$__Hand_new_self" ${into:-}
 }
 
+# Compute the hand's blackjack score.
+#
+# Walks every card, sums values, then adjusts aces downward (11→1)
+# one at a time until the total is ≤21 or no aces remain. This is
+# standard blackjack ace logic — aces are worth 11 unless that
+# would bust the hand.
+#
+# Returns: integer score via boop.pass
 Hand.total() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Hand}"
   local -i __Hand_total_sum=0 __Hand_total_aces=0 __Hand_total_i __Hand_total_len
   local __Hand_total_card __Hand_total_v
   into=__Hand_total_len $_Self.length
   for (( __Hand_total_i=0; __Hand_total_i < __Hand_total_len; __Hand_total_i++ )); do
     into=__Hand_total_card $_Self.get $__Hand_total_i
-    into=__Hand_total_v $__Hand_total_card.val
+    into=__Hand_total_v _Delegate $__Hand_total_card.val
+    _Delegate $__Hand_total_card.isa Ace && (( __Hand_total_aces++ )) || true
     (( __Hand_total_sum += __Hand_total_v ))
-    $__Hand_total_card.isa Ace && (( __Hand_total_aces++ )) || true
   done
   while (( __Hand_total_sum > 21 && __Hand_total_aces > 0 )); do
     (( __Hand_total_sum -= 10 )); (( __Hand_total_aces-- ))
@@ -38,15 +70,19 @@ Hand.total() {
   boop.pass "$__Hand_total_sum" ${into:-}
 }
 
+# Check if the hand is bust (total exceeds 21).
+# Returns: exit code 0 (true) if bust, 1 (false) otherwise
 Hand.isBust() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Hand}"
   local -i __Hand_isBust_total
   into=__Hand_isBust_total _Self="$_Self" _Class=Hand Hand.total
   (( __Hand_isBust_total > 21 )) && return 0 || return 1
 }
 
+# Check if the hand is a natural blackjack (exactly 2 cards, total 21).
+# Returns: exit code 0 (true) if blackjack, 1 (false) otherwise
 Hand.isBlackjack() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Hand}"
   local -i __Hand_isBJ_len __Hand_isBJ_total
   into=__Hand_isBJ_len $_Self.length
   (( __Hand_isBJ_len != 2 )) && return 1
@@ -54,14 +90,26 @@ Hand.isBlackjack() {
   (( __Hand_isBJ_total == 21 )) && return 0 || return 1
 }
 
+# Format the hand for display.
+#
+# Shows each card's toString representation separated by spaces,
+# followed by the total in brackets. If any card is face-down
+# (shows as "[?]"), the total is hidden — you can't score what
+# you can't see.
+#
+# Arguments:
+#   $1 — label prefix (default: "Hand")
+#
+# Returns: formatted string like "Dealer: [A♠] [?]" or
+#          "Player: [A♠] [K♥]  [21]"
 Hand.show() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Hand}"
   local __Hand_show_label="${1:-Hand}" __Hand_show_out="" __Hand_show_card __Hand_show_str
   local -i __Hand_show_i __Hand_show_len __Hand_show_total __Hand_show_hidden=0
   into=__Hand_show_len $_Self.length
   for (( __Hand_show_i=0; __Hand_show_i < __Hand_show_len; __Hand_show_i++ )); do
     into=__Hand_show_card $_Self.get $__Hand_show_i
-    into=__Hand_show_str $__Hand_show_card.toString
+    into=__Hand_show_str _Delegate $__Hand_show_card.toString
     [[ "$__Hand_show_str" == "[?]" ]] && __Hand_show_hidden=1
     (( __Hand_show_i > 0 )) && __Hand_show_out="$__Hand_show_out "
     __Hand_show_out="$__Hand_show_out$__Hand_show_str"
@@ -75,9 +123,8 @@ Hand.show() {
   boop.pass "$__Hand_show_out" ${into:-}
 }
 
-__boop.registerMethod Hand new
-__boop.registerMethod Hand total
-__boop.registerMethod Hand isBust
-__boop.registerMethod Hand isBlackjack
-__boop.registerMethod Hand show
-__boop.registerClass Hand
+# ═════════════════════════════════════════════════════════════════════
+# Class Declaration
+# ═════════════════════════════════════════════════════════════════════
+
+boopClass Hand isa:List public:new,total,isBust,isBlackjack,show has:type

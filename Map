@@ -44,8 +44,7 @@ __boop_registry["Map"]="|class=Map|parent=Container|methods=new,get,set,delete,l
 #
 # Usage: into=mymap Map
 Map.new() {
-  local -I _Class
-  : "${_Class:=Map}"
+  local _Class="${_Class:-Map}"
   local __Map_new_self
   into=__Map_new_self __boop.new type=associative "$@"
   declare -gA "__boop_data_${__Map_new_self}"
@@ -61,7 +60,7 @@ Map.new() {
 #
 # Usage: into=val $map.get "host"
 Map.get() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Map}"
   local __Map_get_key="$1"
   local -n __Map_get_arr="__boop_data_${_Self}"
   boop.pass "${__Map_get_arr[$__Map_get_key]:-}" ${into:-}
@@ -75,7 +74,7 @@ Map.get() {
 #
 # Usage: $map.set "host" "localhost"
 Map.set() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Map}"
   local __Map_set_key="$1" __Map_set_val="$2"
   local -n __Map_set_arr="__boop_data_${_Self}"
   local -n __Map_set_keys="__boop_keys_${_Self}"
@@ -95,7 +94,7 @@ Map.set() {
 #
 # Usage: $map.delete "debug"
 Map.delete() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Map}"
   local __Map_del_key="$1"
   local -n __Map_del_arr="__boop_data_${_Self}"
   local -n __Map_del_keys="__boop_keys_${_Self}"
@@ -117,7 +116,7 @@ Map.delete() {
 #
 # Usage: into=len $map.length
 Map.length() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Map}"
   local -n __Map_length_arr="__boop_data_${_Self}"
   local -i __Map_length_len=0; [[ -n "${!__Map_length_arr[@]}" ]] && __Map_length_len=${#__Map_length_arr[@]}
   boop.pass "$__Map_length_len" ${into:-}
@@ -127,7 +126,7 @@ Map.length() {
 #
 # Usage: $map.clear
 Map.clear() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Map}"
   local -n __Map_clear_arr="__boop_data_${_Self}"
   local -n __Map_clear_keys="__boop_keys_${_Self}"
   __Map_clear_arr=()
@@ -138,7 +137,7 @@ Map.clear() {
 #
 # Usage: $map.has "host" && printf "host is configured"
 Map.has() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Map}"
   local __Map_has_key="$1"
   local -n __Map_has_arr="__boop_data_${_Self}"
   [[ -n "${__Map_has_arr[$__Map_has_key]+set}" ]] && return 0 || return 1
@@ -148,7 +147,7 @@ Map.has() {
 #
 # Usage: into=k $map.keys
 Map.keys() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Map}"
   local -n __Map_keys_keys="__boop_keys_${_Self}"
   local __Map_keys_out
   if ! [[ -n "${!__Map_keys_keys[@]}" ]] || (( ${#__Map_keys_keys[@]} == 0 )); then
@@ -167,7 +166,7 @@ Map.keys() {
 #
 # Usage: into=v $map.values
 Map.values() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Map}"
   local -n __Map_values_arr="__boop_data_${_Self}"
   local -n __Map_values_keys="__boop_keys_${_Self}"
   local __Map_values_out=""
@@ -189,7 +188,7 @@ Map.values() {
 #
 # Usage: into=entries $map.toArray
 Map.toArray() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Map}"
   local -n __Map_toArray_arr="__boop_data_${_Self}"
   local -n __Map_toArray_keys="__boop_keys_${_Self}"
   local __Map_toArray_out="" __Map_toArray_key __Map_toArray_first=1
@@ -210,7 +209,7 @@ Map.toArray() {
 #
 # Usage: $map.toString
 Map.toString() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Map}"
   local -n __Map_ts_arr="__boop_data_${_Self}"
   local -n __Map_ts_keys="__boop_keys_${_Self}"
   local __Map_ts_out="Map($_Self){ " __Map_ts_key __Map_ts_first=1
@@ -232,7 +231,7 @@ Map.toString() {
 #
 # Usage: $map.each my_callback
 Map.each() {
-  local -I _Self _Class
+  local -I _Self; local _Class="${_Class:-Map}"
   local __Map_each_fn="$1"
   local -n __Map_each_arr="__boop_data_${_Self}"
   local -n __Map_each_keys="__boop_keys_${_Self}"
