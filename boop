@@ -1090,71 +1090,140 @@ __boop.import() {
 #     has:digits,scale,neg
 #
 # For methods registered on a DIFFERENT class (e.g., Container adding
-# methods to boop), use __boop.registerMethod directly — boopClass
-# declares one class at a time.
-boopClass() {
-  local __boopClass_input="$*"                         # join all args
-  local __boopClass_class="" __boopClass_parent="boop"
-  local __boopClass_public="" __boopClass_custom="" __boopClass_has=""
-  local __boopClass_token __boopClass_key __boopClass_val
+# methods to boop), use boopExtend — it appends methods to an existing
+# class without overwriting its descriptor.
 
-  for __boopClass_token in $__boopClass_input; do      # word-split on whitespace
-    case "$__boopClass_token" in
-      isa:*)    __boopClass_parent="${__boopClass_token#isa:}" ;;
-      has:*)    __boopClass_val="${__boopClass_token#has:}"
-                __boopClass_has="${__boopClass_has:+$__boopClass_has,}$__boopClass_val" ;;
-      public:*) __boopClass_val="${__boopClass_token#public:}"
-                __boopClass_public="${__boopClass_public:+$__boopClass_public,}$__boopClass_val" ;;
-      custom:*) __boopClass_val="${__boopClass_token#custom:}"
-                __boopClass_custom="${__boopClass_custom:+$__boopClass_custom,}$__boopClass_val" ;;
-      *)        # First bare word is the class name; extras are an error
-                if [[ -z "$__boopClass_class" ]]; then
-                  __boopClass_class="$__boopClass_token"
+# Shared helper — parse public:/custom: token lists and call
+# registerMethod for each entry. Used by both boopClass and boopExtend.
+#   $1 = class name
+#   $2 = comma-separated public method names (may be empty)
+#   $3 = comma-separated custom entries "name=impl" (may be empty)
+__boopClass.registerMethods() {
+  local __boopClass_rm_class="$1" __boopClass_rm_public="$2" __boopClass_rm_custom="$3"
+  local __boopClass_rm_mname __boopClass_rm_entry __boopClass_rm_impl
+
+  if [[ -n "$__boopClass_rm_public" ]]; then
+    IFS=',' read -ra __boopClass_rm_pubArr <<< "$__boopClass_rm_public"
+    for __boopClass_rm_mname in "${__boopClass_rm_pubArr[@]}"; do
+      [[ -n "$__boopClass_rm_mname" ]] || continue
+      __boop.registerMethod "$__boopClass_rm_class" "$__boopClass_rm_mname"
+    done
+  fi
+
+  if [[ -n "$__boopClass_rm_custom" ]]; then
+    IFS=',' read -ra __boopClass_rm_customArr <<< "$__boopClass_rm_custom"
+    for __boopClass_rm_entry in "${__boopClass_rm_customArr[@]}"; do
+      __boopClass_rm_mname="${__boopClass_rm_entry%%=*}"
+      __boopClass_rm_impl="${__boopClass_rm_entry#*=}"
+      [[ -n "$__boopClass_rm_mname" && -n "$__boopClass_rm_impl" ]] || \
+        _Crash "boopClass: bad custom entry '$__boopClass_rm_entry' — expected name=impl"
+      __boop.registerMethod "$__boopClass_rm_class" "$__boopClass_rm_mname" "$__boopClass_rm_impl"
+    done
+  fi
+}
+
+# Parse the token stream shared by boopClass and boopExtend.
+# Sets caller-scoped variables: __boopClass_class, __boopClass_parent,
+# __boopClass_public, __boopClass_custom, __boopClass_has.
+__boopClass.parseTokens() {
+  local __boopClass_pt_input="$*"
+  __boopClass_class="" ; __boopClass_parent="boop"
+  __boopClass_public=""; __boopClass_custom=""; __boopClass_has=""
+  local __boopClass_pt_token __boopClass_pt_val
+
+  for __boopClass_pt_token in $__boopClass_pt_input; do
+    case "$__boopClass_pt_token" in
+      isa:*)    __boopClass_parent="${__boopClass_pt_token#isa:}" ;;
+      has:*)    __boopClass_pt_val="${__boopClass_pt_token#has:}"
+                __boopClass_has="${__boopClass_has:+$__boopClass_has,}$__boopClass_pt_val" ;;
+      public:*) __boopClass_pt_val="${__boopClass_pt_token#public:}"
+                __boopClass_public="${__boopClass_public:+$__boopClass_public,}$__boopClass_pt_val" ;;
+      custom:*) __boopClass_pt_val="${__boopClass_pt_token#custom:}"
+                __boopClass_custom="${__boopClass_custom:+$__boopClass_custom,}$__boopClass_pt_val" ;;
+      *)        if [[ -z "$__boopClass_class" ]]; then
+                  __boopClass_class="$__boopClass_pt_token"
                 else
-                  _Crash "boopClass: unexpected token '$__boopClass_token' (class already set to '$__boopClass_class')"
+                  _Crash "boopClass: unexpected token '$__boopClass_pt_token' (class already set to '$__boopClass_class')"
                 fi ;;
     esac
   done
+}
 
+# Build a combined method name list from public + custom tokens.
+# Returns via nameref $1.
+__boopClass.methodList() {
+  local -n __boopClass_ml_out="$1"
+  __boopClass_ml_out="$__boopClass_public"
+  if [[ -n "$__boopClass_custom" ]]; then
+    local __boopClass_ml_entry __boopClass_ml_mname
+    IFS=',' read -ra __boopClass_ml_arr <<< "$__boopClass_custom"
+    for __boopClass_ml_entry in "${__boopClass_ml_arr[@]}"; do
+      __boopClass_ml_mname="${__boopClass_ml_entry%%=*}"
+      __boopClass_ml_out="${__boopClass_ml_out:+$__boopClass_ml_out,}$__boopClass_ml_mname"
+    done
+  fi
+}
+
+# boopClass — declare a new class in one statement.
+#
+# Writes a fresh descriptor, registers all methods, and builds
+# dispatch wrappers. This is the standard way to define a class.
+#
+# Syntax:
+#   boopClass ClassName [isa:Parent] public:m1,m2 [custom:m3=impl] [has:p1,p2]
+#
+# Examples:
+#   boopClass Box public:new,volume,area,top,toString has:length,width,height
+#   boopClass Hand isa:List public:new,total,isBust,isBlackjack,show has:type
+#   boopClass Math public:new,val,toString custom:add=__Math.i_add has:digits,scale,neg
+boopClass() {
+  local __boopClass_class __boopClass_parent __boopClass_public __boopClass_custom __boopClass_has
+  __boopClass.parseTokens "$@"
   [[ -n "$__boopClass_class" ]] || _Crash "boopClass: no class name given"
 
-  # Build the combined method list for the descriptor (public + custom names)
-  local __boopClass_allMethods="$__boopClass_public"
-  local __boopClass_entry __boopClass_mname
-  if [[ -n "$__boopClass_custom" ]]; then
-    IFS=',' read -ra __boopClass_customArr <<< "$__boopClass_custom"
-    for __boopClass_entry in "${__boopClass_customArr[@]}"; do
-      __boopClass_mname="${__boopClass_entry%%=*}"       # name before the =
-      __boopClass_allMethods="${__boopClass_allMethods:+$__boopClass_allMethods,}$__boopClass_mname"
-    done
-  fi
+  local __boopClass_allMethods
+  __boopClass.methodList __boopClass_allMethods
 
-  # Write the registry descriptor
   __boop_registry["$__boopClass_class"]="|class=$__boopClass_class|parent=$__boopClass_parent|methods=$__boopClass_allMethods|properties=$__boopClass_has"
+  __boopClass.registerMethods "$__boopClass_class" "$__boopClass_public" "$__boopClass_custom"
+  __boop.registerClass "$__boopClass_class"
+}
 
-  # Register public methods (default impl: Class.method)
-  if [[ -n "$__boopClass_public" ]]; then
-    IFS=',' read -ra __boopClass_pubArr <<< "$__boopClass_public"
-    for __boopClass_mname in "${__boopClass_pubArr[@]}"; do
-      [[ -n "$__boopClass_mname" ]] || continue
-      __boop.registerMethod "$__boopClass_class" "$__boopClass_mname"
-    done
+# boopExtend — add methods and properties to an existing class.
+#
+# Appends to the existing descriptor's methods= and properties= lists,
+# registers the new methods, and rebuilds dispatch wrappers. Does not
+# touch existing methods or properties.
+#
+# Usage:
+#   boopExtend boop custom:itemFrom=__boop.itemFrom,setOn=__boop.setOn
+boopExtend() {
+  local __boopClass_class __boopClass_parent __boopClass_public __boopClass_custom __boopClass_has
+  __boopClass.parseTokens "$@"
+  [[ -n "$__boopClass_class" ]] || _Crash "boopExtend: no class name given"
+  [[ -n "${__boop_registry[$__boopClass_class]+set}" ]] || \
+    _Crash "boopExtend: class '$__boopClass_class' not registered"
+
+  local __boopExtend_newMethods
+  __boopClass.methodList __boopExtend_newMethods
+
+  # Append new methods to existing descriptor's methods= list
+  if [[ -n "$__boopExtend_newMethods" ]]; then
+    local __boopExtend_existing
+    __boop.parse "$__boopClass_class" "methods" __boopExtend_existing
+    local __boopExtend_combined="${__boopExtend_existing:+$__boopExtend_existing,}$__boopExtend_newMethods"
+    __boop_registry["$__boopClass_class"]="${__boop_registry[$__boopClass_class]/|methods=*/|methods=$__boopExtend_combined|properties=}"
   fi
 
-  # Register custom methods (explicit impl)
-  if [[ -n "$__boopClass_custom" ]]; then
-    local __boopClass_impl
-    IFS=',' read -ra __boopClass_customArr <<< "$__boopClass_custom"
-    for __boopClass_entry in "${__boopClass_customArr[@]}"; do
-      __boopClass_mname="${__boopClass_entry%%=*}"
-      __boopClass_impl="${__boopClass_entry#*=}"
-      [[ -n "$__boopClass_mname" && -n "$__boopClass_impl" ]] || \
-        _Crash "boopClass: bad custom entry '$__boopClass_entry' — expected name=impl"
-      __boop.registerMethod "$__boopClass_class" "$__boopClass_mname" "$__boopClass_impl"
-    done
+  # Append new properties to existing descriptor's properties= list
+  if [[ -n "$__boopClass_has" ]]; then
+    local __boopExtend_existingProps
+    __boop.parse "$__boopClass_class" "properties" __boopExtend_existingProps
+    local __boopExtend_combinedProps="${__boopExtend_existingProps:+$__boopExtend_existingProps,}$__boopClass_has"
+    __boop_registry["$__boopClass_class"]="${__boop_registry[$__boopClass_class]/|properties=*/|properties=$__boopExtend_combinedProps}"
   fi
 
-  # Bake dispatch wrappers
+  __boopClass.registerMethods "$__boopClass_class" "$__boopClass_public" "$__boopClass_custom"
   __boop.registerClass "$__boopClass_class"
 }
 

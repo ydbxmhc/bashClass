@@ -572,6 +572,4 @@ boopClass Iterator public:new,hasNext,hasPrev,next,prev,current,index,reset has:
 # boop augmentation — container-aware traversal for all objects
 # ============================================================================
 
-__boop.registerMethod boop itemFrom __boop.itemFrom
-__boop.registerMethod boop setOn __boop.setOn
-__boop_registry["boop"]="${__boop_registry["boop"]/|methods=/|methods=itemFrom,setOn,}"
+boopExtend boop custom:itemFrom=__boop.itemFrom,setOn=__boop.setOn
