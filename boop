@@ -667,7 +667,7 @@ __boop.dispatch() {
         _Self='$_Self' _Class=\"\${_Class:-$_Class}\" __boop.dispatch $__boop_dispatch_method \"\$@\"
       # Tier 3: unrelated class (leakage) — warn and use fast path
       else
-        _Class='$_Class' _Warn \"class leakage: \\\"\${_Class}\\\" is unrelated to $_Class in $_Self.$__boop_dispatch_method — using $_Class\"
+        _Class='$_Class' _Warn \"class leakage: \\\"\${_Class}\\\" is unrelated to $_Class in $_Self.$__boop_dispatch_method — using $_Class. (Did you mean to use _Delegate?)\"
         _Self='$_Self' _Class='$_Class' $__boop_dispatch_impl \"\$@\"
       fi
     }"
@@ -1178,6 +1178,23 @@ boopClass() {
   # Bake dispatch wrappers
   __boop.registerClass "$__boopClass_class"
 }
+
+# _Delegate — cross-object method delegation.
+#
+# Clears _Class before calling a method on another object, preventing
+# local -I leakage across object boundaries. Use this whenever a method
+# calls methods on a *different* object — not exceptional, just correct.
+#
+# Without _Delegate:
+#   $card.val        # _Class=Hand leaks in, triggers Tier 3 warning
+#
+# With _Delegate:
+#   _Delegate $card.val   # _Class cleared, baked wrapper uses its own class
+#
+# Usage:
+#   into=__Hand_total_v _Delegate $card.val
+#   _Delegate $card.isa Ace && (( aces++ )) || true
+_Delegate() { _Class='' "$@"; }
 
 # REGISTER BASE CLASS
 # ============================================================================
