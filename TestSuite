@@ -31,14 +31,6 @@
 . boop List Map
 
 # ============================================================================
-# TestSuite Class Descriptor
-# ============================================================================
-
-__boop_registry["TestSuite"]="|class=TestSuite|parent=boop\
-|methods=new,section,run,summary,assert_eq,assert_ne,assert_ok,assert_fail,assert_match,assert_contains,info\
-|properties=name,mode,verbose"
-
-# ============================================================================
 # Internal helpers — not methods, just functions
 # ============================================================================
 
@@ -238,8 +230,8 @@ __TestSuite._route() {
     # Queue mode: store assertion as a Map in the queue List
     local __TestSuite_route_map __TestSuite_route_queue
     into=__TestSuite_route_map Map
-    _Self="" _Class="" $__TestSuite_route_map.set "type" "$__TestSuite_route_type"
-    _Self="" _Class="" $__TestSuite_route_map.set "desc" "$3"
+    _Self="" _Class="" $__TestSuite_route_map.setAt "type" "$__TestSuite_route_type"
+    _Self="" _Class="" $__TestSuite_route_map.setAt "desc" "$3"
     # Store remaining args as pipe-delimited (they're already simple strings)
     shift 3
     local __TestSuite_route_args=""
@@ -247,7 +239,7 @@ __TestSuite._route() {
     for __TestSuite_route_i in "$@"; do
       [[ -n "$__TestSuite_route_args" ]] && __TestSuite_route_args="$__TestSuite_route_args|$__TestSuite_route_i" || __TestSuite_route_args="$__TestSuite_route_i"
     done
-    _Self="" _Class="" $__TestSuite_route_map.set "args" "$__TestSuite_route_args"
+    _Self="" _Class="" $__TestSuite_route_map.setAt "args" "$__TestSuite_route_args"
     __boop.parse "$__TestSuite_route_self" "queue" __TestSuite_route_queue
     _Self="" _Class="" $__TestSuite_route_queue.push "$__TestSuite_route_map"
   fi
@@ -308,12 +300,12 @@ TestSuite.run() {
   local -i __TS_run_i
   for (( __TS_run_i=0; __TS_run_i < __TS_run_len; __TS_run_i++ )); do
     local __TS_run_map
-    _Self="" _Class="" into=__TS_run_map $__TS_run_queue.get $__TS_run_i
+    _Self="" _Class="" into=__TS_run_map $__TS_run_queue.getAt $__TS_run_i
 
     local __TS_run_type __TS_run_desc __TS_run_args_str
-    _Self="" _Class="" into=__TS_run_type $__TS_run_map.get "type"
-    _Self="" _Class="" into=__TS_run_desc $__TS_run_map.get "desc"
-    _Self="" _Class="" into=__TS_run_args_str $__TS_run_map.get "args"
+    _Self="" _Class="" into=__TS_run_type $__TS_run_map.getAt "type"
+    _Self="" _Class="" into=__TS_run_desc $__TS_run_map.getAt "desc"
+    _Self="" _Class="" into=__TS_run_args_str $__TS_run_map.getAt "args"
 
     # Split pipe-delimited args back into an array
     local -a __TS_run_args=()
@@ -381,15 +373,4 @@ TestSuite.summary() {
 # Register Methods & Finalize
 # ============================================================================
 
-__boop.registerMethod TestSuite new
-__boop.registerMethod TestSuite section
-__boop.registerMethod TestSuite run
-__boop.registerMethod TestSuite summary
-__boop.registerMethod TestSuite assert_eq
-__boop.registerMethod TestSuite assert_ne
-__boop.registerMethod TestSuite assert_ok
-__boop.registerMethod TestSuite assert_fail
-__boop.registerMethod TestSuite assert_match
-__boop.registerMethod TestSuite assert_contains
-__boop.registerMethod TestSuite info
-__boop.registerClass TestSuite
+boopClass TestSuite public:new,section,run,summary,assert_eq,assert_ne,assert_ok,assert_fail,assert_match,assert_contains,info has:name,mode,verbose

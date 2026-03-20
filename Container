@@ -40,7 +40,7 @@
 #   Subclasses that don't want iterators call $_Self.noIterators in their
 #   constructor to wall off all iterator methods with a clear error.
 #
-# Virtual methods (child MUST override): get, set, delete, length, clear, has, toArray
+# Virtual methods (child MUST override): getAt, setAt, delete, length, clear, has, toArray
 # Provided methods (inherited, work for all): isEmpty, new, destroy, toString
 # Iterator delegation (lazy): next, prev, hasNext, hasPrev, current, iterIndex, iterReset
 
@@ -56,14 +56,14 @@
 # implement the method. This is the closest bash gets to a pure virtual.
 # ============================================================================
 
-Container.get() {
+Container.getAt() {
   local -I _Self; local _Class="${_Class:-Container}"
-  _Crash "$_Class must implement 'get'"
+  _Crash "$_Class must implement 'getAt'"
 }
 
-Container.set() {
+Container.setAt() {
   local -I _Self; local _Class="${_Class:-Container}"
-  _Crash "$_Class must implement 'set'"
+  _Crash "$_Class must implement 'setAt'"
 }
 
 Container.delete() {
@@ -263,7 +263,7 @@ Container.toString() {
 }
 
 # ============================================================================
-# Deep Traversal — itemAt / setAt
+# Deep Traversal — deepGet / deepSet
 #
 # IMPORTANT — why these methods use explicit dispatch instead of $cursor.get:
 #
@@ -273,38 +273,38 @@ Container.toString() {
 #   as environment prefixes on every dispatch call.
 # ============================================================================
 
-Container.itemAt() {
+Container.deepGet() {
   local -I _Self; local _Class="${_Class:-Container}"
-  local __Container_itemAt_cursor="$_Self" __Container_itemAt_class="$_Class"
+  local __Container_deepGet_cursor="$_Self" __Container_deepGet_class="$_Class"
   while (( $# > 1 )); do
-    into=__Container_itemAt_cursor _Self="$__Container_itemAt_cursor" _Class="$__Container_itemAt_class" __boop.dispatch get "$1"
-    [[ -n "$__Container_itemAt_cursor" ]] || { boop.pass "" ${into:-}; return; }
-    __boop.parse "$__Container_itemAt_cursor" "class" __Container_itemAt_class
+    into=__Container_deepGet_cursor _Self="$__Container_deepGet_cursor" _Class="$__Container_deepGet_class" __boop.dispatch getAt "$1"
+    [[ -n "$__Container_deepGet_cursor" ]] || { boop.pass "" ${into:-}; return; }
+    __boop.parse "$__Container_deepGet_cursor" "class" __Container_deepGet_class
     shift
   done
-  _Self="$__Container_itemAt_cursor" _Class="$__Container_itemAt_class" into=__Container_itemAt_cursor __boop.dispatch get "$1"
-  boop.pass "$__Container_itemAt_cursor" ${into:-}
+  _Self="$__Container_deepGet_cursor" _Class="$__Container_deepGet_class" into=__Container_deepGet_cursor __boop.dispatch getAt "$1"
+  boop.pass "$__Container_deepGet_cursor" ${into:-}
 }
 
-Container.setAt() {
+Container.deepSet() {
   local -I _Self; local _Class="${_Class:-Container}"
-  local __Container_setAt_val="$1"; shift
-  local __Container_setAt_cursor="$_Self" __Container_setAt_class="$_Class"
+  local __Container_deepSet_val="$1"; shift
+  local __Container_deepSet_cursor="$_Self" __Container_deepSet_class="$_Class"
   while (( $# > 1 )); do
-    into=__Container_setAt_cursor _Self="$__Container_setAt_cursor" _Class="$__Container_setAt_class" __boop.dispatch get "$1"
-    [[ -n "$__Container_setAt_cursor" ]] || \
-      _Crash "setAt: missing intermediate at '$1'"
-    __boop.parse "$__Container_setAt_cursor" "class" __Container_setAt_class
+    into=__Container_deepSet_cursor _Self="$__Container_deepSet_cursor" _Class="$__Container_deepSet_class" __boop.dispatch getAt "$1"
+    [[ -n "$__Container_deepSet_cursor" ]] || \
+      _Crash "deepSet: missing intermediate at '$1'"
+    __boop.parse "$__Container_deepSet_cursor" "class" __Container_deepSet_class
     shift
   done
-  _Self="$__Container_setAt_cursor" _Class="$__Container_setAt_class" __boop.dispatch set "$1" "$__Container_setAt_val"
+  _Self="$__Container_deepSet_cursor" _Class="$__Container_deepSet_class" __boop.dispatch setAt "$1" "$__Container_deepSet_val"
 }
 
 # ============================================================================
 # Container Class Declaration
 # ============================================================================
 
-boopClass Container public:new,destroy,length,clear,has,get,set,delete,isEmpty,toArray,toString,itemAt,setAt,each,iterator,next,prev,hasNext,hasPrev,current,iterIndex,iterReset,noIterators has:type
+boopClass Container public:new,destroy,length,clear,has,getAt,setAt,delete,isEmpty,toArray,toString,deepGet,deepSet,each,iterator,next,prev,hasNext,hasPrev,current,iterIndex,iterReset,noIterators has:type
 
 # ============================================================================
 # Deep Traversal — itemFrom / setOn (boop augmentation)
@@ -321,12 +321,12 @@ __boop.itemFrom() {
   __boop.parse "$__boop_itemFrom_cursor" "class" __boop_itemFrom_class
   shift
   while (( $# > 1 )); do
-    into=__boop_itemFrom_cursor _Self="$__boop_itemFrom_cursor" _Class="$__boop_itemFrom_class" __boop.dispatch get "$1"
+    into=__boop_itemFrom_cursor _Self="$__boop_itemFrom_cursor" _Class="$__boop_itemFrom_class" __boop.dispatch getAt "$1"
     [[ -n "$__boop_itemFrom_cursor" ]] || { boop.pass "" ${into:-}; return; }
     __boop.parse "$__boop_itemFrom_cursor" "class" __boop_itemFrom_class
     shift
   done
-  _Self="$__boop_itemFrom_cursor" _Class="$__boop_itemFrom_class" into=__boop_itemFrom_cursor __boop.dispatch get "$1"
+  _Self="$__boop_itemFrom_cursor" _Class="$__boop_itemFrom_class" into=__boop_itemFrom_cursor __boop.dispatch getAt "$1"
   boop.pass "$__boop_itemFrom_cursor" ${into:-}
 }
 
@@ -339,13 +339,13 @@ __boop.setOn() {
   shift
   local __boop_setOn_val="$1"; shift
   while (( $# > 1 )); do
-    into=__boop_setOn_cursor _Self="$__boop_setOn_cursor" _Class="$__boop_setOn_class" __boop.dispatch get "$1"
+    into=__boop_setOn_cursor _Self="$__boop_setOn_cursor" _Class="$__boop_setOn_class" __boop.dispatch getAt "$1"
     [[ -n "$__boop_setOn_cursor" ]] || \
       _Crash "setOn: missing intermediate at '$1'"
     __boop.parse "$__boop_setOn_cursor" "class" __boop_setOn_class
     shift
   done
-  _Self="$__boop_setOn_cursor" _Class="$__boop_setOn_class" __boop.dispatch set "$1" "$__boop_setOn_val"
+  _Self="$__boop_setOn_cursor" _Class="$__boop_setOn_class" __boop.dispatch setAt "$1" "$__boop_setOn_val"
 }
 
 boopExtend boop custom:itemFrom=__boop.itemFrom,setOn=__boop.setOn

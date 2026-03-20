@@ -71,17 +71,17 @@ List.new() {
 # Usage: into=val $list.get 0      # first element
 #        into=val $list.get -1     # last element
 #        $list.get 99              # empty string (no crash)
-List.get() {
+List.getAt() {
   local -I _Self; local _Class="${_Class:-List}"
-  local -i __List_get_idx="$1"
-  local -n __List_get_arr="__boop_data_${_Self}"
-  local -i __List_get_len=0; [[ -n "${!__List_get_arr[@]}" ]] && __List_get_len=${#__List_get_arr[@]}
-  (( __List_get_idx < 0 )) && (( __List_get_idx += __List_get_len ))
-  if (( __List_get_idx < 0 || __List_get_idx >= __List_get_len )); then
+  local -i __List_getAt_idx="$1"
+  local -n __List_getAt_arr="__boop_data_${_Self}"
+  local -i __List_getAt_len=0; [[ -n "${!__List_getAt_arr[@]}" ]] && __List_getAt_len=${#__List_getAt_arr[@]}
+  (( __List_getAt_idx < 0 )) && (( __List_getAt_idx += __List_getAt_len ))
+  if (( __List_getAt_idx < 0 || __List_getAt_idx >= __List_getAt_len )); then
     boop.pass "" ${into:-}
     return
   fi
-  boop.pass "${__List_get_arr[$__List_get_idx]}" ${into:-}
+  boop.pass "${__List_getAt_arr[$__List_getAt_idx]}" ${into:-}
 }
 
 # Store a value at a specific index.
@@ -100,16 +100,16 @@ List.get() {
 # Usage: $list.set 0 "new_first"    # replace first element
 #        $list.set -1 "new_last"    # replace last element
 #        $list.set 5 "append"       # append if length is 5
-List.set() {
+List.setAt() {
   local -I _Self; local _Class="${_Class:-List}"
-  local -i __List_set_idx="$1"
-  local __List_set_val="$2"
-  local -n __List_set_arr="__boop_data_${_Self}"
-  local -i __List_set_len=0; [[ -n "${!__List_set_arr[@]}" ]] && __List_set_len=${#__List_set_arr[@]}
-  (( __List_set_idx < 0 )) && (( __List_set_idx += __List_set_len ))
-  (( __List_set_idx < 0 || __List_set_idx > __List_set_len )) && \
-    _Crash "List index out of range: $1 (length: $__List_set_len)"
-  __List_set_arr[$__List_set_idx]="$__List_set_val"
+  local -i __List_setAt_idx="$1"
+  local __List_setAt_val="$2"
+  local -n __List_setAt_arr="__boop_data_${_Self}"
+  local -i __List_setAt_len=0; [[ -n "${!__List_setAt_arr[@]}" ]] && __List_setAt_len=${#__List_setAt_arr[@]}
+  (( __List_setAt_idx < 0 )) && (( __List_setAt_idx += __List_setAt_len ))
+  (( __List_setAt_idx < 0 || __List_setAt_idx > __List_setAt_len )) && \
+    _Crash "List index out of range: $1 (length: $__List_setAt_len)"
+  __List_setAt_arr[$__List_setAt_idx]="$__List_setAt_val"
 }
 
 # Remove an element at a specific index and re-index the array.
@@ -367,4 +367,4 @@ List.each() {
 # Class Declaration
 # ============================================================================
 
-boopClass List isa:Container public:new,get,set,delete,length,clear,has,push,pop,shift,unshift,slice,toArray,toString,each has:type
+boopClass List isa:Container public:new,getAt,setAt,delete,length,clear,has,push,pop,shift,unshift,slice,toArray,toString,each has:type

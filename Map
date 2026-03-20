@@ -53,11 +53,11 @@ Map.new() {
 # Returns empty string if the key doesn't exist — not a crash.
 #
 # Usage: into=val $map.get "host"
-Map.get() {
+Map.getAt() {
   local -I _Self; local _Class="${_Class:-Map}"
-  local __Map_get_key="$1"
-  local -n __Map_get_arr="__boop_data_${_Self}"
-  boop.pass "${__Map_get_arr[$__Map_get_key]:-}" ${into:-}
+  local __Map_getAt_key="$1"
+  local -n __Map_getAt_arr="__boop_data_${_Self}"
+  boop.pass "${__Map_getAt_arr[$__Map_getAt_key]:-}" ${into:-}
 }
 
 # Store a key-value pair in the map.
@@ -67,18 +67,18 @@ Map.get() {
 # to the ordered key list.
 #
 # Usage: $map.set "host" "localhost"
-Map.set() {
+Map.setAt() {
   local -I _Self; local _Class="${_Class:-Map}"
-  local __Map_set_key="$1" __Map_set_val="$2"
-  local -n __Map_set_arr="__boop_data_${_Self}"
-  local -n __Map_set_keys="__boop_keys_${_Self}"
+  local __Map_setAt_key="$1" __Map_setAt_val="$2"
+  local -n __Map_setAt_arr="__boop_data_${_Self}"
+  local -n __Map_setAt_keys="__boop_keys_${_Self}"
 
   # If key is new, append to ordered key list
-  if [[ -z "${__Map_set_arr[$__Map_set_key]+set}" ]]; then
-    __Map_set_keys+=("$__Map_set_key")
+  if [[ -z "${__Map_setAt_arr[$__Map_setAt_key]+set}" ]]; then
+    __Map_setAt_keys+=("$__Map_setAt_key")
   fi
 
-  __Map_set_arr[$__Map_set_key]="$__Map_set_val"
+  __Map_setAt_arr[$__Map_setAt_key]="$__Map_setAt_val"
 }
 
 # Remove a key-value pair from the map.
@@ -240,4 +240,4 @@ Map.each() {
 # Class Declaration
 # ============================================================================
 
-boopClass Map isa:Container public:new,get,set,delete,length,clear,has,keys,values,toArray,toString,each has:type
+boopClass Map isa:Container public:new,getAt,setAt,delete,length,clear,has,keys,values,toArray,toString,each has:type

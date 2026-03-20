@@ -30,15 +30,15 @@ $t.assert_eq "pop returns last" "$popped" "gamma"
 into=v $list.length; $t.assert_eq "length after pop" "$v" "2"
 
 # ============================================================================
-# LIST: get/set
+# LIST: getAt/setAt
 # ============================================================================
 
 $t.section "List: get/set"
-into=v $list.get 0;  $t.assert_eq "get 0" "$v" "alpha"
-into=v $list.get 1;  $t.assert_eq "get 1" "$v" "beta"
-into=v $list.get -1; $t.assert_eq "get -1 (last)" "$v" "beta"
-$list.set 0 "ALPHA"
-into=v $list.get 0;  $t.assert_eq "get 0 after set" "$v" "ALPHA"
+into=v $list.getAt 0;  $t.assert_eq "getAt 0" "$v" "alpha"
+into=v $list.getAt 1;  $t.assert_eq "getAt 1" "$v" "beta"
+into=v $list.getAt -1; $t.assert_eq "getAt -1 (last)" "$v" "beta"
+$list.setAt 0 "ALPHA"
+into=v $list.getAt 0;  $t.assert_eq "getAt 0 after setAt" "$v" "ALPHA"
 
 # ============================================================================
 # LIST: shift/unshift
@@ -50,9 +50,9 @@ $t.assert_eq "shift returns first" "$shifted" "ALPHA"
 into=v $list.length; $t.assert_eq "length after shift" "$v" "1"
 $list.unshift "first" "second"
 into=v $list.length; $t.assert_eq "length after unshift 2" "$v" "3"
-into=v $list.get 0;  $t.assert_eq "get 0 after unshift" "$v" "first"
-into=v $list.get 1;  $t.assert_eq "get 1 after unshift" "$v" "second"
-into=v $list.get 2;  $t.assert_eq "get 2 after unshift" "$v" "beta"
+into=v $list.getAt 0;  $t.assert_eq "getAt 0 after unshift" "$v" "first"
+into=v $list.getAt 1;  $t.assert_eq "getAt 1 after unshift" "$v" "second"
+into=v $list.getAt 2;  $t.assert_eq "getAt 2 after unshift" "$v" "beta"
 
 # ============================================================================
 # LIST: has
@@ -72,8 +72,8 @@ $t.assert_fail "has -4 (too negative)" $list.has -4
 $t.section "List: delete"
 $list.delete 1
 into=v $list.length; $t.assert_eq "length after delete" "$v" "2"
-into=v $list.get 0;  $t.assert_eq "get 0 after delete" "$v" "first"
-into=v $list.get 1;  $t.assert_eq "get 1 after delete (shifted)" "$v" "beta"
+into=v $list.getAt 0;  $t.assert_eq "getAt 0 after delete" "$v" "first"
+into=v $list.getAt 1;  $t.assert_eq "getAt 1 after delete (shifted)" "$v" "beta"
 
 # ============================================================================
 # LIST: slice
@@ -117,8 +117,8 @@ into=v $list.length; $t.assert_eq "length after clear" "$v" "0"
 $t.section "List: edge cases"
 $t.assert_fail "pop from empty" bash -c '. boop List; into=l List; $l.pop'
 $t.assert_fail "shift from empty" bash -c '. boop List; into=l List; $l.shift'
-into=empty_get $list.get 99
-$t.assert_eq "get out of range returns empty" "$empty_get" ""
+into=empty_get $list.getAt 99
+$t.assert_eq "getAt out of range returns empty" "$empty_get" ""
 
 # ============================================================================
 # MAP: creation
@@ -130,17 +130,17 @@ $t.assert_ok "isa Map" $map.isa Map
 $t.assert_ok "isa Container" $map.isa Container
 
 # ============================================================================
-# MAP: set/get/length
+# MAP: setAt/getAt/length
 # ============================================================================
 
 $t.section "Map: set/get/length"
-$map.set "host" "localhost"
-$map.set "port" "8080"
-$map.set "debug" "true"
+$map.setAt "host" "localhost"
+$map.setAt "port" "8080"
+$map.setAt "debug" "true"
 into=v $map.length;       $t.assert_eq "length" "$v" "3"
-into=v $map.get "host";   $t.assert_eq "get host" "$v" "localhost"
-into=v $map.get "port";   $t.assert_eq "get port" "$v" "8080"
-into=v $map.get "nope";   $t.assert_eq "get missing key" "$v" ""
+into=v $map.getAt "host";   $t.assert_eq "getAt host" "$v" "localhost"
+into=v $map.getAt "port";   $t.assert_eq "getAt port" "$v" "8080"
+into=v $map.getAt "nope";   $t.assert_eq "getAt missing key" "$v" ""
 
 # ============================================================================
 # MAP: has / delete
@@ -179,9 +179,9 @@ $t.assert_fail "not empty" $map.isEmpty
 $map.clear
 $t.assert_ok "empty after clear" $map.isEmpty
 into=v $map.length; $t.assert_eq "length after clear" "$v" "0"
-$map.set "key" "first"
-$map.set "key" "second"
-into=v $map.get "key"; $t.assert_eq "overwrite" "$v" "second"
+$map.setAt "key" "first"
+$map.setAt "key" "second"
+into=v $map.getAt "key"; $t.assert_eq "overwrite" "$v" "second"
 
 # ============================================================================
 # List: each
@@ -216,8 +216,8 @@ $t.assert_eq "each on empty list" "$__each_empty_called" "0"
 
 $t.section "Map: each"
 into=emap Map
-$emap.set "host" "localhost"
-$emap.set "port" "8080"
+$emap.setAt "host" "localhost"
+$emap.setAt "port" "8080"
 
 # Collect results — order not guaranteed, so check contains
 __map_result=""
@@ -237,8 +237,8 @@ $t.assert_eq "map each stops on non-zero" "$__map_stop_count" "1"
 # ============================================================================
 
 $t.section "Container: virtual methods crash"
-$t.assert_fail "Container.get crashes" bash -c '. boop Container; into=c Container; $c.get 0'
-$t.assert_fail "Container.set crashes" bash -c '. boop Container; into=c Container; $c.set 0 x'
+$t.assert_fail "Container.getAt crashes" bash -c '. boop Container; into=c Container; $c.getAt 0'
+$t.assert_fail "Container.setAt crashes" bash -c '. boop Container; into=c Container; $c.setAt 0 x'
 $t.assert_fail "Container.delete crashes" bash -c '. boop Container; into=c Container; $c.delete 0'
 $t.assert_fail "Container.length crashes" bash -c '. boop Container; into=c Container; $c.length'
 $t.assert_fail "Container.clear crashes" bash -c '. boop Container; into=c Container; $c.clear'
@@ -257,17 +257,17 @@ into=tags List
 $tags.push "heavy" "fragile" "this-side-up"
 $cube.set tags "$tags"
 into=ct $cube.get tags
-into=v $ct.get 0;  $t.assert_eq "composed List.get 0" "$v" "heavy"
-into=v $ct.get 2;  $t.assert_eq "composed List.get 2" "$v" "this-side-up"
+into=v $ct.getAt 0;  $t.assert_eq "composed List.getAt 0" "$v" "heavy"
+into=v $ct.getAt 2;  $t.assert_eq "composed List.getAt 2" "$v" "this-side-up"
 into=v $ct.length; $t.assert_eq "composed List.length" "$v" "3"
-__chain_val=$( $( $cube.get tags ).get 1 )
+__chain_val=$( $( $cube.get tags ).getAt 1 )
 $t.assert_eq "subshell chain = fragile" "$__chain_val" "fragile"
 
 # ============================================================================
-# itemAt: nested List traversal
+# deepGet: nested List traversal
 # ============================================================================
 
-$t.section "itemAt: nested List"
+$t.section "deepGet: nested List"
 into=matrix List
 for (( __r=0; __r < 3; __r++ )); do
   into=__row List
@@ -276,42 +276,42 @@ for (( __r=0; __r < 3; __r++ )); do
   done
   $matrix.push "$__row"
 done
-into=v $matrix.itemAt 0 0;  $t.assert_eq "itemAt 0 0 = 1" "$v" "1"
-into=v $matrix.itemAt 1 2;  $t.assert_eq "itemAt 1 2 = 6" "$v" "6"
-into=v $matrix.itemAt 2 1;  $t.assert_eq "itemAt 2 1 = 8" "$v" "8"
-into=v $matrix.itemAt -1 -1; $t.assert_eq "itemAt -1 -1 = 9" "$v" "9"
-into=v $matrix.itemAt 99 0; $t.assert_eq "itemAt out of range = empty" "$v" ""
+into=v $matrix.deepGet 0 0;  $t.assert_eq "deepGet 0 0 = 1" "$v" "1"
+into=v $matrix.deepGet 1 2;  $t.assert_eq "deepGet 1 2 = 6" "$v" "6"
+into=v $matrix.deepGet 2 1;  $t.assert_eq "deepGet 2 1 = 8" "$v" "8"
+into=v $matrix.deepGet -1 -1; $t.assert_eq "deepGet -1 -1 = 9" "$v" "9"
+into=v $matrix.deepGet 99 0; $t.assert_eq "deepGet out of range = empty" "$v" ""
 
 # ============================================================================
-# itemAt: mixed List/Map
+# deepGet: mixed List/Map
 # ============================================================================
 
-$t.section "itemAt: mixed List/Map"
+$t.section "deepGet: mixed List/Map"
 into=db List
 into=server1 Map
-$server1.set "host" "alpha.example.com"
-$server1.set "port" "5432"
+$server1.setAt "host" "alpha.example.com"
+$server1.setAt "port" "5432"
 into=server2 Map
-$server2.set "host" "beta.example.com"
-$server2.set "port" "3306"
+$server2.setAt "host" "beta.example.com"
+$server2.setAt "port" "3306"
 $db.push "$server1"
 $db.push "$server2"
-into=v $db.itemAt 0 "host"; $t.assert_eq "db[0]['host']" "$v" "alpha.example.com"
-into=v $db.itemAt 1 "port"; $t.assert_eq "db[1]['port']" "$v" "3306"
-into=v $db.itemAt 0 "nope"; $t.assert_eq "missing key" "$v" ""
+into=v $db.deepGet 0 "host"; $t.assert_eq "db[0]['host']" "$v" "alpha.example.com"
+into=v $db.deepGet 1 "port"; $t.assert_eq "db[1]['port']" "$v" "3306"
+into=v $db.deepGet 0 "nope"; $t.assert_eq "missing key" "$v" ""
 
 # ============================================================================
-# setAt
+# deepSet
 # ============================================================================
 
-$t.section "setAt"
-$matrix.setAt "99" 1 1
-into=v $matrix.itemAt 1 1; $t.assert_eq "setAt 1 1 = 99" "$v" "99"
-into=v $matrix.itemAt 1 0; $t.assert_eq "neighbor 1 0 unchanged" "$v" "4"
-into=v $matrix.itemAt 1 2; $t.assert_eq "neighbor 1 2 unchanged" "$v" "6"
-$db.setAt "gamma.example.com" 0 "host"
-into=v $db.itemAt 0 "host"; $t.assert_eq "setAt Map value" "$v" "gamma.example.com"
-$t.assert_fail "setAt missing intermediate" bash -c '. boop List; into=l List; into=inner List; $inner.push x; $l.push "$inner"; $l.setAt val 99 0'
+$t.section "deepSet"
+$matrix.deepSet "99" 1 1
+into=v $matrix.deepGet 1 1; $t.assert_eq "deepSet 1 1 = 99" "$v" "99"
+into=v $matrix.deepGet 1 0; $t.assert_eq "neighbor 1 0 unchanged" "$v" "4"
+into=v $matrix.deepGet 1 2; $t.assert_eq "neighbor 1 2 unchanged" "$v" "6"
+$db.deepSet "gamma.example.com" 0 "host"
+into=v $db.deepGet 0 "host"; $t.assert_eq "deepSet Map value" "$v" "gamma.example.com"
+$t.assert_fail "deepSet missing intermediate" bash -c '. boop List; into=l List; into=inner List; $inner.push x; $l.push "$inner"; $l.deepSet val 99 0'
 
 # ============================================================================
 # itemFrom: property-rooted traversal
@@ -331,10 +331,10 @@ into=obj3 Box length=1 width=1 height=1
 into=inventory Map
 into=fruits List
 $fruits.push "apple" "banana" "cherry"
-$inventory.set "fruits" "$fruits"
+$inventory.setAt "fruits" "$fruits"
 into=vegs List
 $vegs.push "carrot" "pea"
-$inventory.set "vegs" "$vegs"
+$inventory.setAt "vegs" "$vegs"
 $obj3.set stock "$inventory"
 into=v $obj3.itemFrom stock "fruits" 1; $t.assert_eq "stock→fruits→1 = banana" "$v" "banana"
 into=v $obj3.itemFrom stock "vegs" 0;   $t.assert_eq "stock→vegs→0 = carrot" "$v" "carrot"
@@ -371,9 +371,9 @@ fi
 
 $t.section "Map: insertion order"
 into=omap Map
-$omap.set "charlie" "3"
-$omap.set "alpha" "1"
-$omap.set "bravo" "2"
+$omap.setAt "charlie" "3"
+$omap.setAt "alpha" "1"
+$omap.setAt "bravo" "2"
 
 into=k $omap.keys
 $t.assert_eq "keys in insertion order" "$k" "charlie
@@ -391,12 +391,12 @@ alpha=1
 bravo=2"
 
 # Overwrite doesn't change order
-$omap.set "alpha" "99"
+$omap.setAt "alpha" "99"
 into=k2 $omap.keys
 $t.assert_eq "overwrite preserves key order" "$k2" "charlie
 alpha
 bravo"
-into=v2 $omap.get "alpha"
+into=v2 $omap.getAt "alpha"
 $t.assert_eq "overwrite updates value" "$v2" "99"
 
 # Delete removes from order; re-insert goes to end
@@ -404,7 +404,7 @@ $omap.delete "alpha"
 into=k3 $omap.keys
 $t.assert_eq "delete removes from order" "$k3" "charlie
 bravo"
-$omap.set "alpha" "1"
+$omap.setAt "alpha" "1"
 into=k4 $omap.keys
 $t.assert_eq "re-insert goes to end" "$k4" "charlie
 bravo
@@ -422,8 +422,8 @@ $t.assert_eq "each walks insertion order" "$__omap_order" "charlie bravo alpha "
 
 # clear resets key order
 $omap.clear
-$omap.set "zulu" "26"
-$omap.set "alpha" "1"
+$omap.setAt "zulu" "26"
+$omap.setAt "alpha" "1"
 into=k5 $omap.keys
 $t.assert_eq "clear resets order" "$k5" "zulu
 alpha"
@@ -477,9 +477,9 @@ $t.assert_fail "hasPrev on empty" $eiter.hasPrev
 
 $t.section "Map: iterator"
 into=imap Map
-$imap.set "first" "100"
-$imap.set "second" "200"
-$imap.set "third" "300"
+$imap.setAt "first" "100"
+$imap.setAt "second" "200"
+$imap.setAt "third" "300"
 
 into=miter $imap.iterator
 
@@ -504,7 +504,7 @@ $miter.reset
 into=v $miter.next; $t.assert_eq "map iter reset+next = 100" "$v" "100"
 
 # Snapshot isolation — mutating map doesn't affect iterator
-$imap.set "fourth" "400"
+$imap.setAt "fourth" "400"
 $miter.reset
 __miter_count=0
 while $miter.hasNext; do

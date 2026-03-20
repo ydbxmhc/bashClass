@@ -8,12 +8,6 @@
 . boop
 
 # ============================================================================
-# Box Class Descriptor
-# ============================================================================
-
-__boop_registry["Box"]="|class=Box|parent=boop|methods=calc,area,top,end,side,bottom,volume,new|properties=length,width,height,unit,color"
-
-# ============================================================================
 # Box Implementation Functions
 # ============================================================================
 
@@ -98,15 +92,7 @@ Box.new() {
 }
 
 # ============================================================================
-# Register Methods & Finalize
+# Class Declaration
 # ============================================================================
 
-__boop.registerMethod Box calc
-__boop.registerMethod Box area
-__boop.registerMethod Box top
-__boop.registerMethod Box end
-__boop.registerMethod Box side
-__boop.registerMethod Box bottom
-__boop.registerMethod Box volume
-__boop.registerMethod Box new
-__boop.registerClass Box
+boopClass Box public:new,calc,area,top,end,side,bottom,volume has:length,width,height,unit,color

@@ -8,12 +8,6 @@
 . boop Box
 
 # ============================================================================
-# Cube Class Descriptor
-# ============================================================================
-
-__boop_registry["Cube"]="|class=Cube|parent=Box|methods=new,side,top,end,bottom,volume|properties=size,length,width,height,unit"
-
-# ============================================================================
 # Cube Implementation Functions
 # ============================================================================
 
@@ -81,13 +75,7 @@ Cube.volume() {
 }
 
 # ============================================================================
-# Register Methods & Finalize
+# Class Declaration
 # ============================================================================
 
-__boop.registerMethod Cube new
-__boop.registerMethod Cube side
-__boop.registerMethod Cube top
-__boop.registerMethod Cube end
-__boop.registerMethod Cube bottom
-__boop.registerMethod Cube volume
-__boop.registerClass Cube
+boopClass Cube isa:Box public:new,side,top,end,bottom,volume has:size,length,width,height,unit
