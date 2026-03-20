@@ -50,12 +50,6 @@
 . boop
 
 # ============================================================================
-# Container Class Descriptor
-# ============================================================================
-
-__boop_registry["Container"]="|class=Container|parent=boop|methods=new,destroy,length,clear,has,get,set,delete,isEmpty,toArray,toString,itemAt,setAt,each,iterator,next,prev,hasNext,hasPrev,current,iterIndex,iterReset,noIterators|properties=type"
-
-# ============================================================================
 # Virtual methods — child classes MUST override these.
 # Each one crashes with a message naming the actual child class ($class),
 # not "Container", so the error tells you exactly which class forgot to
@@ -380,8 +374,6 @@ __boop.setOn() {
 #   done
 # ============================================================================
 
-__boop_registry["Iterator"]="|class=Iterator|parent=boop|methods=new,hasNext,hasPrev,next,prev,current,index,reset|properties=target,target_class"
-
 # Constructor — creates an Iterator bound to a container.
 # Required args: target=<objectID> target_class=<className>
 Iterator.new() {
@@ -569,47 +561,12 @@ Iterator.reset() {
 }
 
 # ============================================================================
-# Register Container Methods & Finalize
+# Class Declarations
 # ============================================================================
 
-__boop.registerMethod Container itemAt
-__boop.registerMethod Container setAt
-__boop.registerMethod Container get
-__boop.registerMethod Container set
-__boop.registerMethod Container delete
-__boop.registerMethod Container length
-__boop.registerMethod Container clear
-__boop.registerMethod Container has
-__boop.registerMethod Container toArray
-__boop.registerMethod Container each
-__boop.registerMethod Container isEmpty
-__boop.registerMethod Container iterator
-__boop.registerMethod Container next
-__boop.registerMethod Container prev
-__boop.registerMethod Container hasNext
-__boop.registerMethod Container hasPrev
-__boop.registerMethod Container current
-__boop.registerMethod Container iterIndex
-__boop.registerMethod Container iterReset
-__boop.registerMethod Container noIterators
-__boop.registerMethod Container new
-__boop.registerMethod Container destroy
-__boop.registerMethod Container toString
-__boop.registerClass Container
+boopClass Container public:new,destroy,length,clear,has,get,set,delete,isEmpty,toArray,toString,itemAt,setAt,each,iterator,next,prev,hasNext,hasPrev,current,iterIndex,iterReset,noIterators has:type
 
-# ============================================================================
-# Register Iterator Methods & Finalize
-# ============================================================================
-
-__boop.registerMethod Iterator new
-__boop.registerMethod Iterator hasNext
-__boop.registerMethod Iterator hasPrev
-__boop.registerMethod Iterator next
-__boop.registerMethod Iterator prev
-__boop.registerMethod Iterator current
-__boop.registerMethod Iterator index
-__boop.registerMethod Iterator reset
-__boop.registerClass Iterator
+boopClass Iterator public:new,hasNext,hasPrev,next,prev,current,index,reset has:target,target_class
 
 # ============================================================================
 # boop augmentation — container-aware traversal for all objects

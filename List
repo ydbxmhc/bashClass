@@ -26,12 +26,6 @@
 . boop Container
 
 # ============================================================================
-# List Class Descriptor
-# ============================================================================
-
-__boop_registry["List"]="|class=List|parent=Container|methods=new,get,set,delete,length,clear,has,push,pop,shift,unshift,slice,toArray,toString,each|properties=type"
-
-# ============================================================================
 # List Implementation Functions
 # ============================================================================
 
@@ -370,22 +364,7 @@ List.each() {
 }
 
 # ============================================================================
-# Register Methods & Finalize
+# Class Declaration
 # ============================================================================
 
-__boop.registerMethod List new
-__boop.registerMethod List get
-__boop.registerMethod List set
-__boop.registerMethod List delete
-__boop.registerMethod List length
-__boop.registerMethod List clear
-__boop.registerMethod List has
-__boop.registerMethod List push
-__boop.registerMethod List pop
-__boop.registerMethod List shift
-__boop.registerMethod List unshift
-__boop.registerMethod List slice
-__boop.registerMethod List toArray
-__boop.registerMethod List toString
-__boop.registerMethod List each
-__boop.registerClass List
+boopClass List isa:Container public:new,get,set,delete,length,clear,has,push,pop,shift,unshift,slice,toArray,toString,each has:type

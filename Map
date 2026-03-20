@@ -30,12 +30,6 @@
 . boop Container
 
 # ============================================================================
-# Map Class Descriptor
-# ============================================================================
-
-__boop_registry["Map"]="|class=Map|parent=Container|methods=new,get,set,delete,length,clear,has,keys,values,toArray,toString,each|properties=type"
-
-# ============================================================================
 # Map Implementation Functions
 # ============================================================================
 
@@ -243,19 +237,7 @@ Map.each() {
 }
 
 # ============================================================================
-# Register Methods & Finalize
+# Class Declaration
 # ============================================================================
 
-__boop.registerMethod Map new
-__boop.registerMethod Map get
-__boop.registerMethod Map set
-__boop.registerMethod Map delete
-__boop.registerMethod Map length
-__boop.registerMethod Map clear
-__boop.registerMethod Map has
-__boop.registerMethod Map keys
-__boop.registerMethod Map values
-__boop.registerMethod Map toArray
-__boop.registerMethod Map toString
-__boop.registerMethod Map each
-__boop.registerClass Map
+boopClass Map isa:Container public:new,get,set,delete,length,clear,has,keys,values,toArray,toString,each has:type

@@ -44,12 +44,6 @@ declare -gi __Math_precision=20
 __Math.setPrecision() { __Math_precision=$1; }
 
 # ============================================================================
-# Math Class Descriptor
-# ============================================================================
-
-__boop_registry["Math"]="|class=Math|parent=boop|methods=new,add,sub,subtract,mul,multiply,div,divide,mod,pow,square,abs,neg,eq,lt,gt,le,ge,cmp,round,toInt,toScale,format,val,toString,isZero|properties=digits,scale,neg"
-
-
 # ============================================================================
 # Native integer fast path
 # ============================================================================
@@ -1331,36 +1325,13 @@ Math.pi() {
 
 
 # ============================================================================
-# Register Methods & Finalize
+# Class Declaration
 # ============================================================================
 
-__boop.registerMethod Math new
-__boop.registerMethod Math add __Math.i_add
-__boop.registerMethod Math sub __Math.i_sub
-__boop.registerMethod Math subtract __Math.i_sub
-__boop.registerMethod Math mul __Math.i_mul
-__boop.registerMethod Math multiply __Math.i_mul
-__boop.registerMethod Math div __Math.i_div
-__boop.registerMethod Math divide __Math.i_div
-__boop.registerMethod Math square __Math.i_square
-__boop.registerMethod Math mod __Math.i_mod
-__boop.registerMethod Math pow __Math.i_pow
-__boop.registerMethod Math abs __Math.i_abs
-__boop.registerMethod Math neg __Math.i_neg
-__boop.registerMethod Math eq
-__boop.registerMethod Math lt
-__boop.registerMethod Math gt
-__boop.registerMethod Math le
-__boop.registerMethod Math ge
-__boop.registerMethod Math cmp
-__boop.registerMethod Math round
-__boop.registerMethod Math toInt
-__boop.registerMethod Math toScale
-__boop.registerMethod Math format
-__boop.registerMethod Math val
-__boop.registerMethod Math toString
-__boop.registerMethod Math isZero
-__boop.registerClass Math
+boopClass Math \
+  public:new,eq,lt,gt,le,ge,cmp,round,toInt,toScale,format,val,toString,isZero \
+  custom:add=__Math.i_add,sub=__Math.i_sub,subtract=__Math.i_sub,mul=__Math.i_mul,multiply=__Math.i_mul,div=__Math.i_div,divide=__Math.i_div,square=__Math.i_square,mod=__Math.i_mod,pow=__Math.i_pow,abs=__Math.i_abs,neg=__Math.i_neg \
+  has:digits,scale,neg
 
 # ============================================================================
 # Static API — class-level functions that return plain value strings
