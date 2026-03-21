@@ -85,7 +85,7 @@ BlackjackHand.total() {
 BlackjackHand.isBust() {
   local -I _Self; local _Class="${_Class:-BlackjackHand}"
   local -i __BH_isBust_t
-  into=__BH_isBust_t _Self="$_Self" _Class=BlackjackHand BlackjackHand.total
+  into=__BH_isBust_t $_Self.total
   (( __BH_isBust_t > 21 ))
 }
 
@@ -94,7 +94,7 @@ BlackjackHand.isBlackjack() {
   local -i __BH_isBJ_len __BH_isBJ_t
   into=__BH_isBJ_len $_Self.length
   (( __BH_isBJ_len != 2 )) && return 1
-  into=__BH_isBJ_t _Self="$_Self" _Class=BlackjackHand BlackjackHand.total
+  into=__BH_isBJ_t $_Self.total
   (( __BH_isBJ_t == 21 ))
 }
 
@@ -121,7 +121,7 @@ BlackjackHand.show() {
     __BH_show_out="$__BH_show_label: $__BH_show_out"
   else
     local -i __BH_show_total
-    into=__BH_show_total _Self="$_Self" _Class=BlackjackHand BlackjackHand.total
+    into=__BH_show_total $_Self.total
     __BH_show_out="$__BH_show_label: $__BH_show_out  [$__BH_show_total]"
   fi
   boop.pass "$__BH_show_out" ${into:-}
@@ -210,7 +210,7 @@ while (( bankroll > 0 )); do
   $player.isBlackjack && player_bj=1
   # Peek at dealer's hand for natural (both cards known to the game)
   declare -i __peek_total
-  into=__peek_total _Self="$dealer" _Class=BlackjackHand BlackjackHand.total
+  into=__peek_total $dealer.total
   (( __peek_total == 21 )) && dealer_bj=1
 
   if (( player_bj || dealer_bj )); then

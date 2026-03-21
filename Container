@@ -103,7 +103,7 @@ Container.each() {
 Container.isEmpty() {
   local -I _Self; local _Class="${_Class:-Container}"
   local __Container_isEmpty_len
-  into=__Container_isEmpty_len _Self="$_Self" _Class="$_Class" __boop.dispatch length
+  into=__Container_isEmpty_len $_Self.length
   (( __Container_isEmpty_len == 0 )) && return 0 || return 1
 }
 
@@ -248,7 +248,7 @@ Container.toString() {
   local -l prettyPrint; : "${prettyPrint:=false}"
   [[ "${1:-}" == "pretty" ]] && prettyPrint=true
   local __Container_ts_len __Container_ts_type
-  into=__Container_ts_len _Self="$_Self" _Class="$_Class" __boop.dispatch length
+  into=__Container_ts_len $_Self.length
   __boop.parse "$_Self" "type" __Container_ts_type
 
   if [[ "$prettyPrint" != "true" ]]; then
@@ -257,7 +257,7 @@ Container.toString() {
   fi
 
   local __Container_ts_out
-  printf -v __Container_ts_out "%s(%s) {\n  type   = %s\n  length = %s\n}" \
+  printf -v __Container_ts_out "%s(%s) {\n  type   = %s\n  length = %s\n}" 
     "$_Class" "$_Self" "$__Container_ts_type" "$__Container_ts_len"
   boop.pass "$__Container_ts_out" ${into:-}
 }
@@ -292,7 +292,7 @@ Container.deepSet() {
   local __Container_deepSet_cursor="$_Self" __Container_deepSet_class="$_Class"
   while (( $# > 1 )); do
     into=__Container_deepSet_cursor _Self="$__Container_deepSet_cursor" _Class="$__Container_deepSet_class" __boop.dispatch getAt "$1"
-    [[ -n "$__Container_deepSet_cursor" ]] || \
+    [[ -n "$__Container_deepSet_cursor" ]] || 
       _Crash "deepSet: missing intermediate at '$1'"
     __boop.parse "$__Container_deepSet_cursor" "class" __Container_deepSet_class
     shift
@@ -340,7 +340,7 @@ __boop.setOn() {
   local __boop_setOn_val="$1"; shift
   while (( $# > 1 )); do
     into=__boop_setOn_cursor _Self="$__boop_setOn_cursor" _Class="$__boop_setOn_class" __boop.dispatch getAt "$1"
-    [[ -n "$__boop_setOn_cursor" ]] || \
+    [[ -n "$__boop_setOn_cursor" ]] || 
       _Crash "setOn: missing intermediate at '$1'"
     __boop.parse "$__boop_setOn_cursor" "class" __boop_setOn_class
     shift
@@ -467,11 +467,10 @@ Iterator.next() {
   local -i __Iter_next_len
   __Iterator._targetLen "$_Self" __Iter_next_len
 
-  (( __Iter_next_pos + 1 < __Iter_next_len )) || \
+  (( __Iter_next_pos + 1 < __Iter_next_len )) || 
     _Crash "Iterator: no more elements (next)"
 
-  (( __Iter_next_pos++ ))
-  _Self="$_Self" _Class=Iterator __boop.dispatch set position "$__Iter_next_pos"
+  $_Self.set position "$(( ++__Iter_next_pos ))"
 
   local __Iter_next_target __Iter_next_tclass
   __boop.parse "$_Self" "target" __Iter_next_target
@@ -494,11 +493,10 @@ Iterator.prev() {
   __boop.parse "$_Self" "position" __Iter_prev_pos
   : "${__Iter_prev_pos:=-1}"
 
-  (( __Iter_prev_pos > 0 )) || \
+  (( __Iter_prev_pos > 0 )) || 
     _Crash "Iterator: no previous element (prev)"
 
-  (( __Iter_prev_pos-- ))
-  _Self="$_Self" _Class=Iterator __boop.dispatch set position "$__Iter_prev_pos"
+  $_Self.set position "$(( --__Iter_prev_pos ))"
 
   local __Iter_prev_target __Iter_prev_tclass
   __boop.parse "$_Self" "target" __Iter_prev_target
@@ -523,7 +521,7 @@ Iterator.current() {
   local -i __Iter_cur_len
   __Iterator._targetLen "$_Self" __Iter_cur_len
 
-  (( __Iter_cur_pos >= 0 && __Iter_cur_pos < __Iter_cur_len )) || \
+  (( __Iter_cur_pos >= 0 && __Iter_cur_pos < __Iter_cur_len )) || 
     _Crash "Iterator: cursor not on an element"
 
   local __Iter_cur_target __Iter_cur_tclass
@@ -549,7 +547,7 @@ Iterator.index() {
   local -i __Iter_idx_len
   __Iterator._targetLen "$_Self" __Iter_idx_len
 
-  (( __Iter_idx_pos >= 0 && __Iter_idx_pos < __Iter_idx_len )) || \
+  (( __Iter_idx_pos >= 0 && __Iter_idx_pos < __Iter_idx_len )) || 
     _Crash "Iterator: cursor not on an element"
 
   local __Iter_idx_tclass
@@ -565,7 +563,7 @@ Iterator.index() {
 
 Iterator.reset() {
   local -I _Self; local _Class="${_Class:-Iterator}"
-  _Self="$_Self" _Class=Iterator __boop.dispatch set position "-1"
+  $_Self.set position "-1"
 }
 
 # ============================================================================

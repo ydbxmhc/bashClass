@@ -13,7 +13,7 @@
 
 # Generic multiplication calculator
 Box.calc() {
-  local -I _Self; local _Class="${_Class:-Box}"
+  local _Self="${_Self:-${Class:-Box}}" _Class="${_Class:-Box}"
   local -i __Box_calc_tot=1 required="${required:-0}"
 
   if ((required)); then
@@ -30,45 +30,45 @@ Box.calc() {
 
 # Calculate area (2D) — thin wrapper, passes into through
 Box.area() {
-  local -I _Self; local _Class="${_Class:-Box}"
+  local _Self="${_Self:-${Class:-Box}}" _Class="${_Class:-Box}"
   required=2 into=${into:-} Box.calc "$@"
 }
 
 # Calculate top face area
 Box.top() {
-  local -I _Self; local _Class="${_Class:-Box}"
+  local _Self="${_Self:-${Class:-Box}}" _Class="${_Class:-Box}"
   local __Box_top_l __Box_top_w __Box_top_val
-  __boop.parse "$_Self" "length" __Box_top_l
-  __boop.parse "$_Self" "width" __Box_top_w
-  into=__Box_top_val _Self="$_Self" _Class="$_Class" __boop.dispatch area "$__Box_top_l" "$__Box_top_w"
+  into=__Box_top_l $_Self.length
+  into=__Box_top_w $_Self.width
+  into=__Box_top_val $_Self.area "$__Box_top_l" "$__Box_top_w"
   boop.pass "$__Box_top_val" ${into:-}
 }
 
 # Calculate end face area
 Box.end() {
-  local -I _Self; local _Class="${_Class:-Box}"
+  local _Self="${_Self:-${Class:-Box}}" _Class="${_Class:-Box}"
   local __Box_end_h __Box_end_w __Box_end_val
-  __boop.parse "$_Self" "height" __Box_end_h
-  __boop.parse "$_Self" "width" __Box_end_w
-  into=__Box_end_val _Self="$_Self" _Class="$_Class" __boop.dispatch area "$__Box_end_h" "$__Box_end_w"
+  into=__Box_end_h $_Self.height
+  into=__Box_end_w $_Self.width
+  into=__Box_end_val $_Self.area "$__Box_end_h" "$__Box_end_w"
   boop.pass "$__Box_end_val" ${into:-}
 }
 
 # Calculate side face area
 Box.side() {
-  local -I _Self; local _Class="${_Class:-Box}"
+  local _Self="${_Self:-${Class:-Box}}" _Class="${_Class:-Box}"
   local __Box_side_h __Box_side_l __Box_side_val
-  __boop.parse "$_Self" "height" __Box_side_h
-  __boop.parse "$_Self" "length" __Box_side_l
-  into=__Box_side_val _Self="$_Self" _Class="$_Class" __boop.dispatch area "$__Box_side_h" "$__Box_side_l"
+  into=__Box_side_h $_Self.height
+  into=__Box_side_l $_Self.length
+  into=__Box_side_val $_Self.area "$__Box_side_h" "$__Box_side_l"
   boop.pass "$__Box_side_val" ${into:-}
 }
 
 # Calculate bottom face area (same as top)
 Box.bottom() {
-  local -I _Self; local _Class="${_Class:-Box}"
+  local _Self="${_Self:-${Class:-Box}}" _Class="${_Class:-Box}"
   local __Box_bottom_val
-  into=__Box_bottom_val _Self="$_Self" _Class="$_Class" __boop.dispatch top
+  into=__Box_bottom_val $_Self.top
   boop.pass "$__Box_bottom_val" ${into:-}
 }
 
@@ -76,10 +76,10 @@ Box.bottom() {
 Box.volume() {
   local -I _Self; local _Class="${_Class:-Box}"
   local __Box_volume_l __Box_volume_h __Box_volume_w __Box_volume_vol
-  __boop.parse "$_Self" "length" __Box_volume_l
-  __boop.parse "$_Self" "height" __Box_volume_h
-  __boop.parse "$_Self" "width" __Box_volume_w
-  into=__Box_volume_vol required=3 Box.calc "$__Box_volume_l" "$__Box_volume_h" "$__Box_volume_w"
+  into=__Box_volume_l $_Self.length
+  into=__Box_volume_h $_Self.height
+  into=__Box_volume_w $_Self.width
+  into=__Box_volume_vol required=3 $_Self.calc "$__Box_volume_l" "$__Box_volume_h" "$__Box_volume_w"
   boop.pass "$__Box_volume_vol" ${into:-}
 }
 
@@ -95,4 +95,8 @@ Box.new() {
 # Class Declaration
 # ============================================================================
 
-boopClass Box public:new,calc,area,top,end,side,bottom,volume has:length,width,height,unit,color
+boopClass Box '
+  has:length,width,height,unit,color
+  public:calc,area,top,end,side,bottom,volume
+'
+
