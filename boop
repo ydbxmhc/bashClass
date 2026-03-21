@@ -916,8 +916,8 @@ __boop.backfillMethods() {
     [[ -n "$__boop_backfillMethods_prop" ]] || continue
     [[ "$__boop_backfillMethods_force" != "force" ]] && declare -f "$__boop_backfillMethods_self.$__boop_backfillMethods_prop" >/dev/null && continue
     eval "$__boop_backfillMethods_self.$__boop_backfillMethods_prop() {
-      if ((\$#)); then _Self='$__boop_backfillMethods_self' _Class='$__boop_backfillMethods_class' __boop.dispatch set '$__boop_backfillMethods_prop' \"\$1\"
-      else _Self='$__boop_backfillMethods_self' _Class='$__boop_backfillMethods_class' __boop.dispatch get '$__boop_backfillMethods_prop'; fi
+      if ((\$#)); then _Self='$__boop_backfillMethods_self' _Class='$__boop_backfillMethods_class' __boop.set '$__boop_backfillMethods_prop' \"\$1\"
+      else _Self='$__boop_backfillMethods_self' _Class='$__boop_backfillMethods_class' __boop.get '$__boop_backfillMethods_prop'; fi
     }"
   done
 }
