@@ -1,5 +1,6 @@
 #!/bin/bash
 set -uo pipefail
+#set -vx
 
 # Box and Cube tests — TestSuite version
 

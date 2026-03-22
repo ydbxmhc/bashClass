@@ -856,15 +856,42 @@ __boop.new() {
   boop.pass "$_Self" ${into:-}
 }
 
-# Call a method on the parent class. Looks up the current class's parent
-# from its descriptor and re-dispatches with the parent as the class context.
-# Crashes if the class has no parent (you're already at the root — nowhere to go).
-# Usage: _Self=$obj _Class=Cube __boop.dispatch super volume
-__boop.super() {
-  local -I _Self; local _Class="${_Class:-boop}"
-  local __boop_super_parent; __boop.parse "$_Class" "parent" __boop_super_parent
-  [[ -n "$__boop_super_parent" ]] || _Crash "$_Class has no parent"
-  _Self="$_Self" _Class="$__boop_super_parent" __boop.dispatch "$@"
+# _Super — call the parent class's implementation of a method
+#
+# Must be called from within a method body where _Self and _Class are set.
+# Looks up the parent of _Class (or _Walk if set) and calls that class's
+# version of the method directly — no dispatch, no registry.
+#
+# Usage:
+#   _Super methodName "$@"        # single hop — call parent, no typecast
+#   _Walk=1 _Super methodName "$@" # chaining — advances up the hierarchy
+#
+# _Class is never modified. _Walk carries traversal position when chaining,
+# leaving object identity (_Self) and type context (_Class) clean.
+#
+# Without _Walk: parent is resolved from _Class. One call, one hop.
+# With _Walk:    parent is resolved from _Walk, which _Super advances
+#                automatically — each _Super in the chain goes one level up.
+#
+# Example (single hop):
+#   Cube.volume() {
+#     local _Self="${_Self:-$_Class}"; local _Class="${_Class:-Cube}"
+#     _Super volume "$@"           # calls Box.volume, _Class stays Cube
+#   }
+#
+# Example (chaining — A → B → C):
+#   B.method() {
+#     local _Self="${_Self:-$_Class}"; local _Class="${_Class:-B}"
+#     _Walk=1 _Super method "$@"   # calls A.method; if A also calls
+#   }                              # _Super, it continues to root
+#
+# See PLAN.md for full design notes.
+_Super() {
+  local __super_src="${_Walk:-$_Class}"
+  local __super_parent
+  __boop.parse "$__super_src" "parent" __super_parent
+  [[ -n "$__super_parent" ]] || _Crash "_Super: $__super_src has no parent"
+  _Self="$_Self" _Walk="$__super_parent" "$__super_parent.$@"
 }
 
 # ============================================================================
@@ -988,8 +1015,13 @@ __boop.registerClass() {
   done
 
   # Make the class name itself a constructor (still uses dispatch for new)
-  declare -f "$__boop_registerClass_class" >/dev/null || 
-    eval "$__boop_registerClass_class() { _Class='$__boop_registerClass_class' __boop.dispatch new \"\$@\"; }"
+  if declare -f "${__boop_registerClass_class}.new" >/dev/null 2>&1; then # locally overridden?
+    # use the class-defined, overridden constructor
+    eval "$__boop_registerClass_class() { 
+      _Class='$__boop_registerClass_class' ${__boop_registerClass_class}.new \"\$@\"; }"
+  else # inherit the default constructor
+    eval "$__boop_registerClass_class() { _Class='$__boop_registerClass_class' __boop.new \"\$@\"; }"
+  fi
 }
 
 # Global convenience constructor. Slightly friendlier than the class-as-
@@ -1000,7 +1032,7 @@ __boop.registerClass() {
 new() {
   local __boop_newGlobal_class="$1"; shift
   __boop.validate "$__boop_newGlobal_class"
-  _Class="$__boop_newGlobal_class" __boop.dispatch new "$@"
+  _Class="$__boop_newGlobal_class" __boop.new "$@"
 }
 
 # ============================================================================
@@ -1252,12 +1284,17 @@ _Delegate() { _Class='' "$@"; }
 # The standard methods registered here (get, set, isa, toString, new, super)
 # are available to all objects unless overridden by a subclass.
 __boop_registry["boop"]="|class=boop|parent=|methods=new,get,set,isa,toString,super|properties="
+
+#boopClass boop '
+#  custom:new=__boop.new,get=__boop.get,set=__boop.set,isa=__boop.isa,toString=__boop.toString
+#'
+
 __boop.registerMethod boop get __boop.get
 __boop.registerMethod boop set __boop.set
 __boop.registerMethod boop isa __boop.isa
 __boop.registerMethod boop toString __boop.toString
 __boop.registerMethod boop new __boop.new
-__boop.registerMethod boop super __boop.super
+#__boop.registerMethod boop super __boop.super
 __boop.registerClass boop
 
 # ============================================================================
