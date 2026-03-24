@@ -1032,6 +1032,7 @@ __boop.registerClass() {
 new() {
   local __boop_newGlobal_class="$1"; shift
   __boop.validate "$__boop_newGlobal_class"
+  [[ -n "${__boop_registry[$__boop_newGlobal_class]+set}" ]] || _Crash "new: unknown class '$__boop_newGlobal_class'"
   _Class="$__boop_newGlobal_class" __boop.new "$@"
 }
 
