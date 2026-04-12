@@ -24,7 +24,7 @@ Deck.new() {
 # Fisher-Yates shuffle — walks the list backward, swapping each
 # element with a random earlier element.
 Deck.shuffle() {
-  local -I _Self; local _Class="${_Class:-Deck}"
+  local _Self="${_Self:-${Class:-Deck}}" _Class="${_Class:-Deck}"
   local -i __Deck_shuf_len __Deck_shuf_i __Deck_shuf_j
   local __Deck_shuf_a __Deck_shuf_b
   into=__Deck_shuf_len $_Self.length
@@ -39,7 +39,7 @@ Deck.shuffle() {
 
 # Draw the top card (pop from the end of the list).
 Deck.draw() {
-  local -I _Self; local _Class="${_Class:-Deck}"
+  local _Self="${_Self:-${Class:-Deck}}" _Class="${_Class:-Deck}"
   local __Deck_draw_card; into=__Deck_draw_card $_Self.pop
   boop.pass "$__Deck_draw_card" ${into:-}
 }

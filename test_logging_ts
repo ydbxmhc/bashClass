@@ -108,12 +108,12 @@ _LogLevel warn
 
 $t.section "Caller context"
 
-# Define a temporary test method on Box
+# Define a temporary test method on Box and call it with explicit _Self/_Class,
+# which is exactly what the baked wrapper does internally.
 Box.test_log() {
   local -I _Self; local _Class="${_Class:-Box}"
   _Warn "from method"
 }
-
 into=__lt_box Box length=1 width=1 height=1
 _lc; _Self="$__lt_box" _Class=Box Box.test_log 2>"$__lf"
 $t.assert_contains "caller shows method name" "$(<"$__lf")" "Box.test_log"
@@ -353,10 +353,11 @@ __boop_resolvedLogLevel=()
 _LogLevel warn
 
 # ============================================================================
-# Closed stderr — messages lost, process survives
+# Writing to closed stderr — bash propagates the write failure
 # ============================================================================
 
-# Verify that logging with closed stderr propagates the write failure.
+# When stderr is closed, bash's write to fd 2 fails. This is bash's
+# behavior — boop doesn't swallow the error, so the process exits nonzero.
 __log_rc=0
 bash -c '
   . boop
@@ -364,7 +365,7 @@ bash -c '
   exec 2>&-
   _Warn "lost message"
 ' 2>/dev/null || __log_rc=$?
-$t.assert_eq "warn with closed stderr fails" "$__log_rc" "1"
+$t.assert_eq "write to closed stderr propagates failure" "$__log_rc" "1"
 
 # _Crash with stderr closed — message is lost (by design), but still exits.
 # The old _Crash had a logfile fallback; the new one doesn't — if someone

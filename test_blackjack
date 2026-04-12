@@ -5,8 +5,8 @@ set -uo pipefail
 
 . boop TestSuite PlayingCard Deck
 
-# Source blackjack for BlackjackHand (game loop won't run — no stdin)
-. blackjack </dev/null 2>/dev/null || true
+# Source blackjack for BlackjackHand (game loop won't run — BASH_SOURCE guard)
+. blackjack
 
 into=t TestSuite name="Blackjack Tests"
 
@@ -120,24 +120,18 @@ $t.assert_fail "Deck not Card" $d.isa Card
 
 $t.section "Deck Shuffle"
 
-# Build an unshuffled deck via newDeck, then a second copy and shuffle it.
-# Count how many cards moved from their original position.
-into=d_ref PlayingCard.newDeck
-
-# Unshuffle the reference: rebuild in known order
+# Fisher-Yates on 52 cards: the probability that a fair shuffle leaves
+# >= 8 cards in their original position is astronomically small (< 0.01%).
+# One shuffle is sufficient — no retry needed.
+# We assert >= 45 displaced (i.e., at most 7 in place).
 into=d_ref Deck
+into=d_shuf Deck
 declare -a __shuf_suits=("♠" "♥" "♦" "♣")
 declare __shuf_s __shuf_r __shuf_c
 for __shuf_s in "${__shuf_suits[@]}"; do
   for __shuf_r in A 2 3 4 5 6 7 8 9 10 J Q K; do
     into=__shuf_c PlayingCard suit="$__shuf_s" rank="$__shuf_r"
     $d_ref.push "$__shuf_c"
-  done
-done
-
-into=d_shuf Deck
-for __shuf_s in "${__shuf_suits[@]}"; do
-  for __shuf_r in A 2 3 4 5 6 7 8 9 10 J Q K; do
     into=__shuf_c PlayingCard suit="$__shuf_s" rank="$__shuf_r"
     $d_shuf.push "$__shuf_c"
   done
@@ -149,26 +143,20 @@ __shuf_check() {
   local -i __shuf_displaced=0 __shuf_i
   local __shuf_ref_card __shuf_test_card __shuf_ref_rank __shuf_test_rank __shuf_ref_suit __shuf_test_suit
   for (( __shuf_i=0; __shuf_i < 52; __shuf_i++ )); do
-    into=__shuf_ref_card _Delegate $__shuf_ref.getAt $__shuf_i
+    into=__shuf_ref_card  _Delegate $__shuf_ref.getAt  $__shuf_i
     into=__shuf_test_card _Delegate $__shuf_test.getAt $__shuf_i
-    __boop.parse "$__shuf_ref_card" "rank" __shuf_ref_rank
+    __boop.parse "$__shuf_ref_card"  "rank" __shuf_ref_rank
     __boop.parse "$__shuf_test_card" "rank" __shuf_test_rank
-    __boop.parse "$__shuf_ref_card" "suit" __shuf_ref_suit
+    __boop.parse "$__shuf_ref_card"  "suit" __shuf_ref_suit
     __boop.parse "$__shuf_test_card" "suit" __shuf_test_suit
-    [[ "$__shuf_ref_rank" != "$__shuf_test_rank" || "$__shuf_ref_suit" != "$__shuf_test_suit" ]] && (( __shuf_displaced++ ))
+    [[ "$__shuf_ref_rank" != "$__shuf_test_rank" || \
+       "$__shuf_ref_suit" != "$__shuf_test_suit" ]] && (( __shuf_displaced++ ))
   done
   printf "%d" "$__shuf_displaced"
 }
 
 __shuf_displaced=$(__shuf_check "$d_ref" "$d_shuf")
-$t.info "displaced cards (first shuffle): $__shuf_displaced"
-
-if (( __shuf_displaced < 45 )); then
-  $d_shuf.shuffle
-  __shuf_displaced=$(__shuf_check "$d_ref" "$d_shuf")
-  $t.info "displaced cards (second shuffle): $__shuf_displaced"
-fi
-
+$t.info "displaced cards: $__shuf_displaced / 52"
 $t.assert_ok "shuffle displaces at least 45 of 52 cards" test "$__shuf_displaced" -ge 45
 unset -f __shuf_check
 
@@ -329,6 +317,71 @@ $t.assert_contains "revealed shows total" "$v" "[12]"
 # ============================================================================
 # BlackjackHand isa
 # ============================================================================
+
+# ============================================================================
+# BlackjackHand.cardVal — direct unit test
+# ============================================================================
+
+$t.section "BlackjackHand.cardVal"
+# A → 11
+into=c PlayingCard suit="♠" rank="A"
+into=v BlackjackHand.cardVal "$c"; $t.assert_eq "A = 11"  "$v" "11"
+# Face cards → 10
+into=c PlayingCard suit="♥" rank="J"
+into=v BlackjackHand.cardVal "$c"; $t.assert_eq "J = 10"  "$v" "10"
+into=c PlayingCard suit="♦" rank="Q"
+into=v BlackjackHand.cardVal "$c"; $t.assert_eq "Q = 10"  "$v" "10"
+into=c PlayingCard suit="♣" rank="K"
+into=v BlackjackHand.cardVal "$c"; $t.assert_eq "K = 10"  "$v" "10"
+# Numeric ranks pass through
+into=c PlayingCard suit="♠" rank="7"
+into=v BlackjackHand.cardVal "$c"; $t.assert_eq "7 = 7"   "$v" "7"
+into=c PlayingCard suit="♥" rank="10"
+into=v BlackjackHand.cardVal "$c"; $t.assert_eq "10 = 10" "$v" "10"
+into=c PlayingCard suit="♦" rank="2"
+into=v BlackjackHand.cardVal "$c"; $t.assert_eq "2 = 2"   "$v" "2"
+
+# ============================================================================
+# BlackjackHand.reveal — direct unit test
+# ============================================================================
+
+$t.section "BlackjackHand.reveal"
+into=h BlackjackHand faceUp=1
+into=c1 PlayingCard suit="♠" rank="5"; $h.push "$c1"
+into=c2 PlayingCard suit="♥" rank="9"; $h.push "$c2"
+# Before reveal: faceUp=1 (only last card visible)
+into=v $h.get faceUp; $t.assert_eq "faceUp before reveal = 1" "$v" "1"
+$h.reveal
+# After reveal: faceUp = hand length (2)
+into=v $h.get faceUp; $t.assert_eq "faceUp after reveal = hand length" "$v" "2"
+# show now includes both cards and a total
+into=s $h.show "Test"
+$t.assert_contains "revealed show has 5♠" "$s" "5♠"
+$t.assert_contains "revealed show has 9♥" "$s" "9♥"
+$t.assert_contains "revealed show has total" "$s" "[14]"
+
+# ============================================================================
+# BlackjackHand.deal — unit test
+# ============================================================================
+
+$t.section "BlackjackHand.deal"
+into=d PlayingCard.newDeck
+into=dealer BlackjackHand faceUp=1 deck="$d"
+into=player BlackjackHand
+
+# Deal to player
+$dealer.deal "$player"
+into=v $player.length; $t.assert_eq "player has 1 after deal" "$v" "1"
+into=v $d.length;      $t.assert_eq "deck has 51 after deal"  "$v" "51"
+
+# Deal to self (dealer hits)
+$dealer.deal
+into=v $dealer.length; $t.assert_eq "dealer has 1 after self-deal" "$v" "1"
+into=v $d.length;      $t.assert_eq "deck has 50 after 2 deals"    "$v" "50"
+
+# deal without a deck crashes
+into=h2 BlackjackHand
+$t.assert_fail "deal without deck crashes" $h2.deal
 
 $t.section "BlackjackHand Type Hierarchy"
 

@@ -74,7 +74,7 @@ Box.bottom() {
 
 # Calculate volume (3D)
 Box.volume() {
-  local -I _Self; local _Class="${_Class:-Box}"
+  local _Self="${_Self:-${Class:-Box}}" _Class="${_Class:-Box}"
   local __Box_volume_l __Box_volume_h __Box_volume_w __Box_volume_vol
   into=__Box_volume_l $_Self.length
   into=__Box_volume_h $_Self.height

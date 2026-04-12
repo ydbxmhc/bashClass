@@ -25,29 +25,28 @@ PlayingCard.new() {
 }
 
 PlayingCard.toString() {
-  local -I _Self; local _Class="${_Class:-PlayingCard}"
-  local __PC_ts_rank __PC_ts_suit
-  __boop.parse "$_Self" "rank" __PC_ts_rank
-  __boop.parse "$_Self" "suit" __PC_ts_suit
-  boop.pass "${__PC_ts_rank}${__PC_ts_suit}" ${into:-}
+  local _Self="${_Self:-${Class:-PlayingCard}}" _Class="${_Class:-PlayingCard}"
+  local __PlayingCard_toString_rank __PlayingCard_toString_suit
+  __boop.parse "$_Self" "rank" __PlayingCard_toString_rank
+  __boop.parse "$_Self" "suit" __PlayingCard_toString_suit
+  boop.pass "${__PlayingCard_toString_rank}${__PlayingCard_toString_suit}" ${into:-}
 }
 
 # Fill a Deck with 52 standard playing cards and shuffle it.
 # Uses _Class for card construction — subclasses that inherit
 # newDeck get a deck filled with their own type.
 PlayingCard.newDeck() {
-  local _Class="${_Class:-PlayingCard}"
-  local __PC_nd_deck __PC_nd_card __PC_nd_s __PC_nd_r
-  into=__PC_nd_deck Deck
-  local __PC_nd_suits=("♠" "♥" "♦" "♣")
-  for __PC_nd_s in "${__PC_nd_suits[@]}"; do
-    for __PC_nd_r in A 2 3 4 5 6 7 8 9 10 J Q K; do
-      into=__PC_nd_card $_Class suit="$__PC_nd_s" rank="$__PC_nd_r"
-      $__PC_nd_deck.push "$__PC_nd_card"
+  local _Class="${_Class:-PlayingCard}" __PlayingCard_newDeck_deck __PlayingCard_newDeck_card __PlayingCard_newDeck_s __PlayingCard_newDeck_r
+  into=__PlayingCard_newDeck_deck Deck
+  local __PlayingCard_newDeck_suits=("♠" "♥" "♦" "♣")
+  for __PlayingCard_newDeck_s in "${__PlayingCard_newDeck_suits[@]}"; do
+    for __PlayingCard_newDeck_r in A 2 3 4 5 6 7 8 9 10 J Q K; do
+      into=__PlayingCard_newDeck_card $_Class suit="$__PlayingCard_newDeck_s" rank="$__PlayingCard_newDeck_r"
+      $__PlayingCard_newDeck_deck.push "$__PlayingCard_newDeck_card"
     done
   done
-  $__PC_nd_deck.shuffle
-  boop.pass "$__PC_nd_deck" ${into:-}
+  $__PlayingCard_newDeck_deck.shuffle
+  boop.pass "$__PlayingCard_newDeck_deck" ${into:-}
 }
 
 boopClass PlayingCard isa:Card public:new,toString,newDeck has:suit,rank

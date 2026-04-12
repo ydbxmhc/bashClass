@@ -248,4 +248,139 @@ into=v Math.add "-0.0" "0";    $t.assert_eq "negative zero with decimal normaliz
 into=v Math.add "0777" "0";    $t.assert_eq "leading zeros treated as decimal" "$v" "777"
 into=v Math.add "007.5" "0";   $t.assert_eq "leading zeros with decimal" "$v" "7.5"
 
+
+# ============================================================================
+# mod
+# ============================================================================
+
+$t.section "mod"
+into=v Math.mod 10 3;   $t.assert_eq "10 mod 3 = 1"   "$v" "1"
+into=v Math.mod 9 3;    $t.assert_eq "9 mod 3 = 0"    "$v" "0"
+into=v Math.mod 7 4;    $t.assert_eq "7 mod 4 = 3"    "$v" "3"
+into=v Math.mod 100 7;  $t.assert_eq "100 mod 7 = 2"  "$v" "2"
+into=v Math.mod 5 5;    $t.assert_eq "5 mod 5 = 0"    "$v" "0"
+# Instance method
+into=m1 Math 17; into=m2 Math 5
+into=r $m1.mod $m2; into=v $r.val; $t.assert_eq "17 mod 5 = 2 (instance)" "$v" "2"
+
+# ============================================================================
+# pow
+# ============================================================================
+
+$t.section "pow"
+into=v Math.pow 2 10;  $t.assert_eq "2^10 = 1024"   "$v" "1024"
+into=v Math.pow 3 3;   $t.assert_eq "3^3 = 27"      "$v" "27"
+into=v Math.pow 5 0;   $t.assert_eq "5^0 = 1"       "$v" "1"
+into=v Math.pow 7 1;   $t.assert_eq "7^1 = 7"       "$v" "7"
+into=v Math.pow 10 6;  $t.assert_eq "10^6 = 1000000" "$v" "1000000"
+# Instance method
+into=m Math 4
+into=r $m.pow 3; into=v $r.val; $t.assert_eq "4^3 = 64 (instance)" "$v" "64"
+
+# ============================================================================
+# isZero
+# ============================================================================
+
+$t.section "isZero"
+into=z  Math 0;    $t.assert_ok   "0 isZero"          $z.isZero
+into=nz Math 1;    $t.assert_fail "1 not isZero"       $nz.isZero
+into=nz Math -1;   $t.assert_fail "-1 not isZero"      $nz.isZero
+into=nz Math 0.1;  $t.assert_fail "0.1 not isZero"     $nz.isZero
+into=z  Math -0;   $t.assert_ok   "-0 normalizes to 0" $z.isZero
+into=z  Math 0.0;  $t.assert_ok   "0.0 isZero"         $z.isZero
+
+# ============================================================================
+# round
+# ============================================================================
+
+$t.section "round"
+into=m Math 3.14159
+into=r $m.round 4; into=v $r.val; $t.assert_eq "3.14159 round 4 = 3.142" "$v" "3.142"
+into=r $m.round 2; into=v $r.val; $t.assert_eq "3.14159 round 2 = 3.1"   "$v" "3.1"
+into=r $m.round 1; into=v $r.val; $t.assert_eq "3.14159 round 1 = 3"     "$v" "3"
+# Half-up rounding
+into=m Math 2.5
+into=r $m.round 1; into=v $r.val; $t.assert_eq "2.5 round 1 = 3 (half-up)" "$v" "3"
+into=m Math 3.5
+into=r $m.round 1; into=v $r.val; $t.assert_eq "3.5 round 1 = 4 (half-up)" "$v" "4"
+# Already at or below precision — no change
+into=m Math 3.14
+into=r $m.round 5; into=v $r.val; $t.assert_eq "3.14 round 5 = 3.14 (no change)" "$v" "3.14"
+
+# ============================================================================
+# toScale
+# ============================================================================
+
+$t.section "toScale"
+into=m Math 3.14159
+into=r $m.toScale 2; into=v $r.val; $t.assert_eq "3.14159 toScale 2 = 3.14" "$v" "3.14"
+into=r $m.toScale 6; into=v $r.val; $t.assert_eq "3.14159 toScale 6 = 3.141590" "$v" "3.141590"
+into=m Math 42
+into=r $m.toScale 3; into=v $r.val; $t.assert_eq "42 toScale 3 = 42.000" "$v" "42.000"
+into=r $m.toScale 0; into=v $r.val; $t.assert_eq "42 toScale 0 = 42"     "$v" "42"
+
+# ============================================================================
+# format
+# ============================================================================
+
+$t.section "format"
+into=m Math 3.14159
+into=v $m.format "%.2f";   $t.assert_eq "format %.2f"    "$v" "3.14"
+into=v $m.format "%10.3f"; $t.assert_eq "format %10.3f"  "$v" "     3.142"
+into=m Math 42
+into=v $m.format "%05d";   $t.assert_eq "format %05d"    "$v" "00042"
+into=m Math -7.5
+into=v $m.format "%.1f";   $t.assert_eq "format negative" "$v" "-7.5"
+
+# ============================================================================
+# Division by zero
+# ============================================================================
+
+$t.section "Division by zero"
+$t.assert_fail "Math.divide by zero crashes" \
+  bash -c '. boop Math; Math.divide 5 0 2>/dev/null'
+$t.assert_fail "instance div by zero crashes" \
+  bash -c '. boop Math; into=m Math 5; into=z Math 0; $m.div $z 2>/dev/null'
+
+# ============================================================================
+# Division precision — verify digit count matches configured precision
+# ============================================================================
+
+$t.section "Division precision"
+# 1/3 at precision 10 should produce exactly 10 significant digits
+into=m1 Math 1; into=m2 Math 3
+into=r precision=10 $m1.div $m2; into=v $r.val
+# Strip "0." prefix and count digits — should be 10
+__tc_digits="${v#0.}"
+$t.assert_eq "1/3 at precision 10 has 10 digits" "${#__tc_digits}" "10"
+$t.assert_match "1/3 starts with 0.3333333333" "$v" "0.3333333333*"
+
+# ============================================================================
+# Math.DO — precedence disambiguation
+# ============================================================================
+
+$t.section "Math.DO: operator precedence"
+# x (multiply) has higher precedence than + — 2 + 3x4 = 2 + 12 = 14
+into=v Math.DO 2 + 3 x 4
+$t.assert_eq "2 + 3 x 4 = 14 (x binds tighter than +)" "$v" "14"
+# If it were left-to-right, 2+3=5, 5x4=20. The result 14 proves x > +.
+into=v Math.DO 2 x 3 + 4
+$t.assert_eq "2 x 3 + 4 = 10 (x evaluated first)" "$v" "10"
+# Parens override precedence
+into=v Math.DO "( 2 + 3 ) x 4"
+$t.assert_eq "(2+3) x 4 = 20 (parens override)" "$v" "20"
+
+# ============================================================================
+# Static API — negative inputs and edge cases
+# ============================================================================
+
+$t.section "Static API: edge cases"
+into=v Math.neg -3.14;  $t.assert_eq "neg(-3.14) = 3.14 (double negation)" "$v" "3.14"
+into=v Math.abs 0;      $t.assert_eq "abs(0) = 0"                          "$v" "0"
+into=v Math.abs -0;     $t.assert_eq "abs(-0) = 0"                         "$v" "0"
+into=v Math.neg 0;      $t.assert_eq "neg(0) = 0 (zero stays positive)"    "$v" "0"
+into=v Math.add 0 0;    $t.assert_eq "0 + 0 = 0"                           "$v" "0"
+into=v Math.subtract 0 0; $t.assert_eq "0 - 0 = 0"                         "$v" "0"
+
+
 $t.summary

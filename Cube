@@ -13,24 +13,25 @@
 
 # Cube constructor - sets all dimensions equal to size
 Cube.new() {
-  local _Class="${_Class:-Cube}"
-  local __Cube_new_size="" __Cube_new_self
+  local _Class="${_Class:-Cube}" __Cube_new_size="" __Cube_new_self
 
   # Extract size from arguments
-  for __Cube_new_arg in "$@"; do
-    if [[ "$__Cube_new_arg" =~ ^size= ]]; then
-      [[ "$__Cube_new_arg" =~ ^size=([0-9]+)$ ]] || \
+  for __Cube_new_arg in "$@"; do [[ "$__Cube_new_arg" =~ ^size= ]] || continue
+      [[ -n "${__Cube_new_size:-}" ]] && _Crash "repeated argument '$__Cube_new_arg'"
+      [[ "$__Cube_new_arg" =~ ^size=([1-9][0-9]*)$ ]] || 
         _Crash "Cube: size requires a positive integer, got '$__Cube_new_arg'"
-      __Cube_new_size="${BASH_REMATCH[1]}"
-    fi
+      __Cube_new_size="${BASH_REMATCH[1]}"; 
   done
-
   [[ -n "$__Cube_new_size" ]] || _Crash "Cube: size is required"
 
-  # Delegate to base constructor with derived dimensions
-  into=__Cube_new_self __boop.new "$@" size=$__Cube_new_size length=$__Cube_new_size width=$__Cube_new_size height=$__Cube_new_size
+  # Delegate to parent constructor with derived dimensions
+  #set -vx; : in Cube.new
+  into=__Cube_new_self _Super new "$@" length="$__Cube_new_size" width="$__Cube_new_size" height="$__Cube_new_size"
+  _Bless "$__Cube_new_self" Cube
   boop.pass "$__Cube_new_self" ${into:-}
 }
+#  into=__Cube_new_self _Super new "$@" size=$__Cube_new_size length=$__Cube_new_size width=$__Cube_new_size height=$__Cube_new_size
+#  boop.pass "$__Cube_new_self" ${into:-}
 
 # Calculate side face area (all faces equal for cube)
 Cube.side() {

@@ -37,9 +37,6 @@
 #   forwards to it. For independent cursors, create Iterators explicitly:
 #     into=iter Iterator target="$list" target_class="List"
 #
-#   Subclasses that don't want iterators call $_Self.noIterators in their
-#   constructor to wall off all iterator methods with a clear error.
-#
 # Virtual methods (child MUST override): getAt, setAt, delete, length, clear, has, toArray
 # Provided methods (inherited, work for all): isEmpty, new, destroy, toString
 # Iterator delegation (lazy): next, prev, hasNext, hasPrev, current, iterIndex, iterReset
@@ -57,42 +54,42 @@
 # ============================================================================
 
 Container.getAt() {
-  local -I _Self; local _Class="${_Class:-Container}"
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}"
   _Crash "$_Class must implement 'getAt'"
 }
 
 Container.setAt() {
-  local -I _Self; local _Class="${_Class:-Container}"
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}"
   _Crash "$_Class must implement 'setAt'"
 }
 
 Container.delete() {
-  local -I _Self; local _Class="${_Class:-Container}"
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}"
   _Crash "$_Class must implement 'delete'"
 }
 
 Container.length() {
-  local -I _Self; local _Class="${_Class:-Container}"
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}"
   _Crash "$_Class must implement 'length'"
 }
 
 Container.clear() {
-  local -I _Self; local _Class="${_Class:-Container}"
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}"
   _Crash "$_Class must implement 'clear'"
 }
 
 Container.has() {
-  local -I _Self; local _Class="${_Class:-Container}"
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}"
   _Crash "$_Class must implement 'has'"
 }
 
 Container.toArray() {
-  local -I _Self; local _Class="${_Class:-Container}"
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}"
   _Crash "$_Class must implement 'toArray'"
 }
 
 Container.each() {
-  local -I _Self; local _Class="${_Class:-Container}"
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}"
   _Crash "$_Class must implement 'each'"
 }
 
@@ -101,7 +98,7 @@ Container.each() {
 # ============================================================================
 
 Container.isEmpty() {
-  local -I _Self; local _Class="${_Class:-Container}"
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}"
   local __Container_isEmpty_len
   into=__Container_isEmpty_len $_Self.length
   (( __Container_isEmpty_len == 0 )) && return 0 || return 1
@@ -147,7 +144,7 @@ __Container._ensureIterator() {
 #          into=val $iter.next
 #        done
 Container.iterator() {
-  local -I _Self; local _Class="${_Class:-Container}"
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}"
   local __Container_iter_obj
   into=__Container_iter_obj Iterator target="$_Self" target_class="$_Class"
   boop.pass "$__Container_iter_obj" ${into:-}
@@ -155,75 +152,55 @@ Container.iterator() {
 
 # Advance the internal iterator and return the next value.
 Container.next() {
-  local -I _Self; local _Class="${_Class:-Container}"
-  local __Container_next_iter
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}" __Container_next_iter
   __Container._ensureIterator "$_Self" "$_Class" __Container_next_iter
-  into=__Container_next_val _Self="$__Container_next_iter" _Class=Iterator __boop.dispatch next
+  into=__Container_next_val _Delegate $__Container_next_iter.next
   boop.pass "$__Container_next_val" ${into:-}
 }
 
 # Move the internal iterator backward and return the value.
 Container.prev() {
-  local -I _Self; local _Class="${_Class:-Container}"
-  local __Container_prev_iter
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}" __Container_prev_iter
   __Container._ensureIterator "$_Self" "$_Class" __Container_prev_iter
-  into=__Container_prev_val _Self="$__Container_prev_iter" _Class=Iterator __boop.dispatch prev
+  into=__Container_prev_val _Delegate $__Container_prev_iter.prev
   boop.pass "$__Container_prev_val" ${into:-}
 }
 
 # Check if the internal iterator has more elements ahead.
 Container.hasNext() {
-  local -I _Self; local _Class="${_Class:-Container}"
-  local __Container_hn_iter
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}" __Container_hn_iter
   __Container._ensureIterator "$_Self" "$_Class" __Container_hn_iter
-  _Self="$__Container_hn_iter" _Class=Iterator __boop.dispatch hasNext
+  _Delegate $__Container_hn_iter.hasNext
 }
 
 # Check if the internal iterator has elements behind.
 Container.hasPrev() {
-  local -I _Self; local _Class="${_Class:-Container}"
-  local __Container_hp_iter
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}" __Container_hp_iter
   __Container._ensureIterator "$_Self" "$_Class" __Container_hp_iter
-  _Self="$__Container_hp_iter" _Class=Iterator __boop.dispatch hasPrev
+  _Delegate $__Container_hp_iter.hasPrev
 }
 
 # Return the value at the internal iterator's current position.
 Container.current() {
-  local -I _Self; local _Class="${_Class:-Container}"
-  local __Container_cur_iter
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}" __Container_cur_iter
   __Container._ensureIterator "$_Self" "$_Class" __Container_cur_iter
-  into=__Container_cur_val _Self="$__Container_cur_iter" _Class=Iterator __boop.dispatch current
+  into=__Container_cur_val _Delegate $__Container_cur_iter.current
   boop.pass "$__Container_cur_val" ${into:-}
 }
 
 # Return the key/index at the internal iterator's current position.
 Container.iterIndex() {
-  local -I _Self; local _Class="${_Class:-Container}"
-  local __Container_idx_iter
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}" __Container_idx_iter
   __Container._ensureIterator "$_Self" "$_Class" __Container_idx_iter
-  into=__Container_idx_val _Self="$__Container_idx_iter" _Class=Iterator __boop.dispatch index
+  into=__Container_idx_val _Delegate $__Container_idx_iter.index
   boop.pass "$__Container_idx_val" ${into:-}
 }
 
 # Reset the internal iterator to before the first element.
 Container.iterReset() {
-  local -I _Self; local _Class="${_Class:-Container}"
-  local __Container_rst_iter
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}" __Container_rst_iter
   __Container._ensureIterator "$_Self" "$_Class" __Container_rst_iter
-  _Self="$__Container_rst_iter" _Class=Iterator __boop.dispatch reset
-}
-
-# Disable all iterator methods on this instance. Call from a subclass
-# constructor to opt out of iterator support entirely.
-#
-# Usage (in a subclass constructor):
-#   $_Self.noIterators
-Container.noIterators() {
-  local -I _Self; local _Class="${_Class:-Container}"
-  local __Container_noIterators_method
-  for __Container_noIterators_method in iterator next prev hasNext hasPrev current iterIndex iterReset; do
-    eval "$_Self.$__Container_noIterators_method() { _Crash '$_Class does not support iterators'; }"
-  done
+  _Delegate $__Container_rst_iter.reset
 }
 
 # ============================================================================
@@ -238,13 +215,13 @@ Container.new() {
 }
 
 Container.destroy() {
-  local -I _Self; local _Class="${_Class:-Container}"
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}"
   unset "__boop_data_${_Self}"
   unset "__boop_registry[$_Self]"
 }
 
 Container.toString() {
-  local -I _Self; local _Class="${_Class:-Container}"
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}"
   local -l prettyPrint; : "${prettyPrint:=false}"
   [[ "${1:-}" == "pretty" ]] && prettyPrint=true
   local __Container_ts_len __Container_ts_type
@@ -264,47 +241,40 @@ Container.toString() {
 
 # ============================================================================
 # Deep Traversal — deepGet / deepSet
-#
-# IMPORTANT — why these methods use explicit dispatch instead of $cursor.get:
-#
-#   Traversal methods dispatch to multiple different objects of potentially
-#   different classes in sequence. `local -I` leaks class identity across
-#   calls, so we track the cursor's class explicitly and pass _Self=/_Class=
-#   as environment prefixes on every dispatch call.
 # ============================================================================
 
 Container.deepGet() {
-  local -I _Self; local _Class="${_Class:-Container}"
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}"
   local __Container_deepGet_cursor="$_Self" __Container_deepGet_class="$_Class"
   while (( $# > 1 )); do
-    into=__Container_deepGet_cursor _Self="$__Container_deepGet_cursor" _Class="$__Container_deepGet_class" __boop.dispatch getAt "$1"
+    into=__Container_deepGet_cursor _Delegate $__Container_deepGet_cursor.getAt "$1"
     [[ -n "$__Container_deepGet_cursor" ]] || { boop.pass "" ${into:-}; return; }
     __boop.parse "$__Container_deepGet_cursor" "class" __Container_deepGet_class
     shift
   done
-  _Self="$__Container_deepGet_cursor" _Class="$__Container_deepGet_class" into=__Container_deepGet_cursor __boop.dispatch getAt "$1"
+  into=__Container_deepGet_cursor _Delegate $__Container_deepGet_cursor.getAt "$1"
   boop.pass "$__Container_deepGet_cursor" ${into:-}
 }
 
 Container.deepSet() {
-  local -I _Self; local _Class="${_Class:-Container}"
+  local _Self="${_Self:-${_Class:-Container}}" _Class="${_Class:-Container}"
   local __Container_deepSet_val="$1"; shift
   local __Container_deepSet_cursor="$_Self" __Container_deepSet_class="$_Class"
   while (( $# > 1 )); do
-    into=__Container_deepSet_cursor _Self="$__Container_deepSet_cursor" _Class="$__Container_deepSet_class" __boop.dispatch getAt "$1"
+    into=__Container_deepSet_cursor _Delegate $__Container_deepSet_cursor.getAt "$1"
     [[ -n "$__Container_deepSet_cursor" ]] || 
       _Crash "deepSet: missing intermediate at '$1'"
     __boop.parse "$__Container_deepSet_cursor" "class" __Container_deepSet_class
     shift
   done
-  _Self="$__Container_deepSet_cursor" _Class="$__Container_deepSet_class" __boop.dispatch setAt "$1" "$__Container_deepSet_val"
+  _Delegate $__Container_deepSet_cursor.setAt "$1" "$__Container_deepSet_val"
 }
 
 # ============================================================================
 # Container Class Declaration
 # ============================================================================
 
-boopClass Container public:new,destroy,length,clear,has,getAt,setAt,delete,isEmpty,toArray,toString,deepGet,deepSet,each,iterator,next,prev,hasNext,hasPrev,current,iterIndex,iterReset,noIterators has:type
+boopClass Container public:new,destroy,length,clear,has,getAt,setAt,delete,isEmpty,toArray,toString,deepGet,deepSet,each,iterator,next,prev,hasNext,hasPrev,current,iterIndex,iterReset has:type
 
 # ============================================================================
 # Deep Traversal — itemFrom / setOn (boop augmentation)
@@ -314,24 +284,24 @@ boopClass Container public:new,destroy,length,clear,has,getAt,setAt,delete,isEmp
 # ============================================================================
 
 __boop.itemFrom() {
-  local -I _Self; local _Class="${_Class:-boop}"
+  local _Self="${_Self:-${_Class:-boop}}" _Class="${_Class:-boop}"
   local __boop_itemFrom_cursor __boop_itemFrom_class
   __boop.parse "$_Self" "$1" __boop_itemFrom_cursor
   [[ -n "$__boop_itemFrom_cursor" ]] || { boop.pass "" ${into:-}; return; }
   __boop.parse "$__boop_itemFrom_cursor" "class" __boop_itemFrom_class
   shift
   while (( $# > 1 )); do
-    into=__boop_itemFrom_cursor _Self="$__boop_itemFrom_cursor" _Class="$__boop_itemFrom_class" __boop.dispatch getAt "$1"
+    into=__boop_itemFrom_cursor _Delegate $__boop_itemFrom_cursor.getAt "$1"
     [[ -n "$__boop_itemFrom_cursor" ]] || { boop.pass "" ${into:-}; return; }
     __boop.parse "$__boop_itemFrom_cursor" "class" __boop_itemFrom_class
     shift
   done
-  _Self="$__boop_itemFrom_cursor" _Class="$__boop_itemFrom_class" into=__boop_itemFrom_cursor __boop.dispatch getAt "$1"
+  into=__boop_itemFrom_cursor _Delegate $__boop_itemFrom_cursor.getAt "$1"
   boop.pass "$__boop_itemFrom_cursor" ${into:-}
 }
 
 __boop.setOn() {
-  local -I _Self; local _Class="${_Class:-boop}"
+  local _Self="${_Self:-${_Class:-boop}}" _Class="${_Class:-boop}"
   local __boop_setOn_cursor __boop_setOn_class
   __boop.parse "$_Self" "$1" __boop_setOn_cursor
   [[ -n "$__boop_setOn_cursor" ]] || _Crash "setOn: property '$1' is empty"
@@ -339,13 +309,13 @@ __boop.setOn() {
   shift
   local __boop_setOn_val="$1"; shift
   while (( $# > 1 )); do
-    into=__boop_setOn_cursor _Self="$__boop_setOn_cursor" _Class="$__boop_setOn_class" __boop.dispatch getAt "$1"
+    into=__boop_setOn_cursor _Delegate $__boop_setOn_cursor.getAt "$1" "$__boop_setOn_val"
     [[ -n "$__boop_setOn_cursor" ]] || 
       _Crash "setOn: missing intermediate at '$1'"
     __boop.parse "$__boop_setOn_cursor" "class" __boop_setOn_class
     shift
   done
-  _Self="$__boop_setOn_cursor" _Class="$__boop_setOn_class" __boop.dispatch setAt "$1" "$__boop_setOn_val"
+  _Delegate $__boop_setOn_cursor.setAt "$1" "$__boop_setOn_val"
 }
 
 boopExtend boop custom:itemFrom=__boop.itemFrom,setOn=__boop.setOn
@@ -442,7 +412,7 @@ __Iterator._targetLen() {
 }
 
 Iterator.hasNext() {
-  local -I _Self; local _Class="${_Class:-Iterator}"
+  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
   local __Iter_hn_pos
   __boop.parse "$_Self" "position" __Iter_hn_pos
   : "${__Iter_hn_pos:=-1}"
@@ -452,7 +422,7 @@ Iterator.hasNext() {
 }
 
 Iterator.hasPrev() {
-  local -I _Self; local _Class="${_Class:-Iterator}"
+  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
   local __Iter_hp_pos
   __boop.parse "$_Self" "position" __Iter_hp_pos
   : "${__Iter_hp_pos:=-1}"
@@ -460,7 +430,7 @@ Iterator.hasPrev() {
 }
 
 Iterator.next() {
-  local -I _Self; local _Class="${_Class:-Iterator}"
+  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
   local __Iter_next_pos
   __boop.parse "$_Self" "position" __Iter_next_pos
   : "${__Iter_next_pos:=-1}"
@@ -488,7 +458,7 @@ Iterator.next() {
 }
 
 Iterator.prev() {
-  local -I _Self; local _Class="${_Class:-Iterator}"
+  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
   local __Iter_prev_pos
   __boop.parse "$_Self" "position" __Iter_prev_pos
   : "${__Iter_prev_pos:=-1}"
@@ -514,7 +484,7 @@ Iterator.prev() {
 }
 
 Iterator.current() {
-  local -I _Self; local _Class="${_Class:-Iterator}"
+  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
   local __Iter_cur_pos
   __boop.parse "$_Self" "position" __Iter_cur_pos
   : "${__Iter_cur_pos:=-1}"
@@ -540,7 +510,7 @@ Iterator.current() {
 }
 
 Iterator.index() {
-  local -I _Self; local _Class="${_Class:-Iterator}"
+  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
   local __Iter_idx_pos
   __boop.parse "$_Self" "position" __Iter_idx_pos
   : "${__Iter_idx_pos:=-1}"
@@ -562,7 +532,7 @@ Iterator.index() {
 }
 
 Iterator.reset() {
-  local -I _Self; local _Class="${_Class:-Iterator}"
+  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
   $_Self.set position "-1"
 }
 

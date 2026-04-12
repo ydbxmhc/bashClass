@@ -1,89 +1,235 @@
 #!/bin/bash
 set -uo pipefail
 
-# TestSuite tests itself — the ultimate dogfood
+# TestSuite self-test — the harness tests itself.
+#
+# Covers: all six assertion types (both passing and failing paths),
+# queue mode, verbose/quiet modes, suite isolation, and the harness's
+# stderr capture contract.
+#
+# Classification: UNIT (TestSuite class)
 
 . boop TestSuite
 
 into=t TestSuite name="TestSuite Self-Test"
 
 # ============================================================================
-# Basic Assertions
+# assert_eq — passing path
 # ============================================================================
 
-$t.section "assert_eq"
-$t.assert_eq "same strings" "hello" "hello"
-$t.assert_eq "same numbers" "42" "42"
-$t.assert_eq "empty strings" "" ""
-
-$t.section "assert_ne"
-$t.assert_ne "different strings" "hello" "world"
-$t.assert_ne "different numbers" "1" "2"
-$t.assert_ne "empty vs non-empty" "" "x"
-
-$t.section "assert_ok"
-$t.assert_ok "true returns 0" true
-$t.assert_ok "test expression" test 1 -eq 1
-$t.assert_ok "bracket expression" [ "a" = "a" ]
-
-$t.section "assert_fail"
-$t.assert_fail "false returns 1" false
-$t.assert_fail "bad test" test 1 -eq 2
-$t.assert_fail "bad bracket" [ "a" = "b" ]
-
-$t.section "assert_match"
-$t.assert_match "glob star" "hello world" "hello*"
-$t.assert_match "glob question" "cat" "c?t"
-$t.assert_match "exact match" "foo" "foo"
-
-$t.section "assert_contains"
-$t.assert_contains "substring" "hello world" "lo wo"
-$t.assert_contains "prefix" "foobar" "foo"
-$t.assert_contains "suffix" "foobar" "bar"
-$t.assert_contains "whole string" "abc" "abc"
+$t.section "assert_eq: passing"
+$t.assert_eq "same strings"       "hello"           "hello"
+$t.assert_eq "same numbers"       "42"              "42"
+$t.assert_eq "empty strings"      ""                ""
+$t.assert_eq "spaces preserved"   "a b c"           "a b c"
+$t.assert_eq "special chars"      "hello|world=foo" "hello|world=foo"
+$t.assert_eq "percent signs"      "100%"            "100%"
+$t.assert_eq "newline in value"   $'line1\nline2'   $'line1\nline2'
+$t.assert_eq "tab in value"       $'col1\tcol2'     $'col1\tcol2'
 
 # ============================================================================
-# Edge Cases
+# assert_eq — failing path: verify the harness records the failure
 # ============================================================================
 
-$t.section "Edge Cases"
-$t.assert_eq "spaces preserved" "a b c" "a b c"
-$t.assert_eq "special chars" "hello|world=foo" "hello|world=foo"
-$t.assert_eq "percent signs" "100%" "100%"
-$t.assert_contains "newline in value" "line1
-line2" "line1"
-$t.assert_match "tab in value" "col1	col2" "col1*col2"
+$t.section "assert_eq: failing path"
+# Spin up a sub-suite, deliberately fail an assertion, verify the count.
+into=__tsf TestSuite name="eq-fail-probe"
+$__tsf.assert_eq "should fail" "apple" "orange"
+into=__tsf_f $__tsf.get failed
+$t.assert_eq "failed count incremented" "$__tsf_f" "1"
+into=__tsf_p $__tsf.get passed
+$t.assert_eq "passed count unchanged"   "$__tsf_p" "0"
 
 # ============================================================================
-# info (no pass/fail, just output)
+# assert_ne — passing and failing paths
+# ============================================================================
+
+$t.section "assert_ne: passing"
+$t.assert_ne "different strings"  "hello" "world"
+$t.assert_ne "different numbers"  "1"     "2"
+$t.assert_ne "empty vs non-empty" ""      "x"
+
+$t.section "assert_ne: failing path"
+into=__tsf2 TestSuite name="ne-fail-probe"
+$__tsf2.assert_ne "should fail" "same" "same"
+into=__tsf2_f $__tsf2.get failed
+$t.assert_eq "ne failed count incremented" "$__tsf2_f" "1"
+
+# ============================================================================
+# assert_ok — passing path
+# ============================================================================
+
+$t.section "assert_ok: passing"
+$t.assert_ok "true returns 0"      true
+$t.assert_ok "test expression"     test 1 -eq 1
+$t.assert_ok "bracket expression"  [ "a" = "a" ]
+
+# ============================================================================
+# assert_ok — failing path
+# ============================================================================
+
+$t.section "assert_ok: failing path"
+into=__tsf3 TestSuite name="ok-fail-probe"
+$__tsf3.assert_ok "should fail" false
+into=__tsf3_f $__tsf3.get failed
+$t.assert_eq "ok failed count incremented" "$__tsf3_f" "1"
+
+# ============================================================================
+# assert_fail — passing path
+# ============================================================================
+
+$t.section "assert_fail: passing"
+$t.assert_fail "false returns 1"  false
+$t.assert_fail "bad test"         test 1 -eq 2
+$t.assert_fail "bad bracket"      [ "a" = "b" ]
+
+# ============================================================================
+# assert_fail — failing path (command succeeds when it should fail)
+# ============================================================================
+
+$t.section "assert_fail: failing path"
+into=__tsf4 TestSuite name="fail-fail-probe"
+$__tsf4.assert_fail "should fail" true
+into=__tsf4_f $__tsf4.get failed
+$t.assert_eq "assert_fail failed count incremented" "$__tsf4_f" "1"
+
+# ============================================================================
+# assert_match — passing and failing paths
+# ============================================================================
+
+$t.section "assert_match: passing"
+$t.assert_match "glob star"    "hello world" "hello*"
+$t.assert_match "glob question" "cat"        "c?t"
+$t.assert_match "exact match"  "foo"         "foo"
+
+$t.section "assert_match: failing path"
+into=__tsf5 TestSuite name="match-fail-probe"
+$__tsf5.assert_match "should fail" "hello" "xyz*"
+into=__tsf5_f $__tsf5.get failed
+$t.assert_eq "match failed count incremented" "$__tsf5_f" "1"
+
+# ============================================================================
+# assert_contains — passing and failing paths
+# ============================================================================
+
+$t.section "assert_contains: passing"
+$t.assert_contains "substring"    "hello world" "lo wo"
+$t.assert_contains "prefix"       "foobar"      "foo"
+$t.assert_contains "suffix"       "foobar"      "bar"
+$t.assert_contains "whole string" "abc"          "abc"
+$t.assert_contains "newline in value" $'line1\nline2' "line1"
+$t.assert_contains "tab in value"    $'col1\tcol2'   $'col1\t'
+
+$t.section "assert_contains: failing path"
+into=__tsf6 TestSuite name="contains-fail-probe"
+$__tsf6.assert_contains "should fail" "hello" "xyz"
+into=__tsf6_f $__tsf6.get failed
+$t.assert_eq "contains failed count incremented" "$__tsf6_f" "1"
+
+# ============================================================================
+# assert_ok/assert_fail: stdout from command under test passes through
+# ============================================================================
+
+$t.section "stdout passthrough"
+# The harness does NOT suppress stdout from the command under test — it passes
+# through to the terminal. This is intentional: the harness only redirects
+# stderr (to capture it for _Debug). Stdout is the caller's business.
+# We verify the assertion still records a pass regardless.
+__ts_stdout_cmd() { printf 'STDOUT_PASSTHROUGH\n'; return 0; }
+__ts_captured=$(
+  . boop TestSuite
+  into=__ts_iso TestSuite name="iso-probe"
+  $__ts_iso.assert_ok "stdout cmd" __ts_stdout_cmd
+  $__ts_iso.summary
+)
+# The command's stdout appears in the captured output (passthrough confirmed)
+$t.assert_contains "command stdout passes through" "$__ts_captured" "STDOUT_PASSTHROUGH"
+# The assertion itself still passes
+$t.assert_contains "assertion still passed" "$__ts_captured" "All tests passed"
+unset -f __ts_stdout_cmd
+
+# ============================================================================
+# assert_ok/assert_fail: stderr from command is captured by the harness
+# ============================================================================
+
+$t.section "stderr capture"
+# The harness captures stderr from the command under test and routes it
+# to _Debug. We verify the harness receives it by checking that a sub-suite
+# run at debug level includes the stderr content in its combined output.
+__ts_stderr_visible=$(bash -c '
+  . boop TestSuite
+  into=s TestSuite name="stderr-probe"
+  _LogLevel debug
+  __stderr_cmd() { printf "captured_stderr_marker\n" >&2; return 0; }
+  $s.assert_ok "captures stderr" __stderr_cmd
+  $s.summary
+' 2>&1)
+$t.assert_contains "stderr content visible at debug level" \
+  "$__ts_stderr_visible" "captured_stderr_marker"
+$t.assert_contains "assertion still passed" \
+  "$__ts_stderr_visible" "All tests passed"
+
+# At warn level (default), the captured stderr is silent — does not appear.
+__ts_stderr_quiet=$(bash -c '
+  . boop TestSuite
+  into=s TestSuite name="stderr-quiet-probe"
+  _LogLevel warn
+  __stderr_cmd() { printf "quiet_stderr_marker\n" >&2; return 0; }
+  $s.assert_ok "quiet stderr" __stderr_cmd
+  $s.summary
+' 2>&1)
+$t.assert_ok "stderr absent at warn level" \
+  test "${__ts_stderr_quiet}" = "${__ts_stderr_quiet/quiet_stderr_marker/}"
+
+# assert_fail also captures stderr from the failing command
+__ts_fail_stderr=$(bash -c '
+  . boop TestSuite
+  into=s TestSuite name="fail-stderr-probe"
+  _LogLevel debug
+  __fail_cmd() { printf "fail_stderr_marker\n" >&2; return 1; }
+  $s.assert_fail "fail captures stderr" __fail_cmd
+  $s.summary
+' 2>&1)
+$t.assert_contains "assert_fail stderr visible at debug" \
+  "$__ts_fail_stderr" "fail_stderr_marker"
+
+# ============================================================================
+# info
 # ============================================================================
 
 $t.section "info"
-$t.info "This line should appear but not affect counts"
+$t.info "This line should appear in verbose mode but not affect counts"
+into=__ts_p_before $t.get passed
+into=__ts_f_before $t.get failed
+$t.info "Another info line"
+into=__ts_p_after $t.get passed
+into=__ts_f_after $t.get failed
+$t.assert_eq "info does not increment passed" "$__ts_p_before" "$__ts_p_after"
+$t.assert_eq "info does not increment failed" "$__ts_f_before" "$__ts_f_after"
 
 # ============================================================================
 # TestSuite as an object (introspection)
 # ============================================================================
 
-$t.section "TestSuite Introspection"
+$t.section "TestSuite introspection"
 $t.assert_ok "suite isa TestSuite" $t.isa TestSuite
-$t.assert_ok "suite isa boop" $t.isa boop
-into=v $t.get "name"; $t.assert_eq "suite name" "$v" "TestSuite Self-Test"
-into=v $t.get "mode"; $t.assert_eq "suite mode" "$v" "immediate"
+$t.assert_ok "suite isa boop"      $t.isa boop
+into=v $t.get "name"; $t.assert_eq "suite name"  "$v" "TestSuite Self-Test"
+into=v $t.get "mode"; $t.assert_eq "suite mode"  "$v" "immediate"
 
 # ============================================================================
-# Queue Mode
+# Queue mode
 # ============================================================================
 
-# Spin up a second suite in queue mode to test batching
+$t.section "Queue mode"
 into=q TestSuite name="Queue Subtest" mode=queue
 
 $q.section "Queued Assertions"
-$q.assert_eq "queued eq" "a" "a"
-$q.assert_ne "queued ne" "a" "b"
-$q.assert_ok "queued ok" true
-$q.assert_fail "queued fail" false
-$q.assert_match "queued match" "foo" "f*"
+$q.assert_eq       "queued eq"       "a"      "a"
+$q.assert_ne       "queued ne"       "a"      "b"
+$q.assert_ok       "queued ok"       true
+$q.assert_fail     "queued fail"     false
+$q.assert_match    "queued match"    "foo"    "f*"
 $q.assert_contains "queued contains" "foobar" "oba"
 
 # Nothing should have printed yet — run the batch
@@ -95,63 +241,31 @@ into=v $q.get "passed"; $t.assert_eq "queue passed count" "$v" "6"
 into=v $q.get "failed"; $t.assert_eq "queue failed count" "$v" "0"
 
 # ============================================================================
-# Stderr Capture — assert_ok/assert_fail capture stderr to _Debug
+# Suite isolation — sub-suite counts do not bleed into parent
 # ============================================================================
 
-$t.section "Stderr Capture"
+$t.section "Suite isolation"
+# Record parent counts before running a sub-suite.
+into=__ts_p_snap $t.get passed
+into=__ts_f_snap $t.get failed
 
-# At default log level (warn), stderr from assert_ok is captured but silent.
-# At debug level, it should appear via _Debug.
+into=__ts_iso2 TestSuite name="isolation-probe"
+$__ts_iso2.assert_eq "sub-suite assertion 1" "x" "x"
+$__ts_iso2.assert_eq "sub-suite assertion 2" "y" "y"
+$__ts_iso2.assert_eq "sub-suite assertion 3" "z" "z"
 
-# Helper that writes to stderr and succeeds
-__test_stderr_cmd() { printf 'stderr capture test\n' >&2; return 0; }
-
-# At debug level, the captured stderr should come through _Debug
-__ts_lf=$(mktemp)
-_LogLevel debug
-$t.assert_ok "ok captures stderr" __test_stderr_cmd 2>"$__ts_lf"
-_LogLevel warn
-$t.assert_contains "stderr visible at debug" "$(<"$__ts_lf")" "stderr capture test"
-
-# At warn level, _Debug output is suppressed — file should be empty
-: > "$__ts_lf"
-$t.assert_ok "ok runs clean at warn" __test_stderr_cmd 2>"$__ts_lf"
-$t.assert_eq "stderr silent at warn" "$(<"$__ts_lf")" ""
-
-# assert_fail also captures stderr
-__test_stderr_fail() { printf 'fail stderr\n' >&2; return 1; }
-: > "$__ts_lf"
-_LogLevel debug
-$t.assert_fail "fail captures stderr" __test_stderr_fail 2>"$__ts_lf"
-_LogLevel warn
-$t.assert_contains "fail stderr visible at debug" "$(<"$__ts_lf")" "fail stderr"
-
-# Visible output test — let _Debug hit the terminal, then verify it happened.
-# We run in a subshell so we can capture everything (stdout + stderr) and
-# check the combined output contains both the PASS line and the debug output.
-__ts_visible=$(bash -c '
-  . boop TestSuite
-  into=s TestSuite name="Stderr Visible"
-  _LogLevel debug
-  __stderr_cmd() { printf "visible_stderr_marker\n" >&2; return 0; }
-  $s.assert_ok "visible capture" __stderr_cmd
-  $s.summary
-' 2>&1)
-$t.assert_contains "debug output visible in terminal" "$__ts_visible" "visible_stderr_marker"
-$t.assert_contains "assertion still passes" "$__ts_visible" "All tests passed"
-
-rm -f "$__ts_lf"
-unset -f __test_stderr_cmd __test_stderr_fail
+# Parent counts must be unchanged after sub-suite ran
+into=__ts_p_after2 $t.get passed
+into=__ts_f_after2 $t.get failed
+$t.assert_eq "parent passed count unchanged" "$__ts_p_snap" "$__ts_p_after2"
+$t.assert_eq "parent failed count unchanged" "$__ts_f_snap" "$__ts_f_after2"
 
 # ============================================================================
-# Multiple Suites Don't Interfere
+# Constructor validation
 # ============================================================================
 
-$t.section "Suite Isolation"
-# Our main suite's counts should not include the queue suite's assertions
-into=p $t.get "passed"
-# We've run a bunch — just make sure it's a reasonable number and not inflated
-# by the queue suite's 6
-$t.assert_ok "main suite count independent" test "$p" -lt 50
+$t.section "Constructor validation"
+$t.assert_fail "name required"       bash -c '. boop TestSuite; TestSuite mode=immediate'
+$t.assert_fail "invalid mode crashes" bash -c '. boop TestSuite; TestSuite name=x mode=banana'
 
 $t.summary

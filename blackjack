@@ -155,9 +155,9 @@ boopClass BlackjackHand isa:List public:new,cardVal,total,isBust,isBlackjack,sho
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0
 
 show_table() {
-  local __st_player="$1" __st_dealer="$2" __st_s
-  into=__st_s $__st_dealer.show "Dealer"; printf "  %s\n" "$__st_s"
-  into=__st_s $__st_player.show "You";    printf "  %s\n\n" "$__st_s"
+  local __BJ_st_player="$1" __BJ_st_dealer="$2" __BJ_st_s
+  into=__BJ_st_s $__BJ_st_dealer.show "Dealer"; printf "  %s\n" "$__BJ_st_s"
+  into=__BJ_st_s $__BJ_st_player.show "You";    printf "  %s\n\n" "$__BJ_st_s"
 }
 
 # ═════════════════════════════════════════════════════════════════════
@@ -209,9 +209,9 @@ while (( bankroll > 0 )); do
   declare -i player_bj=0 dealer_bj=0
   $player.isBlackjack && player_bj=1
   # Peek at dealer's hand for natural (both cards known to the game)
-  declare -i __peek_total
-  into=__peek_total $dealer.total
-  (( __peek_total == 21 )) && dealer_bj=1
+  declare -i __BJ_peek_total
+  into=__BJ_peek_total $dealer.total
+  (( __BJ_peek_total == 21 )) && dealer_bj=1
 
   if (( player_bj || dealer_bj )); then
     $dealer.reveal

@@ -560,7 +560,7 @@ Math.new() {
 # Add: self + arg. Handles sign logic, delegates to strAdd/strSub.
 # Fast path: if both operands fit in 64-bit, uses native $(( )).
 __Math.i_add() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local __Math_iAdd_dA __Math_iAdd_dB
   local -i __Math_iAdd_sA __Math_iAdd_sB __Math_iAdd_nA __Math_iAdd_nB
   __Math.resolve "$_Self" __Math_iAdd_dA __Math_iAdd_sA __Math_iAdd_nA
@@ -606,7 +606,7 @@ __Math.i_add() {
 
 # Subtract: self - arg. Flip sign of arg and add.
 __Math.i_sub() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local __Math_iSub_dB
   local -i __Math_iSub_sB __Math_iSub_nB
   __Math.resolve "$1" __Math_iSub_dB __Math_iSub_sB __Math_iSub_nB
@@ -618,7 +618,7 @@ __Math.i_sub() {
   # Build a temporary negated value and add
   local __Math_iSub_tmp
   __Math.fromParts "$__Math_iSub_dB" $__Math_iSub_sB $__Math_iSub_nB __Math_iSub_tmp
-  _Self="$_Self" _Class=Math __Math.i_add "$__Math_iSub_tmp"
+  _Class=Math __Math.i_add "$__Math_iSub_tmp"
 }
 
 # Multiply: self * arg.
@@ -626,7 +626,7 @@ __Math.i_sub() {
 # Result sign = XOR of input signs.
 # Fast path: if combined digit count ≤ 18, uses native $(( )).
 __Math.i_mul() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local __Math_iMul_dA __Math_iMul_dB
   local -i __Math_iMul_sA __Math_iMul_sB __Math_iMul_nA __Math_iMul_nB
   __Math.resolve "$_Self" __Math_iMul_dA __Math_iMul_sA __Math_iMul_nA
@@ -654,7 +654,7 @@ __Math.i_mul() {
 # Always truncates to precision. Use $result.round N to round afterward.
 # Fast path: if dividend (after scale padding) fits in 64-bit, uses $(( )).
 __Math.i_div() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local -i precision; : "${precision:=$__Math_precision}"
 
   local __Math_iDiv_dA __Math_iDiv_dB
@@ -715,7 +715,7 @@ __Math.i_div() {
 
 # Square: self * self. Convenience wrapper — same as mul with self as arg.
 __Math.i_square() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   _Self="$_Self" _Class="$_Class" into=${into:-} __Math.i_mul "$_Self"
 }
 
@@ -723,7 +723,7 @@ __Math.i_square() {
 # Fast path only — mod on arbitrary-precision strings would need
 # a full strMod implementation. For now, crashes if operands are too large.
 __Math.i_mod() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local __Math_iMod_dA __Math_iMod_dB
   local -i __Math_iMod_sA __Math_iMod_sB __Math_iMod_nA __Math_iMod_nB
   __Math.resolve "$_Self" __Math_iMod_dA __Math_iMod_sA __Math_iMod_nA
@@ -749,7 +749,7 @@ __Math.i_mod() {
 # string path per iteration. This means small bases stay fast and large
 # bases gracefully fall back to arbitrary precision.
 __Math.i_pow() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local __Math_iPow_dB
   local -i __Math_iPow_sB __Math_iPow_nB
   __Math.resolve "$1" __Math_iPow_dB __Math_iPow_sB __Math_iPow_nB
@@ -780,7 +780,7 @@ __Math.i_pow() {
 # Compare self to arg. Returns 0 (equal), 1 (self > arg), 2 (self < arg).
 # This is the workhorse — eq/lt/gt/le/ge are wrappers.
 Math.cmp() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local __Math_strCmp_dA __Math_strCmp_dB
   local -i __Math_strCmp_sA __Math_strCmp_sB __Math_strCmp_nA __Math_strCmp_nB
   __Math.resolve "$_Self" __Math_strCmp_dA __Math_strCmp_sA __Math_strCmp_nA
@@ -805,32 +805,32 @@ Math.cmp() {
   return $__Math_strCmp_rc
 }
 
-Math.eq() { local -I _Self; local _Class="${_Class:-Math}"; _Self="$_Self" _Class="$_Class" Math.cmp "$1"; (( $? == 0 )); }
-Math.lt() { local -I _Self; local _Class="${_Class:-Math}"; _Self="$_Self" _Class="$_Class" Math.cmp "$1"; (( $? == 2 )); }
-Math.gt() { local -I _Self; local _Class="${_Class:-Math}"; _Self="$_Self" _Class="$_Class" Math.cmp "$1"; (( $? == 1 )); }
-Math.le() { local -I _Self; local _Class="${_Class:-Math}"; _Self="$_Self" _Class="$_Class" Math.cmp "$1"; local -i rc=$?; (( rc == 0 || rc == 2 )); }
-Math.ge() { local -I _Self; local _Class="${_Class:-Math}"; _Self="$_Self" _Class="$_Class" Math.cmp "$1"; local -i rc=$?; (( rc == 0 || rc == 1 )); }
+Math.eq() { local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"; _Self="$_Self" _Class="$_Class" Math.cmp "$1"; (( $? == 0 )); }
+Math.lt() { local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"; _Self="$_Self" _Class="$_Class" Math.cmp "$1"; (( $? == 2 )); }
+Math.gt() { local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"; _Self="$_Self" _Class="$_Class" Math.cmp "$1"; (( $? == 1 )); }
+Math.le() { local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"; _Self="$_Self" _Class="$_Class" Math.cmp "$1"; local -i rc=$?; (( rc == 0 || rc == 2 )); }
+Math.ge() { local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"; _Self="$_Self" _Class="$_Class" Math.cmp "$1"; local -i rc=$?; (( rc == 0 || rc == 1 )); }
 
 # ============================================================================
 # Utility methods
 # ============================================================================
 
 Math.isZero() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local __Math_isZero_d; local -i __Math_isZero_s __Math_isZero_n
   __Math.resolve "$_Self" __Math_isZero_d __Math_isZero_s __Math_isZero_n
   [[ "$__Math_isZero_d" == "0" ]]
 }
 
 __Math.i_abs() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local __Math_iAbs_d; local -i __Math_iAbs_s __Math_iAbs_n
   __Math.resolve "$_Self" __Math_iAbs_d __Math_iAbs_s __Math_iAbs_n
   __Math.fromParts "$__Math_iAbs_d" $__Math_iAbs_s 0 ${into:-}
 }
 
 __Math.i_neg() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local __Math_iNeg_d; local -i __Math_iNeg_s __Math_iNeg_n
   __Math.resolve "$_Self" __Math_iNeg_d __Math_iNeg_s __Math_iNeg_n
   [[ "$__Math_iNeg_d" == "0" ]] && __Math_iNeg_n=0 || (( __Math_iNeg_n = !__Math_iNeg_n ))
@@ -840,7 +840,7 @@ __Math.i_neg() {
 # Round to N significant digits. Returns a new Math object.
 # Uses round-half-up: if the digit past the cut point is >= 5, bump up.
 Math.round() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local -i __Math_round_prec="${1:-$__Math_precision}"
   local __Math_round_d; local -i __Math_round_s __Math_round_n
   __Math.resolve "$_Self" __Math_round_d __Math_round_s __Math_round_n
@@ -884,7 +884,7 @@ Math.round() {
 
 # Truncate to integer string.
 Math.toInt() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local __Math_toInt64_d; local -i __Math_toInt64_s __Math_toInt64_n
   __Math.resolve "$_Self" __Math_toInt64_d __Math_toInt64_s __Math_toInt64_n
 
@@ -902,7 +902,7 @@ Math.toInt() {
 
 # Return the decimal string representation. "3.14", "-0.5", "42", etc.
 Math.val() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local __Math_val_d; local -i __Math_val_s __Math_val_n
   __Math.resolve "$_Self" __Math_val_d __Math_val_s __Math_val_n
 
@@ -930,7 +930,7 @@ Math.val() {
 }
 
 Math.toString() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local __Math_toString_val
   into=__Math_toString_val _Self="$_Self" _Class="$_Class" Math.val
   boop.pass "Math($_Self){ $__Math_toString_val }" ${into:-}
@@ -941,7 +941,7 @@ Math.toString() {
 #
 # Usage: into=r $m.toScale 4    # force 4 decimal places
 Math.toScale() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local -i __Math_toScale_target="${1:-0}"
   local __Math_toScale_d; local -i __Math_toScale_s __Math_toScale_n
   __Math.resolve "$_Self" __Math_toScale_d __Math_toScale_s __Math_toScale_n
@@ -987,7 +987,7 @@ Math.toScale() {
 # Usage: into=s $m.format "%010.4f"    # "00003.1400"
 #        into=s $m.format "%.2f"       # "3.14"
 Math.format() {
-  local -I _Self; local _Class="${_Class:-Math}"
+  local _Self="${_Self:-${Class:-Math}}" _Class="${_Class:-Math}"
   local __Math_format_str
   into=__Math_format_str _Self="$_Self" _Class="$_Class" Math.val
   local __Math_format_result
@@ -1490,15 +1490,18 @@ __Math.staticUnaryOp() {
 # Dual-mode wrappers: static (no self) returns value string,
 # instance (self set) delegates to __Math.i_* which returns object.
 
-Math.add()      { if [[ -n "${_Self:-}" ]]; then local -I _Self; local _Class="${_Class:-Math}"; __Math.i_add "$@"; else __Math.staticBinOp add "$@"; fi; }
-Math.subtract() { if [[ -n "${_Self:-}" ]]; then local -I _Self; local _Class="${_Class:-Math}"; __Math.i_sub "$@"; else __Math.staticBinOp sub "$@"; fi; }
-Math.multiply() { if [[ -n "${_Self:-}" ]]; then local -I _Self; local _Class="${_Class:-Math}"; __Math.i_mul "$@"; else __Math.staticBinOp mul "$@"; fi; }
-Math.divide()   { if [[ -n "${_Self:-}" ]]; then local -I _Self; local _Class="${_Class:-Math}"; __Math.i_div "$@"; else __Math.staticBinOp div "$@"; fi; }
-Math.square()   { if [[ -n "${_Self:-}" ]]; then local -I _Self; local _Class="${_Class:-Math}"; __Math.i_square "$@"; else __Math.staticUnaryOp square "$1"; fi; }
-Math.abs()      { if [[ -n "${_Self:-}" ]]; then local -I _Self; local _Class="${_Class:-Math}"; __Math.i_abs "$@"; else __Math.staticUnaryOp abs "$1"; fi; }
-Math.neg()      { if [[ -n "${_Self:-}" ]]; then local -I _Self; local _Class="${_Class:-Math}"; __Math.i_neg "$@"; else __Math.staticUnaryOp neg "$1"; fi; }
-Math.mod()      { if [[ -n "${_Self:-}" ]]; then local -I _Self; local _Class="${_Class:-Math}"; __Math.i_mod "$@"; else __Math.staticBinOp mod "$@"; fi; }
-Math.pow()      { if [[ -n "${_Self:-}" ]]; then local -I _Self; local _Class="${_Class:-Math}"; __Math.i_pow "$@"; else
+Math.add()      { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_add    "$@"; else __Math.staticBinOp add      "$@"; fi; }
+Math.subtract() { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_sub    "$@"; else __Math.staticBinOp sub      "$@"; fi; }
+Math.multiply() { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_mul    "$@"; else __Math.staticBinOp mul      "$@"; fi; }
+Math.divide()   { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_div    "$@"; else __Math.staticBinOp div      "$@"; fi; }
+Math.mod()      { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_mod    "$@"; else __Math.staticBinOp mod      "$@"; fi; }
+
+# unaries
+Math.abs()      { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_abs    "$@"; else __Math.staticUnaryOp abs    "$1"; fi; }
+Math.neg()      { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_neg    "$@"; else __Math.staticUnaryOp neg    "$1"; fi; }
+Math.square()   { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_square "$@"; else __Math.staticUnaryOp square "$1"; fi; }
+
+Math.pow()      { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_pow "$@"; else
   # Static pow: create temp object, call i_pow, extract value
   local __Math_staticPow_tmp; into=__Math_staticPow_tmp Math.new "$1"
   local __Math_staticPow_result; into=__Math_staticPow_result _Self="$__Math_staticPow_tmp" _Class=Math __Math.i_pow "$2"

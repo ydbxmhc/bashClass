@@ -1,102 +1,182 @@
 #!/bin/bash
 set -uo pipefail
-#set -vx
 
-# Box and Cube tests — TestSuite version
+# Box and Cube tests
+#
+# Classification: UNIT (Box, Cube classes)
+# Covers: geometry, mutation, toString, type checking, encoding,
+#         constructors, typecasting, baking, _Bless, rejection.
+#
+# Fixtures are local to each section — no section mutates state
+# that another section depends on.
 
 . boop TestSuite Cube
 
 into=t TestSuite name="Box and Cube Tests"
 
 # ============================================================================
-# Setup
-# ============================================================================
-
-into=box Box length=5 width=3 height=7
-into=cube Cube size=4 unit=cm
-
-# ============================================================================
 # Box Geometry
 # ============================================================================
 
 $t.section "Box Geometry"
-into=v $box.top;     $t.assert_eq "top area 5x3" "$v" "15"
-into=v $box.end;     $t.assert_eq "end area 3x7" "$v" "21"
-into=v $box.side;    $t.assert_eq "side area 5x7" "$v" "35"
-into=v $box.bottom;  $t.assert_eq "bottom = top" "$v" "15"
-into=v $box.volume;  $t.assert_eq "volume 5x3x7" "$v" "105"
+into=box Box length=5 width=3 height=7
+into=v $box.top;    $t.assert_eq "top area 5x3"   "$v" "15"
+into=v $box.end;    $t.assert_eq "end area 3x7"   "$v" "21"
+into=v $box.side;   $t.assert_eq "side area 5x7"  "$v" "35"
+into=v $box.bottom; $t.assert_eq "bottom = top"   "$v" "15"
+into=v $box.volume; $t.assert_eq "volume 5x3x7"   "$v" "105"
 
 # ============================================================================
 # Cube Geometry
 # ============================================================================
 
 $t.section "Cube Geometry"
-into=v $cube.get "size"; $t.assert_eq "size" "$v" "4"
-into=v $cube.get "unit"; $t.assert_eq "unit" "$v" "cm"
+into=cube Cube size=4 unit=cm
+into=v $cube.get "size"; $t.assert_eq "size"          "$v" "4"
+into=v $cube.get "unit"; $t.assert_eq "unit"          "$v" "cm"
 into=v $cube.side;       $t.assert_eq "side area 4x4" "$v" "16"
-into=v $cube.top;        $t.assert_eq "top area 4x4" "$v" "16"
-into=v $cube.volume;     $t.assert_eq "volume 4x4x4" "$v" "64"
+into=v $cube.top;        $t.assert_eq "top area 4x4"  "$v" "16"
+into=v $cube.end;        $t.assert_eq "end area 4x4"  "$v" "16"
+into=v $cube.bottom;     $t.assert_eq "bottom = side" "$v" "16"
+into=v $cube.volume;     $t.assert_eq "volume 4x4x4"  "$v" "64"
 
 # ============================================================================
 # Type Checking
 # ============================================================================
 
 $t.section "Type Checking"
-$t.assert_ok "cube isa Cube" $cube.isa Cube
-$t.assert_ok "cube isa Box" $cube.isa Box
-$t.assert_ok "cube isa boop" $cube.isa boop
-$t.assert_fail "cube not a String" $cube.isa String
+into=box2 Box length=1 width=1 height=1
+into=cube2 Cube size=2
+
+$t.assert_ok   "box isa Box"       $box2.isa Box
+$t.assert_ok   "box isa boop"      $box2.isa boop
+$t.assert_fail "box not Cube"      $box2.isa Cube
+
+$t.assert_ok   "cube isa Cube"     $cube2.isa Cube
+$t.assert_ok   "cube isa Box"      $cube2.isa Box
+$t.assert_ok   "cube isa boop"     $cube2.isa boop
+$t.assert_fail "cube not String"   $cube2.isa String
+
+# isa with no arg returns class name
+into=v $cube2.isa; $t.assert_eq "isa no-arg returns class" "$v" "Cube"
+into=v $box2.isa;  $t.assert_eq "box isa no-arg returns class" "$v" "Box"
 
 # ============================================================================
-# Property Mutation
+# _Bless — parent-constructor + bless to child
+# ============================================================================
+#
+# This section directly tests the _Bless mechanism: an object created via
+# a parent constructor is blessed to the child class. Every wrapper —
+# including inherited ones like isa and toString — must reflect the
+# blessed class, not the construction class.
+
+$t.section "_Bless"
+# Cube.new calls Box.new (via _Super), which creates the object with
+# class=Box, then _Bless stamps it as Cube. All wrappers must be
+# regenerated with _Class=Cube.
+into=bc Cube size=5
+
+# Identity — the blessed class must be visible everywhere
+$t.assert_ok   "blessed isa Cube"       $bc.isa Cube
+$t.assert_ok   "blessed isa Box"        $bc.isa Box
+into=v $bc.isa; $t.assert_eq "isa no-arg = Cube" "$v" "Cube"
+
+# toString must show Cube(...), not Box(...)
+into=s $bc.toString
+$t.assert_contains "toString shows Cube(" "$s" "Cube("
+$t.assert_ok       "toString does not show Box(" \
+  test "${s}" = "${s/Box(/}"
+
+# Methods must dispatch correctly for the blessed class
+into=v $bc.volume; $t.assert_eq "Cube.volume via blessed" "$v" "125"
+into=v $bc.side;   $t.assert_eq "Cube.side via blessed"   "$v" "25"
+
+# ============================================================================
+# Property Mutation (dedicated fixture — does not touch shared objects)
 # ============================================================================
 
 $t.section "Property Mutation"
-into=v $box.get "length"; $t.assert_eq "length before" "$v" "5"
-$box.set "length" "10"
-into=v $box.get "length"; $t.assert_eq "length after set" "$v" "10"
-into=v $box.volume;       $t.assert_eq "volume after mutation" "$v" "210"
+into=mut Box length=5 width=3 height=7
+into=v $mut.get "length"; $t.assert_eq "length before"      "$v" "5"
+$mut.set "length" "10"
+into=v $mut.get "length"; $t.assert_eq "length after set"   "$v" "10"
+into=v $mut.volume;       $t.assert_eq "volume after mutation" "$v" "210"
+# Original geometry values are unaffected
+into=v $mut.get "width";  $t.assert_eq "width unchanged"    "$v" "3"
+into=v $mut.get "height"; $t.assert_eq "height unchanged"   "$v" "7"
 
 # ============================================================================
 # toString
 # ============================================================================
 
 $t.section "toString"
-into=s $cube.toString
-$t.assert_contains "compact has class" "$s" "Cube("
-$t.assert_contains "compact has size" "$s" "size=4"
-into=s $cube.toString pretty
-$t.assert_contains "pretty has newlines" "$s" $'\n'
+into=ts_cube Cube size=4 unit=cm
+into=ts_box  Box  length=5 width=3 height=7
+
+# Compact mode: ClassName(id){ field=val ... }
+into=s $ts_cube.toString
+$t.assert_contains "cube compact has class"  "$s" "Cube("
+$t.assert_contains "cube compact has size"   "$s" "size=4"
+$t.assert_contains "cube compact has unit"   "$s" "unit=cm"
+# Internal fields must be suppressed
+$t.assert_ok "class field suppressed"   test "${s}" = "${s/class=/}"
+$t.assert_ok "parent field suppressed"  test "${s}" = "${s/parent=/}"
+$t.assert_ok "methods field suppressed" test "${s}" = "${s/methods=/}"
+
+into=s $ts_box.toString
+$t.assert_contains "box compact has class"   "$s" "Box("
+$t.assert_contains "box compact has length"  "$s" "length=5"
+$t.assert_contains "box compact has width"   "$s" "width=3"
+$t.assert_contains "box compact has height"  "$s" "height=7"
+
+# Pretty mode: ClassName(id) {\n  field = val\n}
+into=s $ts_cube.toString pretty
+$t.assert_contains "pretty has newlines"     "$s" $'\n'
+$t.assert_contains "pretty has class name"   "$s" "Cube("
+$t.assert_contains "pretty has size field"   "$s" "size"
 
 # ============================================================================
-# Inheritance
+# Inheritance — inherited methods work on child objects
 # ============================================================================
 
 $t.section "Inheritance"
-into=v $cube.get "size"; $t.assert_eq "inherited get works" "$v" "4"
+into=inh Cube size=4 unit=cm
+into=v $inh.get "size"; $t.assert_eq "inherited get: size"  "$v" "4"
+into=v $inh.get "unit"; $t.assert_eq "inherited get: unit"  "$v" "cm"
+$inh.set "unit" "mm"
+into=v $inh.get "unit"; $t.assert_eq "inherited set: unit"  "$v" "mm"
 
 # ============================================================================
-# Multiple Objects
+# Multiple Objects — independent state
 # ============================================================================
 
 $t.section "Multiple Objects"
 into=b1 Box length=2 width=2 height=2
 into=b2 Box length=10 width=5 height=3
 into=c1 Cube size=3
-into=v $b1.volume;  $t.assert_eq "box1 volume" "$v" "8"
-into=v $b2.volume;  $t.assert_eq "box2 volume" "$v" "150"
-into=v $c1.volume;  $t.assert_eq "cube1 volume" "$v" "27"
+into=c2 Cube size=6
+into=v $b1.volume; $t.assert_eq "box1 volume"  "$v" "8"
+into=v $b2.volume; $t.assert_eq "box2 volume"  "$v" "150"
+into=v $c1.volume; $t.assert_eq "cube1 volume" "$v" "27"
+into=v $c2.volume; $t.assert_eq "cube2 volume" "$v" "216"
+# Verify they are independent objects
+$b1.set "length" "99"
+into=v $b2.get "length"; $t.assert_eq "b2 unaffected by b1 mutation" "$v" "10"
 
 # ============================================================================
 # Typecasting
 # ============================================================================
 
 $t.section "Typecasting"
-into=v $cube.volume;          $t.assert_eq "cube as Cube" "$v" "64"
-into=v _Class=Box $cube.volume; $t.assert_eq "cube as Box" "$v" "64"
+into=tc Cube size=4
+into=v $tc.volume;              $t.assert_eq "cube as Cube"    "$v" "64"
+into=v _Class=Box $tc.volume;   $t.assert_eq "cube as Box"     "$v" "64"
+into=v $tc.volume;              $t.assert_eq "back to Cube"    "$v" "64"
+# Typecast to Box uses Box.side (length × height), not Cube.side
+into=v _Class=Box $tc.side;     $t.assert_eq "Box.side on cube" "$v" "16"
 
 # ============================================================================
-# Value Encoding
+# Value Encoding — round-trip through set/get
 # ============================================================================
 
 $t.section "Value Encoding"
@@ -104,38 +184,34 @@ into=enc Box length=1 width=1 height=1
 $enc.set "color" "red|green=blue"
 into=v $enc.get "color"; $t.assert_eq "pipes and equals" "$v" "red|green=blue"
 $enc.set "color" "100%"
-into=v $enc.get "color"; $t.assert_eq "single percent" "$v" "100%"
+into=v $enc.get "color"; $t.assert_eq "single percent"   "$v" "100%"
 $enc.set "color" "100%%"
-into=v $enc.get "color"; $t.assert_eq "double percent" "$v" "100%%"
-$enc.set "color" "line1
-line2"
-into=v $enc.get "color"; $t.assert_eq "newlines" "$v" "line1
-line2"
-$enc.set "color" "col1	col2"
-into=v $enc.get "color"; $t.assert_eq "tabs" "$v" "col1	col2"
+into=v $enc.get "color"; $t.assert_eq "double percent"   "$v" "100%%"
+$enc.set "color" $'line1\nline2'
+into=v $enc.get "color"; $t.assert_eq "newlines"         "$v" $'line1\nline2'
+$enc.set "color" $'col1\tcol2'
+into=v $enc.get "color"; $t.assert_eq "tabs"             "$v" $'col1\tcol2'
 
 # ============================================================================
-# Global new Function
+# Constructors — new, class-as-constructor, global new
 # ============================================================================
 
 $t.section "Global new"
 into=nb new Box length=6 width=4 height=2
-into=v $nb.volume; $t.assert_eq "new Box volume" "$v" "48"
-into=v $nb.get "length"; $t.assert_eq "new Box length" "$v" "6"
+into=v $nb.volume;       $t.assert_eq "new Box volume"  "$v" "48"
+into=v $nb.get "length"; $t.assert_eq "new Box length"  "$v" "6"
 into=nc new Cube size=5
-into=v $nc.volume; $t.assert_eq "new Cube volume" "$v" "125"
+into=v $nc.volume;       $t.assert_eq "new Cube volume" "$v" "125"
 $t.assert_ok "new Cube isa Cube" $nc.isa Cube
-
-# ============================================================================
-# Class-as-Constructor
-# ============================================================================
+$t.assert_ok "new Cube isa Box"  $nc.isa Box
 
 $t.section "Class-as-Constructor"
 into=cb Box length=8 width=2 height=3
-into=v $cb.volume; $t.assert_eq "Box() volume" "$v" "48"
+into=v $cb.volume; $t.assert_eq "Box() volume"  "$v" "48"
 into=cc Cube size=7
 into=v $cc.volume; $t.assert_eq "Cube() volume" "$v" "343"
-$t.assert_ok "Cube() isa Box" $cc.isa Box
+$t.assert_ok "Cube() isa Box"  $cc.isa Box
+$t.assert_ok "Cube() isa Cube" $cc.isa Cube
 
 # ============================================================================
 # Lazy Stub Baking
@@ -143,19 +219,51 @@ $t.assert_ok "Cube() isa Box" $cc.isa Box
 
 $t.section "Lazy Stub Baking"
 into=sb new Box length=3 width=3 height=3
-into=v $sb.volume; $t.assert_eq "first call (stub)" "$v" "27"
+into=v $sb.volume; $t.assert_eq "first call (stub)"   "$v" "27"
 into=v $sb.volume; $t.assert_eq "second call (baked)" "$v" "27"
 declare -f "$sb.volume" > /dev/null 2>&1
 $t.assert_ok "baked wrapper exists" test $? -eq 0
+# Wrapper must call Box.volume directly — no dispatch indirection
+__boop_wrap_def=$(declare -f "$sb.volume")
+$t.assert_contains "wrapper calls Box.volume" "$__boop_wrap_def" "Box.volume"
 
 # ============================================================================
 # Typecast with Baked Wrapper
 # ============================================================================
 
 $t.section "Typecast with Baked Wrapper"
-into=tc new Cube size=3
-into=v $tc.volume;          $t.assert_eq "as Cube" "$v" "27"
-into=v _Class=Box $tc.volume; $t.assert_eq "typecast to Box" "$v" "27"
-into=v $tc.volume;          $t.assert_eq "back to Cube" "$v" "27"
+into=tc2 new Cube size=3
+into=v $tc2.volume;             $t.assert_eq "as Cube"       "$v" "27"
+into=v _Class=Box $tc2.volume;  $t.assert_eq "typecast to Box" "$v" "27"
+into=v $tc2.volume;             $t.assert_eq "back to Cube"  "$v" "27"
+
+# ============================================================================
+# Rejection — invalid inputs crash
+# ============================================================================
+
+$t.section "Rejection"
+# Cube requires size
+$t.assert_fail "Cube: size required" \
+  bash -c '. boop Cube; Cube unit=cm'
+# Cube: size must be a positive integer
+$t.assert_fail "Cube: size=abc rejected" \
+  bash -c '. boop Cube; Cube size=abc'
+$t.assert_fail "Cube: size=0 rejected" \
+  bash -c '. boop Cube; Cube size=0'
+$t.assert_fail "Cube: size=-1 rejected" \
+  bash -c '. boop Cube; Cube size=-1'
+$t.assert_fail "Cube: size=3.5 rejected" \
+  bash -c '. boop Cube; Cube size=3.5'
+$t.assert_fail "Cube: repeated size rejected" \
+  bash -c '. boop Cube; Cube size=3 size=4'
+# Box.calc: zero and non-integer args rejected
+$t.assert_fail "calc: zero arg"    bash -c '. boop Cube; Box.calc 5 0 3'
+$t.assert_fail "calc: negative"    bash -c '. boop Cube; Box.calc 5 -3 7'
+$t.assert_fail "calc: letters"     bash -c '. boop Cube; Box.calc 5 abc 7'
+$t.assert_fail "calc: empty arg"   bash -c '. boop Cube; Box.calc 5 "" 7'
+$t.assert_fail "calc: float"       bash -c '. boop Cube; Box.calc 5 3.5 7'
+# Volume crashes when a dimension is zero (set after construction)
+$t.assert_fail "volume: zero dimension" \
+  bash -c '. boop Cube; into=b Box length=5 width=3 height=7; $b.set height 0; $b.volume'
 
 $t.summary

@@ -17,7 +17,7 @@ Card.new() {
 }
 
 Card.toString() {
-  local -I _Self; local _Class="${_Class:-Card}"
+  local _Self="${_Self:-${Class:-Card}}" _Class="${_Class:-Card}"
   boop.pass "$_Self" ${into:-}
 }
 

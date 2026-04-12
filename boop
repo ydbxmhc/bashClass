@@ -602,38 +602,77 @@ __boop.registerMethod() {
 #
 # It is NOT called by normal method invocations — those go through
 # the direct wrappers written at creation time.
-__boop.dispatch() {
-  local __boop_dispatch_class="${_Class:-boop}"
-  local _Self="${_Self:-${__boop_dispatch_class}}"
-  local __boop_dispatch_method="$1"; shift
+#__boop.dispatch() {
+#  local __boop_dispatch_class="${_Class:-boop}"
+#  local _Self="${_Self:-${__boop_dispatch_class}}"
+#  local __boop_dispatch_method="$1"; shift
+#
+#  __boop.validate "$_Self"
+#  __boop.validate "$__boop_dispatch_class"
+#  __boop.validate "$__boop_dispatch_method"
+#
+#  # Check cache first (direct lookup — O(1) in the common case)
+#  local __boop_dispatch_cachekey="$__boop_dispatch_class.$__boop_dispatch_method"
+#  local __boop_dispatch_impl="${__boop_methodRegistry[$__boop_dispatch_cachekey]:-}"
+#
+#  # Cache miss: walk the inheritance chain (parent → grandparent → ...).
+#  # When found in an ancestor, cache it under the calling class so this
+#  # walk only happens once per class+method combination.
+#  if [[ -z "$__boop_dispatch_impl" ]]; then
+#    local __boop_dispatch_current="$__boop_dispatch_class"
+#    while [[ -n "$__boop_dispatch_current" ]]; do
+#      __boop_dispatch_impl="${__boop_methodRegistry[$__boop_dispatch_current.$__boop_dispatch_method]:-}"
+#      if [[ -n "$__boop_dispatch_impl" ]]; then
+#        [[ "$__boop_dispatch_current" != "$__boop_dispatch_class" ]] && __boop_methodRegistry[$__boop_dispatch_cachekey]="$__boop_dispatch_impl"
+#        break
+#      fi
+#      __boop.parse "$__boop_dispatch_current" "parent" __boop_dispatch_current
+#    done
+#  fi
+#
+#  [[ -n "$__boop_dispatch_impl" ]] || _Crash "Method not found: $__boop_dispatch_class.$__boop_dispatch_method"
+#
+#  # Call the resolved implementation directly
+#  _Self="$_Self" _Class="$__boop_dispatch_class" $__boop_dispatch_impl "$@"
+#}
 
-  __boop.validate "$_Self"
-  __boop.validate "$__boop_dispatch_class"
-  __boop.validate "$__boop_dispatch_method"
+# __boop.resolve — MRO lookup for a class+method pair.
+#
+# Walks the inheritance chain from Class upward, returning the implementing
+# function name via nameref. Crashes if the class isn't registered or the
+# method isn't found anywhere in the chain.
+#
+# Usage: __boop.resolve ClassName methodName resultVar
+#
+# Example:
+#   local impl
+#   __boop.resolve Box volume impl
+#   $impl "$@"
+__boop.resolve() {
+  local __boop_resolve_class="$1" __boop_resolve_method="$2"
+  local -n __boop_resolve_out="$3"
 
-  # Check cache first (direct lookup — O(1) in the common case)
-  local __boop_dispatch_cachekey="$__boop_dispatch_class.$__boop_dispatch_method"
-  local __boop_dispatch_impl="${__boop_methodRegistry[$__boop_dispatch_cachekey]:-}"
+  [[ -n "${__boop_registry[$__boop_resolve_class]:-}" ]] || \
+    _Crash "Unknown class: '$__boop_resolve_class'"
 
-  # Cache miss: walk the inheritance chain (parent → grandparent → ...).
-  # When found in an ancestor, cache it under the calling class so this
-  # walk only happens once per class+method combination.
-  if [[ -z "$__boop_dispatch_impl" ]]; then
-    local __boop_dispatch_current="$__boop_dispatch_class"
-    while [[ -n "$__boop_dispatch_current" ]]; do
-      __boop_dispatch_impl="${__boop_methodRegistry[$__boop_dispatch_current.$__boop_dispatch_method]:-}"
-      if [[ -n "$__boop_dispatch_impl" ]]; then
-        [[ "$__boop_dispatch_current" != "$__boop_dispatch_class" ]] && __boop_methodRegistry[$__boop_dispatch_cachekey]="$__boop_dispatch_impl"
-        break
-      fi
-      __boop.parse "$__boop_dispatch_current" "parent" __boop_dispatch_current
-    done
-  fi
+  # Cache key — same cache as dispatch, they share the registry
+  local __boop_resolve_cachekey="$__boop_resolve_class.$__boop_resolve_method"
+  __boop_resolve_out="${__boop_methodRegistry[$__boop_resolve_cachekey]:-}"
+  [[ -n "$__boop_resolve_out" ]] && return
 
-  [[ -n "$__boop_dispatch_impl" ]] || _Crash "Method not found: $__boop_dispatch_class.$__boop_dispatch_method"
+  # Cache miss — walk the MRO
+  local __boop_resolve_current="$__boop_resolve_class"
+  while [[ -n "$__boop_resolve_current" ]]; do
+    __boop_resolve_out="${__boop_methodRegistry[$__boop_resolve_current.$__boop_resolve_method]:-}"
+    if [[ -n "$__boop_resolve_out" ]]; then
+      [[ "$__boop_resolve_current" != "$__boop_resolve_class" ]] && \
+        __boop_methodRegistry[$__boop_resolve_cachekey]="$__boop_resolve_out"
+      return
+    fi
+    __boop.parse "$__boop_resolve_current" "parent" __boop_resolve_current
+  done
 
-  # Call the resolved implementation directly
-  _Self="$_Self" _Class="$__boop_dispatch_class" $__boop_dispatch_impl "$@"
+  _Crash "Method not found: $__boop_resolve_class.$__boop_resolve_method"
 }
 
 # ============================================================================
@@ -856,44 +895,6 @@ __boop.new() {
   boop.pass "$_Self" ${into:-}
 }
 
-# _Super — call the parent class's implementation of a method
-#
-# Must be called from within a method body where _Self and _Class are set.
-# Looks up the parent of _Class (or _Walk if set) and calls that class's
-# version of the method directly — no dispatch, no registry.
-#
-# Usage:
-#   _Super methodName "$@"        # single hop — call parent, no typecast
-#   _Walk=1 _Super methodName "$@" # chaining — advances up the hierarchy
-#
-# _Class is never modified. _Walk carries traversal position when chaining,
-# leaving object identity (_Self) and type context (_Class) clean.
-#
-# Without _Walk: parent is resolved from _Class. One call, one hop.
-# With _Walk:    parent is resolved from _Walk, which _Super advances
-#                automatically — each _Super in the chain goes one level up.
-#
-# Example (single hop):
-#   Cube.volume() {
-#     local _Self="${_Self:-$_Class}"; local _Class="${_Class:-Cube}"
-#     _Super volume "$@"           # calls Box.volume, _Class stays Cube
-#   }
-#
-# Example (chaining — A → B → C):
-#   B.method() {
-#     local _Self="${_Self:-$_Class}"; local _Class="${_Class:-B}"
-#     _Walk=1 _Super method "$@"   # calls A.method; if A also calls
-#   }                              # _Super, it continues to root
-#
-# See PLAN.md for full design notes.
-_Super() {
-  local __super_src="${_Walk:-$_Class}"
-  local __super_parent
-  __boop.parse "$__super_src" "parent" __super_parent
-  [[ -n "$__super_parent" ]] || _Crash "_Super: $__super_src has no parent"
-  _Self="$_Self" _Walk="$__super_parent" "$__super_parent.$@"
-}
-
 # ============================================================================
 # STUB GENERATION & CLASS REGISTRATION
 # ============================================================================
@@ -1029,11 +1030,15 @@ __boop.registerClass() {
 # Validates the class name, then delegates to dispatch.
 # Usage: new Box length=5 width=3 height=7
 #        into=mybox new Cube size=4
+#new() {
+#  local __boop_newGlobal_class="$1"; shift
+#  __boop.validate "$__boop_newGlobal_class"
+#  _Class="$__boop_newGlobal_class" __boop.new "$@"
+#}
 new() {
-  local __boop_newGlobal_class="$1"; shift
-  __boop.validate "$__boop_newGlobal_class"
-  [[ -n "${__boop_registry[$__boop_newGlobal_class]+set}" ]] || _Crash "new: unknown class '$__boop_newGlobal_class'"
-  _Class="$__boop_newGlobal_class" __boop.new "$@"
+  local __boop_newGlobal_class="$1" __boop_newGlobal_impl; shift
+  __boop.resolve "$__boop_newGlobal_class" new __boop_newGlobal_impl
+  _Class="$__boop_newGlobal_class" $__boop_newGlobal_impl "$@"
 }
 
 # ============================================================================
@@ -1260,22 +1265,83 @@ boopExtend() {
   __boop.registerClass "$__boopClass_class"
 }
 
-# _Delegate — cross-object method delegation.
+# ============================================================================
+# DISPATCH HELPERS — _Delegate, _Super, _Cast
 #
-# Clears _Class before calling a method on another object, preventing
-# local -I leakage across object boundaries. Use this whenever a method
-# calls methods on a *different* object — not exceptional, just correct.
+# Three helpers for the cases where normal $obj.method dispatch isn't enough.
+# All three work by manipulating _Self and/or _Class before calling a function
+# directly — no registry, no MRO walk, one hop.
 #
-# Without _Delegate:
-#   $card.val        # _Class=Hand leaks in, triggers Tier 3 warning
+# _Delegate — call a method on a DIFFERENT object from within a method body.
+#   Clears _Class so the target object's own baked wrapper resolves correctly.
+#   Without this, the calling method's _Class leaks into the called method.
+#   Usage (inside a method): _Delegate $other.method "$@"
 #
-# With _Delegate:
-#   _Delegate $card.val   # _Class cleared, baked wrapper uses its own class
+# _Super — call the PARENT class's version of a method from within an override.
+#   Reads _Class to find the parent, sets _Class to parent for correct chaining.
+#   Falls back to reading class from _Self descriptor if _Class is unset.
+#   Usage (inside a method): _Super methodName "$@"
 #
-# Usage:
-#   into=__Hand_total_v _Delegate $card.val
-#   _Delegate $card.isa Ace && (( aces++ )) || true
+# _Cast — call a SPECIFIC class's method on an object, bypassing its own type.
+#   Intentional typecast — use sparingly, document why at the call site.
+#   Usage: _Cast ClassName $obj methodName "$@"
+#
+# Quick reference:
+#   _Delegate $other.method   — different object, clean class context
+#   _Super method             — same object, parent class implementation
+#   _Cast Box $cube volume    — same object, explicit class override
+# ============================================================================
 _Delegate() { _Class='' "$@"; }
+
+_Super() {
+  [[ -n "${1:-}" ]] || _Crash "_Super: method name required"
+  local __boop_Super_class="${_Class:-}"
+  [[ -z "$__boop_Super_class" && -n "${_Self:-}" ]] && 
+    __boop.parse "$_Self" "class" __boop_Super_class
+  [[ -n "$__boop_Super_class" ]] || _Crash "_Super: no class context"
+  local __boop_Super_parent
+  __boop.parse "$__boop_Super_class" "parent" __boop_Super_parent
+  [[ -n "$__boop_Super_parent" ]] || _Crash "_Super: $__boop_Super_class has no parent"
+  _Self="${_Self:-}" _Class="$__boop_Super_parent" "$__boop_Super_parent.$@"
+}
+
+_Cast() {
+  [[ -n "${1:-}" ]] || _Crash "_Cast: class name required"
+  [[ -n "${2:-}" ]] || _Crash "_Cast: object required"
+  [[ -n "${3:-}" ]] || _Crash "_Cast: method name required"
+  local __boop_Cast_class="$1" __boop_Cast_self="$2"; shift 2
+  _Self="$__boop_Cast_self" _Class="$__boop_Cast_class" "$__boop_Cast_class.$@"
+}
+
+# Stamp an existing object with a new class in the registry.
+# Rewrites the class= field in the descriptor, then force-regenerates
+# ALL method and property wrappers so every wrapper reflects the new
+# class identity. Force is required because inherited wrappers (e.g.,
+# isa, toString) were baked with the old class and must be overwritten.
+# Usage: _Bless $obj ClassName
+_Bless() {
+  local __boop_Bless_id="$1" __boop_Bless_class="$2" __boop_Bless_current_class
+  __boop.parse "$__boop_Bless_id" "class" __boop_Bless_current_class
+  [[ "$__boop_Bless_current_class" == "$__boop_Bless_id" ]] && 
+    _Crash "_Bless: '$__boop_Bless_id' is a class, not an object"
+  [[ -n "${__boop_registry[$__boop_Bless_id]:-}" ]] || 
+    _Crash "_Bless: '$__boop_Bless_id' is not a registered object"
+  [[ -n "${__boop_registry[$__boop_Bless_class]:-}" ]] || 
+    _Crash "_Bless: '$__boop_Bless_class' is not a registered class"
+
+  # Stamp the new class
+  local __boop_Bless_old="|class=$__boop_Bless_current_class"
+  local __boop_Bless_new="|class=$__boop_Bless_class"
+  __boop_registry[$__boop_Bless_id]="${__boop_registry[$__boop_Bless_id]/$__boop_Bless_old/$__boop_Bless_new}"
+
+  # Force-regenerate ALL wrappers (method + property) for the new class.
+  # Without force, backfillMethods skips existing wrappers — but those
+  # wrappers were baked with _Class='old_class' and would report the wrong
+  # type for isa, toString, etc. Force overwrites every wrapper so the
+  # object's full interface reflects the blessed class.
+  __boop.backfillMethods "$__boop_Bless_id" "$__boop_Bless_class" force
+}
+
 
 # REGISTER BASE CLASS
 # ============================================================================

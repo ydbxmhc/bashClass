@@ -1,0 +1,44 @@
+#!/bin/bash
+set -uo pipefail
+
+# Smoke test — is the framework alive?
+#
+# Answers one question: did boop load, can it create objects, and can
+# those objects respond to methods? If this fails, nothing else matters.
+# Designed to run in under 2 seconds with no external dependencies.
+#
+# Classification: SMOKE
+# Run by: test_all (first, before any unit or integration tests)
+
+. boop TestSuite Cube
+
+into=t TestSuite name="Smoke"
+
+# ============================================================================
+# Framework loaded
+# ============================================================================
+
+$t.section "Framework"
+$t.assert_ok "boop loaded" test "${__boop_loaded:-0}" -eq 1
+$t.assert_ok "registry exists" test "${#__boop_registry[@]}" -gt 0
+$t.assert_ok "boop class registered" test -n "${__boop_registry[boop]+set}"
+$t.assert_ok "Box class registered"  test -n "${__boop_registry[Box]+set}"
+$t.assert_ok "Cube class registered" test -n "${__boop_registry[Cube]+set}"
+
+# ============================================================================
+# Object creation and method dispatch
+# ============================================================================
+
+$t.section "Object lifecycle"
+into=c Cube size=3
+$t.assert_match "object has valid ID" "$c" "_[0-9a-f]*"
+$t.assert_ok    "object in registry"  test -n "${__boop_registry[$c]+set}"
+
+into=v $c.volume
+$t.assert_eq "method returns correct value" "$v" "27"
+
+$t.assert_ok "isa own class"    $c.isa Cube
+$t.assert_ok "isa parent class" $c.isa Box
+$t.assert_ok "isa root class"   $c.isa boop
+
+$t.summary
