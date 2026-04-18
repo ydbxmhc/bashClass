@@ -5,6 +5,296 @@ reference entries here by section name.
 
 ---
 
+## ★ Namespace, ClassPath, Index, and Configuration System
+
+**Priority item.** The framework needs a complete class organization
+and resolution system: namespaced directory layout, a short-name
+index, a multi-root classPath with per-root resolution, persistent
+configuration via rc/cfg files, and a public API for managing it all.
+
+### Current State
+
+Everything is flat files in one directory. `__boop_classPath` is an
+empty associative array that nothing populates. Import resolution is
+trivial: check the hash, check `__boop_dir`, fall through to `PATH`.
+No namespaces, no index, no configuration persistence.
+
+### Prior Art (Cross-Language Survey)
+
+| Language | Directory model | Env var | Key insight |
+|----------|----------------|---------|-------------|
+| Java | Package hierarchy: `com/example/geometry/Box.java` | `CLASSPATH` | Dirs = domain namespaces, never inheritance |
+| Python | Package dirs with `__init__.py`: `geometry/box.py` | `PYTHONPATH` | Dirs = functional areas |
+| Perl | `::` maps to dirs: `Geometry/Box.pm` = `Geometry::Box` | `PERL5LIB` | `@INC` searched per-root, depth-first |
+| Ruby | Flat under `lib/`, namespace subdirs: `my_gem/widget.rb` | `RUBYLIB` | One class per file, module = folder |
+| Lua | Template paths with `?`: `./?.lua` | `LUA_PATH` | String-based, no directory convention |
+
+**Universal rule:** directories represent functional domains or
+namespaces, never inheritance hierarchies. `Cube extends Box` —
+they're siblings in the same namespace, not parent/child folders.
+
+### Namespace Directory Convention
+
+Follow the Perl model: `::` maps to directory separators. Every
+class lives inside its namespace folder. The class file shares the
+name of its innermost directory.
+
+```
+lib/
+  Collection/
+    Container/
+      Container         # ← Collection::Container class
+    List/
+      List              # ← Collection::List class
+    Map/
+      Map               # ← Collection::Map class
+    Set/
+      Set               # ← Collection::Set (future)
+  Math/
+    Math                # ← Math class (namespace = class)
+    Trig/
+      Trig              # ← Math::Trig class
+    Stats/
+      Stats             # ← Math::Stats class
+  Cards/
+    Card/
+      Card              # ← Cards::Card class
+    Deck/
+      Deck              # ← Cards::Deck class
+    Hand/
+      Hand              # ← Cards::Hand class
+  IO/
+    ...                 # ← future
+```
+
+**Rule:** when a namespace folder has a class with the same name
+(e.g., `Math`), the class file lives *inside* the folder as
+`Math/Math` — not outside it. The user still says `. boop Math`,
+not `. boop Math::Math`. The import system handles this (see
+resolution below).
+
+### Short-Name Index — `.boopIndex`
+
+A persisted file at each library root containing a `__boop_Index`
+associative array mapping short class names to their full namespace
+paths.
+
+```bash
+# .boopIndex — auto-generated, do not edit unless resolving conflicts
+declare -gA __boop_Index=(
+  [Container]="Collection::Container"
+  [List]="Collection::List"
+  [Map]="Collection::Map"
+  [Math]="Math"
+  [Trig]="Math::Trig"
+  [Card]="Cards::Card"
+  [Deck]="Cards::Deck"
+  [Hand]="Cards::Hand"
+)
+```
+
+**Auto-generation:** whenever a class is registered (via
+`registerClass` or equivalent), the index is rebuilt. This can be
+suppressed via configuration if the user wants manual control.
+
+**Conflict handling:** if two namespaces both define a class with
+the same short name (e.g., `Util` exists in both `IO::Util` and
+`Math::Util`), that short name is *removed* from the index. Both
+classes remain accessible by full namespace name. The conflict can
+be explicitly resolved by manually adding the preferred mapping
+back to `.boopIndex`.
+
+**The index is a declaration, not a cache.** Filesystem fallback
+hits do NOT auto-update the index. Only deliberate registration
+events modify it. A successful fallback should emit `_Info`:
+"List resolved via filesystem fallback — consider registering it."
+
+### Multi-Root Resolution — Depth-First Per Root
+
+`BOOP_CLASSPATH` is a colon-delimited list of library roots. Each
+root is a complete boop library with its own `.boopIndex`, its own
+namespace tree, its own `.booprc`/`.boop.cfg`. Resolution is
+**depth-first by default** — exhaust all resolution strategies
+within one root before moving to the next.
+
+**Root list construction** (in order):
+1. `__boop_dir` — where `boop` itself lives (always first)
+2. `BOOP_CLASSPATH` entries — left to right
+
+**Per-root resolution** (for each root, in order):
+1. `__boop_classPath["ClassName"]` — explicit per-class override
+   (nuclear option, always wins within this root)
+2. `.boopIndex` lookup — short name → full namespace → filesystem
+   path via namespace convention (`Collection::List` → 
+   `root/Collection/List/List`)
+3. `Name/Name` — filesystem convention fallback (directory + 
+   same-named file inside it)
+4. `Name` — bare file fallback (legacy/flat layout)
+
+**Cross-root behavior:**
+```
+for each root in [__boop_dir, BOOP_CLASSPATH...]:
+  try per-root resolution (steps 1–4)
+  found? → stop, use it
+  not found? → next root
+
+all roots exhausted → PATH fallback (bash native source)
+still not found → _Crash
+```
+
+This enables **version layering**: `BOOP_CLASSPATH="/opt/boop/v2:
+/opt/boop/v1"` means v2 is checked first. If v2 has `Math` but
+not `Math::Stats`, v1's `Math::Stats` fills the gap. Multiple
+complete installs at different versions, searched in priority order.
+
+**Customizable search strategy:** depth-first (exhaust one root
+before trying the next) is the default. The search strategy is
+configurable for future needs (e.g., breadth-first: check all
+indexes first across all roots, then all filesystem conventions,
+etc.). Default is depth-first because it gives the most predictable
+"this root wins" behavior.
+
+### Two-File Convention — `.booprc` + `.boop.cfg`
+
+Separation of concerns: human-editable config vs machine-managed
+structured data.
+
+**`.booprc`** — user-editable bash script (like `.bashrc`). Can
+contain arbitrary bash: log level overrides, custom hooks, env
+setup, whatever the user wants. Its job is to source `.boop.cfg`
+and add any hand-written customizations on top.
+
+**`.boop.cfg`** — machine-managed, never hand-edited. Contains
+structured declarations serialized by `boop.classPath` and future
+config methods. Pure data — hash assignments, array entries, no
+procedural logic. Always a complete serialization of current state,
+not an append log. Rewritten in full on every mutation.
+
+Three tiers, sourced in order of increasing precedence (later
+values override earlier ones):
+
+1. `/etc/booprc` (+ `/etc/boop.cfg`) — system-wide defaults
+2. `~/.booprc` (+ `~/.boop.cfg`) — user-global preferences
+3. `./.booprc` (+ `./.boop.cfg`) — project-local overrides
+
+Files that don't exist are silently skipped. Same precedence model
+as `.gitconfig` (system → global → local).
+
+A typical `~/.booprc`:
+```bash
+# Source machine-managed config (classPath registrations, etc.)
+[[ -f ~/.boop.cfg ]] && . ~/.boop.cfg
+
+# User customizations
+_LogLevel debug Math    # verbose logging for Math during dev
+_OutMode stdout         # prefer stdout for CLI scripts
+```
+
+A typical `~/.boop.cfg` (written by `boop.classPath`, not by hand):
+```bash
+# Auto-generated by boop.classPath — do not edit manually
+__boop_classPath["MyUtils"]="/home/user/lib/MyUtils"
+__boop_classPath["GameEngine"]="/opt/boop-libs/GameEngine"
+```
+
+### `__boop.loader` — RC Discovery and Sourcing
+
+Internal method responsible for the rc file bootstrap sequence.
+Called once during `boop` initialization, after globals are declared
+but before import arguments are processed.
+
+Responsibilities:
+- Source `/etc/booprc`, `~/.booprc`, `./.booprc` in order
+- Each rc file is responsible for sourcing its own `.boop.cfg`
+- Skip missing files silently
+- Errors in rc files crash with a clear message pointing at the
+  offending file and line
+- Parse `BOOP_CLASSPATH` env var — split on colons, validate
+  directories exist, build the root list
+- Source `.boopIndex` from each root in the root list
+- Emit `_Info` diagnostics for each file sourced
+
+Open question: should `.booprc` files be allowed to import classes
+(`. boop SomeClass`)? Probably yes — a project rc might want to
+pre-register and pre-load utility classes. Circular risk is low
+(rc files aren't class files) but worth noting.
+
+### `boop.classPath` — Public API and Configuration Serializer
+
+Tier 3 public method. Two roles: runtime manipulation of the class
+path registry, and serialization of state back to `.boop.cfg`.
+
+Subcommand pattern:
+
+```bash
+boop.classPath set  ClassName /path/to/file  # register + persist
+boop.classPath get  ClassName                # query → path or empty
+boop.classPath list                          # dump all registrations
+boop.classPath remove ClassName              # unregister + rewrite
+boop.classPath has  ClassName                # test → exit code 0/1
+boop.classPath dirs                          # list roots in order
+boop.classPath rebuild                       # regenerate .boopIndex
+```
+
+**Serialization behavior** (`set`, `remove`, `rebuild`):
+- Updates the live `__boop_classPath` hash immediately
+- Rewrites `~/.boop.cfg` (default) as a complete serialization
+- Target cfg file overridable: `_CfgFile=./.boop.cfg` for
+  project-local persistence
+- `rebuild` scans the namespace tree and regenerates `.boopIndex`,
+  detecting and removing conflicting short names
+
+**Validation on `set`**:
+- Class name must pass `__boop.validate` (identifier rules)
+- Path must exist and be a readable file (`[[ -f && -r ]]`)
+- Overwriting an existing registration emits `_Info`, not an error
+
+Returns via `boop.pass` so `into=` works naturally.
+
+### Namespace-to-Filesystem Mapping
+
+The `::` separator maps to `/` on disk. The class file shares the
+name of its innermost namespace segment and lives inside a directory
+of the same name.
+
+| User says | Namespace | Filesystem path |
+|-----------|-----------|----------------|
+| `Math` | `Math` | `root/Math/Math` |
+| `Math::Trig` | `Math::Trig` | `root/Math/Trig/Trig` |
+| `List` | `Collection::List` | `root/Collection/List/List` (via index) |
+| `Collection::List` | `Collection::List` | `root/Collection/List/List` (direct) |
+
+**Import resolution for a bare name like `List`:**
+1. Check `__boop_classPath["List"]` — explicit override
+2. Check `__boop_Index["List"]` — finds `Collection::List` →
+   resolve to `root/Collection/List/List`
+3. Check `root/List/List` — filesystem convention
+4. Check `root/List` — bare file fallback
+5. Next root (repeat 1–4)
+6. `PATH` fallback
+7. `_Crash`
+
+### Implementation Notes
+
+- `__boop.loader` runs inside the `(( ! __boop_loaded ))` guard —
+  fires once per process
+- RC files are sourced (not executed) — they share the shell context
+- Public API methods registered via `__boop.registerMethod` on the
+  root `boop` class
+- `boop.classPath set` does NOT trigger an immediate import —
+  registration and loading are separate concerns
+- The `::` separator is already reserved in the TODO for mixins/
+  classlets/multiple-inheritance. Namespace usage here is compatible:
+  `::` in import context means namespace, `::` in dispatch context
+  means mixin provenance. No collision — they operate in different
+  phases (load time vs call time).
+- `.boopIndex` should be `.gitignore`-able for projects that prefer
+  explicit full-namespace imports only
+
+Source: `boop` (import section, initialization), all class files.
+
+---
+
 ## `::` Syntax — Mixins, Classlets, and Multiple Inheritance
 
 The `::` separator is conventional in bash for namespaced functions
@@ -368,14 +658,13 @@ Source: PLAN.md Phase 3.
 
 ---
 
-## BOOP_CLASSPATH (Phase 4)
+## BOOP_CLASSPATH (Phase 4) — ✓ Subsumed
 
-Colon-delimited environment variable for class file search paths.
-Current resolution order: classPath registry → `__boop_dir` → PATH.
-Add BOOP_CLASSPATH between classPath registry and `__boop_dir`.
-Enables separate-repo class libraries without hand-registration.
-
-Source: PLAN.md Phase 4.
+Now part of the ★ priority item: "Namespace, ClassPath, Index, and
+Configuration System." `BOOP_CLASSPATH` is the multi-root search
+path, with depth-first per-root resolution, `.boopIndex` at each
+root, and version layering across roots. See that section for the
+full design.
 
 ---
 
