@@ -291,6 +291,93 @@ of the same name.
 - `.boopIndex` should be `.gitignore`-able for projects that prefer
   explicit full-namespace imports only
 
+### Canonical Directory Layout
+
+The repo *is* the library — no `lib/` wrapper. The install target
+is a single directory containing `boop` and all namespace folders.
+Tests and docs live alongside but are not part of the runtime
+library.
+
+```
+<install_root>/                # e.g., /usr/local/lib/boop/
+  boop                         # framework entry point
+  .boopIndex                   # auto-generated short-name index
+  .booprc                      # optional project-level rc
+  .boop.cfg                    # optional project-level cfg
+  Collection/
+    Container/
+      Container                # Collection::Container
+    List/
+      List                     # Collection::List
+    Map/
+      Map                      # Collection::Map
+    Iterator/
+      Iterator                 # Collection::Iterator
+  Geometry/
+    Box/
+      Box                      # Geometry::Box
+    Cube/
+      Cube                     # Geometry::Cube
+  Math/
+    Math                       # Math (namespace = class)
+  Games/
+    Card/
+      Card                     # Games::Card
+    PlayingCard/
+      PlayingCard              # Games::PlayingCard
+    Deck/
+      Deck                     # Games::Deck
+    Blackjack/
+      Blackjack                # Games::Blackjack (executable)
+      BlackjackHand/
+        BlackjackHand          # Games::Blackjack::BlackjackHand
+  Testing/
+    TestSuite/
+      TestSuite                # Testing::TestSuite
+  bin/                         # internal utilities (not library classes)
+    test_all
+    test_blackjack
+    test_box_cube_ts
+    test_containers_ts
+    test_logging_ts
+    test_math_ts
+    test_matrix
+    test_pi_growth
+    test_smoke
+    test_stress_ts
+    test_testsuite_ts
+    boop_install               # bootstrap installer
+  docs/                        # not part of the library
+    ...
+```
+
+### `boop_install` — Bootstrap Script
+
+A standalone install script that sets up boop on a fresh system.
+
+Responsibilities:
+- Copy (or symlink) the library tree to the install target
+  (default: `/usr/local/lib/boop/` or user-specified location)
+- Create a symlink in a PATH directory (default:
+  `/usr/local/bin/boop` → `<install_root>/boop`) so that
+  `. boop` works from anywhere
+- Generate the initial `.boopIndex` by scanning the namespace tree
+- Create a starter `~/.booprc` if one doesn't exist (with the
+  `.boop.cfg` source line and commented-out examples)
+- Verify bash version (5.0+ required)
+- Detect existing installations and offer upgrade/overwrite
+- Support `--prefix`, `--symlink`, `--no-rc` flags for
+  customization
+- Emit clear success/failure messages
+
+The symlink is the bootstrap: it puts `boop` on PATH, and `boop`
+resolves `__boop_dir` via `realpath` on `BASH_SOURCE[0]`, which
+follows the symlink back to the real install root. From there,
+everything else is discoverable.
+
+Uninstall: remove the symlink and the install directory. The rc
+files in `~/` and `/etc/` are left alone (user data).
+
 Source: `boop` (import section, initialization), all class files.
 
 ---
