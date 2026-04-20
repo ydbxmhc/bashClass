@@ -111,7 +111,8 @@ events modify it. A successful fallback should emit `_Info`:
 
 ### Multi-Root Resolution — Depth-First Per Root
 
-`BOOP_CLASSPATH` is a colon-delimited list of library roots. Each
+`BOOPPATH` is a colon-delimited list of library roots (same format
+as `PATH`, same naming convention as `GOPATH`/`MANPATH`). Each
 root is a complete boop library with its own `.boopIndex`, its own
 namespace tree, its own `.booprc`/`.boop.cfg`. Resolution is
 **depth-first by default** — exhaust all resolution strategies
@@ -119,7 +120,7 @@ within one root before moving to the next.
 
 **Root list construction** (in order):
 1. `__boop_dir` — where `boop` itself lives (always first)
-2. `BOOP_CLASSPATH` entries — left to right
+2. `BOOPPATH` entries — left to right
 
 **Per-root resolution** (for each root, in order):
 1. `__boop_classPath["ClassName"]` — explicit per-class override
@@ -133,7 +134,7 @@ within one root before moving to the next.
 
 **Cross-root behavior:**
 ```
-for each root in [__boop_dir, BOOP_CLASSPATH...]:
+for each root in [__boop_dir, BOOPPATH...]:
   try per-root resolution (steps 1–4)
   found? → stop, use it
   not found? → next root
@@ -142,7 +143,7 @@ all roots exhausted → PATH fallback (bash native source)
 still not found → _Crash
 ```
 
-This enables **version layering**: `BOOP_CLASSPATH="/opt/boop/v2:
+This enables **version layering**: `BOOPPATH="/opt/boop/v2:
 /opt/boop/v1"` means v2 is checked first. If v2 has `Math` but
 not `Math::Stats`, v1's `Math::Stats` fills the gap. Multiple
 complete installs at different versions, searched in priority order.
@@ -209,7 +210,7 @@ Responsibilities:
 - Skip missing files silently
 - Errors in rc files crash with a clear message pointing at the
   offending file and line
-- Parse `BOOP_CLASSPATH` env var — split on colons, validate
+- Parse `BOOPPATH` env var — split on colons, validate
   directories exist, build the root list
 - Source `.boopIndex` from each root in the root list
 - Emit `_Info` diagnostics for each file sourced
@@ -559,6 +560,28 @@ positional fallback, unknown-key rejection.
 
 ---
 
+## Inline Arguments on Class Load
+
+A future syntax for passing arguments to a class during loading,
+limited to one class per invocation:
+
+```bash
+. boop Math precision=128
+. boop TestSuite verbose=1 mode=strict
+```
+
+The current bulk-load form (`. boop Math Cube List`) remains
+available and takes no arguments. The inline form is a separate
+invocation pattern — one class, with key=value pairs passed to
+the class file during its initialization.
+
+Design depends on ArgParser. Deferred until that's implemented.
+
+Related: Argument-Parsing Object (above), `local -I` inherited
+variables (already work as a manual workaround).
+
+---
+
 ## Class File Execution Guard & Help System
 
 Class files like `Box`, `List`, etc. are meant to be sourced, not
@@ -745,13 +768,13 @@ Source: PLAN.md Phase 3.
 
 ---
 
-## BOOP_CLASSPATH (Phase 4) — ✓ Subsumed
+## BOOPPATH (Phase 4) — ✓ Subsumed
 
 Now part of the ★ priority item: "Namespace, ClassPath, Index, and
-Configuration System." `BOOP_CLASSPATH` is the multi-root search
-path, with depth-first per-root resolution, `.boopIndex` at each
-root, and version layering across roots. See that section for the
-full design.
+Configuration System." `BOOPPATH` is the multi-root search path,
+with depth-first per-root resolution, `.boopIndex` at each root,
+and version layering across roots. See that section for the full
+design.
 
 ---
 
@@ -806,6 +829,54 @@ Source: PLAN.md Running Notes.
 
 ---
 
+## Extensive Logging Hooks Throughout Codebase
+
+The logging system exists (`_Error`, `_Warn`, `_Info`, `_Debug`,
+`_Trace`) but most of the codebase doesn't use it. The framework
+needs comprehensive logging instrumentation so that turning up the
+log level actually reveals what's happening.
+
+Priority areas:
+
+- **`__boop.import`** — log every resolution step: which root is
+  being searched, which strategy matched (classPath, index,
+  filesystem, bare file), what file was sourced. At `_Debug` level.
+  At `_Trace`, log the full root list and index contents.
+
+- **`__boop.loader`** — log each rc/cfg file sourced or skipped,
+  `BOOPPATH` parsing results, index loading. `_Info` level.
+
+- **`boop.classPath`** — log every `set`, `remove`, `rebuild`
+  operation including what was written and where. `_Info` level.
+
+- **Object lifecycle** — `__boop.new` and `destroy` should log
+  object creation/destruction at `_Debug`. Constructor arguments
+  at `_Trace`.
+
+- **Method dispatch** — `registerClass` wrapper generation,
+  MRO cache hits/misses, inherited method resolution. `_Debug`
+  for cache misses, `_Trace` for every dispatch.
+
+- **Property access** — `__boop.get`/`__boop.set` at `_Trace`
+  level. Too noisy for anything less.
+
+- **`boop.pass`** — log mode selection (auto→global, auto→stdout)
+  and target variable at `_Trace`.
+
+- **Class files** — each class's `.new()` should log construction
+  at `_Debug`. Complex methods (Container iteration, Math
+  arithmetic) should log entry/exit at `_Trace`.
+
+Principle: `_Info` shows lifecycle events (loaded X, sourced Y).
+`_Debug` shows decisions (chose this path because...). `_Trace`
+shows everything (every get/set, every dispatch, every argument).
+A user debugging a resolution issue should be able to set
+`_LogLevel trace` and see the complete story.
+
+Source: `boop`, all class files.
+
+---
+
 ## Test Coverage Audit
 
 Every declared method in every class should have test coverage:
@@ -852,6 +923,34 @@ Existing code that relies on the implicit global (e.g.,
 
 `into=` always wins regardless of mode. The mode only matters when
 no explicit target is given.
+
+---
+
+## Implicit Object Declaration on Return (`_AS=`)
+
+Explore whether `boop.pass` could auto-wrap a return value as an
+object of a specified class. The caller would declare the desired
+type inline:
+
+```bash
+into=o _AS=List boop.classPath list
+$o.length    # → number of entries
+$o.each ...  # iterate as a List
+```
+
+This would let any method that returns a multi-value string
+(newline-delimited, etc.) hand back a typed object instead of a
+raw string — without the callee knowing or caring about the
+wrapping.
+
+Open questions:
+- Does `boop.pass` handle the wrapping, or does the caller's
+  `into=` assignment trigger it?
+- Performance cost of creating an object on every return?
+- What if the class isn't loaded yet — auto-import?
+- Is this just sugar for `into=raw method; into=o List "$raw"`?
+
+Might not be worth the complexity. Investigate and decide.
 
 ---
 
