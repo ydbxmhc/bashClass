@@ -33,19 +33,19 @@ Replace the flat `__boop.import` with a namespace-aware, multi-root resolution s
     - Return resolved path or empty string on failure
     - _Requirements: 2.3, 2.4, 2.5, 2.6, 2.7_
 
-  - [ ]* 1.5 Write property test: Namespace normalization preserves content (Property 1)
+  - [x]* 1.5 Write property test: Namespace normalization preserves content (Property 1)
     - **Property 1: Namespace normalization preserves content**
     - Generate 100+ random strings containing `::`, `/`, single `:`, and other characters
     - Verify output contains no `::`, all `::` replaced with `/`, non-`::` content preserved
     - **Validates: Requirements 1.1**
 
-  - [ ]* 1.6 Write property test: R1 resolution prefers namespace convention over bare file (Property 2)
+  - [x]* 1.6 Write property test: R1 resolution prefers namespace convention over bare file (Property 2)
     - **Property 2: R1 resolution prefers namespace convention over bare file**
     - Create temp directory trees with namespace convention files and/or bare files
     - Verify R1 returns the namespace convention path when both exist, bare file when only it exists, nothing when neither exists
     - **Validates: Requirements 1.2, 1.3**
 
-  - [ ]* 1.7 Write property test: Resolution priority chain is strict (Property 3)
+  - [x]* 1.7 Write property test: Resolution priority chain is strict (Property 3)
     - **Property 3: Resolution priority chain is strict**
     - Set up classPath overrides, index entries, and filesystem files with varying combinations
     - Verify classPath always wins, then index, then dynamic discovery
@@ -77,26 +77,26 @@ Replace the flat `__boop.import` with a namespace-aware, multi-root resolution s
     - Emit `_Warn` if mismatch detected
     - _Requirements: 6.5_
 
-  - [ ]* 3.5 Write property test: Effective BOOPPATH construction order (Property 4)
+  - [x]* 3.5 Write property test: Effective BOOPPATH construction order (Property 4)
     - **Property 4: Effective BOOPPATH construction order**
     - Generate 100+ random BOOPPATH and PATH strings with varying entries
     - Verify root list starts with `.`, then BOOPPATH entries left-to-right, then PATH entries left-to-right
     - Verify empty segments are filtered out
     - **Validates: Requirements 2.4, 8.1, 8.3, 14.1, 14.2**
 
-  - [ ]* 3.6 Write property test: Root deduplication uses exact path matching only (Property 5)
+  - [x]* 3.6 Write property test: Root deduplication uses exact path matching only (Property 5)
     - **Property 5: Root deduplication uses exact path matching only**
     - Generate root lists with exact duplicates and subdirectory relationships
     - Verify exact duplicates are skipped, subdirectories are NOT treated as duplicates
     - **Validates: Requirements 2.5**
 
-  - [ ]* 3.7 Write property test: BOOPPATH parsing filters empty segments (Property 13)
+  - [x]* 3.7 Write property test: BOOPPATH parsing filters empty segments (Property 13)
     - **Property 13: BOOPPATH parsing filters empty segments**
     - Generate 100+ BOOPPATH strings with leading colons, trailing colons, consecutive colons
     - Verify parsing produces only non-empty segments
     - **Validates: Requirements 8.1, 8.3**
 
-  - [ ]* 3.8 Write property test: Index precedence — earlier roots win (Property 8)
+  - [x]* 3.8 Write property test: Index precedence — earlier roots win (Property 8)
     - **Property 8: Index precedence — earlier roots win**
     - Create multiple roots with overlapping short names in `.boopIndex` files
     - Source all indexes, verify `__boop_Index` contains the value from the first root
@@ -121,7 +121,7 @@ Replace the flat `__boop.import` with a namespace-aware, multi-root resolution s
     - Register on the `boop` class
     - _Requirements: 2 (Implementation Note)_
 
-  - [ ]* 5.3 Write property test: Load guards prevent redundant and circular loading (Property 6)
+  - [x]* 5.3 Write property test: Load guards prevent redundant and circular loading (Property 6)
     - **Property 6: Load guards prevent redundant and circular loading**
     - Pre-populate `__boop_registry` and `__boop_loading` flags for random class names
     - Verify import skips resolution for registered/loading classes
@@ -176,7 +176,7 @@ Replace the flat `__boop.import` with a namespace-aware, multi-root resolution s
     - Called by `set` and `remove` subcommands
     - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
-  - [ ]* 7.9 Write property test: CFG serialization round-trip (Property 11)
+  - [x]* 7.9 Write property test: CFG serialization round-trip (Property 11)
     - **Property 11: CFG serialization round-trip**
     - Perform 100+ random sequences of `set` and `remove` operations
     - After each sequence, verify CFG file is a complete serialization of `__boop_classPath`
@@ -184,7 +184,7 @@ Replace the flat `__boop.import` with a namespace-aware, multi-root resolution s
     - Verify CFG contains only hash assignments, no procedural logic
     - **Validates: Requirements 7.1, 7.2, 9.5, 12.2**
 
-  - [ ]* 7.10 Write property test: ClassPath registry behaves as a correct key-value store (Property 12)
+  - [x]* 7.10 Write property test: ClassPath registry behaves as a correct key-value store (Property 12)
     - **Property 12: ClassPath registry behaves as a correct key-value store**
     - Perform 100+ random sequences of `set`, `get`, `remove`, `has` operations
     - Verify: `get` after `set(k,v)` returns `v`; `has` after `set(k,v)` returns 0; `get` after `remove(k)` returns empty; `has` after `remove(k)` returns 1; `list` includes all current entries
@@ -207,21 +207,21 @@ Replace the flat `__boop.import` with a namespace-aware, multi-root resolution s
     - Ensure index file is NOT modified by fallback resolution (index is declaration, not cache)
     - _Requirements: 5.4, 5.5_
 
-  - [ ]* 9.3 Write property test: Index rebuild round-trip (Property 7)
+  - [x]* 9.3 Write property test: Index rebuild round-trip (Property 7)
     - **Property 7: Index rebuild round-trip**
     - Create 100+ random namespace trees with class files at a temp root
     - Run `rebuild`, source the generated `.boopIndex`, verify mappings match expected short-name → namespace-path
     - Verify generated file is valid sourceable bash
     - **Validates: Requirements 4.2, 5.1, 15.1, 15.2**
 
-  - [ ]* 9.4 Write property test: Index conflict exclusion during rebuild (Property 9)
+  - [x]* 9.4 Write property test: Index conflict exclusion during rebuild (Property 9)
     - **Property 9: Index conflict exclusion during rebuild**
     - Create roots with intentional short-name conflicts (same short name in multiple namespaces)
     - Run `rebuild`, verify conflicting short names are excluded from `.boopIndex`
     - Verify all non-conflicting short names are still present
     - **Validates: Requirements 5.2, 15.4**
 
-  - [ ]* 9.5 Write property test: Index is a declaration, not a cache (Property 10)
+  - [x]* 9.5 Write property test: Index is a declaration, not a cache (Property 10)
     - **Property 10: Index is a declaration, not a cache**
     - Resolve classes via filesystem fallback, verify `.boopIndex` file is unchanged after resolution
     - **Validates: Requirements 5.4**

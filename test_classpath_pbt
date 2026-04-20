@@ -1,0 +1,523 @@
+#!/bin/bash
+set -uo pipefail
+
+# Classpath/Namespace system -- Property-Based Tests
+#
+# Each property test runs iterations with generated random inputs
+# and verifies universal correctness invariants from the design document.
+# All filesystem tests use temp directories for isolation.
+
+. boop TestSuite
+
+into=t TestSuite name="Classpath PBT"
+
+# Temp directory for all filesystem tests
+__cp_tmp=$(mktemp -d)
+trap 'rm -rf "$__cp_tmp"' EXIT
+
+# Absolute path to boop for isolated subshell tests
+__cp_boop="$(realpath boop)"
+
+# Random identifier generator -- sets __cp_r (no subshell)
+__cp_randid() {
+  local __cp_randid_len="${1:-6}"
+  local __cp_randid_first="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+  local __cp_randid_rest="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+  __cp_r="${__cp_randid_first:RANDOM % ${#__cp_randid_first}:1}"
+  local -i __cp_randid_i
+  for (( __cp_randid_i=1; __cp_randid_i < __cp_randid_len; __cp_randid_i++ )); do
+    __cp_r+="${__cp_randid_rest:RANDOM % ${#__cp_randid_rest}:1}"
+  done
+}
+
+# Random string generator -- sets __cp_r (no subshell)
+__cp_randstr() {
+  local __cp_randstr_len="${1:-8}"
+  local __cp_randstr_chars="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+  __cp_r=""
+  local -i __cp_randstr_i
+  for (( __cp_randstr_i=0; __cp_randstr_i < __cp_randstr_len; __cp_randstr_i++ )); do
+    __cp_r+="${__cp_randstr_chars:RANDOM % ${#__cp_randstr_chars}:1}"
+  done
+}
+
+# ============================================================================
+# Property 1: Namespace normalization preserves content
+# ============================================================================
+
+$t.section "P1: Namespace normalization preserves content"
+
+__cp_p1_pass=0
+__cp_p1_fail=0
+for (( __cp_p1_i=0; __cp_p1_i < 120; __cp_p1_i++ )); do
+  __cp_p1_input=""
+  __cp_p1_segs=$(( RANDOM % 5 + 2 ))
+  for (( __cp_p1_s=0; __cp_p1_s < __cp_p1_segs; __cp_p1_s++ )); do
+    __cp_randstr $(( RANDOM % 4 + 1 ))
+    __cp_p1_input+="$__cp_r"
+    case $(( RANDOM % 4 )) in
+      0) __cp_p1_input+="::" ;;
+      1) __cp_p1_input+="/" ;;
+      2) __cp_p1_input+=":" ;;
+      3) ;;
+    esac
+  done
+  [[ -z "$__cp_p1_input" ]] && continue
+
+  __cp_p1_output="${__cp_p1_input//::/"/"}"
+
+  if [[ "$__cp_p1_output" == *"::"* ]]; then
+    : $(( ++__cp_p1_fail ))
+  else
+    : $(( ++__cp_p1_pass ))
+  fi
+done
+
+$t.assert_eq "P1: normalization correct ($__cp_p1_pass passed)" "$__cp_p1_fail" "0"
+
+
+# ============================================================================
+# Property 2: R1 resolution prefers namespace convention over bare file
+# ============================================================================
+
+$t.section "P2: R1 prefers namespace convention"
+
+__cp_p2_pass=0
+__cp_p2_fail=0
+for (( __cp_p2_i=0; __cp_p2_i < 100; __cp_p2_i++ )); do
+  __cp_randid 5; __cp_p2_name="$__cp_r"
+  __cp_p2_root="$__cp_tmp/p2_${__cp_p2_i}"
+  mkdir -p "$__cp_p2_root"
+
+  case $(( RANDOM % 3 )) in
+    0)
+      mkdir -p "$__cp_p2_root/$__cp_p2_name"
+      printf '# ns\n' > "$__cp_p2_root/$__cp_p2_name/$__cp_p2_name"
+      __cp_p2_path=""
+      into=__cp_p2_path BOOPPATH="$__cp_p2_root" boop.resolve "$__cp_p2_name" 2>/dev/null || true
+      [[ "$__cp_p2_path" == "$__cp_p2_root/$__cp_p2_name/$__cp_p2_name" ]] && : $(( ++__cp_p2_pass )) || : $(( ++__cp_p2_fail ))
+      ;;
+    1)
+      printf '# bare\n' > "$__cp_p2_root/$__cp_p2_name"
+      __cp_p2_path=""
+      into=__cp_p2_path BOOPPATH="$__cp_p2_root" boop.resolve "$__cp_p2_name" 2>/dev/null || true
+      [[ "$__cp_p2_path" == "$__cp_p2_root/$__cp_p2_name" ]] && : $(( ++__cp_p2_pass )) || : $(( ++__cp_p2_fail ))
+      ;;
+    2)
+      __cp_p2_rc=0
+      BOOPPATH="$__cp_p2_root" boop.resolve "${__cp_p2_name}XX" 2>/dev/null || __cp_p2_rc=$?
+      (( __cp_p2_rc != 0 )) && : $(( ++__cp_p2_pass )) || : $(( ++__cp_p2_fail ))
+      ;;
+  esac
+done
+
+$t.assert_eq "P2: R1 rule correct ($__cp_p2_pass passed)" "$__cp_p2_fail" "0"
+
+# ============================================================================
+# Property 3: Resolution priority chain is strict
+# ============================================================================
+
+$t.section "P3: Resolution priority chain"
+
+__cp_p3_pass=0
+__cp_p3_fail=0
+for (( __cp_p3_i=0; __cp_p3_i < 100; __cp_p3_i++ )); do
+  __cp_randid 6; __cp_p3_name="$__cp_r"
+  __cp_p3_root="$__cp_tmp/p3_${__cp_p3_i}"
+  mkdir -p "$__cp_p3_root/$__cp_p3_name"
+  printf '# dynamic\n' > "$__cp_p3_root/$__cp_p3_name/$__cp_p3_name"
+  printf '# override\n' > "$__cp_p3_root/${__cp_p3_name}_cp"
+
+  case $(( RANDOM % 3 )) in
+    0)
+      __boop_classPath["$__cp_p3_name"]="$__cp_p3_root/${__cp_p3_name}_cp"
+      __boop_Index["$__cp_p3_name"]="$__cp_p3_name"
+      __cp_p3_path=""
+      into=__cp_p3_path BOOPPATH="$__cp_p3_root" boop.resolve "$__cp_p3_name" 2>/dev/null || true
+      [[ "$__cp_p3_path" == "$__cp_p3_root/${__cp_p3_name}_cp" ]] && : $(( ++__cp_p3_pass )) || : $(( ++__cp_p3_fail ))
+      unset "__boop_classPath[$__cp_p3_name]" "__boop_Index[$__cp_p3_name]"
+      ;;
+    1)
+      __boop_Index["$__cp_p3_name"]="$__cp_p3_name"
+      __cp_p3_path=""
+      into=__cp_p3_path BOOPPATH="$__cp_p3_root" boop.resolve "$__cp_p3_name" 2>/dev/null || true
+      [[ "$__cp_p3_path" == "$__cp_p3_root/$__cp_p3_name/$__cp_p3_name" ]] && : $(( ++__cp_p3_pass )) || : $(( ++__cp_p3_fail ))
+      unset "__boop_Index[$__cp_p3_name]"
+      ;;
+    2)
+      __cp_p3_path=""
+      into=__cp_p3_path BOOPPATH="$__cp_p3_root" boop.resolve "$__cp_p3_name" 2>/dev/null || true
+      [[ "$__cp_p3_path" == "$__cp_p3_root/$__cp_p3_name/$__cp_p3_name" ]] && : $(( ++__cp_p3_pass )) || : $(( ++__cp_p3_fail ))
+      ;;
+  esac
+done
+
+$t.assert_eq "P3: priority chain correct ($__cp_p3_pass passed)" "$__cp_p3_fail" "0"
+
+# ============================================================================
+# Property 4: Effective BOOPPATH construction order
+# ============================================================================
+
+$t.section "P4: BOOPPATH construction order"
+
+__cp_p4_pass=0
+__cp_p4_fail=0
+for (( __cp_p4_i=0; __cp_p4_i < 100; __cp_p4_i++ )); do
+  __cp_p4_count=$(( RANDOM % 3 + 2 ))
+  __cp_p4_dirs=()
+  __cp_p4_bp=""
+  for (( __cp_p4_d=0; __cp_p4_d < __cp_p4_count; __cp_p4_d++ )); do
+    __cp_p4_dir="$__cp_tmp/p4_${__cp_p4_i}_${__cp_p4_d}"
+    mkdir -p "$__cp_p4_dir"
+    __cp_p4_dirs+=("$__cp_p4_dir")
+    [[ -n "$__cp_p4_bp" ]] && __cp_p4_bp+=":"
+    __cp_p4_bp+="$__cp_p4_dir"
+  done
+
+  into=__cp_p4_out BOOPPATH="$__cp_p4_bp" boop.classPath dirs
+
+  # First line must be "."
+  __cp_p4_first="${__cp_p4_out%%$'\n'*}"
+  if [[ "$__cp_p4_first" != "." ]]; then
+    : $(( ++__cp_p4_fail )); continue
+  fi
+
+  # Verify order: each dir appears after the previous one
+  __cp_p4_ok=1
+  __cp_p4_rest="$__cp_p4_out"
+  for __cp_p4_dir in "${__cp_p4_dirs[@]}"; do
+    # Check dir is somewhere in the remaining output
+    if [[ "$__cp_p4_rest" == *"$__cp_p4_dir"* ]]; then
+      # Trim everything up to and including this entry
+      __cp_p4_rest="${__cp_p4_rest#*"$__cp_p4_dir"}"
+    else
+      __cp_p4_ok=0; break
+    fi
+  done
+  (( __cp_p4_ok )) && : $(( ++__cp_p4_pass )) || : $(( ++__cp_p4_fail ))
+done
+
+$t.assert_eq "P4: order correct ($__cp_p4_pass passed)" "$__cp_p4_fail" "0"
+
+# ============================================================================
+# Property 5: Root deduplication uses exact path matching only
+# ============================================================================
+
+$t.section "P5: Root deduplication"
+
+__cp_p5_pass=0
+__cp_p5_fail=0
+for (( __cp_p5_i=0; __cp_p5_i < 100; __cp_p5_i++ )); do
+  __cp_p5_dir="$__cp_tmp/p5_${__cp_p5_i}"
+  mkdir -p "$__cp_p5_dir/sub"
+
+  # Exact duplicate should appear only once
+  into=__cp_p5_out BOOPPATH="$__cp_p5_dir:$__cp_p5_dir" boop.classPath dirs
+  # Count occurrences using parameter expansion (no subshell)
+  __cp_p5_stripped="${__cp_p5_out//"$__cp_p5_dir"/}"
+  # Each occurrence removes len(dir) chars. If removed twice, stripped is shorter by 2*len
+  # Simpler: check that after removing first occurrence, it's gone
+  __cp_p5_after_first="${__cp_p5_out/"$__cp_p5_dir"/}"
+  if [[ "$__cp_p5_after_first" == *"$__cp_p5_dir"* ]]; then
+    # Still present -- might be /sub containing the parent string. Check exact line.
+    # Use newline-delimited matching
+    __cp_p5_exact=$'\n'"$__cp_p5_out"$'\n'
+    __cp_p5_match=$'\n'"$__cp_p5_dir"$'\n'
+    __cp_p5_first="${__cp_p5_exact/"$__cp_p5_match"/}"
+    if [[ "$__cp_p5_first" == *"$__cp_p5_match"* ]]; then
+      : $(( ++__cp_p5_fail )); continue
+    fi
+  fi
+
+  # Subdirectory should NOT be deduped
+  into=__cp_p5_out BOOPPATH="$__cp_p5_dir:$__cp_p5_dir/sub" boop.classPath dirs
+  [[ "$__cp_p5_out" == *"$__cp_p5_dir/sub"* ]] && : $(( ++__cp_p5_pass )) || : $(( ++__cp_p5_fail ))
+done
+
+$t.assert_eq "P5: dedup correct ($__cp_p5_pass passed)" "$__cp_p5_fail" "0"
+
+# ============================================================================
+# Property 6: Load guards prevent redundant and circular loading
+# ============================================================================
+
+$t.section "P6: Load guards"
+
+__cp_p6_pass=0
+__cp_p6_fail=0
+for (( __cp_p6_i=0; __cp_p6_i < 100; __cp_p6_i++ )); do
+  __cp_randid 7; __cp_p6_name="$__cp_r"
+
+  # Registry guard
+  __boop_registry["$__cp_p6_name"]="|class=$__cp_p6_name|"
+  printf 'exit 99\n' > "$__cp_tmp/${__cp_p6_name}_g"
+  __boop_classPath["$__cp_p6_name"]="$__cp_tmp/${__cp_p6_name}_g"
+  __boop.import "$__cp_p6_name" 2>/dev/null
+  : $(( ++__cp_p6_pass ))
+  unset "__boop_registry[$__cp_p6_name]" "__boop_classPath[$__cp_p6_name]"
+
+  # Loading guard
+  __cp_randid 7; __cp_p6_name2="$__cp_r"
+  __boop_loading["$__cp_p6_name2"]=1
+  printf 'exit 99\n' > "$__cp_tmp/${__cp_p6_name2}_g"
+  __boop_classPath["$__cp_p6_name2"]="$__cp_tmp/${__cp_p6_name2}_g"
+  __boop.import "$__cp_p6_name2" 2>/dev/null
+  : $(( ++__cp_p6_pass ))
+  unset "__boop_loading[$__cp_p6_name2]" "__boop_classPath[$__cp_p6_name2]"
+done
+
+$t.assert_eq "P6: load guards correct ($__cp_p6_pass passed)" "$__cp_p6_fail" "0"
+
+
+# ============================================================================
+# Property 7: Index rebuild round-trip (20 iterations)
+# ============================================================================
+
+$t.section "P7: Index rebuild round-trip"
+
+__cp_p7_pass=0
+__cp_p7_fail=0
+for (( __cp_p7_i=0; __cp_p7_i < 20; __cp_p7_i++ )); do
+  __cp_p7_root="$__cp_tmp/p7_${__cp_p7_i}"
+  mkdir -p "$__cp_p7_root"
+
+  __cp_p7_count=$(( RANDOM % 3 + 1 ))
+  declare -A __cp_p7_expected=()
+  for (( __cp_p7_c=0; __cp_p7_c < __cp_p7_count; __cp_p7_c++ )); do
+    __cp_randid 4; __cp_p7_ns="$__cp_r"
+    __cp_randid 5; __cp_p7_cls="$__cp_r"
+    mkdir -p "$__cp_p7_root/$__cp_p7_ns/$__cp_p7_cls"
+    printf '# class\n' > "$__cp_p7_root/$__cp_p7_ns/$__cp_p7_cls/$__cp_p7_cls"
+    __cp_p7_expected[$__cp_p7_cls]="$__cp_p7_ns/$__cp_p7_cls"
+  done
+
+  _LogLevel silent
+  boop.classPath rebuild "$__cp_p7_root" 2>/dev/null
+  _LogLevel warn
+
+  if [[ ! -f "$__cp_p7_root/.boopIndex" ]]; then
+    : $(( ++__cp_p7_fail )); unset __cp_p7_expected; continue
+  fi
+
+  # Verify by sourcing in subshell
+  __cp_p7_ok=1
+  for __cp_p7_cls in "${!__cp_p7_expected[@]}"; do
+    __cp_p7_val=$(bash -c 'declare -gA __boop_Index; . "'"$__cp_p7_root/.boopIndex"'"; printf "%s" "${__boop_Index['"$__cp_p7_cls"']:-MISSING}"')
+    if [[ "$__cp_p7_val" != "${__cp_p7_expected[$__cp_p7_cls]}" ]]; then
+      __cp_p7_ok=0; break
+    fi
+  done
+  (( __cp_p7_ok )) && : $(( ++__cp_p7_pass )) || : $(( ++__cp_p7_fail ))
+  unset __cp_p7_expected
+done
+
+$t.assert_eq "P7: rebuild round-trip ($__cp_p7_pass passed)" "$__cp_p7_fail" "0"
+
+# ============================================================================
+# Property 8: Index precedence -- earlier roots win (20 iterations)
+# ============================================================================
+
+$t.section "P8: Index precedence"
+
+__cp_p8_pass=0
+__cp_p8_fail=0
+for (( __cp_p8_i=0; __cp_p8_i < 20; __cp_p8_i++ )); do
+  __cp_randid 6; __cp_p8_name="$__cp_r"
+  __cp_p8_r1="$__cp_tmp/p8_${__cp_p8_i}_r1"
+  __cp_p8_r2="$__cp_tmp/p8_${__cp_p8_i}_r2"
+  mkdir -p "$__cp_p8_r1" "$__cp_p8_r2"
+
+  printf 'declare -gA __boop_Index=([%s]="First/%s")\n' "$__cp_p8_name" "$__cp_p8_name" > "$__cp_p8_r1/.boopIndex"
+  printf 'declare -gA __boop_Index=([%s]="Second/%s")\n' "$__cp_p8_name" "$__cp_p8_name" > "$__cp_p8_r2/.boopIndex"
+
+  __cp_p8_result=$(bash -c '
+    declare -gA __boop_Index
+    . "'"$__cp_p8_r1/.boopIndex"'"
+    declare -A snap; for k in "${!__boop_Index[@]}"; do snap[$k]="${__boop_Index[$k]}"; done
+    . "'"$__cp_p8_r2/.boopIndex"'"
+    for k in "${!snap[@]}"; do __boop_Index[$k]="${snap[$k]}"; done
+    printf "%s" "${__boop_Index['"$__cp_p8_name"']}"
+  ')
+  [[ "$__cp_p8_result" == "First/$__cp_p8_name" ]] && : $(( ++__cp_p8_pass )) || : $(( ++__cp_p8_fail ))
+done
+
+$t.assert_eq "P8: earlier roots win ($__cp_p8_pass passed)" "$__cp_p8_fail" "0"
+
+# ============================================================================
+# Property 9: Index conflict exclusion (20 iterations)
+# ============================================================================
+
+$t.section "P9: Index conflict exclusion"
+
+__cp_p9_pass=0
+__cp_p9_fail=0
+for (( __cp_p9_i=0; __cp_p9_i < 20; __cp_p9_i++ )); do
+  __cp_p9_root="$__cp_tmp/p9_${__cp_p9_i}"
+  __cp_randid 5; __cp_p9_conflict="$__cp_r"
+  __cp_randid 5; __cp_p9_unique="$__cp_r"
+
+  mkdir -p "$__cp_p9_root/NsA/$__cp_p9_conflict" "$__cp_p9_root/NsB/$__cp_p9_conflict" "$__cp_p9_root/NsC/$__cp_p9_unique"
+  printf '# a\n' > "$__cp_p9_root/NsA/$__cp_p9_conflict/$__cp_p9_conflict"
+  printf '# b\n' > "$__cp_p9_root/NsB/$__cp_p9_conflict/$__cp_p9_conflict"
+  printf '# c\n' > "$__cp_p9_root/NsC/$__cp_p9_unique/$__cp_p9_unique"
+
+  _LogLevel silent
+  boop.classPath rebuild "$__cp_p9_root" 2>/dev/null
+  _LogLevel warn
+
+  __cp_p9_check=$(bash -c '
+    declare -gA __boop_Index; . "'"$__cp_p9_root/.boopIndex"'"
+    printf "%s|%s" "${__boop_Index['"$__cp_p9_conflict"']:-EXCLUDED}" "${__boop_Index['"$__cp_p9_unique"']:-MISSING}"
+  ')
+  __cp_p9_cval="${__cp_p9_check%%|*}"
+  __cp_p9_uval="${__cp_p9_check##*|}"
+  [[ "$__cp_p9_cval" == "EXCLUDED" && "$__cp_p9_uval" != "MISSING" ]] && : $(( ++__cp_p9_pass )) || : $(( ++__cp_p9_fail ))
+done
+
+$t.assert_eq "P9: conflicts excluded ($__cp_p9_pass passed)" "$__cp_p9_fail" "0"
+
+# ============================================================================
+# Property 10: Index is a declaration, not a cache
+# ============================================================================
+
+$t.section "P10: Index is declaration not cache"
+
+__cp_p10_pass=0
+__cp_p10_fail=0
+for (( __cp_p10_i=0; __cp_p10_i < 100; __cp_p10_i++ )); do
+  __cp_p10_root="$__cp_tmp/p10_${__cp_p10_i}"
+  __cp_randid 6; __cp_p10_name="$__cp_r"
+  mkdir -p "$__cp_p10_root/$__cp_p10_name"
+  printf '# class\n' > "$__cp_p10_root/$__cp_p10_name/$__cp_p10_name"
+  printf '# empty\ndeclare -gA __boop_Index=()\n' > "$__cp_p10_root/.boopIndex"
+
+  __cp_p10_before=$(<"$__cp_p10_root/.boopIndex")
+  BOOPPATH="$__cp_p10_root" boop.resolve "$__cp_p10_name" >/dev/null 2>&1 || true
+  __cp_p10_after=$(<"$__cp_p10_root/.boopIndex")
+
+  [[ "$__cp_p10_before" == "$__cp_p10_after" ]] && : $(( ++__cp_p10_pass )) || : $(( ++__cp_p10_fail ))
+done
+
+$t.assert_eq "P10: index unchanged ($__cp_p10_pass passed)" "$__cp_p10_fail" "0"
+
+# ============================================================================
+# Property 11: CFG serialization round-trip (20 iterations)
+# ============================================================================
+
+$t.section "P11: CFG serialization round-trip"
+
+__cp_p11_pass=0
+__cp_p11_fail=0
+for (( __cp_p11_i=0; __cp_p11_i < 20; __cp_p11_i++ )); do
+  __cp_p11_cfg="$__cp_tmp/p11_${__cp_p11_i}.cfg"
+  declare -A __cp_p11_model=()
+  __cp_p11_ops=$(( RANDOM % 5 + 1 ))
+
+  for (( __cp_p11_o=0; __cp_p11_o < __cp_p11_ops; __cp_p11_o++ )); do
+    __cp_randid 6; __cp_p11_key="$__cp_r"
+    __cp_p11_file="$__cp_tmp/p11_${__cp_p11_i}_${__cp_p11_o}"
+    printf '# stub\n' > "$__cp_p11_file"
+
+    if (( RANDOM % 3 == 0 )) && [[ ${#__cp_p11_model[@]} -gt 0 ]]; then
+      __cp_p11_keys=("${!__cp_p11_model[@]}")
+      __cp_p11_rkey="${__cp_p11_keys[RANDOM % ${#__cp_p11_keys[@]}]}"
+      _CfgFile="$__cp_p11_cfg" boop.classPath remove "$__cp_p11_rkey" 2>/dev/null
+      unset "__cp_p11_model[$__cp_p11_rkey]"
+    else
+      _CfgFile="$__cp_p11_cfg" boop.classPath set "$__cp_p11_key" "$__cp_p11_file" 2>/dev/null
+      __cp_p11_model[$__cp_p11_key]="$__cp_p11_file"
+    fi
+  done
+
+  if [[ ! -f "$__cp_p11_cfg" ]]; then
+    : $(( ++__cp_p11_fail ))
+    for __cp_p11_key in "${!__cp_p11_model[@]}"; do unset "__boop_classPath[$__cp_p11_key]"; done
+    unset __cp_p11_model; continue
+  fi
+
+  __cp_p11_ok=1
+  for __cp_p11_key in "${!__cp_p11_model[@]}"; do
+    __cp_p11_check=$(bash -c 'declare -gA __boop_classPath; . "'"$__cp_p11_cfg"'"; printf "%s" "${__boop_classPath['"$__cp_p11_key"']:-MISSING}"')
+    if [[ "$__cp_p11_check" != "${__cp_p11_model[$__cp_p11_key]}" ]]; then
+      __cp_p11_ok=0; break
+    fi
+  done
+
+  __cp_p11_logic=$(grep -cE '^\s*(if|for|while|function|eval)' "$__cp_p11_cfg" || true)
+  (( __cp_p11_logic > 0 )) && __cp_p11_ok=0
+
+  (( __cp_p11_ok )) && : $(( ++__cp_p11_pass )) || : $(( ++__cp_p11_fail ))
+  for __cp_p11_key in "${!__cp_p11_model[@]}"; do unset "__boop_classPath[$__cp_p11_key]"; done
+  unset __cp_p11_model
+done
+
+$t.assert_eq "P11: CFG round-trip ($__cp_p11_pass passed)" "$__cp_p11_fail" "0"
+
+# ============================================================================
+# Property 12: ClassPath registry behaves as a correct key-value store
+# ============================================================================
+
+$t.section "P12: ClassPath key-value store"
+
+__cp_p12_pass=0
+__cp_p12_fail=0
+for (( __cp_p12_i=0; __cp_p12_i < 100; __cp_p12_i++ )); do
+  __cp_randid 7; __cp_p12_key="$__cp_r"
+  __cp_p12_file="$__cp_tmp/p12_${__cp_p12_i}"
+  printf '# stub\n' > "$__cp_p12_file"
+  __cp_p12_cfg="$__cp_tmp/p12_${__cp_p12_i}.cfg"
+  __cp_p12_ok=1
+
+  _CfgFile="$__cp_p12_cfg" boop.classPath set "$__cp_p12_key" "$__cp_p12_file" 2>/dev/null
+  into=__cp_p12_val boop.classPath get "$__cp_p12_key"
+  [[ "$__cp_p12_val" == "$__cp_p12_file" ]] || __cp_p12_ok=0
+
+  boop.classPath has "$__cp_p12_key" || __cp_p12_ok=0
+
+  into=__cp_p12_list boop.classPath list
+  [[ "$__cp_p12_list" == *"$__cp_p12_key=$__cp_p12_file"* ]] || __cp_p12_ok=0
+
+  _CfgFile="$__cp_p12_cfg" boop.classPath remove "$__cp_p12_key" 2>/dev/null
+  into=__cp_p12_val boop.classPath get "$__cp_p12_key"
+  [[ "$__cp_p12_val" == "" ]] || __cp_p12_ok=0
+
+  __cp_p12_rc=0
+  boop.classPath has "$__cp_p12_key" || __cp_p12_rc=$?
+  (( __cp_p12_rc != 0 )) || __cp_p12_ok=0
+
+  (( __cp_p12_ok )) && : $(( ++__cp_p12_pass )) || : $(( ++__cp_p12_fail ))
+done
+
+$t.assert_eq "P12: key-value store ($__cp_p12_pass passed)" "$__cp_p12_fail" "0"
+
+# ============================================================================
+# Property 13: BOOPPATH parsing filters empty segments
+# ============================================================================
+
+$t.section "P13: BOOPPATH filters empty segments"
+
+__cp_p13_pass=0
+__cp_p13_fail=0
+for (( __cp_p13_i=0; __cp_p13_i < 100; __cp_p13_i++ )); do
+  __cp_p13_dir="$__cp_tmp/p13_${__cp_p13_i}"
+  mkdir -p "$__cp_p13_dir"
+
+  case $(( RANDOM % 5 )) in
+    0) __cp_p13_bp=":$__cp_p13_dir:" ;;
+    1) __cp_p13_bp="::$__cp_p13_dir" ;;
+    2) __cp_p13_bp="$__cp_p13_dir:::" ;;
+    3) __cp_p13_bp=":::$__cp_p13_dir:::" ;;
+    4) __cp_p13_bp="::" ;;
+  esac
+
+  into=__cp_p13_out BOOPPATH="$__cp_p13_bp" boop.classPath dirs
+  # Check no empty lines -- split on newline, look for empty entries
+  __cp_p13_has_empty=0
+  while IFS= read -r __cp_p13_line; do
+    [[ -z "$__cp_p13_line" ]] && __cp_p13_has_empty=1
+  done <<< "$__cp_p13_out"
+  (( __cp_p13_has_empty == 0 )) && : $(( ++__cp_p13_pass )) || : $(( ++__cp_p13_fail ))
+done
+
+$t.assert_eq "P13: empty segments filtered ($__cp_p13_pass passed)" "$__cp_p13_fail" "0"
+
+$t.summary

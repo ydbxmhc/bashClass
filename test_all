@@ -3,6 +3,11 @@
 # A smoke failure short-circuits the rest — no point running unit tests
 # if the framework itself is broken.
 # Exit with nonzero if any suite or check fails.
+#
+# Usage: ./test_all              (quiet -- failures + summary only)
+#        TESTSUITE_VERBOSE=1 ./test_all   (verbose -- every PASS line)
+
+export TESTSUITE_VERBOSE="${TESTSUITE_VERBOSE:-0}"
 
 rc=0
 

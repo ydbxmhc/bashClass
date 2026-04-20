@@ -25,3 +25,16 @@ grep -r "pattern" .
 ```
 
 This is not negotiable. The shell is bash. Use it as bash.
+
+## Running test_all
+
+Always run `test_all` in verbose mode with output teed to a log:
+
+```bash
+bash -x test_all 2>&1 | tee test_all.log
+```
+
+This ensures:
+- Progress is visible in real time (stdout)
+- Full output is captured in `test_all.log` for review after timeouts
+- `bash -x` shows each command as it executes so you can see what's running
