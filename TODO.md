@@ -25,8 +25,7 @@ reference entries here by section name.
   Add to `test_all` in the unit tests section.
 - **Namespace directory migration**: Move existing flat class files into
   the namespace directory layout described below. Generate `.boopIndex`.
-- **Remove `__boop_dir`**: The variable is still declared but no longer
-  used by import. Remove the declaration and any remaining references.
+- **Remove `__boop_dir`**: ✓ Done. Declaration removed from `boop`.
 - **Property-based tests**: Optional tasks from the spec (Properties 1-13).
 
 ### Original Design (Reference)

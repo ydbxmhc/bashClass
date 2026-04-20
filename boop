@@ -100,12 +100,6 @@ declare -g _OutMode="${_OutMode:-auto}"
 #   _EOL=""      # raw — no trailing newline (pipe-friendly)
 declare -g _EOL="${_EOL:-$'\n'}"
 
-# Absolute path to the directory containing this framework file. Used as the
-# second-priority search location for class imports (after __boop_classPath,
-# before PATH). Resolved once at load time via realpath so symlinks don't fool it.
-declare -g  __boop_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
-# TODO: See TODO.md "Reserved Variable Names & Inheritance Hygiene"
-
 # TODO: See TODO.md "Configurable Baked-Wrapper Typecast Behavior"
 # TODO: See TODO.md "Argument-Parsing Object"
 
