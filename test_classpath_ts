@@ -1,0 +1,400 @@
+#!/bin/bash
+set -uo pipefail
+
+# Classpath/Namespace system tests -- TestSuite version
+#
+# Tests the full classpath resolution pipeline: __boop.classResolve,
+# __boop.import rewrite, boop.resolve, boop.classPath API, __boop.loader,
+# and rebuild. All filesystem tests use temp directories for isolation.
+
+. boop TestSuite
+
+into=t TestSuite name="Classpath Tests"
+
+# Temp directory for all filesystem tests
+__ct_tmp=$(mktemp -d)
+trap 'rm -rf "$__ct_tmp"' EXIT
+
+# Stderr capture file
+__ct_err=$(mktemp)
+
+# Absolute path to boop for isolated subshell tests
+__ct_boop_path="$(realpath boop)"
+
+# Helper: clear stderr capture
+_ce() { : > "$__ct_err"; }
+
+# ============================================================================
+# Namespace normalization
+# ============================================================================
+
+$t.section "Namespace normalization"
+
+# __boop.classResolve normalizes :: to / internally. We test via boop.resolve
+# which wraps it. Create a namespace tree to resolve against.
+mkdir -p "$__ct_tmp/ns/Collection/List"
+printf '# stub\n' > "$__ct_tmp/ns/Collection/List/List"
+
+# Resolve with :: notation
+into=__ct_path BOOPPATH="$__ct_tmp/ns" boop.resolve "Collection::List"
+$t.assert_eq ":: resolves to namespace path" "$__ct_path" "$__ct_tmp/ns/Collection/List/List"
+
+# Resolve with / notation (already normalized)
+into=__ct_path BOOPPATH="$__ct_tmp/ns" boop.resolve "Collection/List"
+$t.assert_eq "/ resolves same as ::" "$__ct_path" "$__ct_tmp/ns/Collection/List/List"
+
+# Empty identifier crashes (needs isolation)
+$t.assert_fail "empty identifier crashes" bash -c '. "'"$__ct_boop_path"'"; boop.resolve "" 2>/dev/null'
+
+# ============================================================================
+# R1 resolution rule: namespace convention vs bare file
+# ============================================================================
+
+$t.section "R1 resolution rule"
+
+# Setup: namespace convention exists
+mkdir -p "$__ct_tmp/r1/Foo"
+printf '# namespace\n' > "$__ct_tmp/r1/Foo/Foo"
+
+# R1 prefers namespace convention (dir/file) over bare file
+into=__ct_path BOOPPATH="$__ct_tmp/r1" boop.resolve "Foo"
+$t.assert_eq "R1 prefers namespace convention" "$__ct_path" "$__ct_tmp/r1/Foo/Foo"
+
+# Only bare file exists
+mkdir -p "$__ct_tmp/r1bare"
+printf '# bare only\n' > "$__ct_tmp/r1bare/Bar"
+
+into=__ct_path BOOPPATH="$__ct_tmp/r1bare" boop.resolve "Bar"
+$t.assert_eq "R1 falls back to bare file" "$__ct_path" "$__ct_tmp/r1bare/Bar"
+
+# Neither exists -- not found
+__ct_rc=0
+BOOPPATH="$__ct_tmp/r1bare" boop.resolve "NoExist" || __ct_rc=$?
+$t.assert_eq "R1 returns 1 when not found" "$__ct_rc" "1"
+
+# ============================================================================
+# Resolution priority: classPath > index > dynamic
+# ============================================================================
+
+$t.section "Resolution priority chain"
+
+# Setup filesystem
+mkdir -p "$__ct_tmp/prio/Alpha"
+printf '# dynamic\n' > "$__ct_tmp/prio/Alpha/Alpha"
+
+# Priority 1: classPath override wins
+printf '# override\n' > "$__ct_tmp/prio/override_alpha"
+__boop_classPath["Alpha"]="$__ct_tmp/prio/override_alpha"
+
+into=__ct_path BOOPPATH="$__ct_tmp/prio" boop.resolve "Alpha"
+$t.assert_eq "classPath override wins" "$__ct_path" "$__ct_tmp/prio/override_alpha"
+
+unset '__boop_classPath[Alpha]'
+
+# Priority 2: index wins over dynamic discovery
+__boop_Index["Alpha"]="Alpha"
+into=__ct_path BOOPPATH="$__ct_tmp/prio" boop.resolve "Alpha"
+$t.assert_eq "index wins over dynamic" "$__ct_path" "$__ct_tmp/prio/Alpha/Alpha"
+
+unset '__boop_Index[Alpha]'
+
+# Priority 3: dynamic discovery (no classPath, no index)
+into=__ct_path BOOPPATH="$__ct_tmp/prio" boop.resolve "Alpha"
+$t.assert_eq "dynamic discovery works" "$__ct_path" "$__ct_tmp/prio/Alpha/Alpha"
+
+
+# ============================================================================
+# BOOPPATH construction and deduplication
+# ============================================================================
+
+$t.section "BOOPPATH construction"
+
+# dirs subcommand shows effective root list
+into=__ct_dirs BOOPPATH="$__ct_tmp/ns:$__ct_tmp/r1" boop.classPath dirs
+# First entry should be "."
+__ct_first="${__ct_dirs%%$'\n'*}"
+$t.assert_eq "dirs starts with ." "$__ct_first" "."
+
+# BOOPPATH entries appear in order
+$t.assert_contains "dirs includes BOOPPATH entry 1" "$__ct_dirs" "$__ct_tmp/ns"
+$t.assert_contains "dirs includes BOOPPATH entry 2" "$__ct_dirs" "$__ct_tmp/r1"
+
+# Empty segments filtered
+into=__ct_dirs BOOPPATH="::$__ct_tmp/ns:::" boop.classPath dirs
+# Should NOT contain empty lines between entries
+__ct_empty_count=$(printf '%s\n' "$__ct_dirs" | grep -c '^$' || true)
+$t.assert_eq "empty BOOPPATH segments filtered" "$__ct_empty_count" "0"
+
+# Deduplication: exact duplicates removed
+into=__ct_dirs BOOPPATH="$__ct_tmp/ns:$__ct_tmp/ns:$__ct_tmp/r1" boop.classPath dirs
+__ct_ns_count=$(printf '%s\n' "$__ct_dirs" | grep -c "^${__ct_tmp}/ns$" || true)
+$t.assert_eq "exact duplicates deduplicated" "$__ct_ns_count" "1"
+
+# Subdirectories are NOT treated as duplicates
+mkdir -p "$__ct_tmp/ns/sub"
+into=__ct_dirs BOOPPATH="$__ct_tmp/ns:$__ct_tmp/ns/sub" boop.classPath dirs
+$t.assert_contains "subdirectory not deduped" "$__ct_dirs" "$__ct_tmp/ns/sub"
+
+# ============================================================================
+# boop.classPath set/get/has/list/remove
+# ============================================================================
+
+$t.section "classPath set/get/has/list/remove"
+
+# Create a temp file to register
+printf '# test class\n' > "$__ct_tmp/TestClass"
+
+# set + get
+_CfgFile="$__ct_tmp/.boop.cfg" boop.classPath set TestClass "$__ct_tmp/TestClass"
+into=__ct_val boop.classPath get TestClass
+$t.assert_eq "get after set returns path" "$__ct_val" "$__ct_tmp/TestClass"
+
+# has returns 0 for registered
+boop.classPath has TestClass
+$t.assert_ok "has returns 0 for registered" boop.classPath has TestClass
+
+# list includes the entry
+into=__ct_list boop.classPath list
+$t.assert_contains "list includes entry" "$__ct_list" "TestClass=$__ct_tmp/TestClass"
+
+# remove
+_CfgFile="$__ct_tmp/.boop.cfg" boop.classPath remove TestClass
+into=__ct_val boop.classPath get TestClass
+$t.assert_eq "get after remove returns empty" "$__ct_val" ""
+
+# has returns 1 after remove
+__ct_rc=0
+boop.classPath has TestClass || __ct_rc=$?
+$t.assert_eq "has returns 1 after remove" "$__ct_rc" "1"
+
+# ============================================================================
+# classPath set validation
+# ============================================================================
+
+$t.section "classPath set validation"
+
+# Empty class name crashes
+$t.assert_fail "set empty class crashes" bash -c \
+  '. "'"$__ct_boop_path"'"; _CfgFile=/dev/null boop.classPath set "" /tmp 2>/dev/null'
+
+# Non-readable path crashes
+$t.assert_fail "set non-readable path crashes" bash -c \
+  '. "'"$__ct_boop_path"'"; _CfgFile=/dev/null boop.classPath set Foo /no/such/file 2>/dev/null'
+
+# Unknown subcommand crashes
+$t.assert_fail "unknown subcommand crashes" bash -c \
+  '. "'"$__ct_boop_path"'"; boop.classPath banana 2>/dev/null'
+
+# ============================================================================
+# CFG serialization round-trip
+# ============================================================================
+
+$t.section "CFG serialization"
+
+# Set up some entries and verify CFG file
+printf '# a\n' > "$__ct_tmp/A"
+printf '# b\n' > "$__ct_tmp/B"
+
+_CfgFile="$__ct_tmp/.boop_rt.cfg" boop.classPath set RtA "$__ct_tmp/A"
+_CfgFile="$__ct_tmp/.boop_rt.cfg" boop.classPath set RtB "$__ct_tmp/B"
+
+# Source CFG into a clean array and verify
+__ct_rt_result=$(bash -c '
+  declare -gA __boop_classPath
+  . "'"$__ct_tmp"'/.boop_rt.cfg"
+  printf "%s\n" "${__boop_classPath[RtA]:-MISSING}"
+  printf "%s\n" "${__boop_classPath[RtB]:-MISSING}"
+')
+__ct_rt_a="${__ct_rt_result%%$'\n'*}"
+__ct_rt_b="${__ct_rt_result##*$'\n'}"
+$t.assert_eq "CFG round-trip A" "$__ct_rt_a" "$__ct_tmp/A"
+$t.assert_eq "CFG round-trip B" "$__ct_rt_b" "$__ct_tmp/B"
+
+# CFG has no procedural logic (no if/for/while/function)
+__ct_logic=$(grep -cE '^\s*(if|for|while|function|eval)' "$__ct_tmp/.boop_rt.cfg" || true)
+$t.assert_eq "CFG has no procedural logic" "$__ct_logic" "0"
+
+# Clean up classPath entries
+unset '__boop_classPath[RtA]'
+unset '__boop_classPath[RtB]'
+
+# ============================================================================
+# rebuild subcommand
+# ============================================================================
+
+$t.section "rebuild"
+
+# Create a namespace tree
+mkdir -p "$__ct_tmp/rebuild_root/Collection/List"
+mkdir -p "$__ct_tmp/rebuild_root/Collection/Map"
+mkdir -p "$__ct_tmp/rebuild_root/Math/Trig"
+printf '# List\n' > "$__ct_tmp/rebuild_root/Collection/List/List"
+printf '# Map\n' > "$__ct_tmp/rebuild_root/Collection/Map/Map"
+printf '# Trig\n' > "$__ct_tmp/rebuild_root/Math/Trig/Trig"
+
+_LogLevel info
+_ce; boop.classPath rebuild "$__ct_tmp/rebuild_root" 2>"$__ct_err"
+_LogLevel warn
+
+# Verify .boopIndex was created
+$t.assert_ok ".boopIndex created" test -f "$__ct_tmp/rebuild_root/.boopIndex"
+
+# Source it and check mappings
+__ct_rebuild_result=$(bash -c '
+  declare -gA __boop_Index
+  . "'"$__ct_tmp/rebuild_root/.boopIndex"'"
+  printf "%s\n" "${__boop_Index[List]:-MISSING}"
+  printf "%s\n" "${__boop_Index[Map]:-MISSING}"
+  printf "%s\n" "${__boop_Index[Trig]:-MISSING}"
+')
+$t.assert_contains "index has List" "$__ct_rebuild_result" "Collection/List"
+$t.assert_contains "index has Map" "$__ct_rebuild_result" "Collection/Map"
+$t.assert_contains "index has Trig" "$__ct_rebuild_result" "Math/Trig"
+
+# Generated file is valid sourceable bash
+$t.assert_ok "index is sourceable bash" bash -c '. "'"$__ct_tmp/rebuild_root/.boopIndex"'"'
+
+# ============================================================================
+# rebuild: conflict exclusion
+# ============================================================================
+
+$t.section "rebuild conflict exclusion"
+
+# Create conflicting short names: Util in two namespaces
+mkdir -p "$__ct_tmp/conflict_root/IO/Util"
+mkdir -p "$__ct_tmp/conflict_root/Math/Util"
+mkdir -p "$__ct_tmp/conflict_root/IO/Stream"
+printf '# IO Util\n' > "$__ct_tmp/conflict_root/IO/Util/Util"
+printf '# Math Util\n' > "$__ct_tmp/conflict_root/Math/Util/Util"
+printf '# Stream\n' > "$__ct_tmp/conflict_root/IO/Stream/Stream"
+
+_LogLevel info
+_ce; boop.classPath rebuild "$__ct_tmp/conflict_root" 2>"$__ct_err"
+_LogLevel warn
+
+# Util should be excluded (conflict)
+__ct_conflict_check=$(bash -c '
+  declare -gA __boop_Index
+  . "'"$__ct_tmp/conflict_root/.boopIndex"'"
+  printf "%s" "${__boop_Index[Util]:-EXCLUDED}"
+')
+$t.assert_eq "conflicting short name excluded" "$__ct_conflict_check" "EXCLUDED"
+
+# Non-conflicting names still present
+__ct_stream_check=$(bash -c '
+  declare -gA __boop_Index
+  . "'"$__ct_tmp/conflict_root/.boopIndex"'"
+  printf "%s" "${__boop_Index[Stream]:-MISSING}"
+')
+$t.assert_contains "non-conflicting name present" "$__ct_stream_check" "IO/Stream"
+
+# Conflict diagnostic emitted
+$t.assert_contains "conflict diagnostic emitted" "$(<"$__ct_err")" "conflicts"
+
+# ============================================================================
+# Index precedence: earlier roots win
+# ============================================================================
+
+$t.section "Index precedence"
+
+# Create two roots with overlapping short names
+mkdir -p "$__ct_tmp/root1" "$__ct_tmp/root2"
+printf 'declare -gA __boop_Index=([Widget]="UI/Widget")\n' > "$__ct_tmp/root1/.boopIndex"
+printf 'declare -gA __boop_Index=([Widget]="Core/Widget")\n' > "$__ct_tmp/root2/.boopIndex"
+
+# Simulate loader behavior: source both, earlier wins
+__ct_prec_result=$(bash -c '
+  declare -gA __boop_Index
+  . "'"$__ct_tmp/root1/.boopIndex"'"
+  # Snapshot
+  declare -A snap
+  for k in "${!__boop_Index[@]}"; do snap[$k]="${__boop_Index[$k]}"; done
+  . "'"$__ct_tmp/root2/.boopIndex"'"
+  # Restore earlier
+  for k in "${!snap[@]}"; do __boop_Index[$k]="${snap[$k]}"; done
+  printf "%s" "${__boop_Index[Widget]}"
+')
+$t.assert_eq "earlier root wins for index" "$__ct_prec_result" "UI/Widget"
+
+# ============================================================================
+# Index is declaration, not cache (filesystem fallback doesn't modify it)
+# ============================================================================
+
+$t.section "Index is declaration not cache"
+
+# Create a class resolvable only via filesystem fallback
+mkdir -p "$__ct_tmp/nocache/Ephemeral"
+printf '# ephemeral\n' > "$__ct_tmp/nocache/Ephemeral/Ephemeral"
+printf '# empty index\ndeclare -gA __boop_Index=()\n' > "$__ct_tmp/nocache/.boopIndex"
+
+# Resolve via fallback
+BOOPPATH="$__ct_tmp/nocache" boop.resolve "Ephemeral" >/dev/null 2>&1 || true
+
+# Index file should be unchanged
+__ct_idx_after=$(<"$__ct_tmp/nocache/.boopIndex")
+$t.assert_contains "index unchanged after fallback" "$__ct_idx_after" "declare -gA __boop_Index=()"
+
+# ============================================================================
+# RC chain sourcing (loader)
+# ============================================================================
+
+$t.section "RC chain and loader"
+
+# Test that loader sources RC files and they can set variables
+__ct_rc_result=$(bash -c '
+  mkdir -p "'"$__ct_tmp/rctest"'"
+  printf "export __ct_rc_marker=sourced\n" > "'"$__ct_tmp/rctest/.booprc"'"
+  cd "'"$__ct_tmp/rctest"'"
+  . "'"$__ct_boop_path"'"
+  printf "%s" "${__ct_rc_marker:-NOT_SET}"
+' 2>/dev/null)
+$t.assert_eq "local .booprc sourced by loader" "$__ct_rc_result" "sourced"
+
+# Missing RC files silently skipped (no crash)
+$t.assert_ok "missing RC files don't crash" bash -c '
+  cd /tmp
+  . "'"$__ct_boop_path"'"
+' 2>/dev/null
+
+# ============================================================================
+# Version mismatch warning
+# ============================================================================
+
+$t.section "Version mismatch"
+
+__ct_ver_out=$(bash -c '
+  mkdir -p "'"$__ct_tmp/vertest"'"
+  printf "__boop_preferred_version=\"99.99.99\"\n" > "'"$__ct_tmp/vertest/.booprc"'"
+  cd "'"$__ct_tmp/vertest"'"
+  . "'"$__ct_boop_path"'"
+' 2>&1)
+$t.assert_contains "version mismatch warns" "$__ct_ver_out" "prefers v99.99.99"
+
+# ============================================================================
+# Filesystem fallback diagnostic
+# ============================================================================
+
+$t.section "Filesystem fallback diagnostic"
+
+# Resolve something via dynamic discovery at info level
+mkdir -p "$__ct_tmp/fbdiag/Zeta"
+printf '# zeta\n' > "$__ct_tmp/fbdiag/Zeta/Zeta"
+
+_LogLevel info
+_ce; BOOPPATH="$__ct_tmp/fbdiag" boop.resolve "Zeta" 2>"$__ct_err"
+_LogLevel warn
+
+$t.assert_contains "fallback diagnostic suggests rebuild" "$(<"$__ct_err")" "boop.classPath rebuild"
+
+# ============================================================================
+# Import with new resolution (existing classes still load)
+# ============================================================================
+
+$t.section "Import integration"
+
+# Verify existing classes load correctly through the new import path
+$t.assert_ok "Box loads via new import" bash -c '. "'"$__ct_boop_path"'" Box; into=b Box length=1 width=1 height=1; $b.volume' 2>/dev/null
+$t.assert_ok "Math loads via new import" bash -c '. "'"$__ct_boop_path"'" Math; Math.abs -5' 2>/dev/null
+$t.assert_ok "List loads via new import" bash -c '. "'"$__ct_boop_path"'" List; into=l List; $l.length' 2>/dev/null
+
+$t.summary

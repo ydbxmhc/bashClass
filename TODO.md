@@ -7,7 +7,31 @@ reference entries here by section name.
 
 ## ★ Namespace, ClassPath, Index, and Configuration System
 
-**Priority item.** The framework needs a complete class organization
+**Priority item.** ✓ Core implementation complete. The framework now has:
+- `__boop.classResolve` — namespace-aware resolution (classPath → index → dynamic discovery)
+- `__boop.loader` — RC chain sourcing, BOOPPATH parsing, .boopIndex sourcing, version mismatch detection
+- `__boop.import` — rewritten to use classResolve with raw source fallback
+- `boop.resolve` — public non-fatal resolution wrapper
+- `boop.classPath` — full subcommand API (set/get/list/remove/has/dirs/rebuild)
+- CFG serialization helper
+- Filesystem fallback diagnostic
+
+### Remaining Work
+
+- **Test suite (`test_classpath_ts`)**: Dedicated test file exercising
+  the classpath/namespace system end-to-end. Should cover: namespace
+  resolution, index lookup, classPath overrides, rebuild, CFG round-trip,
+  RC chain sourcing, BOOPPATH construction, deduplication, error cases.
+  Add to `test_all` in the unit tests section.
+- **Namespace directory migration**: Move existing flat class files into
+  the namespace directory layout described below. Generate `.boopIndex`.
+- **Remove `__boop_dir`**: The variable is still declared but no longer
+  used by import. Remove the declaration and any remaining references.
+- **Property-based tests**: Optional tasks from the spec (Properties 1-13).
+
+### Original Design (Reference)
+
+The framework needs a complete class organization
 and resolution system: namespaced directory layout, a short-name
 index, a multi-root classPath with per-root resolution, persistent
 configuration via rc/cfg files, and a public API for managing it all.
@@ -656,6 +680,39 @@ Each should be reviewed:
 
 Principle: Only suppress stderr when you know exactly what the error
 will be, you're expecting it, and the content has no debugging value.
+
+---
+
+## Security: Parse Config Files as Data, Not Code
+
+Currently `.boopIndex` and `.boop.cfg` are sourced as bash scripts.
+This means a malicious or corrupted file can execute arbitrary code
+during framework initialization. The current trust model matches
+`.bashrc` (if an attacker can write your config, you're already
+compromised), but we should harden this.
+
+Goal: convert `.boopIndex` and `.boop.cfg` from sourced scripts to
+parsed data files. Read them line by line, extract key=value pairs
+via parameter expansion, populate the arrays manually. No `eval`,
+no `source`, no code execution.
+
+`.booprc` remains a sourced bash script by design — it's explicitly
+user code. The hardening applies only to machine-managed files
+(`.boopIndex`, `.boop.cfg`) where the content is structured and
+predictable.
+
+Implementation:
+- Write a `__boop.parseConfig` function that reads a file and
+  populates a named associative array from `key=value` lines
+- Ignore blank lines and `#` comments
+- Reject lines that don't match the expected pattern (emit `_Warn`)
+- Use this for `.boopIndex` and `.boop.cfg` instead of sourcing
+- The file format stays the same (valid bash syntax) so it's
+  still human-readable and backward-compatible if someone does
+  source it manually
+
+Priority: low (current trust model is adequate). Do this when
+the framework is mature enough to worry about hostile environments.
 
 ---
 

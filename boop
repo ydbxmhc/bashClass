@@ -68,6 +68,16 @@ declare -gA __boop_loading
 # the lifetime of the shell process.
 declare -gA __boop_static
 
+# Short-name → namespace-path index. Populated by sourcing .boopIndex files
+# from each library root during initialization. Maps bare class names to their
+# full namespace paths (e.g., ["List"]="Collection/List"). Earlier roots in the
+# effective BOOPPATH take precedence for duplicate short names.
+declare -gA __boop_Index
+
+# Framework version string. Used for mismatch detection when RC files indicate
+# a preferred version. Read-only after initialization.
+declare -gr __boop_version="0.1.0"
+
 # ============================================================================
 # GLOBALS - Configuration
 # ============================================================================
@@ -636,43 +646,43 @@ __boop.registerMethod() {
 #  _Self="$_Self" _Class="$__boop_dispatch_class" $__boop_dispatch_impl "$@"
 #}
 
-# __boop.resolve — MRO lookup for a class+method pair.
+# __boop.methodResolve — MRO lookup for a class+method pair.
 #
 # Walks the inheritance chain from Class upward, returning the implementing
 # function name via nameref. Crashes if the class isn't registered or the
 # method isn't found anywhere in the chain.
 #
-# Usage: __boop.resolve ClassName methodName resultVar
+# Usage: __boop.methodResolve ClassName methodName resultVar
 #
 # Example:
 #   local impl
-#   __boop.resolve Box volume impl
+#   __boop.methodResolve Box volume impl
 #   $impl "$@"
-__boop.resolve() {
-  local __boop_resolve_class="$1" __boop_resolve_method="$2"
-  local -n __boop_resolve_out="$3"
+__boop.methodResolve() {
+  local __boop_methodResolve_class="$1" __boop_methodResolve_method="$2"
+  local -n __boop_methodResolve_out="$3"
 
-  [[ -n "${__boop_registry[$__boop_resolve_class]:-}" ]] || \
-    _Crash "Unknown class: '$__boop_resolve_class'"
+  [[ -n "${__boop_registry[$__boop_methodResolve_class]:-}" ]] || \
+    _Crash "Unknown class: '$__boop_methodResolve_class'"
 
   # Cache key — same cache as dispatch, they share the registry
-  local __boop_resolve_cachekey="$__boop_resolve_class.$__boop_resolve_method"
-  __boop_resolve_out="${__boop_methodRegistry[$__boop_resolve_cachekey]:-}"
-  [[ -n "$__boop_resolve_out" ]] && return
+  local __boop_methodResolve_cachekey="$__boop_methodResolve_class.$__boop_methodResolve_method"
+  __boop_methodResolve_out="${__boop_methodRegistry[$__boop_methodResolve_cachekey]:-}"
+  [[ -n "$__boop_methodResolve_out" ]] && return
 
   # Cache miss — walk the MRO
-  local __boop_resolve_current="$__boop_resolve_class"
-  while [[ -n "$__boop_resolve_current" ]]; do
-    __boop_resolve_out="${__boop_methodRegistry[$__boop_resolve_current.$__boop_resolve_method]:-}"
-    if [[ -n "$__boop_resolve_out" ]]; then
-      [[ "$__boop_resolve_current" != "$__boop_resolve_class" ]] && \
-        __boop_methodRegistry[$__boop_resolve_cachekey]="$__boop_resolve_out"
+  local __boop_methodResolve_current="$__boop_methodResolve_class"
+  while [[ -n "$__boop_methodResolve_current" ]]; do
+    __boop_methodResolve_out="${__boop_methodRegistry[$__boop_methodResolve_current.$__boop_methodResolve_method]:-}"
+    if [[ -n "$__boop_methodResolve_out" ]]; then
+      [[ "$__boop_methodResolve_current" != "$__boop_methodResolve_class" ]] && \
+        __boop_methodRegistry[$__boop_methodResolve_cachekey]="$__boop_methodResolve_out"
       return
     fi
-    __boop.parse "$__boop_resolve_current" "parent" __boop_resolve_current
+    __boop.parse "$__boop_methodResolve_current" "parent" __boop_methodResolve_current
   done
 
-  _Crash "Method not found: $__boop_resolve_class.$__boop_resolve_method"
+  _Crash "Method not found: $__boop_methodResolve_class.$__boop_methodResolve_method"
 }
 
 # ============================================================================
@@ -1037,8 +1047,516 @@ __boop.registerClass() {
 #}
 new() {
   local __boop_newGlobal_class="$1" __boop_newGlobal_impl; shift
-  __boop.resolve "$__boop_newGlobal_class" new __boop_newGlobal_impl
+  __boop.methodResolve "$__boop_newGlobal_class" new __boop_newGlobal_impl
   _Class="$__boop_newGlobal_class" $__boop_newGlobal_impl "$@"
+}
+
+# ============================================================================
+# LOADER — RC/CFG Bootstrap and BOOPPATH Initialization
+# ============================================================================
+
+# __boop.loader — Bootstrap the framework configuration layer.
+#
+# Called once during initialization (inside the __boop_loaded guard).
+# Responsibilities:
+#   1. Source the RC chain: /etc/booprc → ~/.booprc → ./.booprc
+#      Each RC file is responsible for sourcing its own .boop.cfg.
+#      Missing files are skipped silently; source failures crash.
+#   2. Parse BOOPPATH — split on ':', filter empty segments, skip
+#      non-existent directories with _Info diagnostic.
+#   3. Source .boopIndex from each valid root (. + BOOPPATH + PATH).
+#      Earlier roots take precedence for duplicate short names.
+#   4. Version mismatch detection — if RC files set
+#      __boop_preferred_version, compare against __boop_version
+#      and emit _Warn if they differ.
+#
+# The function is idempotent — calling it twice won't break anything,
+# though in practice it's called exactly once from the init guard.
+#
+# This function does NOT call __boop.import or process class arguments.
+# It only prepares the configuration state that import will use later.
+__boop.loader() {
+  _Debug "loader: starting RC chain"
+
+  # -----------------------------------------------------------------
+  # 1. RC chain sourcing
+  # -----------------------------------------------------------------
+  local __boop_loader_rc __boop_loader_rc_version_source=""
+  for __boop_loader_rc in "/etc/booprc" "$HOME/.booprc" "./.booprc"; do
+    if [[ ! -f "$__boop_loader_rc" ]]; then
+      _Trace "loader: RC file $__boop_loader_rc not found, skipped"
+      continue
+    fi
+    local __boop_loader_prev_pref="${__boop_preferred_version:-}"
+    . "$__boop_loader_rc" || _Crash "Failed to source $__boop_loader_rc"
+    _Info "sourced $__boop_loader_rc"
+    # Track which RC file set or changed __boop_preferred_version
+    if [[ "${__boop_preferred_version:-}" != "$__boop_loader_prev_pref" ]]; then
+      __boop_loader_rc_version_source="$__boop_loader_rc"
+    fi
+  done
+
+  # -----------------------------------------------------------------
+  # 2. BOOPPATH parsing — validate entries exist
+  # -----------------------------------------------------------------
+  _Trace "loader: parsing BOOPPATH='${BOOPPATH:-}'"
+  local __boop_loader_IFS_save="$IFS"
+  local -a __boop_loader_bp_segments
+  IFS=':'
+  read -ra __boop_loader_bp_segments <<< "${BOOPPATH:-}"
+  IFS="$__boop_loader_IFS_save"
+
+  local __boop_loader_seg
+  for __boop_loader_seg in "${__boop_loader_bp_segments[@]}"; do
+    [[ -n "$__boop_loader_seg" ]] || continue
+    if [[ ! -d "$__boop_loader_seg" ]]; then
+      _Info "BOOPPATH entry '$__boop_loader_seg' does not exist, skipping"
+    else
+      _Trace "loader: BOOPPATH entry '$__boop_loader_seg' valid"
+    fi
+  done
+
+  # -----------------------------------------------------------------
+  # 3. .boopIndex sourcing from each valid root
+  # -----------------------------------------------------------------
+  _Trace "loader: building effective root list"
+  # Build the effective root list: . + BOOPPATH + PATH
+  local -A __boop_loader_seen
+  local -a __boop_loader_roots=()
+
+  __boop_loader_addRoot() {
+    local __boop_loader_addRoot_r="$1"
+    [[ -n "$__boop_loader_addRoot_r" ]] || return
+    [[ -n "${__boop_loader_seen[$__boop_loader_addRoot_r]+set}" ]] && return
+    __boop_loader_seen[$__boop_loader_addRoot_r]=1
+    __boop_loader_roots+=("$__boop_loader_addRoot_r")
+  }
+
+  # Current directory first
+  __boop_loader_addRoot "."
+
+  # BOOPPATH entries (reuse already-parsed segments)
+  for __boop_loader_seg in "${__boop_loader_bp_segments[@]}"; do
+    [[ -n "$__boop_loader_seg" ]] || continue
+    [[ -d "$__boop_loader_seg" ]] || continue
+    __boop_loader_addRoot "$__boop_loader_seg"
+  done
+
+  # PATH entries
+  local -a __boop_loader_path_segments
+  IFS=':'
+  read -ra __boop_loader_path_segments <<< "${PATH:-}"
+  IFS="$__boop_loader_IFS_save"
+  for __boop_loader_seg in "${__boop_loader_path_segments[@]}"; do
+    [[ -n "$__boop_loader_seg" ]] || continue
+    __boop_loader_addRoot "$__boop_loader_seg"
+  done
+
+  unset -f __boop_loader_addRoot
+
+  _Trace "loader: effective root list has ${#__boop_loader_roots[@]} entries"
+  _Debug "loader: effective roots: ${__boop_loader_roots[*]}"
+
+  # Source .boopIndex from each root. Earlier roots take precedence:
+  # if a key is already set in __boop_Index, the index file's declare -gA
+  # would overwrite it, so we use a pre-source snapshot approach —
+  # save existing keys, source the index, then restore any keys that
+  # were already set before the source.
+  local __boop_loader_root
+  for __boop_loader_root in "${__boop_loader_roots[@]}"; do
+    local __boop_loader_idx="$__boop_loader_root/.boopIndex"
+    [[ -f "$__boop_loader_idx" ]] || continue
+    _Trace "loader: sourcing index $__boop_loader_idx"
+
+    # Snapshot existing keys so we can protect them from overwrite
+    local -A __boop_loader_snapshot
+    local __boop_loader_key
+    for __boop_loader_key in "${!__boop_Index[@]}"; do
+      __boop_loader_snapshot[$__boop_loader_key]="${__boop_Index[$__boop_loader_key]}"
+    done
+
+    . "$__boop_loader_idx"
+
+    # Restore any keys that existed before this source (earlier roots win)
+    for __boop_loader_key in "${!__boop_loader_snapshot[@]}"; do
+      __boop_Index[$__boop_loader_key]="${__boop_loader_snapshot[$__boop_loader_key]}"
+    done
+    _Info "sourced index: $__boop_loader_idx"
+  done
+
+  # -----------------------------------------------------------------
+  # 4. Version mismatch detection
+  # -----------------------------------------------------------------
+  _Trace "loader: checking version mismatch"
+  if [[ -n "${__boop_preferred_version:-}" && "$__boop_preferred_version" != "$__boop_version" ]]; then
+    _Warn "Loaded boop v${__boop_version} but ${__boop_loader_rc_version_source:-RC chain} prefers v${__boop_preferred_version} — check PATH"
+  fi
+
+  _Debug "loader: bootstrap complete"
+}
+
+# ============================================================================
+# CLASS RESOLUTION (Classpath / Namespace)
+# ============================================================================
+
+# __boop.classResolve — Resolve a class identifier to a filesystem path.
+#
+# Takes a class name (possibly namespaced with :: or /), searches the
+# classpath registry, short-name index, and filesystem roots in priority
+# order, and returns the resolved path without sourcing.
+#
+# Resolution priority:
+#   1. __boop_classPath — explicit path override (highest priority)
+#   2. __boop_Index     — short-name index lookup, resolved via R1 per root
+#   3. Dynamic discovery — R1 against each root using the normalized name
+#
+# R1 resolution rule (per root):
+#   Try root/$class/${class##*/} first (namespace convention),
+#   then root/$class (bare file fallback). First readable file wins.
+#
+# The effective root list is built fresh each call from:
+#   "." + BOOPPATH entries + PATH entries (deduplicated, exact match only).
+#
+# Returns the resolved path via optional nameref ($2), or empty string
+# on failure. Exit code 0 if found, 1 if not found.
+#
+# Usage:
+#   local path
+#   __boop.classResolve "Collection::List" path
+#   [[ -n "$path" ]] && . "$path"
+__boop.classResolve() {
+  local __boop_classResolve_class="$1"
+  local __boop_classResolve_target="${2:-}"
+
+  # --- Normalize :: to / ---
+  __boop_classResolve_class="${__boop_classResolve_class//::/"/"}"
+
+  # --- Reject empty identifiers ---
+  [[ -n "$__boop_classResolve_class" ]] || _Crash "Empty class identifier"
+
+  _Debug "classResolve: resolving '$__boop_classResolve_class'"
+
+  # --- Priority 1: classPath explicit override ---
+  if [[ -n "${__boop_classPath[$__boop_classResolve_class]:-}" ]]; then
+    local __boop_classResolve_cp="${__boop_classPath[$__boop_classResolve_class]}"
+    if [[ -f "$__boop_classResolve_cp" && -r "$__boop_classResolve_cp" ]]; then
+      _Trace "classResolve: found '$__boop_classResolve_class' via classPath: $__boop_classResolve_cp"
+      [[ -n "$__boop_classResolve_target" ]] && {
+        local -n __boop_classResolve_ref="$__boop_classResolve_target"
+        __boop_classResolve_ref="$__boop_classResolve_cp"
+      }
+      return 0
+    fi
+  fi
+
+  # --- Build effective root list: . + BOOPPATH + PATH ---
+  # Deduplicate via scratchpad associative array (exact path match only).
+  local -A __boop_classResolve_seen
+  local -a __boop_classResolve_roots=()
+
+  # Helper: add a root if not already seen
+  __boop_classResolve_addRoot() {
+    local __boop_classResolve_addRoot_r="$1"
+    [[ -n "$__boop_classResolve_addRoot_r" ]] || return
+    [[ -n "${__boop_classResolve_seen[$__boop_classResolve_addRoot_r]+set}" ]] && return
+    __boop_classResolve_seen[$__boop_classResolve_addRoot_r]=1
+    __boop_classResolve_roots+=("$__boop_classResolve_addRoot_r")
+  }
+
+  # Current directory first
+  __boop_classResolve_addRoot "."
+
+  # BOOPPATH entries
+  local __boop_classResolve_IFS_save="$IFS"
+  IFS=':'
+  local -a __boop_classResolve_segments
+  read -ra __boop_classResolve_segments <<< "${BOOPPATH:-}"
+  IFS="$__boop_classResolve_IFS_save"
+  local __boop_classResolve_seg
+  for __boop_classResolve_seg in "${__boop_classResolve_segments[@]}"; do
+    __boop_classResolve_addRoot "$__boop_classResolve_seg"
+  done
+
+  # PATH entries
+  IFS=':'
+  read -ra __boop_classResolve_segments <<< "${PATH:-}"
+  IFS="$__boop_classResolve_IFS_save"
+  for __boop_classResolve_seg in "${__boop_classResolve_segments[@]}"; do
+    __boop_classResolve_addRoot "$__boop_classResolve_seg"
+  done
+
+  unset -f __boop_classResolve_addRoot
+
+  _Trace "classResolve: effective roots (${#__boop_classResolve_roots[@]}): ${__boop_classResolve_roots[*]}"
+
+  # --- R1 resolution rule (local helper) ---
+  # Try root/$class/${class##*/} then root/$class. Sets result in caller var.
+  # Returns 0 if found, 1 if not.
+  __boop_classResolve_r1() {
+    local __boop_classResolve_r1_root="$1" __boop_classResolve_r1_cls="$2"
+    local __boop_classResolve_r1_tail="${__boop_classResolve_r1_cls##*/}"
+    local __boop_classResolve_r1_try
+
+    # Namespace convention: root/class/tail
+    __boop_classResolve_r1_try="$__boop_classResolve_r1_root/$__boop_classResolve_r1_cls/$__boop_classResolve_r1_tail"
+    if [[ -f "$__boop_classResolve_r1_try" && -r "$__boop_classResolve_r1_try" ]]; then
+      _Trace "classResolve R1: hit namespace convention: $__boop_classResolve_r1_try"
+      __boop_classResolve_r1_result="$__boop_classResolve_r1_try"
+      return 0
+    fi
+
+    # Bare file fallback: root/class
+    __boop_classResolve_r1_try="$__boop_classResolve_r1_root/$__boop_classResolve_r1_cls"
+    if [[ -f "$__boop_classResolve_r1_try" && -r "$__boop_classResolve_r1_try" ]]; then
+      _Trace "classResolve R1: hit bare file: $__boop_classResolve_r1_try"
+      __boop_classResolve_r1_result="$__boop_classResolve_r1_try"
+      return 0
+    fi
+
+    return 1
+  }
+
+  local __boop_classResolve_r1_result=""
+  local __boop_classResolve_root
+
+  # --- Priority 2: Index lookup ---
+  if [[ -n "${__boop_Index[$__boop_classResolve_class]:-}" ]]; then
+    local __boop_classResolve_indexVal="${__boop_Index[$__boop_classResolve_class]}"
+    # Normalize index value (:: → /)
+    __boop_classResolve_indexVal="${__boop_classResolve_indexVal//::/"/"}"
+    _Debug "classResolve: index hit for '$__boop_classResolve_class' → '$__boop_classResolve_indexVal'"
+
+    for __boop_classResolve_root in "${__boop_classResolve_roots[@]}"; do
+      if __boop_classResolve_r1 "$__boop_classResolve_root" "$__boop_classResolve_indexVal"; then
+        _Trace "classResolve: resolved '$__boop_classResolve_class' via index at $__boop_classResolve_r1_result"
+        unset -f __boop_classResolve_r1
+        [[ -n "$__boop_classResolve_target" ]] && {
+          local -n __boop_classResolve_ref="$__boop_classResolve_target"
+          __boop_classResolve_ref="$__boop_classResolve_r1_result"
+        }
+        return 0
+      fi
+    done
+  fi
+
+  # --- Priority 3: Dynamic discovery ---
+  _Debug "classResolve: dynamic discovery for '$__boop_classResolve_class'"
+  for __boop_classResolve_root in "${__boop_classResolve_roots[@]}"; do
+    if __boop_classResolve_r1 "$__boop_classResolve_root" "$__boop_classResolve_class"; then
+      _Info "'$__boop_classResolve_class' resolved via filesystem fallback -- consider running \`boop.classPath rebuild\`"
+      unset -f __boop_classResolve_r1
+      [[ -n "$__boop_classResolve_target" ]] && {
+        local -n __boop_classResolve_ref="$__boop_classResolve_target"
+        __boop_classResolve_ref="$__boop_classResolve_r1_result"
+      }
+      return 0
+    fi
+  done
+
+  # --- Not found ---
+  _Debug "classResolve: '$__boop_classResolve_class' not found"
+  unset -f __boop_classResolve_r1
+  [[ -n "$__boop_classResolve_target" ]] && {
+    local -n __boop_classResolve_ref="$__boop_classResolve_target"
+    __boop_classResolve_ref=""
+  }
+  return 1
+}
+
+# ============================================================================
+# PUBLIC RESOLUTION API
+# ============================================================================
+
+# boop.resolve — Public, non-fatal wrapper around __boop.classResolve.
+#
+# Returns exit code 0 and the resolved path via boop.pass if found.
+# Returns exit code 1 if not found (no crash, no output).
+#
+# Usage:
+#   if into=loc boop.resolve Math::Trig; then
+#     . "$loc"
+#   fi
+boop.resolve() {
+  local __boop_resolve_path=""
+  if __boop.classResolve "$1" __boop_resolve_path; then
+    boop.pass "$__boop_resolve_path" "${into:-}"
+    return 0
+  fi
+  return 1
+}
+
+# ============================================================================
+# CLASSPATH PUBLIC API
+# ============================================================================
+
+# __boop.classPath.writeCfg — Serialize __boop_classPath to the CFG file.
+#
+# Rewrites the target CFG file as a complete serialization of __boop_classPath.
+# Default target: ~/.boop.cfg. Override via _CfgFile environment variable.
+# Output is only hash assignments -- no procedural logic.
+__boop.classPath.writeCfg() {
+  local __boop_writeCfg_target="${_CfgFile:-$HOME/.boop.cfg}"
+  {
+    printf '# Auto-generated by boop.classPath -- do not edit manually\n'
+    local __boop_writeCfg_key
+    for __boop_writeCfg_key in "${!__boop_classPath[@]}"; do
+      printf '__boop_classPath["%s"]="%s"\n' "$__boop_writeCfg_key" "${__boop_classPath[$__boop_writeCfg_key]}"
+    done
+  } >| "$__boop_writeCfg_target"
+}
+
+# boop.classPath — Subcommand-dispatched public method for classpath management.
+#
+# Subcommands: set, get, list, remove, has, dirs, rebuild
+#
+# Usage:
+#   boop.classPath set MyClass /path/to/MyClass
+#   boop.classPath get MyClass
+#   boop.classPath list
+#   boop.classPath remove MyClass
+#   boop.classPath has MyClass
+#   boop.classPath dirs
+#   boop.classPath rebuild [root]
+boop.classPath() {
+  local __boop_cp_sub="${1:-}"
+  shift || true
+
+  case "$__boop_cp_sub" in
+    set)
+      local __boop_cp_class="${1:-}" __boop_cp_path="${2:-}"
+      [[ -n "$__boop_cp_class" ]] || _Crash "boop.classPath set: class name required"
+      [[ -f "$__boop_cp_path" && -r "$__boop_cp_path" ]] ||
+        _Crash "boop.classPath set: '$__boop_cp_path' is not a readable file"
+      if [[ -n "${__boop_classPath[$__boop_cp_class]:-}" ]]; then
+        _Info "boop.classPath set: overwriting '$__boop_cp_class' (was ${__boop_classPath[$__boop_cp_class]}, now $__boop_cp_path)"
+      fi
+      __boop_classPath["$__boop_cp_class"]="$__boop_cp_path"
+      __boop.classPath.writeCfg
+      ;;
+    get)
+      boop.pass "${__boop_classPath[${1:-}]:-}" "${into:-}"
+      ;;
+    list)
+      local __boop_cp_out=""
+      local __boop_cp_key
+      for __boop_cp_key in "${!__boop_classPath[@]}"; do
+        __boop_cp_out+="${__boop_cp_key}=${__boop_classPath[$__boop_cp_key]}"$'\n'
+      done
+      # Strip trailing newline
+      [[ -n "$__boop_cp_out" ]] && __boop_cp_out="${__boop_cp_out%$'\n'}"
+      boop.pass "$__boop_cp_out" "${into:-}"
+      ;;
+    remove)
+      local __boop_cp_class="${1:-}"
+      if [[ -z "${__boop_classPath[$__boop_cp_class]:-}" ]]; then
+        _Info "boop.classPath remove: '$__boop_cp_class' is not registered"
+      else
+        unset '__boop_classPath[$__boop_cp_class]'
+      fi
+      __boop.classPath.writeCfg
+      ;;
+    has)
+      [[ -n "${__boop_classPath[${1:-}]:-}" ]]
+      return $?
+      ;;
+    dirs)
+      # Build effective root list: . + BOOPPATH + PATH (deduplicated)
+      local -A __boop_cp_seen
+      local __boop_cp_out=""
+      local __boop_cp_seg
+
+      # Helper to add unique roots
+      __boop_cp_addDir() {
+        [[ -n "$1" ]] || return
+        [[ -n "${__boop_cp_seen[$1]+set}" ]] && return
+        __boop_cp_seen[$1]=1
+        __boop_cp_out+="$1"$'\n'
+      }
+
+      __boop_cp_addDir "."
+
+      local __boop_cp_IFS_save="$IFS"
+      local -a __boop_cp_segments
+      IFS=':'
+      read -ra __boop_cp_segments <<< "${BOOPPATH:-}"
+      IFS="$__boop_cp_IFS_save"
+      for __boop_cp_seg in "${__boop_cp_segments[@]}"; do
+        [[ -n "$__boop_cp_seg" ]] && __boop_cp_addDir "$__boop_cp_seg"
+      done
+
+      IFS=':'
+      read -ra __boop_cp_segments <<< "${PATH:-}"
+      IFS="$__boop_cp_IFS_save"
+      for __boop_cp_seg in "${__boop_cp_segments[@]}"; do
+        [[ -n "$__boop_cp_seg" ]] && __boop_cp_addDir "$__boop_cp_seg"
+      done
+
+      unset -f __boop_cp_addDir
+      [[ -n "$__boop_cp_out" ]] && __boop_cp_out="${__boop_cp_out%$'\n'}"
+      boop.pass "$__boop_cp_out" "${into:-}"
+      ;;
+    rebuild)
+      # Scan namespace tree of target root, discover class files matching
+      # R1 convention (dir containing same-named file), detect short-name
+      # conflicts, write .boopIndex as sourceable bash.
+      local __boop_cp_root="${1:-.}"
+      [[ -d "$__boop_cp_root" ]] || _Crash "boop.classPath rebuild: '$__boop_cp_root' is not a directory"
+
+      # Discover all R1-convention class files: dir/Name/Name
+      local -A __boop_cp_short2ns   # short-name → namespace path (first hit)
+      local -A __boop_cp_conflicts  # short-name → 1 if conflicting
+
+      # Walk the tree looking for dirs that contain a same-named file
+      local __boop_cp_entry
+      while IFS= read -r -d '' __boop_cp_entry; do
+        # entry is a file path like root/Collection/List/List
+        local __boop_cp_dir="${__boop_cp_entry%/*}"
+        local __boop_cp_file="${__boop_cp_entry##*/}"
+        local __boop_cp_dirname="${__boop_cp_dir##*/}"
+
+        # R1 convention: directory name matches file name
+        [[ "$__boop_cp_file" == "$__boop_cp_dirname" ]] || continue
+        # Skip hidden dirs and the root itself
+        [[ "$__boop_cp_dir" == "$__boop_cp_root" ]] && continue
+
+        # Compute namespace path relative to root
+        local __boop_cp_relpath="${__boop_cp_dir#"$__boop_cp_root"/}"
+        local __boop_cp_short="$__boop_cp_file"
+
+        if [[ -n "${__boop_cp_conflicts[$__boop_cp_short]+set}" ]]; then
+          # Already known conflict, skip
+          continue
+        elif [[ -n "${__boop_cp_short2ns[$__boop_cp_short]+set}" ]]; then
+          # Second occurrence -- conflict
+          _Info "Short name '$__boop_cp_short' conflicts: ${__boop_cp_short2ns[$__boop_cp_short]} and $__boop_cp_relpath -- excluded from index"
+          __boop_cp_conflicts[$__boop_cp_short]=1
+          unset '__boop_cp_short2ns[$__boop_cp_short]'
+        else
+          # First occurrence
+          __boop_cp_short2ns[$__boop_cp_short]="$__boop_cp_relpath"
+        fi
+      done < <(find "$__boop_cp_root" -type f -not -path '*/\.*' -print0 2>/dev/null)
+
+      # Write .boopIndex
+      local __boop_cp_idx="$__boop_cp_root/.boopIndex"
+      {
+        printf '# .boopIndex -- auto-generated by boop.classPath rebuild\n'
+        printf 'declare -gA __boop_Index=(\n'
+        local __boop_cp_key
+        for __boop_cp_key in "${!__boop_cp_short2ns[@]}"; do
+          printf '  [%s]="%s"\n' "$__boop_cp_key" "${__boop_cp_short2ns[$__boop_cp_key]}"
+        done
+        printf ')\n'
+      } >| "$__boop_cp_idx"
+      _Info "rebuilt index: $__boop_cp_idx (${#__boop_cp_short2ns[@]} entries)"
+      ;;
+    "")
+      _Crash "boop.classPath: subcommand required (set, get, list, remove, has, dirs, rebuild)"
+      ;;
+    *)
+      _Crash "boop.classPath: unknown subcommand '$__boop_cp_sub'"
+      ;;
+  esac
 }
 
 # ============================================================================
@@ -1048,10 +1566,11 @@ new() {
 # Resolve and source a class file. Iterates each argument as a class name
 # and sources the corresponding file into the current shell.
 #
-# Resolution order (first match wins):
-#   1. __boop_classPath registry — explicit path overrides set by the user
-#   2. __boop_dir — the directory where boop itself lives (co-located classes)
-#   3. PATH — via the . (source) builtin's native search behavior
+# Resolution order (via __boop.classResolve, first match wins):
+#   1. __boop_classPath — explicit path overrides
+#   2. __boop_Index     — short-name index, resolved via R1 per root
+#   3. Dynamic discovery — R1 against each root (. + BOOPPATH + PATH)
+#   4. Raw source fallback — `. "$class"` (lets bash try PATH directly)
 #
 # Load guards (two layers):
 #   - __boop_registry[ClassName]+set — class already fully loaded, skip entirely.
@@ -1073,26 +1592,23 @@ __boop.import() {
     [[ -n "${__boop_loading[$__boop_import_class]:-}" ]] && continue
     __boop_loading[$__boop_import_class]=1
 
-    # Check explicit path registry first
-    if [[ -n "${__boop_classPath[$__boop_import_class]:-}" ]]; then
-      . "${__boop_classPath[$__boop_import_class]}" || 
-        _Crash "Failed to load class '$__boop_import_class' from ${__boop_classPath[$__boop_import_class]}"
+    # Resolve via classPath → index → dynamic discovery
+    local __boop_import_path=""
+    if __boop.classResolve "$__boop_import_class" __boop_import_path; then
+      . "$__boop_import_path" ||
+        _Crash "Failed to load class '$__boop_import_class' from $__boop_import_path"
       unset '__boop_loading[$__boop_import_class]'
       continue
     fi
 
-    # Check __boop_dir (co-located with framework)
-    if [[ -f "$__boop_dir/$__boop_import_class" ]]; then
-      . "$__boop_dir/$__boop_import_class" || 
-        _Crash "Failed to load class '$__boop_import_class' from $__boop_dir"
+    # Raw source fallback — let bash try PATH directly
+    . "$__boop_import_class" 2>/dev/null && {
       unset '__boop_loading[$__boop_import_class]'
       continue
-    fi
+    }
 
-    # Fall through to PATH resolution
-    . "$__boop_import_class" || 
-      _Crash "Class '$__boop_import_class' not found (checked classPath, $__boop_dir, PATH)"
-    unset '__boop_loading[$__boop_import_class]'
+    # Complete resolution failure
+    _Crash "Class '$__boop_import_class' not found (checked classPath, index, roots)"
   done
 }
 
@@ -1361,12 +1877,19 @@ __boop.registerMethod boop set __boop.set
 __boop.registerMethod boop isa __boop.isa
 __boop.registerMethod boop toString __boop.toString
 __boop.registerMethod boop new __boop.new
+__boop.registerMethod boop resolve boop.resolve
+__boop.registerMethod boop classPath boop.classPath
 #__boop.registerMethod boop super __boop.super
 __boop.registerClass boop
 
 # ============================================================================
 # INITIALIZATION COMPLETE
 # ============================================================================
+
+# Bootstrap the configuration layer: source RC chain, parse BOOPPATH,
+# source .boopIndex files, check version mismatch.
+__boop.loader
+
 __boop_loaded=1
 
 fi  # end of (( ! __boop_loaded ))

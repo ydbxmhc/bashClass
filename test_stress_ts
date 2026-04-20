@@ -147,15 +147,15 @@ $t.assert_eq "parse unregistered key returns empty" "$__pval" ""
 
 $t.section "resolve"
 $t.assert_fail "resolve nonexistent method"          bash -c '. boop Cube;
-   __boop.resolve Box explode impl'
+   __boop.methodResolve Box explode impl'
 $t.assert_fail "resolve empty method"                bash -c '. boop Cube;
-   __boop.resolve Box "" impl'
+   __boop.methodResolve Box "" impl'
 $t.assert_fail "resolve unregistered class"          bash -c '. boop Cube;
-   __boop.resolve Sphere new impl'
+   __boop.methodResolve Sphere new impl'
 $t.assert_fail "resolve invalid class (has dash)"    bash -c '. boop Cube;
-   __boop.resolve my-class new impl'
+   __boop.methodResolve my-class new impl'
 $t.assert_fail "resolve method injection: volume;ls" bash -c '. boop Cube;
-   __boop.resolve Box "volume;ls" impl'
+   __boop.methodResolve Box "volume;ls" impl'
 
 #$t.section "dispatch"
 #$t.assert_fail "dispatch nonexistent method" bash -c '. boop Cube; new Box length=1 width=1 height=1; _Class=Box __boop.dispatch explode'
@@ -203,14 +203,14 @@ $t.assert_eq "Cube class-as-constructor" "$_Out" "27"
 
 # Explicit MRO constructor
 __dbox_impl=''
-__boop.resolve Box new __dbox_impl
+__boop.methodResolve Box new __dbox_impl
 _Class=Box $__dbox_impl length=2 width=3 height=4; __dbox="$_Out"
 $__dbox.volume
 $t.assert_eq "explicit MRO constructor Box" "$_Out" "24"
 unset __dbox_impl
 
 __dcube_impl=''
-__boop.resolve Cube new __dcube_impl
+__boop.methodResolve Cube new __dcube_impl
 _Class=Cube $__dcube_impl size=5; __dcube="$_Out"
 $__dcube.volume
 $t.assert_eq "explicit MRO constructor Cube" "$_Out" "125"
