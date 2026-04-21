@@ -146,7 +146,9 @@ BlackjackHand.deal() {
   _Delegate $__BH_deal_target.push "$__BH_deal_card"
 }
 
-boopClass BlackjackHand isa:List public:new,cardVal,total,isBust,isBlackjack,show,reveal,deal has:type,faceUp,deck
+boopClass BlackjackHand isa:List has:type,faceUp,deck '
+  public:new,cardVal,total,isBust,isBlackjack,show,reveal,deal
+'
 
 # ═════════════════════════════════════════════════════════════════════
 # Game helpers & main loop — only run when executed directly

@@ -652,25 +652,14 @@ positional fallback, unknown-key rejection.
 
 ---
 
-## Inline Arguments on Class Load
+## Inline Arguments on Class Load -- See Meta-Components
 
-A future syntax for passing arguments to a class during loading,
-limited to one class per invocation:
+Now part of the ★ Meta-Components system. Enabled by the ArgParser
+meta-component. See that section for the design.
 
-```bash
-. boop Math precision=128
-. boop TestSuite verbose=1 mode=strict
-```
-
-The current bulk-load form (`. boop Math Cube List`) remains
-available and takes no arguments. The inline form is a separate
-invocation pattern — one class, with key=value pairs passed to
-the class file during its initialization.
-
-Design depends on ArgParser. Deferred until that's implemented.
-
-Related: Argument-Parsing Object (above), `local -I` inherited
-variables (already work as a manual workaround).
+Original idea: `. boop Math precision=128` passes key=value pairs
+to the class during loading. The bulk-load form (`. boop Math Cube
+List`) stays as-is.
 
 ---
 
@@ -802,22 +791,13 @@ Related: "Class File Execution Guard" section above.
 
 ---
 
-## Generalize Card/Deck/Hand Classes
+## Generalize Card/Deck/Hand Classes ✓ DONE
 
-Card, Deck, and Hand currently have blackjack-specific logic (ace
-rules, 52-card fill, etc.). These concepts are reusable beyond
-blackjack — tarot decks, index cards, any collection of items with
-a "hand" metaphor.
-
-Consider splitting into generic base classes and game-specific
-subclasses:
-
-- `Card` — generic card with arbitrary properties
-- `PlayingCard extends Card` — suit/rank/faceUp, 52-card standard
-- `Deck` — generic ordered collection with shuffle/draw
-- `PlayingDeck extends Deck` — fills with 52 PlayingCards
-- `Hand` — generic scored collection
-- `BlackjackHand extends Hand` — ace adjustment, bust/blackjack logic
+Card is now a generic base class. PlayingCard extends Card with
+suit/rank/faceUp and 52-card standard deck generation. Deck is a
+generic ordered collection with shuffle/draw. Blackjack-specific
+logic (ace adjustment, bust/blackjack) lives in the blackjack
+script, not in the base classes.
 
 ---
 
@@ -1074,21 +1054,25 @@ Might not be worth the complexity. Investigate and decide.
 
 ---
 
-## Try/Catch Mechanism
+## Try/Catch Mechanism -- Low Priority
 
-Bash has no native try/catch. The framework currently uses
-`_Crash` (which calls `exit`) for all fatal errors,
-and `assert_fail` wraps commands in subshells to isolate crashes.
+Bash has no native try/catch. Every approach has serious tradeoffs:
 
-A try/catch pattern would let user code attempt operations that
-might crash and handle the failure without dying. Options:
+- **Subshell**: clean isolation, but loses all side effects (variable
+  mutations, registry changes, object creation). Dealbreaker for a
+  framework built on global state.
+- **eval + trap ERR**: side effects survive, but the try block is
+  either a string (eval, gross) or a function name. `_Crash` would
+  need to know it's inside a try context and `return` instead of
+  `exit`. Unwinding the call stack requires either `set -e` behavior
+  or every function checking a try-depth flag. Fragile.
+- **Signal-based**: `_Crash` sends USR1, try wrapper traps it. But
+  bash signal delivery is unpredictable -- only between commands,
+  not mid-builtin.
 
-- Subshell-based: `try` runs in a subshell, captures exit code
-  and stderr, `catch` block runs on failure. Simple but forks.
-- Trap-based: `ERR` trap with a recovery mechanism. Complex,
-  interacts badly with `set -e`, fragile across bash versions.
-- Flag-based: set a "don't crash, set error flag" mode on
-  `_Crash`, let callers check the flag. Lightweight
-  but changes crash semantics globally.
+Conclusion: the cure is worse than the disease. Developers should
+handle errors explicitly with exit codes and `_Crash`. The fatality
+threshold (`_FatalLevel`) already provides escalation control.
 
-Related: Signal Handler Class (already in TODO), Fatality Threshold.
+Revisit if a compelling use case emerges that can't be solved with
+explicit error handling.
