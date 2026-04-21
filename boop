@@ -156,6 +156,18 @@ declare -gA __boop_logLevelName=(
 # prevents concurrent sessions from stomping each other.
 declare -g __boop_logFile="${TMPDIR:-/tmp}/boop_$$.log"
 
+# Global default fatality level. Controls which log levels auto-crash after
+# printing. Default is crash(0): only explicit _Crash calls are fatal; _Error
+# and _Warn are never auto-fatal. Set higher to escalate: _FatalLevel error
+# crashes on _Error; _FatalLevel warn crashes on _Warn or _Error; etc.
+declare -gi __boop_fatalLevel=$__boop_LOG_CRASH
+
+# Per-class fatality level overrides. Mirrors __boop_classLogLevel.
+declare -gA __boop_classFatalLevel
+
+# Resolved fatality level cache. Mirrors __boop_resolvedLogLevel.
+declare -gA __boop_resolvedFatalLevel
+
 # ============================================================================
 # GLOBALS - Return Values
 # ============================================================================
@@ -283,6 +295,32 @@ __boop.log() {
   local __boop_log_label="${__boop_logLevelName[$__boop_log_level]:-LOG}"
   printf '[%s] %s: ' "$__boop_log_label" "$__boop_log_caller"
   printf '%s' "$@" $'\n'
+
+  # Fatality check. Same hot/cold resolution as the log threshold above,
+  # but against __boop_classFatalLevel / __boop_fatalLevel. If the message
+  # level is at or below the fatal threshold, crash after printing.
+  local __boop_log_fatalThreshold
+  if [[ -n "${__boop_resolvedFatalLevel[$__boop_log_class]+set}" ]]; then
+    __boop_log_fatalThreshold=${__boop_resolvedFatalLevel[$__boop_log_class]}
+  else
+    local __boop_log_fat_cursor="$__boop_log_class" __boop_log_fat_found=""
+    while [[ -n "$__boop_log_fat_cursor" ]]; do
+      if [[ -n "${__boop_classFatalLevel[$__boop_log_fat_cursor]+set}" ]]; then
+        __boop_log_fat_found=${__boop_classFatalLevel[$__boop_log_fat_cursor]}
+        break
+      fi
+      local __boop_log_fat_parent=""
+      [[ -n "${__boop_registry[$__boop_log_fat_cursor]+set}" ]] &&
+        [[ "${__boop_registry[$__boop_log_fat_cursor]}" =~ \|parent=([^|]*)\| ]] &&
+        __boop_log_fat_parent="${BASH_REMATCH[1]}"
+      __boop_log_fat_cursor="$__boop_log_fat_parent"
+    done
+    [[ -z "$__boop_log_fat_found" ]] && __boop_log_fat_found=$__boop_fatalLevel
+    __boop_resolvedFatalLevel[$__boop_log_class]=$__boop_log_fat_found
+    __boop_log_fatalThreshold=$__boop_log_fat_found
+  fi
+  (( __boop_log_level > __boop_log_fatalThreshold )) ||
+    _Crash "$__boop_log_label elevated to fatal (from $__boop_log_caller)"
 } >&2
 
 # Set log level. With one argument, sets the global default.
@@ -317,6 +355,37 @@ __boop.setLogLevel() {
   fi
 }
 
+# Set fatality level. With one argument, sets the global default.
+# With two arguments, sets a per-class override.
+# "crash" (the default) means only explicit _Crash calls are fatal;
+# "error" means _Error auto-crashes; "warn" means _Warn and _Error auto-crash.
+#
+# Usage: __boop.setFatalLevel crash          # global (reset to default)
+#        __boop.setFatalLevel error           # global
+#        __boop.setFatalLevel warn Math       # per-class
+__boop.setFatalLevel() {
+  local __boop_setFatalLevel_name="$1" __boop_setFatalLevel_class="${2:-}"
+  local -i __boop_setFatalLevel_num
+
+  case "${__boop_setFatalLevel_name,,}" in
+    crash|0) __boop_setFatalLevel_num=$__boop_LOG_CRASH ;;
+    error|1) __boop_setFatalLevel_num=$__boop_LOG_ERROR ;;
+    warn|2)  __boop_setFatalLevel_num=$__boop_LOG_WARN  ;;
+    info|3)  __boop_setFatalLevel_num=$__boop_LOG_INFO  ;;
+    debug|4) __boop_setFatalLevel_num=$__boop_LOG_DEBUG ;;
+    trace|5) __boop_setFatalLevel_num=$__boop_LOG_TRACE ;;
+    *) _Crash "Invalid fatal level: $__boop_setFatalLevel_name (use: crash, error, warn, info, debug, trace)" ;;
+  esac
+
+  if [[ -z "$__boop_setFatalLevel_class" ]]; then
+    __boop_fatalLevel=$__boop_setFatalLevel_num
+    __boop_resolvedFatalLevel=()
+  else
+    __boop_classFatalLevel[$__boop_setFatalLevel_class]=$__boop_setFatalLevel_num
+    __boop_resolvedFatalLevel=()
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Public convenience wrappers — the user-facing API
 # ---------------------------------------------------------------------------
@@ -329,6 +398,9 @@ _Error() { __boop.log $__boop_LOG_ERROR "$@"; }
 
 # _LogLevel: convenience wrapper for __boop.setLogLevel
 _LogLevel() { __boop.setLogLevel "$@"; }
+
+# _FatalLevel: convenience wrapper for __boop.setFatalLevel
+_FatalLevel() { __boop.setFatalLevel "$@"; }
 
 # ============================================================================
 # UNIVERSAL RETURN HANDLER
