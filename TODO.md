@@ -406,7 +406,83 @@ Source: `boop` (import section, initialization), all class files.
 
 ---
 
-## `::` Syntax — Mixins, Classlets, and Multiple Inheritance
+## ★ Meta-Components and Graceful Degradation
+
+**Priority item.** The core (`boop`) should define well-known
+extension points that optional meta-components can fill. If a
+meta-component is installed, the core uses it. If not, the core
+emits `_Warn` and carries on with reduced functionality. Sane
+defaults, customizable behavior.
+
+This is the "limp along without" pattern -- the core never hard-
+depends on anything outside itself, but it gets smarter when
+optional tools are present.
+
+### Motivating Use Cases
+
+- **`require Math 1.2+`** -- version-gated class loading. Needs
+  a SemVer parser to enforce the constraint. If SemVer isn't
+  available, warn and load without checking.
+
+- **`loadClass Math _Out=stdout version=1.2+`** -- per-class
+  arguments at load time. Needs ArgParser to parse key=value
+  args. If ArgParser isn't available, warn and fall back to
+  bare-name loading.
+
+- **Class version declarations** -- classes declare their version
+  in their descriptor (via `boopClass`). `require` checks it
+  after loading. Without SemVer, the version is stored but never
+  enforced.
+
+### Candidate Meta-Components
+
+| Component | What it enables | Fallback without it |
+|-----------|----------------|---------------------|
+| **SemVer** | Version parsing, comparison, range matching | Warn, skip version checks |
+| **ArgParser** | key=value, positional, flag parsing for constructors and methods | Warn, ignore args / use current ad-hoc loops |
+| **Help** | `--help` on classes, auto-generated from descriptors | Warn, no help output |
+
+### Design Principles
+
+- Meta-components live in the standard namespace tree like any
+  other class. They're loaded via the normal import path.
+- The core checks for their presence at the point of use, not at
+  init time. Lazy detection -- no startup penalty.
+- Detection is a simple registry check:
+  `[[ -n "${__boop_registry[SemVer]+set}" ]]`
+- The warn-and-continue behavior is the default. A user who wants
+  strict enforcement can set `_FatalLevel warn` and missing
+  meta-components become fatal.
+- Each extension point has a well-defined interface the core
+  codes against. The meta-component implements that interface.
+  Swappable implementations are possible (e.g., a lightweight
+  SemVer vs a full-featured one).
+
+### Relationship to Existing TODO Items
+
+- **Argument-Parsing Object** -- becomes the ArgParser meta-component
+- **Version Declaration** -- becomes SemVer meta-component + class
+  version property + `require` function
+- **Class File Execution Guard & Help System** -- becomes the Help
+  meta-component
+- **Inline Arguments on Class Load** -- enabled by ArgParser
+
+### Open Questions
+
+- Should `require` be a function or a keyword in the source line?
+  `require Math 1.2+` vs `. boop require:Math:1.2+`
+- How do classes declare their version? Property in `boopClass`
+  call? Separate `declare`?
+- Should meta-components be auto-loaded on first use, or must the
+  user explicitly import them?
+- Can meta-components depend on each other? (ArgParser probably
+  doesn't need SemVer, but `require` might need both.)
+
+Needs a full spec pass before implementation.
+
+---
+
+## `::` Syntax -- Mixins, Classlets, and Multiple Inheritance
 
 The `::` separator is conventional in bash for namespaced functions
 (`mylib::init`). boop doesn't use it — dots handle class.method
@@ -557,17 +633,18 @@ Source: `boop` logging section.
 
 ---
 
-## Argument-Parsing Object
+## Argument-Parsing Object -- See Meta-Components
 
-A reusable class for parsing `key=value`, positional, and flag
-arguments in constructors and methods. Would replace the ad-hoc
-`for/case` loops in every `.new()` method.
+Now part of the ★ Meta-Components system. ArgParser becomes an
+optional meta-component that the core can leverage for key=value
+parsing in constructors, `loadClass`, and `require`. See that
+section for the full design.
 
-Sketch:
+Original sketch:
 ```bash
 into=args ArgParser "suit= rank= faceUp=0" "$@"
-$args.get suit   # → "♠"
-$args.get faceUp # → "0" (default)
+$args.get suit   # -> "spades"
+$args.get faceUp # -> "0" (default)
 ```
 
 Needs to handle: required vs optional, defaults, type validation,
@@ -826,16 +903,11 @@ design.
 
 ---
 
-## Version Declaration (Phase 4)
+## Version Declaration (Phase 4) -- Subsumed
 
-```bash
-declare -gr __boop_version="0.1.0"
-```
-
-No enforcement needed yet. Lets downstream scripts check compatibility.
-Semantic versioning from the start.
-
-Source: PLAN.md Phase 4.
+`__boop_version` exists and the loader checks `__boop_preferred_version`
+from RC files. But nothing enforces version constraints on classes.
+Subsumed by the Meta-Components / Graceful Degradation system below.
 
 ---
 
