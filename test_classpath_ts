@@ -32,16 +32,18 @@ $t.section "Namespace normalization"
 
 # __boop.classResolve normalizes :: to / internally. We test via boop.resolve
 # which wraps it. Create a namespace tree to resolve against.
-mkdir -p "$__ct_tmp/ns/Collection/List"
-printf '# stub\n' > "$__ct_tmp/ns/Collection/List/List"
+mkdir -p "$__ct_tmp/ns/Exotic/Widget"
+printf '# stub\n' > "$__ct_tmp/ns/Exotic/Widget/Widget"
 
 # Resolve with :: notation
-into=__ct_path BOOPPATH="$__ct_tmp/ns" boop.resolve "Collection::List"
-$t.assert_eq ":: resolves to namespace path" "$__ct_path" "$__ct_tmp/ns/Collection/List/List"
+__ct_path=""
+into=__ct_path BOOPPATH="$__ct_tmp/ns" boop.resolve "Exotic::Widget"
+$t.assert_eq ":: resolves to namespace path" "$__ct_path" "$__ct_tmp/ns/Exotic/Widget/Widget"
 
 # Resolve with / notation (already normalized)
-into=__ct_path BOOPPATH="$__ct_tmp/ns" boop.resolve "Collection/List"
-$t.assert_eq "/ resolves same as ::" "$__ct_path" "$__ct_tmp/ns/Collection/List/List"
+__ct_path=""
+into=__ct_path BOOPPATH="$__ct_tmp/ns" boop.resolve "Exotic/Widget"
+$t.assert_eq "/ resolves same as ::" "$__ct_path" "$__ct_tmp/ns/Exotic/Widget/Widget"
 
 # Empty identifier crashes (needs isolation)
 $t.assert_fail "empty identifier crashes" bash -c '. "'"$__ct_boop_path"'"; boop.resolve "" 2>/dev/null'
