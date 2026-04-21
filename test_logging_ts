@@ -378,4 +378,122 @@ bash -c '
 ' 2>/dev/null || __crash_rc=$?
 $t.assert_eq "crash with closed stderr still exits" "$__crash_rc" "1"
 
+# ============================================================================
+# Fatality threshold: default is crash (nothing auto-fatal)
+# ============================================================================
+
+$t.section "Fatality threshold: default"
+
+__fat_rc=0
+bash -c '. boop; _LogLevel error; _Error "nonfatal" 2>/dev/null' || __fat_rc=$?
+$t.assert_eq "_Error not auto-fatal at default threshold" "$__fat_rc" "0"
+
+__fat_rc=0
+bash -c '. boop; _Warn "nonfatal" 2>/dev/null' || __fat_rc=$?
+$t.assert_eq "_Warn not auto-fatal at default threshold" "$__fat_rc" "0"
+
+# ============================================================================
+# Fatality threshold: error level
+# ============================================================================
+
+$t.section "Fatality threshold: error"
+
+$t.assert_fail "_Error crashes at error threshold" \
+  bash -c '. boop; _FatalLevel error; _LogLevel error; _Error "x" 2>/dev/null'
+
+__fat_out=$(bash -c '. boop; _FatalLevel error; _LogLevel error; _Error "boom" 2>&1' || true)
+$t.assert_contains "_Error message printed before crash" "$__fat_out" "boom"
+$t.assert_contains "escalation CRASH label present" "$__fat_out" "[CRASH]"
+
+__fat_rc=0
+bash -c '. boop; _FatalLevel error; _Warn "y" 2>/dev/null' || __fat_rc=$?
+$t.assert_eq "_Warn not auto-fatal at error threshold" "$__fat_rc" "0"
+
+# ============================================================================
+# Fatality threshold: warn level
+# ============================================================================
+
+$t.section "Fatality threshold: warn"
+
+$t.assert_fail "_Warn crashes at warn threshold" \
+  bash -c '. boop; _FatalLevel warn; _Warn "x" 2>/dev/null'
+
+$t.assert_fail "_Error also crashes at warn threshold" \
+  bash -c '. boop; _FatalLevel warn; _LogLevel error; _Error "x" 2>/dev/null'
+
+__fat_rc=0
+bash -c '. boop; _FatalLevel warn; _LogLevel info; _Info "i" 2>/dev/null' || __fat_rc=$?
+$t.assert_eq "_Info not auto-fatal at warn threshold" "$__fat_rc" "0"
+
+# ============================================================================
+# Fatality threshold: reset to crash
+# ============================================================================
+
+$t.section "Fatality threshold: reset to crash"
+
+__fat_rc=0
+bash -c '. boop; _FatalLevel error; _FatalLevel crash; _LogLevel error; _Error "x" 2>/dev/null' || __fat_rc=$?
+$t.assert_eq "_Error not fatal after reset to crash" "$__fat_rc" "0"
+
+# ============================================================================
+# Fatality threshold: per-class
+# ============================================================================
+
+$t.section "Fatality threshold: per-class"
+
+$t.assert_fail "Box _Error crashes with per-class error threshold" \
+  bash -c '. boop Box; _FatalLevel error Box; _LogLevel error; _Class=Box _Error "x" 2>/dev/null'
+
+__fat_rc=0
+bash -c '. boop; _FatalLevel error Box; _LogLevel error; _Class=boop _Error "x" 2>/dev/null' || __fat_rc=$?
+$t.assert_eq "unrelated class not affected by Box per-class threshold" "$__fat_rc" "0"
+
+$t.assert_fail "Cube inherits Box per-class error threshold" \
+  bash -c '. boop Box Cube; _FatalLevel error Box; _LogLevel error; _Class=Cube _Error "x" 2>/dev/null'
+
+# ============================================================================
+# Fatality threshold: cache
+# ============================================================================
+
+$t.section "Fatality threshold: cache"
+
+_FatalLevel error Box
+_LogLevel warn
+
+_Class=Box _Warn "cache warm" 2>/dev/null  # level 2 > threshold 1, no crash
+if [[ -n "${__boop_resolvedFatalLevel[Box]+set}" ]]; then
+  $t.assert_ok "fatal resolved cache populated for Box" true
+else
+  $t.assert_ok "fatal resolved cache populated for Box" false
+fi
+
+_FatalLevel crash
+unset '__boop_classFatalLevel[Box]'
+__boop_resolvedFatalLevel=()
+_LogLevel warn
+
+if [[ -z "${__boop_resolvedFatalLevel[Box]+set}" ]]; then
+  $t.assert_ok "fatal resolved cache cleared on reset" true
+else
+  $t.assert_ok "fatal resolved cache cleared on reset" false
+fi
+
+# ============================================================================
+# Fatality threshold: validation
+# ============================================================================
+
+$t.section "Fatality threshold: validation"
+
+$t.assert_fail "invalid fatal level crashes" bash -c '. boop; _FatalLevel banana 2>/dev/null'
+
+__fat_rc=0
+bash -c '. boop; _FatalLevel 0; _LogLevel error; _Error "x" 2>/dev/null' || __fat_rc=$?
+$t.assert_eq "numeric 0 = crash (not auto-fatal)" "$__fat_rc" "0"
+
+$t.assert_fail "numeric 1 = error (auto-fatal)" \
+  bash -c '. boop; _FatalLevel 1; _LogLevel error; _Error "x" 2>/dev/null'
+
+$t.assert_fail "numeric 2 = warn (auto-fatal)" \
+  bash -c '. boop; _FatalLevel 2; _Warn "x" 2>/dev/null'
+
 $t.summary
