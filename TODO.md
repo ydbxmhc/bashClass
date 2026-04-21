@@ -540,26 +540,18 @@ Public API: `_Error`, `_Warn`, `_Info`, `_Debug`, `_Trace`, `_Crash`,
 
 ---
 
-## Fatality Threshold ("use strict" for boop)
+## Fatality Threshold ("use strict" for boop) ✓ DONE
 
-The logging system has a visibility threshold — what gets printed. A
-second threshold would control what becomes fatal: the "fatality level."
+Implemented in `boop` logging section. Three new globals:
+`__boop_fatalLevel` (global default, crash=0), `__boop_classFatalLevel`
+(per-class overrides), `__boop_resolvedFatalLevel` (cache). Same
+hot/cold inheritance resolution as the visibility threshold.
 
-If fatality is set to `warn`, any `_Warn` call prints AND crashes.
-Set to `error` and only `_Error` kills. Set to `silent` and nothing
-is auto-fatal (`_Crash` remains explicitly fatal regardless).
-
-This is the `use strict` / `set -e` equivalent for boop. The framework
-author writes `_Warn "leakage detected"` because it's recoverable from
-the framework's perspective. But a user debugging a subtle dispatch bug
-sets fatality to `warn` and the process stops right at the point of
-leakage instead of silently continuing.
-
-Implementation: a second per-class + global threshold
-(`__boop_fatalLevel`), checked in `__boop.log` after the
-visibility check. If the message level is at or below the fatality
-threshold, log it and then crash. Clean extension of the existing
-system.
+Public API: `_FatalLevel` (wrapper for `__boop.setFatalLevel`).
+Default is `crash` (only explicit `_Crash` is fatal). Set to `error`
+and `_Error` auto-crashes after printing. Set to `warn` and both
+`_Warn` and `_Error` auto-crash. Per-class overrides inherited via
+the class chain. 22 tests in `test_logging_ts`.
 
 Source: `boop` logging section.
 

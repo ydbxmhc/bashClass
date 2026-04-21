@@ -350,7 +350,7 @@ The baked wrapper detects the class mismatch and handles three cases:
 3. Unrelated class (leakage from `local -I`) — emits a `_Warn`
    diagnostic and uses the baked class. The warning is controlled by
    the logging system's per-class level, so users can silence it or
-   (when the fatality threshold is implemented) make it fatal.
+   make it fatal via `_FatalLevel`.
 
 ### `super`
 
@@ -536,16 +536,21 @@ prevent leakage. See the Container source for the full explanation.
 . boop Cube Math List
 ```
 
-Arguments after `boop` are class names to import. Resolution order
-(first match wins):
+Arguments after `boop` are class names to import. Namespace syntax
+(`Collection::List`) is supported -- `::` maps to `/` on disk.
+Resolution order (first match wins):
 
-1. `__boop_classPath["ClassName"]` — explicit path override
-2. `__boop_dir` — the directory where `boop` lives (co-located files)
-3. `PATH` — the shell's standard search path
+1. `__boop_classPath["ClassName"]` -- explicit path override
+2. `__boop_Index["ClassName"]` -- short-name index, resolved via R1 per root
+3. Dynamic discovery -- R1 against each root (`.` + BOOPPATH + PATH)
+4. Raw source fallback -- `. "$class"` (bash PATH search)
 
 ```bash
+# Namespace import
+. boop Collection::List
+
 # Register a custom path for a class
-__boop_classPath["MyClass"]="/opt/lib/MyClass"
+boop.classPath set MyClass /opt/lib/MyClass
 . boop MyClass    # loads from /opt/lib/MyClass
 ```
 
@@ -860,6 +865,56 @@ Where `caller` is the function name from the call stack (e.g.,
 `Box.volume`, `main`). The log wrappers (`_Warn`, etc.) are
 automatically skipped in the stack walk.
 
+### Fatality Threshold
+
+The logging system has two thresholds: visibility (what gets printed)
+and fatality (what auto-crashes after printing). They're independent.
+
+Default fatality is `crash` -- only explicit `_Crash` calls are fatal.
+Raise it to make warnings or errors auto-fatal:
+
+```bash
+_FatalLevel error           # _Error now prints AND crashes
+_FatalLevel warn            # _Warn and _Error both auto-crash
+_FatalLevel crash           # reset to default (nothing auto-fatal)
+_FatalLevel warn Math       # per-class: Math warnings are fatal
+```
+
+Same inheritance model as `_LogLevel` -- per-class overrides walk the
+parent chain, results are cached. This is the "use strict" for boop:
+set fatality to `warn` during development and the process stops at the
+first unexpected condition instead of silently continuing.
+
+The message is always printed before the crash. The crash label shows
+which level was escalated:
+
+```
+[WARN] Box.volume: unexpected dimension
+[CRASH] WARN elevated to fatal (from Box.volume)
+```
+
+### Classpath and Namespace Resolution
+
+Classes are organized in namespace directories (`Collection/List/List`,
+`Math/Math`, etc.). The `::` separator maps to `/` on disk.
+
+Resolution order (first match wins):
+1. `__boop_classPath` -- explicit path overrides
+2. `__boop_Index` -- short-name index, resolved via R1 per root
+3. Dynamic discovery -- R1 against each root (`.` + BOOPPATH + PATH)
+4. Raw source fallback -- `. "$class"` (lets bash try PATH)
+
+```bash
+. boop Math                 # resolves via index to Math/Math
+. boop Collection::List     # resolves via :: -> / normalization
+boop.classPath set Foo /opt/lib/Foo   # explicit override
+boop.classPath rebuild .    # regenerate .boopIndex from namespace tree
+boop.classPath dirs         # show effective root list
+```
+
+The bootstrap sequence sources RC files (`/etc/booprc`, `~/.booprc`,
+`./.booprc`) and `.boopIndex` from each root before processing imports.
+
 ---
 
 ## Framework API Reference
@@ -890,8 +945,10 @@ automatically skipped in the stack walk.
 | `_Error` | Log at error level (1). |
 | `_Crash` | Exit with tagged message to stderr. Supports `_Err` (exit code) and `_StackTrace` (frame count). |
 | `_LogLevel` | Set global or per-class log level. |
+| `_FatalLevel` | Set global or per-class fatality threshold. Default `crash` (only `_Crash` is fatal). Set to `error` or `warn` to auto-crash on those levels. |
 | `__boop.log` | Core log function with level resolution and caching (use the wrappers above). |
 | `__boop.setLogLevel` | Set log level and invalidate cache. |
+| `__boop.setFatalLevel` | Set fatality level and invalidate cache. |
 
 ### Registration & Import
 
@@ -902,6 +959,10 @@ automatically skipped in the stack walk.
 | `__boop.stubAll` | Generate lazy stubs for all methods on an object. |
 | `__boop.refresh` | Tear down baked wrappers and re-stub (for runtime method changes). |
 | `__boop.import` | Resolve and source class files. |
+| `__boop.classResolve` | Namespace-aware class resolution (classPath > index > dynamic). |
+| `__boop.loader` | Bootstrap: source RC chain, parse BOOPPATH, source .boopIndex files. |
+| `boop.resolve` | Public non-fatal resolution wrapper. Returns path via `boop.pass`. |
+| `boop.classPath` | Subcommand API: set/get/list/remove/has/dirs/rebuild. |
 | `__boop.validate` | Reject unsafe identifiers/function names. |
 
 ### Encoding
@@ -935,7 +996,6 @@ automatically skipped in the stack walk.
 | `__boop_loading` | In-progress load tracker (circular recursion prevention). |
 | `__boop_static` | Cross-call static storage for any function. |
 | `_OutMode` | Current global return mode (default: "auto"). |
-| `__boop_dir` | Directory where boop lives (resolved at load time). |
 | `_Out` | Side-channel for global return mode. |
 | `__boop_rootPID` | Root process PID (for subshell detection). |
 | `__boop_loaded` | Framework initialization flag. |
@@ -943,6 +1003,11 @@ automatically skipped in the stack walk.
 | `__boop_classLogLevel` | Per-class log level overrides (associative array). |
 | `__boop_resolvedLogLevel` | Cached resolved levels (associative array). |
 | `__boop_logFile` | Fallback log file path when stderr is unavailable. |
+| `__boop_fatalLevel` | Global default fatality level (default: 0/crash). |
+| `__boop_classFatalLevel` | Per-class fatality level overrides (associative array). |
+| `__boop_resolvedFatalLevel` | Cached resolved fatality levels (associative array). |
+| `__boop_Index` | Short-name to namespace-path index (merged from all roots). |
+| `__boop_version` | Framework version string (read-only). |
 
 ---
 
