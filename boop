@@ -1575,6 +1575,8 @@ boop.classPath() {
       # Walk the tree looking for dirs that contain a same-named file
       local __boop_cp_entry
       while IFS= read -r -d '' __boop_cp_entry; do
+        # Glob includes directories -- skip non-files
+        [[ -f "$__boop_cp_entry" ]] || continue
         # entry is a file path like root/Collection/List/List
         local __boop_cp_dir="${__boop_cp_entry%/*}"
         local __boop_cp_file="${__boop_cp_entry##*/}"
@@ -1601,7 +1603,7 @@ boop.classPath() {
           # First occurrence
           __boop_cp_short2ns[$__boop_cp_short]="$__boop_cp_relpath"
         fi
-      done < <(find "$__boop_cp_root" -type f -not -path '*/\.*' -print0 2>/dev/null)
+      done < <( shopt -s globstar nullglob; shopt -u dotglob; printf '%s\0' "$__boop_cp_root"/** )
 
       # Write .boopIndex
       local __boop_cp_idx="$__boop_cp_root/.boopIndex"
@@ -1668,7 +1670,7 @@ __boop.import() {
     fi
 
     # Raw source fallback — let bash try PATH directly
-    . "$__boop_import_class" 2>/dev/null && {
+    . "$__boop_import_class" && {
       unset '__boop_loading[$__boop_import_class]'
       continue
     }
