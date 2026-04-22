@@ -16,7 +16,7 @@ __cp_tmp=$(mktemp -d)
 trap 'rm -rf "$__cp_tmp"' EXIT
 
 # Absolute path to boop for isolated subshell tests
-__cp_boop="$(realpath boop)"
+__cp_boop="$(command -v boop)"
 
 # Random identifier generator -- sets __cp_r (no subshell)
 __cp_randid() {

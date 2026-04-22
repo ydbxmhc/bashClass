@@ -7,7 +7,11 @@
 # Usage: ./test_all              (quiet -- failures + summary only)
 #        TESTSUITE_VERBOSE=1 ./test_all   (verbose -- every PASS line)
 
-export TESTSUITE_VERBOSE="${TESTSUITE_VERBOSE:-0}"
+export TESTSUITE_VERBOSE="${TESTSUITE_VERBOSE:-1}"
+
+# Resolve this script's directory so we can find sibling test files
+# regardless of where test_all is invoked from.
+__ta_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 rc=0
 
@@ -15,7 +19,7 @@ rc=0
 # Smoke — framework alive?
 # ============================================================================
 printf '\ntest_smoke...\n'
-./test_smoke || { printf '\n  SMOKE FAILED — aborting remaining tests\n'; exit 1; }
+"$__ta_dir/test_smoke" || { printf '\n  SMOKE FAILED — aborting remaining tests\n'; exit 1; }
 
 # ============================================================================
 # Unit tests
@@ -23,7 +27,7 @@ printf '\ntest_smoke...\n'
 for f in test_testsuite_ts test_box_cube_ts test_containers_ts \
           test_logging_ts test_math_ts test_classpath_ts; do
   printf '\n%s\n' "$f..."
-  "./$f" || rc=1
+  "$__ta_dir/$f" || rc=1
 done
 
 # ============================================================================
@@ -31,7 +35,7 @@ done
 # ============================================================================
 for f in test_stress_ts test_blackjack; do
   printf '\n%s\n' "$f..."
-  "./$f" || rc=1
+  "$__ta_dir/$f" || rc=1
 done
 
 # ============================================================================
@@ -49,7 +53,13 @@ done
 #   Lines starting with # (comments)
 # ============================================================================
 printf '\nnaming convention check...\n'
-__nc_files="boop Box Cube Card PlayingCard Deck Container List Map Math TestSuite blackjack"
+# Resolve the boop root (parent of this tests/ directory)
+__nc_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+__nc_files="$__nc_root/boop"
+__nc_files+=" $__nc_root/Geometry/Box/Box $__nc_root/Geometry/Cube/Cube"
+__nc_files+=" $__nc_root/Games/Card/Card $__nc_root/Games/PlayingCard/PlayingCard $__nc_root/Games/Deck/Deck"
+__nc_files+=" $__nc_root/Collection/Container/Container $__nc_root/Collection/List/List $__nc_root/Collection/Map/Map"
+__nc_files+=" $__nc_root/Math/Math $__nc_root/Testing/TestSuite/TestSuite $__nc_root/blackjack"
 __nc_exclude='__boop_\|__boop\.\|__Crash_\|__Container_\|__Iterator_\|__Iter_\|__List_\|__Map_\|__Math_\|__Box_\|__Cube_\|__Card_\|__Deck_\|__PlayingCard_\|__TestSuite_\|__BJ_\|__FC_\|__boopClass_\|__init'
 __nc_hits=$(grep -rn '__[a-z]\+_' $__nc_files 2>/dev/null | grep -v "$__nc_exclude" | grep -v '#')
 if [[ -n "$__nc_hits" ]]; then

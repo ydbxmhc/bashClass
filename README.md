@@ -241,17 +241,17 @@ All tests use the TestSuite class. Default output is quiet (failures +
 summary only). Set `TESTSUITE_VERBOSE=1` for full output.
 
 ```bash
-bash test_smoke                      # 11 tests (framework alive?)
-bash test_testsuite_ts               # 51 tests (TestSuite self-test)
-bash test_box_cube_ts                # 91 tests
-bash test_containers_ts              # 174 tests (List, Map, Iterator, delegation)
-bash test_math_ts                    # 149 tests (includes pi verification)
-bash test_logging_ts                 # 73 tests (logging + fatality threshold)
-bash test_classpath_ts               # 43 tests (namespace resolution, classPath API)
-bash test_classpath_pbt              # 13 property-based tests (correctness properties)
-bash test_stress_ts                  # adversarial framework tests
-bash test_blackjack                  # 92 tests (blackjack game + PlayingCard/Deck)
-bash test_all                        # runs everything + naming convention check
+bash tests/test_smoke                # 11 tests (framework alive?)
+bash tests/test_testsuite_ts         # 51 tests (TestSuite self-test)
+bash tests/test_box_cube_ts          # 91 tests
+bash tests/test_containers_ts        # 174 tests (List, Map, Iterator, delegation)
+bash tests/test_math_ts              # 149 tests (includes pi verification)
+bash tests/test_logging_ts           # 73 tests (logging + fatality threshold)
+bash tests/test_classpath_ts         # 43 tests (namespace resolution, classPath API)
+bash tests/test_classpath_pbt        # 13 property-based tests (correctness properties)
+bash tests/test_stress_ts            # adversarial framework tests
+bash tests/test_blackjack            # 92 tests (blackjack game + PlayingCard/Deck)
+bash tests/test_all                  # runs everything + naming convention check
 ```
 
 ## Documentation

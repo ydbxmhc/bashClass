@@ -23,6 +23,12 @@ if (( ! ${__boop_loaded:-0} )); then
 # switches to stdout (since globals can't escape a subshell boundary).
 declare -gi __boop_rootPID=$BASHPID
 
+# Directory where the boop framework file lives. Resolved once at load time
+# via dirname + realpath so symlinks don't fool it. Used as a fallback root
+# in the resolution chain -- checked last, after . + BOOPPATH + PATH.
+declare -g __boop_root
+__boop_root="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+
 # ============================================================================
 # GLOBALS - Registries
 # ============================================================================
@@ -1218,6 +1224,9 @@ __boop.loader() {
     __boop_loader_addRoot "$__boop_loader_seg"
   done
 
+  # Boop's own directory as fallback root (last priority)
+  __boop_loader_addRoot "$__boop_root"
+
   unset -f __boop_loader_addRoot
 
   _Trace "loader: effective root list has ${#__boop_loader_roots[@]} entries"
@@ -1350,6 +1359,9 @@ __boop.classResolve() {
   for __boop_classResolve_seg in "${__boop_classResolve_segments[@]}"; do
     __boop_classResolve_addRoot "$__boop_classResolve_seg"
   done
+
+  # Boop's own directory as fallback root (last priority)
+  __boop_classResolve_addRoot "$__boop_root"
 
   unset -f __boop_classResolve_addRoot
 
@@ -1557,6 +1569,9 @@ boop.classPath() {
         [[ -n "$__boop_cp_seg" ]] && __boop_cp_addDir "$__boop_cp_seg"
       done
 
+      # Boop's own directory as fallback root (last priority)
+      __boop_cp_addDir "$__boop_root"
+
       unset -f __boop_cp_addDir
       [[ -n "$__boop_cp_out" ]] && __boop_cp_out="${__boop_cp_out%$'\n'}"
       boop.pass "$__boop_cp_out" "${into:-}"
@@ -1652,26 +1667,38 @@ boop.classPath() {
 __boop.import() {
   local __boop_import_class
   for __boop_import_class in "$@"; do
+    _Debug "import: '$__boop_import_class'"
+
     # Already loaded? Skip.
-    [[ -n "${__boop_registry[$__boop_import_class]+set}" ]] && continue
-
-    # Already loading? Skip (prevents circular recursion when a class
-    # file sources boop as part of its own load sequence).
-    [[ -n "${__boop_loading[$__boop_import_class]:-}" ]] && continue
-    __boop_loading[$__boop_import_class]=1
-
-    # Resolve via classPath → index → dynamic discovery
-    local __boop_import_path=""
-    if __boop.classResolve "$__boop_import_class" __boop_import_path; then
-      . "$__boop_import_path" ||
-        _Crash "Failed to load class '$__boop_import_class' from $__boop_import_path"
-      unset '__boop_loading[$__boop_import_class]'
+    if [[ -n "${__boop_registry[$__boop_import_class]+set}" ]]; then
+      _Trace "import: '$__boop_import_class' already in registry, skipping"
       continue
     fi
 
-    # Raw source fallback — let bash try PATH directly
+    # Already loading? Skip (prevents circular recursion when a class
+    # file sources boop as part of its own load sequence).
+    if [[ -n "${__boop_loading[$__boop_import_class]:-}" ]]; then
+      _Trace "import: '$__boop_import_class' already loading (circular guard), skipping"
+      continue
+    fi
+    __boop_loading[$__boop_import_class]=1
+
+    # Resolve via classPath -> index -> dynamic discovery
+    local __boop_import_path=""
+    if __boop.classResolve "$__boop_import_class" __boop_import_path; then
+      _Debug "import: '$__boop_import_class' resolved to '$__boop_import_path'"
+      . "$__boop_import_path" ||
+        _Crash "Failed to load class '$__boop_import_class' from $__boop_import_path"
+      unset '__boop_loading[$__boop_import_class]'
+      _Trace "import: '$__boop_import_class' loaded successfully"
+      continue
+    fi
+
+    # Raw source fallback -- let bash try PATH directly
+    _Debug "import: '$__boop_import_class' not resolved, trying raw source fallback"
     . "$__boop_import_class" && {
       unset '__boop_loading[$__boop_import_class]'
+      _Info "import: '$__boop_import_class' loaded via raw source fallback"
       continue
     }
 
