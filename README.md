@@ -88,8 +88,8 @@ printf "%s\n" "$_Out"  # 64
 Class files use load guards to prevent double-loading. The framework
 uses a loading flag to prevent circular recursion during import chains.
 
-Resolution order: `__boop_classPath` registry → `boop`'s directory
-→ `PATH`.
+Resolution order: `__boop_classPath` overrides -> `.boopIndex` short-name
+index -> dynamic discovery across `.` + `BOOPPATH` + `PATH`.
 
 ## Collections
 
@@ -180,9 +180,6 @@ printf "%s\n" "$v"
 [[ -n "${__boop_registry[MyClass]+set}" ]] && return 2>/dev/null
 . boop
 
-__boop_registry["MyClass"]="|class=MyClass|parent=boop\
-|methods=new,greet|properties=name"
-
 MyClass.new() {
   local -I _Class; : "${_Class:=MyClass}"
   local __MyClass_new_self
@@ -197,9 +194,7 @@ MyClass.greet() {
   boop.pass "Hello, $__MyClass_greet_name" ${into:-}
 }
 
-__boop.registerMethod MyClass new
-__boop.registerMethod MyClass greet
-__boop.registerClass MyClass
+boopClass MyClass 'has:name public:new,greet'
 ```
 
 ```bash
@@ -223,16 +218,22 @@ and all the gotchas.
 ## Class Hierarchy
 
 ```
-boop                          (root — get, set, isa, toString, new, super)
+boop                          (root -- get, set, isa, toString, new)
   ├── Box                          (3D geometry)
   │     └── Cube                   (equal-sided Box)
   ├── Container                    (virtual base for collections)
   │     ├── List                   (indexed array)
   │     └── Map                    (insertion-ordered associative array)
-  ├── Iterator                     (stateful cursor — companion to Container)
+  ├── Iterator                     (stateful cursor -- companion to Container)
+  ├── Card                         (generic card base)
+  │     └── PlayingCard            (suit/rank/faceUp, 52-card standard)
+  ├── Deck                         (extends List -- shuffle, draw)
   ├── Math                         (arbitrary precision arithmetic)
   └── TestSuite                    (structured test harness)
 ```
+
+Classes live in namespace directories (`Collection/List/List`,
+`Geometry/Box/Box`, etc.). Short names resolve via `.boopIndex`.
 
 ## Tests
 
@@ -240,16 +241,18 @@ All tests use the TestSuite class. Default output is quiet (failures +
 summary only). Set `TESTSUITE_VERBOSE=1` for full output.
 
 ```bash
-bash test_testsuite                  # 31 tests (TestSuite self-test)
-bash test_box_cube_ts                # 45 tests
-bash test_containers_ts              # 155 tests (List, Map, Iterator, delegation)
-bash test_math_ts                    # 75 tests (includes pi verification)
-bash test_stress_ts                  # 131 adversarial framework tests
-bash test_logging_ts                 # 51 tests (logging system)
-bash test_pi_growth                  # incremental pi benchmark (not TestSuite)
+bash test_smoke                      # 11 tests (framework alive?)
+bash test_testsuite_ts               # 51 tests (TestSuite self-test)
+bash test_box_cube_ts                # 91 tests
+bash test_containers_ts              # 174 tests (List, Map, Iterator, delegation)
+bash test_math_ts                    # 149 tests (includes pi verification)
+bash test_logging_ts                 # 73 tests (logging + fatality threshold)
+bash test_classpath_ts               # 43 tests (namespace resolution, classPath API)
+bash test_classpath_pbt              # 13 property-based tests (correctness properties)
+bash test_stress_ts                  # adversarial framework tests
+bash test_blackjack                  # 92 tests (blackjack game + PlayingCard/Deck)
+bash test_all                        # runs everything + naming convention check
 ```
-
-488 assertions across 6 TestSuite files, all passing.
 
 ## Documentation
 
@@ -263,4 +266,5 @@ Detailed docs for each class live in `docs/`:
 
 ## Status
 
-Active development. See [PLAN.md](PLAN.md) for the roadmap.
+Active development. See [TODO.md](TODO.md) for the roadmap and
+[docs/PLAN.md](docs/PLAN.md) for the original phased plan.
