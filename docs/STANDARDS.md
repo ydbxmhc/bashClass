@@ -245,6 +245,25 @@ echo "$value"
 printf "%s\n" "$value"
 ```
 
+### Characters and Encoding
+
+Never use em-dashes or other non-ASCII punctuation in code or
+generated output. Use plain ASCII `--` (double hyphen) instead.
+Em-dashes cause problems with some terminal encodings and are
+visually ambiguous in monospace fonts.
+
+For everything else, be contextual. Mathematical symbols like
+`x`, `^2`, `pi` in comments are fine -- they make algorithm
+documentation more readable and are never parsed by bash.
+Unicode card suits in PlayingCard output are fine -- they're
+the natural representation.
+
+The rule: prefer simple ASCII in strings the framework generates
+for others to consume (error messages, log output, serialized
+data). Use whatever's appropriate in comments, documentation,
+and domain-specific display output where the character serves
+a clear purpose.
+
 ### Value Returns
 
 All value-producing functions route through `boop.pass`:
