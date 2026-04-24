@@ -97,6 +97,39 @@ $t.assert_fail "invalid return mode: banana" bash -c '. boop Cube; _OutMode=bana
 # Reset
 _OutMode=auto
 
+# --- into= always wins regardless of global mode ---
+
+_OutMode=global
+_Out=""
+__rmode_val=""
+boop.pass "into_wins" __rmode_val
+$t.assert_eq "into= wins over global mode" "$__rmode_val" "into_wins"
+$t.assert_eq "into= does not write _Out" "$_Out" ""
+
+_OutMode=stdout
+__rmode_val=""
+boop.pass "into_over_stdout" __rmode_val
+$t.assert_eq "into= wins over stdout mode" "$__rmode_val" "into_over_stdout"
+
+_OutMode=auto
+
+# --- per-call _OutMode= env override does not change global default ---
+
+__rmode_saved="$_OutMode"
+_OutMode=stdout boop.pass "per_call" > /dev/null
+$t.assert_eq "per-call env _OutMode= preserves global" "$_OutMode" "$__rmode_saved"
+
+# --- _EOL behavior in stdout mode ---
+
+__rmode_eol_out=$(bash -c '. boop; _OutMode=stdout; _EOL=""; boop.pass "no_eol"')
+$t.assert_eq "stdout with empty _EOL: no trailing newline" "$__rmode_eol_out" "no_eol"
+
+__rmode_eol_nl=$(bash -c '. boop; _OutMode=stdout; printf "%s" "$(boop.pass "with_eol")"')
+$t.assert_eq "stdout with default _EOL: value preserved" "$__rmode_eol_nl" "with_eol"
+
+# Reset
+_OutMode=auto
+
 # ============================================================================
 # SECTION 3: encode/decode — edge cases
 # ============================================================================
@@ -453,6 +486,20 @@ $t.assert_ok "stdout mode: volume" bash -c '. boop Cube; new Box length=6 width=
 _OutMode=auto
 $__rm_box.get length
 $t.assert_eq "get length via global" "$_Out" "6"
+
+# into= overrides mode for object methods
+_OutMode=global
+into=__rm_vol $__rm_box.volume
+$t.assert_eq "into= overrides global for method call" "$__rm_vol" "336"
+
+# into= works in auto mode
+_OutMode=auto
+into=__rm_len $__rm_box.get length
+$t.assert_eq "into= works in auto mode" "$__rm_len" "6"
+
+# per-call mode override on method
+__rm_stdout_vol=$(_OutMode=stdout $__rm_box.volume)
+$t.assert_eq "per-call stdout on method" "$__rm_stdout_vol" "336"
 
 _OutMode=auto
 

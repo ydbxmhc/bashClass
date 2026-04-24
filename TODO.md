@@ -1019,10 +1019,20 @@ stdout output includes a trailing newline.
 
 Existing code that relies on the implicit global (e.g.,
 `test_stress_ts`) should be updated to use explicit
-`into=_Out` — code should say where to put values.
+`into=_Out` -- code should say where to put values.
 
 `into=` always wins regardless of mode. The mode only matters when
 no explicit target is given.
+
+### Per-Class / Per-Namespace Output Mode
+
+Consider per-class output mode overrides, same pattern as the log
+level system: global default, per-class overrides via an associative
+array, inheritance through the class chain, cached resolution.
+
+Use case: a CLI utility class might want stdout by default, while
+a library class wants global. The class author sets the default,
+the user can override per-class or globally.
 
 ---
 
