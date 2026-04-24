@@ -1034,6 +1034,23 @@ Use case: a CLI utility class might want stdout by default, while
 a library class wants global. The class author sets the default,
 the user can override per-class or globally.
 
+### `into=` Forwarding Through _Delegate, _Super, _Cast
+
+`_Delegate`, `_Super`, and `_Cast` do not forward the caller's
+`into=` target to the inner method call. `into=x _Delegate $obj.method`
+sets `into` in `_Delegate`'s env, but `_Delegate` calls `"$@"` as a
+new command and the env var doesn't propagate.
+
+These helpers need to explicitly forward `${into:-}` to the inner
+call so that `into=` works through the full delegation chain. This
+is a correctness issue -- internal code should always use `into=`,
+and delegation should not break that contract.
+
+The auto-stdout default change is blocked on this fix. The default
+was changed in `boop.pass` but `test_stress_ts` cannot pass until
+delegation forwarding works. Revert the default change until this
+is resolved, then apply both together.
+
 ---
 
 ## Implicit Object Declaration on Return (`_AS=`)
