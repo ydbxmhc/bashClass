@@ -474,21 +474,30 @@ _FatalLevel() { __boop.setFatalLevel "$@"; }
 # used by into=varname delegation chains.
 #
 # When no target is provided, the global mode governs:
-#   auto       → global in main shell, stdout in subshell (detected via BASHPID)
+#   auto       → stdout (default; same as stdout mode)
 #   global     → writes to _Out
 #   stdout     → printf to stdout (natural for $() capture)
-#   nameref    → crashes (target is required — this is intentional)
+#   nameref    → crashes (target is required -- this is intentional)
 #   filesystem → writes to a temp file keyed by caller function name + PID
 #
+# Subshell footgun: if into=varname is used inside a $() subshell, the
+# nameref write succeeds within the subshell scope but the value is lost
+# when the subshell exits. A _Debug message is emitted when this is
+# detected (BASHPID != __boop_rootPID). Note: this cannot distinguish a
+# legitimate "use the value inside this same subshell" pattern from a
+# genuine mistake -- the debug message is advisory, not an error.
+#
 # Usage:
-#   boop.pass "$value"              # uses global mode (auto default)
-#   boop.pass "$value" target_var   # nameref — always direct write
+#   boop.pass "$value"              # uses current mode (auto = stdout)
+#   boop.pass "$value" target_var   # nameref -- always direct write
 boop.pass() {
   local __boop_pass_val="${1:-}" __boop_pass_target="${2:-}"
   local __boop_pass_mode="${_OutMode:-auto}"
 
   # If a nameref target is explicitly provided, always use it.
   if [[ -n "${__boop_pass_target:-}" ]]; then
+    [[ $BASHPID != $__boop_rootPID ]] &&
+      _Debug "boop.pass: into=$__boop_pass_target used in subshell -- value will not reach parent scope"
     local -n __boop_pass_ref="$__boop_pass_target"
     __boop_pass_ref="${__boop_pass_val:-}"
     return

@@ -912,8 +912,8 @@ Priority areas:
 - **Property access** — `__boop.get`/`__boop.set` at `_Trace`
   level. Too noisy for anything less.
 
-- **`boop.pass`** — log mode selection (auto→global, auto→stdout)
-  and target variable at `_Trace`.
+- **`boop.pass`** — log mode selection and target variable at `_Trace`.
+  Subshell footgun `_Debug` already added (into= in subshell emits advisory).
 
 - **Class files** — each class's `.new()` should log construction
   at `_Debug`. Complex methods (Container iteration, Math
