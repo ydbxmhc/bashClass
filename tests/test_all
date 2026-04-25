@@ -28,7 +28,8 @@ printf '\ntest_smoke...\n'
 # ============================================================================
 if [[ "$__ta_mode" == all || "$__ta_mode" == unit ]]; then
   for f in test_testsuite_ts test_box_cube_ts test_containers_ts \
-            test_logging_ts test_math_ts test_classpath_ts test_classpath_pbt; do
+            test_logging_ts test_math_ts test_classpath_ts test_classpath_pbt \
+            test_config_ts; do
     printf '\n%s...\n' "$f"
     "$__ta_dir/unit/$f" || rc=1
   done
@@ -62,7 +63,8 @@ __nc_files+=" $__nc_root/Geometry/Box/Box $__nc_root/Geometry/Cube/Cube"
 __nc_files+=" $__nc_root/Games/Card/Card $__nc_root/Games/PlayingCard/PlayingCard $__nc_root/Games/Deck/Deck"
 __nc_files+=" $__nc_root/Collection/Container/Container $__nc_root/Collection/List/List $__nc_root/Collection/Map/Map"
 __nc_files+=" $__nc_root/Math/Math $__nc_root/Testing/TestSuite/TestSuite $__nc_root/blackjack"
-__nc_exclude='__boop_\|__boop\.\|__Crash_\|__Container_\|__Iterator_\|__Iter_\|__List_\|__Map_\|__Math_\|__Box_\|__Cube_\|__Card_\|__Deck_\|__PlayingCard_\|__TestSuite_\|__BJ_\|__FC_\|__boopClass_\|__init'
+__nc_files+=" $__nc_root/Config/Config"
+__nc_exclude='__boop_\|__boop\.\|__Crash_\|__Container_\|__Iterator_\|__Iter_\|__List_\|__Map_\|__Math_\|__Box_\|__Cube_\|__Card_\|__Deck_\|__PlayingCard_\|__TestSuite_\|__BJ_\|__FC_\|__boopClass_\|__init\|__Config_\|__tc_'
 __nc_hits=$(grep -rn '__[a-z]\+_' $__nc_files 2>/dev/null | grep -v "$__nc_exclude" | grep -v '#')
 if [[ -n "$__nc_hits" ]]; then
   printf '  FAIL: non-compliant variable names found:\n%s\n' "$__nc_hits"

@@ -859,7 +859,7 @@ Source: PLAN.md Phase 5.
 
 ---
 
-## Config Class
+## Config Class ✓
 
 A Config object that reads and writes structured config files in pure
 bash. Two formats, one interface.
@@ -922,6 +922,8 @@ $cfg.toFlat [file]      → write as flat key=value
   (Comment preservation is optional / Phase 2.)
 - Deliberately does NOT `source` the file — pure data parsing, no
   code execution. See "Security: Parse Config Files as Data" section.
+
+Implementation complete: `Config/Config`, 71 tests in `tests/unit/test_config_ts`.
 
 Source: discussed as extension of .boop.cfg concept.
 

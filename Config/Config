@@ -1,0 +1,286 @@
+#!/bin/bash
+
+# Config — structured config file reader/writer.
+#
+# Two formats, one interface:
+#   Flat: key=value lines, # comments, blank lines ignored. Top-level keys.
+#   INI:  [section] headers group key=value pairs. Keys stored as "section.key".
+#         Top-level keys (before any header) have no prefix.
+#
+# Pure bash parsing (while IFS= read -r). Zero forks. No eval, no source.
+#
+# Storage: each Config instance owns:
+#   __boop_config_${_Self}      (gA) — key → value
+#   __boop_config_keys_${_Self} (ga) — insertion-ordered key list
+#
+# Descriptor properties:
+#   file   — path of the file loaded from (used by save with no arg)
+#   format — "flat" or "ini" (used by save to choose write format)
+
+[[ -n "${__boop_registry[Config]+set}" ]] && return 2>/dev/null
+
+. boop
+
+# ============================================================================
+# Config Implementation
+# ============================================================================
+
+# Constructor — creates an empty Config with no backing file.
+# Usage: into=cfg Config.new
+Config.new() {
+  local _Class="${_Class:-Config}"
+  local __Config_new_self
+  into=__Config_new_self __boop.new "$@"
+  declare -gA "__boop_config_${__Config_new_self}"
+  declare -ga "__boop_config_keys_${__Config_new_self}"
+  boop.pass "$__Config_new_self" ${into:-}
+}
+
+# Load a flat key=value property file.
+# Lines starting with # are comments. Blank lines are ignored.
+# Usage: into=cfg Config.load ~/.myapp.cfg
+Config.load() {
+  local _Class="${_Class:-Config}"
+  local __Config_load_file="${1:-}"
+  [[ -n "$__Config_load_file" ]] || _Crash "Config.load: file path required"
+  [[ -f "$__Config_load_file" ]] || _Crash "Config.load: file not found: $__Config_load_file"
+
+  local __Config_load_self
+  into=__Config_load_self __boop.new format=flat "file=$__Config_load_file"
+  declare -gA "__boop_config_${__Config_load_self}"
+  declare -ga "__boop_config_keys_${__Config_load_self}"
+
+  local -n __Config_load_data="__boop_config_${__Config_load_self}"
+  local -n __Config_load_keys_arr="__boop_config_keys_${__Config_load_self}"
+  local __Config_load_line __Config_load_key __Config_load_val
+
+  while IFS= read -r __Config_load_line; do
+    [[ -z "$__Config_load_line" || "$__Config_load_line" == '#'* ]] && continue
+    [[ "$__Config_load_line" != *'='* ]] && continue
+    __Config_load_key="${__Config_load_line%%=*}"
+    __Config_load_val="${__Config_load_line#*=}"
+    [[ -z "$__Config_load_key" ]] && continue
+    if [[ -z "${__Config_load_data[$__Config_load_key]+set}" ]]; then
+      __Config_load_keys_arr+=("$__Config_load_key")
+    fi
+    __Config_load_data[$__Config_load_key]="$__Config_load_val"
+  done < "$__Config_load_file"
+
+  boop.pass "$__Config_load_self" ${into:-}
+}
+
+# Load an INI-format file.
+# [section] headers group key=value pairs. Keys stored as "section.key".
+# Keys before the first header are top-level (stored as-is, no prefix).
+# Usage: into=cfg Config.loadINI /etc/myapp.ini
+Config.loadINI() {
+  local _Class="${_Class:-Config}"
+  local __Config_ini_file="${1:-}"
+  [[ -n "$__Config_ini_file" ]] || _Crash "Config.loadINI: file path required"
+  [[ -f "$__Config_ini_file" ]] || _Crash "Config.loadINI: file not found: $__Config_ini_file"
+
+  local __Config_ini_self
+  into=__Config_ini_self __boop.new format=ini "file=$__Config_ini_file"
+  declare -gA "__boop_config_${__Config_ini_self}"
+  declare -ga "__boop_config_keys_${__Config_ini_self}"
+
+  local -n __Config_ini_data="__boop_config_${__Config_ini_self}"
+  local -n __Config_ini_keys_arr="__boop_config_keys_${__Config_ini_self}"
+  local __Config_ini_line __Config_ini_section="" __Config_ini_key __Config_ini_val
+
+  while IFS= read -r __Config_ini_line; do
+    [[ -z "$__Config_ini_line" || "$__Config_ini_line" == '#'* ]] && continue
+    if [[ "$__Config_ini_line" =~ ^\[([^]]+)\]$ ]]; then
+      __Config_ini_section="${BASH_REMATCH[1]}"
+      continue
+    fi
+    [[ "$__Config_ini_line" != *'='* ]] && continue
+    __Config_ini_key="${__Config_ini_line%%=*}"
+    __Config_ini_val="${__Config_ini_line#*=}"
+    [[ -z "$__Config_ini_key" ]] && continue
+    [[ -n "$__Config_ini_section" ]] && __Config_ini_key="${__Config_ini_section}.${__Config_ini_key}"
+    if [[ -z "${__Config_ini_data[$__Config_ini_key]+set}" ]]; then
+      __Config_ini_keys_arr+=("$__Config_ini_key")
+    fi
+    __Config_ini_data[$__Config_ini_key]="$__Config_ini_val"
+  done < "$__Config_ini_file"
+
+  boop.pass "$__Config_ini_self" ${into:-}
+}
+
+# Get a value by key. Returns empty string if the key does not exist.
+# Usage: into=val $cfg.get theme
+#        into=host $cfg.get database.host
+Config.get() {
+  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local __Config_get_key="$1"
+  local -n __Config_get_data="__boop_config_${_Self}"
+  boop.pass "${__Config_get_data[$__Config_get_key]:-}" ${into:-}
+}
+
+# Set a key to a value. Adds the key at the end if new; preserves position
+# if it already exists.
+# Usage: $cfg.set theme dark
+#        $cfg.set database.host localhost
+Config.set() {
+  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local __Config_set_key="$1" __Config_set_val="$2"
+  local -n __Config_set_data="__boop_config_${_Self}"
+  local -n __Config_set_keys="__boop_config_keys_${_Self}"
+  if [[ -z "${__Config_set_data[$__Config_set_key]+set}" ]]; then
+    __Config_set_keys+=("$__Config_set_key")
+  fi
+  __Config_set_data[$__Config_set_key]="$__Config_set_val"
+}
+
+# Test whether a key exists. Returns exit code 0 (present) or 1 (absent).
+# Usage: $cfg.has database.port && echo "port configured"
+Config.has() {
+  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local -n __Config_has_data="__boop_config_${_Self}"
+  [[ -n "${__Config_has_data[$1]+set}" ]] && return 0 || return 1
+}
+
+# Return keys as a newline-delimited string in insertion order.
+# With no argument: all keys (including section-prefixed INI keys).
+# With a section argument: keys in that section only, without the prefix.
+# Usage: into=all_keys $cfg.keys
+#        into=db_keys  $cfg.keys database
+Config.keys() {
+  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local __Config_keys_section="${1:-}"
+  local -n __Config_keys_list="__boop_config_keys_${_Self}"
+  local __Config_keys_out="" __Config_keys_k __Config_keys_sep=""
+  local __Config_keys_prefix="${__Config_keys_section:+${__Config_keys_section}.}"
+
+  for __Config_keys_k in "${__Config_keys_list[@]+"${__Config_keys_list[@]}"}"; do
+    if [[ -n "$__Config_keys_section" ]]; then
+      [[ "$__Config_keys_k" == "$__Config_keys_prefix"* ]] || continue
+      __Config_keys_k="${__Config_keys_k#"$__Config_keys_prefix"}"
+    fi
+    __Config_keys_out="${__Config_keys_out}${__Config_keys_sep}${__Config_keys_k}"
+    __Config_keys_sep=$'\n'
+  done
+  boop.pass "$__Config_keys_out" ${into:-}
+}
+
+# Return a newline-delimited list of distinct section names in insertion order.
+# Keys without a dot (top-level keys) are not listed.
+# Usage: into=sections $cfg.sections
+Config.sections() {
+  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local -n __Config_sections_keys="__boop_config_keys_${_Self}"
+  local __Config_sections_out="" __Config_sections_sep=""
+  local -A __Config_sections_seen=()
+  local __Config_sections_k __Config_sections_s
+
+  for __Config_sections_k in "${__Config_sections_keys[@]+"${__Config_sections_keys[@]}"}"; do
+    [[ "$__Config_sections_k" == *'.'* ]] || continue
+    __Config_sections_s="${__Config_sections_k%%.*}"
+    [[ -n "${__Config_sections_seen[$__Config_sections_s]+set}" ]] && continue
+    __Config_sections_seen[$__Config_sections_s]=1
+    __Config_sections_out="${__Config_sections_out}${__Config_sections_sep}${__Config_sections_s}"
+    __Config_sections_sep=$'\n'
+  done
+  boop.pass "$__Config_sections_out" ${into:-}
+}
+
+# Write the current state back to a file.
+# Uses the format the config was originally loaded in (flat or ini).
+# If no file argument is given, uses the file it was loaded from.
+# Usage: $cfg.save
+#        $cfg.save /path/to/output.cfg
+Config.save() {
+  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local __Config_save_target="${1:-}"
+  if [[ -z "$__Config_save_target" ]]; then
+    into=__Config_save_target __boop.get file
+  fi
+  [[ -n "$__Config_save_target" ]] || _Crash "Config.save: no file specified and no source file recorded"
+
+  local __Config_save_format
+  into=__Config_save_format __boop.get format
+  case "${__Config_save_format:-flat}" in
+    ini) Config.toINI  "$__Config_save_target" ;;
+    *)   Config.toFlat "$__Config_save_target" ;;
+  esac
+}
+
+# Write as flat key=value format.
+# With a file argument: write to that file. Without: return as string via boop.pass.
+# Usage: $cfg.toFlat ~/.myapp.cfg
+#        into=text $cfg.toFlat
+Config.toFlat() {
+  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local __Config_toFlat_file="${1:-}"
+  local -n __Config_toFlat_data="__boop_config_${_Self}"
+  local -n __Config_toFlat_keys="__boop_config_keys_${_Self}"
+  local __Config_toFlat_out="" __Config_toFlat_k __Config_toFlat_sep=""
+
+  for __Config_toFlat_k in "${__Config_toFlat_keys[@]+"${__Config_toFlat_keys[@]}"}"; do
+    __Config_toFlat_out="${__Config_toFlat_out}${__Config_toFlat_sep}${__Config_toFlat_k}=${__Config_toFlat_data[$__Config_toFlat_k]}"
+    __Config_toFlat_sep=$'\n'
+  done
+
+  if [[ -n "$__Config_toFlat_file" ]]; then
+    printf "%s\n" "$__Config_toFlat_out" > "$__Config_toFlat_file"
+  else
+    boop.pass "$__Config_toFlat_out" ${into:-}
+  fi
+}
+
+# Write as INI format, grouping section-prefixed keys under [section] headers.
+# Top-level keys (no dot) appear first with no header.
+# With a file argument: write to that file. Without: return as string via boop.pass.
+# Usage: $cfg.toINI /etc/myapp.ini
+#        into=text $cfg.toINI
+Config.toINI() {
+  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local __Config_toINI_file="${1:-}"
+  local -n __Config_toINI_data="__boop_config_${_Self}"
+  local -n __Config_toINI_keys="__boop_config_keys_${_Self}"
+  local __Config_toINI_out="" __Config_toINI_k __Config_toINI_s __Config_toINI_bare
+  local -a __Config_toINI_sections=()
+  local -A __Config_toINI_sec_seen=()
+
+  # Top-level keys first (no dot in key name)
+  for __Config_toINI_k in "${__Config_toINI_keys[@]+"${__Config_toINI_keys[@]}"}"; do
+    [[ "$__Config_toINI_k" == *'.'* ]] && continue
+    __Config_toINI_out="${__Config_toINI_out}${__Config_toINI_k}=${__Config_toINI_data[$__Config_toINI_k]}"$'\n'
+  done
+
+  # Collect section names in insertion order
+  for __Config_toINI_k in "${__Config_toINI_keys[@]+"${__Config_toINI_keys[@]}"}"; do
+    [[ "$__Config_toINI_k" == *'.'* ]] || continue
+    __Config_toINI_s="${__Config_toINI_k%%.*}"
+    [[ -n "${__Config_toINI_sec_seen[$__Config_toINI_s]+set}" ]] && continue
+    __Config_toINI_sec_seen[$__Config_toINI_s]=1
+    __Config_toINI_sections+=("$__Config_toINI_s")
+  done
+
+  # Write each section
+  for __Config_toINI_s in "${__Config_toINI_sections[@]+"${__Config_toINI_sections[@]}"}"; do
+    __Config_toINI_out="${__Config_toINI_out}"$'\n'"[${__Config_toINI_s}]"$'\n'
+    for __Config_toINI_k in "${__Config_toINI_keys[@]+"${__Config_toINI_keys[@]}"}"; do
+      [[ "$__Config_toINI_k" == "${__Config_toINI_s}."* ]] || continue
+      __Config_toINI_bare="${__Config_toINI_k#"${__Config_toINI_s}."}"
+      __Config_toINI_out="${__Config_toINI_out}${__Config_toINI_bare}=${__Config_toINI_data[$__Config_toINI_k]}"$'\n'
+    done
+  done
+
+  __Config_toINI_out="${__Config_toINI_out%$'\n'}"
+
+  if [[ -n "$__Config_toINI_file" ]]; then
+    printf "%s\n" "$__Config_toINI_out" > "$__Config_toINI_file"
+  else
+    boop.pass "$__Config_toINI_out" ${into:-}
+  fi
+}
+
+# ============================================================================
+# Class Declaration
+# ============================================================================
+
+boopClass Config has:file,format '
+  public:new,load,loadINI,get,set,has,keys,sections,save,toFlat,toINI
+'
