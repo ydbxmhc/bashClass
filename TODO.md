@@ -975,6 +975,35 @@ A user debugging a resolution issue should be able to set
 
 Source: `boop`, all class files.
 
+### Log-Level Bypass via Aliases (Performance)
+
+When `_LogLevel` is set high (e.g. `ERROR`), every `_Warn`, `_Info`,
+`_Debug`, and `_Trace` call still pays the cost of a function
+invocation that immediately returns. At high call volume this adds up.
+
+Idea: after a `_LogLevel` change, alias the silenced functions to
+`:` (the shell no-op builtin):
+
+```bash
+# After _LogLevel=error:
+for fn in _Warn _Info _Debug _Trace; do alias $fn=:; done
+# After _LogLevel=debug:
+for fn in _Info _Debug _Trace; do alias $fn=:; done
+# etc.
+```
+
+Caveats:
+- Aliases don't expand inside functions unless `shopt -s expand_aliases`
+  is set (it's off by default in non-interactive shells). May need
+  `shopt -s expand_aliases` in `boop` preamble, or use a different
+  mechanism (function replacement: `_Warn() { :; }`).
+- Dynamic function replacement via `eval` is cleaner and works
+  everywhere: generate a `_Warn() { :; }` body and `eval` it.
+- Must be reversed (or regenerated) when `_LogLevel` changes again.
+- Benchmark before committing — the overhead of re-defining functions
+  on every level change may outweigh the per-call savings unless log
+  levels are stable for long-running scripts.
+
 ---
 
 ## Test Coverage Audit
@@ -1010,19 +1039,34 @@ single-argument identity (`Math.add 5` returns 5).
 
 ---
 
-## Return System: Default to stdout + Newline Control
+## Return System: Default to stdout + Newline Control ✓
 
-Change `auto` mode so main shell defaults to stdout (with newline)
-instead of the `_Out` side-channel. Add a global
-`_OutNewline` flag (default on) controlling whether
-stdout output includes a trailing newline.
-
-Existing code that relies on the implicit global (e.g.,
-`test_stress_ts`) should be updated to use explicit
-`into=_Out` -- code should say where to put values.
+✓ `auto` mode now always outputs to stdout. `_Out` global still
+available via explicit `_OutMode=global`. All `test_stress_ts` call
+sites updated to use `into=varname` or `$()` capture.
 
 `into=` always wins regardless of mode. The mode only matters when
 no explicit target is given.
+
+### `into=` in Subshells — Known Silent Footgun
+
+`into=varname $obj.method` inside a subshell silently loses the
+value: the nameref write succeeds into the subshell's scope, stdout
+is suppressed (nameref path returns early), and the value evaporates
+when the subshell exits. No crash, no warning.
+
+A blanket `_Warn` for "into= in subshell" would false-positive on
+legitimate patterns (e.g., using `into=` inside a subshell to chain
+intermediate calls before `printf`-ing the result out). Left as a
+documentation note. The safe idioms are:
+
+```bash
+# Option 1: into= for intermediate work, printf the final result
+result=$( into=tmp $obj.compute; printf "%s" "$tmp" )
+
+# Option 2: subshell capture of stdout directly
+result=$( $obj.compute )
+```
 
 ### Per-Class / Per-Namespace Output Mode
 
@@ -1034,22 +1078,12 @@ Use case: a CLI utility class might want stdout by default, while
 a library class wants global. The class author sets the default,
 the user can override per-class or globally.
 
-### `into=` Forwarding Through _Delegate, _Super, _Cast
+### `into=` Forwarding Through Dispatchers ✓
 
-`_Delegate`, `_Super`, and `_Cast` do not forward the caller's
-`into=` target to the inner method call. `into=x _Delegate $obj.method`
-sets `into` in `_Delegate`'s env, but `_Delegate` calls `"$@"` as a
-new command and the env var doesn't propagate.
-
-These helpers need to explicitly forward `${into:-}` to the inner
-call so that `into=` works through the full delegation chain. This
-is a correctness issue -- internal code should always use `into=`,
-and delegation should not break that contract.
-
-The auto-stdout default change is blocked on this fix. The default
-was changed in `boop.pass` but `test_stress_ts` cannot pass until
-delegation forwarding works. Revert the default change until this
-is resolved, then apply both together.
+✓ `_Delegate`, `_Super`, and `_Cast` now explicitly forward
+`into="${into:-}"` to inner calls. Three new tests in
+`test_stress_ts` cover the indirect forwarding case (outer caller
+sets `into=`, inner method dispatches without its own `into=`).
 
 ---
 

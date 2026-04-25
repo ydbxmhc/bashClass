@@ -442,7 +442,7 @@ boop.pass() {
     return
   fi
   if [[ "$__boop_pass_mode" == "auto" ]]; then
-    [[ $BASHPID == $__boop_rootPID ]] && __boop_pass_mode="global" || __boop_pass_mode="stdout"
+    __boop_pass_mode="stdout"
   fi
   case "$__boop_pass_mode" in
     nameref)    _Crash "nameref mode requires target variable" ;; # wouldn't be here if it had one!
@@ -1902,18 +1902,18 @@ boopExtend() {
 #   _Super method             — same object, parent class implementation
 #   _Cast Box $cube volume    — same object, explicit class override
 # ============================================================================
-_Delegate() { _Class='' "$@"; }
+_Delegate() { _Class='' into="${into:-}" "$@"; }
 
 _Super() {
   [[ -n "${1:-}" ]] || _Crash "_Super: method name required"
   local __boop_Super_class="${_Class:-}"
-  [[ -z "$__boop_Super_class" && -n "${_Self:-}" ]] && 
+  [[ -z "$__boop_Super_class" && -n "${_Self:-}" ]] &&
     __boop.parse "$_Self" "class" __boop_Super_class
   [[ -n "$__boop_Super_class" ]] || _Crash "_Super: no class context"
   local __boop_Super_parent
   __boop.parse "$__boop_Super_class" "parent" __boop_Super_parent
   [[ -n "$__boop_Super_parent" ]] || _Crash "_Super: $__boop_Super_class has no parent"
-  _Self="${_Self:-}" _Class="$__boop_Super_parent" "$__boop_Super_parent.$@"
+  _Self="${_Self:-}" _Class="$__boop_Super_parent" into="${into:-}" "$__boop_Super_parent.$@"
 }
 
 _Cast() {
@@ -1921,7 +1921,7 @@ _Cast() {
   [[ -n "${2:-}" ]] || _Crash "_Cast: object required"
   [[ -n "${3:-}" ]] || _Crash "_Cast: method name required"
   local __boop_Cast_class="$1" __boop_Cast_self="$2"; shift 2
-  _Self="$__boop_Cast_self" _Class="$__boop_Cast_class" "$__boop_Cast_class.$@"
+  _Self="$__boop_Cast_self" _Class="$__boop_Cast_class" into="${into:-}" "$__boop_Cast_class.$@"
 }
 
 # Stamp an existing object with a new class in the registry.
