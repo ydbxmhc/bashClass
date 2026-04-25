@@ -704,21 +704,21 @@ the framework is mature enough to worry about hostile environments.
 
 ---
 
-## Inline Class Definitions in Executable Scripts
+## Inline Class Definitions in Executable Scripts ✓
 
-Currently, class files must be separate files to be both sourceable
-(for testing/reuse) and executable (for standalone scripts). The
-blackjack example originally defined all classes inline, but this
-prevented sourcing just the classes without running the game loop.
+The `BASH_SOURCE[0]` vs `$0` guard is the pattern. After `boopClass`
+registration, add:
 
-Investigate a pattern for defining classes inline in an executable
-script while still allowing them to be sourced separately. Options:
+```bash
+[[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0
+# main logic here — only runs when executed directly, not sourced
+```
 
-- `BASH_SOURCE` vs `$0` guard before the main logic
-- A `__boop.main` convention that registerClass can detect
-- A flag/property on the class that marks the file as executable
+`blackjack` demonstrates this: sourcing it loads `BlackjackHand` for
+tests; executing it runs the game. No separate class file needed.
 
-Related: "Class File Execution Guard" section above.
+See also: "Class File Execution Guard" section above for the remaining
+work (auto-help when sourced-as-executed without this guard).
 
 ---
 
@@ -859,6 +859,74 @@ Source: PLAN.md Phase 5.
 
 ---
 
+## Config Class
+
+A Config object that reads and writes structured config files in pure
+bash. Two formats, one interface.
+
+### Property file (flat key=value)
+
+Same format as `.boop.cfg` — one `key=value` per line, `#` comments,
+blank lines ignored. Keys are top-level; no sections.
+
+```bash
+into=cfg Config.load ~/.myapp.cfg
+$cfg.get theme          # → "dark"
+$cfg.set theme light
+$cfg.save ~/.myapp.cfg  # rewrite in place
+```
+
+### INI file
+
+`[section]` headers divide key=value groups. Keys are stored
+internally as `section.key` so the same get/set/has interface works
+for both formats. Section name `""` (empty) is the implicit top-level
+for keys before the first header.
+
+```bash
+into=cfg Config.loadINI /etc/myapp.ini
+$cfg.get database.host  # → "localhost"
+$cfg.get database.port  # → "5432"
+$cfg.keys database      # → "host port user password"
+$cfg.sections           # → "database server logging"
+```
+
+### Interface
+
+```
+Config.load file        → new Config object backed by property file
+Config.loadINI file     → new Config object backed by INI file
+Config.new              → empty Config object (no file)
+$cfg.get key            → value or empty string
+$cfg.set key val        → update in memory
+$cfg.has key            → exit code 0/1
+$cfg.keys [section]     → space-separated key list
+$cfg.sections           → section list (INI only)
+$cfg.save [file]        → write current state back
+$cfg.toINI [file]       → write as INI format
+$cfg.toFlat [file]      → write as flat key=value
+```
+
+### Implementation notes
+
+- Backed by a per-object associative array `__boop_config_${_Self}`
+  (same pattern as Map's companion storage).
+- `Config.load` / `Config.loadINI` parse with a `while IFS= read -r`
+  loop — pure bash, zero forks. Regex matching for `[section]` headers
+  and `key=value` lines via `[[ =~ ]]`.
+- Keys in flat files stored as-is. Keys in INI files stored as
+  `section.key`; the section prefix is stripped by `$cfg.get` when
+  a bare key is given and it matches exactly one section.
+- `$cfg.save` rewrites the file entirely (not append). Preserves
+  comments from the original file if they were captured during load.
+  (Comment preservation is optional / Phase 2.)
+- Deliberately does NOT `source` the file — pure data parsing, no
+  code execution. See "Security: Parse Config Files as Data" section.
+
+Source: discussed as extension of .boop.cfg concept.
+
+---
+
 ## Return System Filesystem Mode
 
 `boop.passPath` — use call stack introspection to determine a
@@ -980,6 +1048,23 @@ Caveats:
 - **`boop_install` bootstrap script**: puts boop on PATH, generates
   initial `.boopIndex`, creates starter `~/.booprc`. See Classpath
   section for full spec.
+- **`boop.inspect`**: pretty-print an object's full state for debugging.
+  Should show class, inheritance chain, all properties with current
+  values, and method list. Registered on root `boop` class so every
+  object inherits it. Tier 3 public, output to stdout by default.
+  ```
+  [Box _abc123]
+    class:  Box (extends boop)
+    length: 5
+    width:  3
+    height: 7
+    methods: new, volume, area, top, side, front, toString
+  ```
+- **Scaffolding (`boop new MyClass`)**: generate a class file skeleton
+  from a template. Could live as a subcommand on the `boop` root class
+  or as a standalone `boop_new` script. Output is a ready-to-edit file
+  with load guard, boopClass declaration, and stub `.new()`. High
+  friction reducer for new users.
 
 ---
 

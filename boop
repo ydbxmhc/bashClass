@@ -991,6 +991,86 @@ __boop.toString() {
   boop.pass "$__boop_toString_output" ${into:-}
 }
 
+# Pretty-print an object's full state for debugging.
+#
+# Shows: class + full inheritance chain, all user-defined properties
+# with their decoded values aligned in columns, and the flat method
+# list inherited from the entire chain.
+#
+# Output always goes to stdout -- this is a debug display function,
+# not a value producer. into= is intentionally not supported.
+#
+# Usage:
+#   $obj.inspect             # dump to stdout
+#   $obj.inspect | less      # page through a big object
+#
+# Example output:
+#   [Box _1a2b3c]
+#     class:   Box extends boop
+#     height = 7
+#     length = 5
+#     width  = 3
+#     methods: new, volume, area, top, side, front, get, set, isa, toString
+__boop.inspect() {
+  local -I _Self; local _Class="${_Class:-boop}"
+
+  : "build inheritance chain label"
+  local __boop_inspect_chain="$_Class"
+  local __boop_inspect_walk
+  __boop.parse "$_Class" "parent" __boop_inspect_walk
+  while [[ -n "$__boop_inspect_walk" ]]; do
+    __boop_inspect_chain="$__boop_inspect_chain extends $__boop_inspect_walk"
+    __boop.parse "$__boop_inspect_walk" "parent" __boop_inspect_walk
+  done
+
+  : "collect user-defined properties from object descriptor"
+  local __boop_inspect_desc="${__boop_registry[$_Self]:-}"
+  local __boop_inspect_field __boop_inspect_raw __boop_inspect_decoded
+  local -a __boop_inspect_keys=() __boop_inspect_vals=()
+  local -i __boop_inspect_maxlen=0
+  while [[ "$__boop_inspect_desc" =~ \|([^=]+)=([^|]*) ]]; do
+    __boop_inspect_field="${BASH_REMATCH[1]}"
+    __boop_inspect_raw="${BASH_REMATCH[2]}"
+    __boop_inspect_desc="${__boop_inspect_desc#*"${BASH_REMATCH[0]}"}"
+    case "$__boop_inspect_field" in
+      class|parent|methods|properties) continue ;;
+    esac
+    __boop.decode "$__boop_inspect_raw" __boop_inspect_decoded
+    __boop_inspect_keys+=("$__boop_inspect_field")
+    __boop_inspect_vals+=("$__boop_inspect_decoded")
+    (( ${#__boop_inspect_field} > __boop_inspect_maxlen )) && __boop_inspect_maxlen=${#__boop_inspect_field} || true
+  done
+
+  : "collect all callable methods walking the full inheritance chain; deduplicate"
+  local __boop_inspect_methods="" __boop_inspect_m __boop_inspect_sep=""
+  local -A __boop_inspect_seen=()
+  __boop_inspect_walk="$_Class"
+  while [[ -n "$__boop_inspect_walk" ]]; do
+    __boop.parse "$__boop_inspect_walk" "methods" __boop_inspect_m
+    local __boop_inspect_name
+    IFS=',' read -ra __boop_inspect_mlist <<< "$__boop_inspect_m"
+    for __boop_inspect_name in "${__boop_inspect_mlist[@]}"; do
+      [[ -z "$__boop_inspect_name" ]] && continue
+      [[ -n "${__boop_inspect_seen[$__boop_inspect_name]+set}" ]] && continue
+      __boop_inspect_seen[$__boop_inspect_name]=1
+      __boop_inspect_methods="${__boop_inspect_methods}${__boop_inspect_sep}${__boop_inspect_name}"
+      __boop_inspect_sep=", "
+    done
+    __boop.parse "$__boop_inspect_walk" "parent" __boop_inspect_walk
+  done
+
+  : "print"
+  printf "[%s %s]\n" "$_Class" "$_Self"
+  printf "  class:   %s\n" "$__boop_inspect_chain"
+  local -i __boop_inspect_i
+  for (( __boop_inspect_i=0; __boop_inspect_i < ${#__boop_inspect_keys[@]}; __boop_inspect_i++ )); do
+    printf "  %-${__boop_inspect_maxlen}s = %s\n" \
+      "${__boop_inspect_keys[$__boop_inspect_i]}" "${__boop_inspect_vals[$__boop_inspect_i]}"
+  done
+  (( ${#__boop_inspect_keys[@]} == 0 )) && printf "  (no properties)\n"
+  printf "  methods: %s\n" "$__boop_inspect_methods"
+}
+
 # Object constructor. This is the beating heart of object creation.
 #
 # 1. Generates a unique object ID from EPOCHREALTIME (hex-encoded
@@ -1748,6 +1828,10 @@ __boop.import() {
     local __boop_import_path=""
     if __boop.classResolve "$__boop_import_class" __boop_import_path; then
       _Debug "import: '$__boop_import_class' resolved to '$__boop_import_path'"
+      # Clear $@ before sourcing so class files that call `. boop` with no
+      # explicit args don't inherit this function's positional parameters
+      # and accidentally trigger a second recursive import of the full list.
+      set --
       . "$__boop_import_path" ||
         _Crash "Failed to load class '$__boop_import_class' from $__boop_import_path"
       unset '__boop_loading[$__boop_import_class]'
@@ -1757,6 +1841,7 @@ __boop.import() {
 
     # Raw source fallback -- let bash try PATH directly
     _Debug "import: '$__boop_import_class' not resolved, trying raw source fallback"
+    set --
     . "$__boop_import_class" && {
       unset '__boop_loading[$__boop_import_class]'
       _Info "import: '$__boop_import_class' loaded via raw source fallback"
@@ -2022,7 +2107,7 @@ _Bless() {
 # from it (parent chain terminates at boop's empty parent field).
 # The standard methods registered here (get, set, isa, toString, new, super)
 # are available to all objects unless overridden by a subclass.
-__boop_registry["boop"]="|class=boop|parent=|methods=new,get,set,isa,toString,super|properties="
+__boop_registry["boop"]="|class=boop|parent=|methods=new,get,set,isa,toString,inspect,super|properties="
 
 #boopClass boop '
 #  custom:new=__boop.new,get=__boop.get,set=__boop.set,isa=__boop.isa,toString=__boop.toString
@@ -2032,6 +2117,7 @@ __boop.registerMethod boop get __boop.get
 __boop.registerMethod boop set __boop.set
 __boop.registerMethod boop isa __boop.isa
 __boop.registerMethod boop toString __boop.toString
+__boop.registerMethod boop inspect __boop.inspect
 __boop.registerMethod boop new __boop.new
 __boop.registerMethod boop resolve boop.resolve
 __boop.registerMethod boop classPath boop.classPath
