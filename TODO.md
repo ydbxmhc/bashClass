@@ -1,7 +1,7 @@
 # boop Framework — TODO
 
-Collected future work items. Inline TODOs in source files should
-reference entries here by section name.
+Active work items. Completed items live in DEVLOG.md.
+Inline TODOs in source files should reference entries here by section name.
 
 ---
 
@@ -28,19 +28,11 @@ reference entries here by section name.
 - **Remove `__boop_dir`**: ✓ Done. Declaration removed from `boop`.
 - **Property-based tests**: Optional tasks from the spec (Properties 1-13).
 
-### Original Design (Reference)
+### Design Reference
 
-The framework needs a complete class organization
-and resolution system: namespaced directory layout, a short-name
-index, a multi-root classPath with per-root resolution, persistent
-configuration via rc/cfg files, and a public API for managing it all.
-
-### Current State
-
-Everything is flat files in one directory. `__boop_classPath` is an
-empty associative array that nothing populates. Import resolution is
-trivial: check the hash, check `__boop_dir`, fall through to `PATH`.
-No namespaces, no index, no configuration persistence.
+Core implementation complete. See DEVLOG.md for implementation notes
+and prior art survey. The following sections document the design for
+ongoing and future work.
 
 ### Prior Art (Cross-Language Survey)
 
@@ -556,80 +548,19 @@ Source: `boop`, all class files.
 
 ---
 
-## Reserved Variable Names & Inheritance Hygiene ✓ DONE
-
-The framework inherits exactly two names via `local -I`: `_Self` and
-`_Class`. Every method in every class uses one or both. These are
-effectively reserved words — user code must not use them unlocalized.
-
-The rename from `self`/`class` to `_Self`/`_Class` was completed across
-the entire codebase: framework (`boop`), all class files, all test files,
-and all documentation. The mixed-case single-underscore convention was
-chosen to be semi-private (unlikely to collide with user variables) while
-still being usable when needed for inline typecasts.
-
-Beyond `-I`, any variable a function references without `local` will
-resolve up the call stack. The baked wrappers in `boop` set `_Self`
-and `_Class` as plain (non-local) assignments intentionally — they're
-dispatch glue. But this means any unlocalized variable in any method
-silently inherits from its caller, which is a latent collision risk.
-
-The `__ClassName_methodName_varname` convention exists to prevent
-this. A full compliance sweep was completed across all source files:
-`boop`, `Container`, `List`, `Map`, `Math`, `TestSuite`, `Box`, `Cube`,
-`Card`, `Deck`, `Hand`, and `blackjack`. The naming convention is now
-enforced automatically by `test_all` — any non-compliant prefix
-(`__lowercase_`) that isn't a known class or framework name fails the
-build.
-
-During the sweep, a latent bug was found and fixed in `__boop.log`:
-`local -i` on the threshold variable coerced empty string to `0`,
-defeating the `[[ -z ]]` sentinel that triggers fallback to the global
-log level. The fix was removing the `-i` flag.
-
-Source: `boop` dispatch/bake section, all class files.
+## Reserved Variable Names & Inheritance Hygiene ✓ → DEVLOG
 
 ---
 
-## Configurable Baked-Wrapper Typecast Behavior ✓ DONE
-
-Tier 3 (unrelated class leakage) now emits a `_Warn` diagnostic
-instead of silently ignoring. Tier 2 (legitimate typecast) fixed to
-use `__boop.isa` directly, correctly handling upcasts (e.g.,
-`_Class=Box` on a Cube). Users control visibility via `_LogLevel`.
-
-Source: `boop` dispatch/bake section.
+## Configurable Baked-Wrapper Typecast Behavior ✓ → DEVLOG
 
 ---
 
-## Framework-Wide LOGLEVEL System ✓ DONE
-
-Implemented in `boop` as framework infrastructure. Six numeric levels:
-`silent(0)`, `error(1)`, `warn(2)`, `info(3)`, `debug(4)`, `trace(5)`.
-Global default is `warn`. Per-class overrides inherited via the class
-chain with cached resolution (one hash lookup + integer compare on the
-hot path). Fallback log file at `${TMPDIR:-/tmp}/boop_${PID}.log` when
-stderr is unavailable.
-
-Public API: `_Error`, `_Warn`, `_Info`, `_Debug`, `_Trace`, `_Crash`,
-`_LogLevel`. 51 tests in `test_logging_ts`.
+## Framework-Wide LOGLEVEL System ✓ → DEVLOG
 
 ---
 
-## Fatality Threshold ("use strict" for boop) ✓ DONE
-
-Implemented in `boop` logging section. Three new globals:
-`__boop_fatalLevel` (global default, crash=0), `__boop_classFatalLevel`
-(per-class overrides), `__boop_resolvedFatalLevel` (cache). Same
-hot/cold inheritance resolution as the visibility threshold.
-
-Public API: `_FatalLevel` (wrapper for `__boop.setFatalLevel`).
-Default is `crash` (only explicit `_Crash` is fatal). Set to `error`
-and `_Error` auto-crashes after printing. Set to `warn` and both
-`_Warn` and `_Error` auto-crash. Per-class overrides inherited via
-the class chain. 22 tests in `test_logging_ts`.
-
-Source: `boop` logging section.
+## Fatality Threshold ✓ → DEVLOG
 
 ---
 
@@ -791,13 +722,7 @@ Related: "Class File Execution Guard" section above.
 
 ---
 
-## Generalize Card/Deck/Hand Classes ✓ DONE
-
-Card is now a generic base class. PlayingCard extends Card with
-suit/rank/faceUp and 52-card standard deck generation. Deck is a
-generic ordered collection with shuffle/draw. Blackjack-specific
-logic (ace adjustment, bust/blackjack) lives in the blackjack
-script, not in the base classes.
+## Generalize Card/Deck/Hand Classes ✓ → DEVLOG
 
 ---
 
@@ -873,29 +798,62 @@ Source: PLAN.md Phase 3.
 
 ---
 
-## BOOPPATH (Phase 4) — ✓ Subsumed
+## BOOPPATH ✓ → DEVLOG (subsumed by Classpath/Namespace system)
 
-Now part of the ★ priority item: "Namespace, ClassPath, Index, and
-Configuration System." `BOOPPATH` is the multi-root search path,
-with depth-first per-root resolution, `.boopIndex` at each root,
-and version layering across roots. See that section for the full
-design.
+## Version Declaration → See Meta-Components (SemVer component)
 
 ---
 
-## Version Declaration (Phase 4) -- Subsumed
+## I/O Classes (Phase 5)
 
-`__boop_version` exists and the loader checks `__boop_preferred_version`
-from RC files. But nothing enforces version constraints on classes.
-Subsumed by the Meta-Components / Graceful Degradation system below.
+All implementable in pure bash using persistent file descriptors —
+no forks, no subshells, no external tools. Fits the zero-fork philosophy.
 
----
+### File
 
-## I/O Classes (Phase 5 — Deferred)
+Wraps a persistent file descriptor opened with `exec {fd}<>file`.
+Avoids the open/close overhead of re-reading files per call.
 
-Potential I/O class layer. `read` has real limitations for
-high-record-count streams. No use-case pressure yet — revisit when
-something concrete drives the need. @@
+```bash
+into=f File.open "/var/log/app.log" mode=append
+$f.write "event: $data"
+$f.readLine   # reads next line via read -r -u $fd
+$f.close
+```
+
+Interface: `open`, `close`, `read`, `readLine`, `readAll`
+(`mapfile -t arr -u $fd`), `write`, `seek`, `tell`, `eof`.
+
+### Buffer
+
+Accumulates writes in a string variable, flushes on demand or at
+a size threshold. Zero I/O cost for buffered writes; one write
+per flush.
+
+```bash
+into=buf Buffer.new
+$buf.append "line one\n"
+$buf.append "line two\n"
+$buf.flush   # one write to FD/file
+$buf.toString
+```
+
+### Pipe
+
+Bidirectional in-memory channel using bash's `exec {rfd}<> <(...)` or
+a named FIFO. Useful for producer/consumer patterns within a script
+without spawning subprocesses.
+
+Needs design work — bash FD plumbing for in-process pipes is finicky.
+Start with named FIFOs (`mkfifo`) as the backing store; revisit for
+anonymous pipe options.
+
+### Read utilities
+
+`mapfile`/`readarray` for bulk line-array reads. `read -t 0` for
+non-blocking poll. `read -N n` for exact byte counts. Wrap these
+as static methods on a `IO` namespace class so callers don't need
+to remember the flags.
 
 Source: PLAN.md Phase 5.
 
@@ -919,13 +877,7 @@ Source: PLAN.md Running Notes.
 
 ---
 
-## Housekeeping ✓ DONE
-
-- Stale log files removed (`math_out.log`, `pi_growth.log`,
-  `tc_debug.log`, `bash.exe.stackdump`, `REFACTOR_STATUS.md`)
-- `test_matrix` verified — runs correctly, not a TestSuite file
-  (benchmark only, intentionally excluded from test count)
-- `.gitignore` already covers `*.log` and `*.stackdump`
+## Housekeeping ✓ → DEVLOG
 
 ---
 
@@ -975,34 +927,143 @@ A user debugging a resolution issue should be able to set
 
 Source: `boop`, all class files.
 
-### Log-Level Bypass via Aliases (Performance)
+### Log-Level Bypass via Function Replacement (Performance)
 
 When `_LogLevel` is set high (e.g. `ERROR`), every `_Warn`, `_Info`,
-`_Debug`, and `_Trace` call still pays the cost of a function
-invocation that immediately returns. At high call volume this adds up.
+`_Debug`, and `_Trace` call still pays the cost of a function invocation
+that immediately returns. At high call volume this adds up.
 
-Idea: after a `_LogLevel` change, alias the silenced functions to
-`:` (the shell no-op builtin):
+**Mechanism: function replacement, not aliases.** Aliases don't expand
+inside function bodies in non-interactive shells. The correct approach
+is to overwrite the silenced functions with no-op bodies at `_LogLevel`
+change time:
 
 ```bash
-# After _LogLevel=error:
-for fn in _Warn _Info _Debug _Trace; do alias $fn=:; done
-# After _LogLevel=debug:
-for fn in _Info _Debug _Trace; do alias $fn=:; done
-# etc.
+# Inside __boop.setLogLevel, after updating __boop_logLevel:
+_Trace() { :; }
+(( __boop_logLevel >= __boop_LOG_DEBUG )) || _Debug() { :; }
+(( __boop_logLevel >= __boop_LOG_INFO  )) || _Info()  { :; }
+(( __boop_logLevel >= __boop_LOG_WARN  )) || _Warn()  { :; }
+# Restore real implementations for active levels (re-source or eval)
+```
+
+`:` is a bash builtin — the cheapest possible no-op. Plain string args
+still get evaluated before the call (bash evaluates args before dispatch),
+but that's only significant if the message involves a subshell — which
+it shouldn't, per our no-subshell policy.
+
+For expensive message construction in hot paths, use an inline guard
+at the call site to skip arg evaluation entirely:
+
+```bash
+(( __boop_logLevel >= __boop_LOG_DEBUG )) && _Debug "hot-path detail: $val"
 ```
 
 Caveats:
-- Aliases don't expand inside functions unless `shopt -s expand_aliases`
-  is set (it's off by default in non-interactive shells). May need
-  `shopt -s expand_aliases` in `boop` preamble, or use a different
-  mechanism (function replacement: `_Warn() { :; }`).
-- Dynamic function replacement via `eval` is cleaner and works
-  everywhere: generate a `_Warn() { :; }` body and `eval` it.
-- Must be reversed (or regenerated) when `_LogLevel` changes again.
-- Benchmark before committing — the overhead of re-defining functions
-  on every level change may outweigh the per-call savings unless log
-  levels are stable for long-running scripts.
+- Must restore real implementations when `_LogLevel` rises again
+- Benchmark: re-defining N functions per level change should be
+  negligible vs the per-call savings on stable long-running scripts
+- Per-class log levels complicate this — function replacement is global,
+  but per-class checks happen inside `__boop.log`. Consider whether
+  the bypass applies only when the GLOBAL level silences a tier (per-class
+  overrides can still route through the real function).
+
+---
+
+## Per-Class Work
+
+---
+
+### boop (root class)
+
+- **`setOn` coverage**: method exists, test coverage unclear
+- **`boop_install` bootstrap script**: puts boop on PATH, generates
+  initial `.boopIndex`, creates starter `~/.booprc`. See Classpath
+  section for full spec.
+
+---
+
+### Math
+
+Math uses chunked arbitrary-precision arithmetic entirely in bash —
+no forks, no subshells, no external tools. 9 digits per chunk, base
+10^9, fits in int64. `printf -v` for all string formatting.
+All returns via nameref. See `Math/Math` header for algorithm notes.
+
+- **Input validation on public API**: `Math.add`, `Math.subtract`,
+  etc. accept garbage strings without complaint — error surfaces deep
+  in `__Math.toInt64` as a cryptic `10#` bash arithmetic error.
+  Validation belongs in `__Math.resolve` (single chokepoint). After
+  parsing, verify digits are all-digit; crash with helpful message.
+
+- **Variadic public methods**: `Math.add 1 2 3 4` should sum all
+  args. `Math.add 5` (single arg) should return identity. Same for
+  `mul`. Currently requires exactly two operands.
+
+- **Output format modes**: scientific notation (`3.14e10`), engineering
+  notation, fixed decimal places. Currently outputs raw digit string
+  with implicit decimal position. Needs a `Math.format` or `format=`
+  typecast option on results.
+
+- **`Math::Trig` submodule**: `sin`, `cos`, `tan`, `asin`, `acos`,
+  `atan`, `atan2`. Already have `arctan` series internally (used for
+  pi). Expose as a loadable submodule. No forks — same digit-math
+  approach as `pi`.
+
+- **`Math::Stats` submodule**: `mean`, `median`, `stddev`, `variance`,
+  `min`, `max`, `sum`. Operates on List or array of Math objects.
+
+---
+
+### Collection (Container, List, Map, Iterator)
+
+- **Iterator stability after mutation**: behavior when the underlying
+  container is modified during iteration is undefined. Document the
+  contract or enforce it (crash on structural modification).
+
+- **Container test coverage audit**: 23 methods — valid usage,
+  expected failures, garbage inputs. See Test Coverage Audit section.
+
+- **List**: 15 methods — coverage audit. `insertAt`/`removeAt`
+  needed for LinkedList compatibility.
+
+- **Map**: 12 methods — coverage audit. Insertion-order guarantee
+  should be documented explicitly (currently relies on bash 4.0+
+  associative array ordering, which is NOT insertion-ordered —
+  verify this is handled correctly).
+
+---
+
+### String (Phase 3)
+
+Minimum useful interface, all in pure bash parameter expansion —
+no forks, no subshells:
+
+`trim`, `split`, `join`, `contains`, `startsWith`, `endsWith`,
+`replace`, `replaceAll`, `length`, `toUpper`, `toLower`, `substring`,
+`indexOf`, `padLeft`, `padRight`.
+
+Heavy string work is already happening natively everywhere. A class
+wrapper gives callers a consistent interface and makes complex string
+pipelines readable.
+
+---
+
+### Games (Card, PlayingCard, Deck, Blackjack)
+
+- **`test_blackjack` coverage**: test file exists but coverage depth
+  unknown. Audit against all public methods.
+- **Blackjack**: lives in `Games/Blackjack/` namespace. Hand scoring,
+  soft/hard ace logic, split/double-down, dealer AI — currently
+  all in the script. Consider whether any logic belongs in
+  `BlackjackHand` class.
+
+---
+
+### Geometry (Box, Cube)
+
+- **Box/Cube**: 91 tests passing, coverage looks solid. No known
+  gaps. Revisit when new geometry classes are added.
 
 ---
 
@@ -1025,19 +1086,6 @@ creative adversarial input from a human who enjoys breaking things.
 
 ---
 
-## Input Validation on Math Public API
-
-`Math.add`, `Math.subtract`, etc. accept garbage strings without
-complaint — the error surfaces deep in `__Math.toInt64` as a cryptic
-`10#` bash arithmetic error. The validation belongs in
-`__Math.resolve`, which is the single chokepoint for all numeric
-input. After parsing, check that digits are actually all digits;
-crash with a helpful message if not.
-
-Also consider: variadic behavior (`Math.add 1 2 3 4` sums all),
-single-argument identity (`Math.add 5` returns 5).
-
----
 
 ## Return System: Default to stdout + Newline Control ✓
 
