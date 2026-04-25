@@ -19,7 +19,7 @@ trap 'rm -rf "$__ct_tmp"' EXIT
 __ct_err=$(mktemp)
 
 # Absolute path to boop for isolated subshell tests
-__ct_boop_path="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/boop"
+__ct_boop_path="${__boop_root}/boop"
 
 # Helper: clear stderr capture
 _ce() { : > "$__ct_err"; }
