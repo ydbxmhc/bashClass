@@ -359,6 +359,7 @@ __boop.setLogLevel() {
     # are cheap and only happen once after a level change.
     __boop_resolvedLogLevel=()
   fi
+  __boop.__applyLogBypass
 }
 
 # Set fatality level. With one argument, sets the global default.
@@ -395,12 +396,63 @@ __boop.setFatalLevel() {
 # ---------------------------------------------------------------------------
 # Public convenience wrappers — the user-facing API
 # ---------------------------------------------------------------------------
+#
+# _Trace/_Debug/_Info/_Warn/_Error are set by __boop.__applyLogBypass (below)
+# rather than defined statically. The bypass replaces silenced tiers with ':'
+# (bash no-op builtin) to eliminate function-call overhead for log levels that
+# will never produce output. Real implementations are restored when the level
+# rises. Initial state is established by calling __boop.__applyLogBypass once
+# after the function is defined.
 
-_Trace() { __boop.log $__boop_LOG_TRACE "$@"; }
-_Debug() { __boop.log $__boop_LOG_DEBUG "$@"; }
-_Info()  { __boop.log $__boop_LOG_INFO  "$@"; }
-_Warn()  { __boop.log $__boop_LOG_WARN  "$@"; }
-_Error() { __boop.log $__boop_LOG_ERROR "$@"; }
+# Replace each log-tier function with ':' (no-op) if it is fully silenced by
+# the effective log level, or restore the real implementation if it is active.
+#
+# Effective level = max(global __boop_logLevel, all per-class overrides).
+# Using the max ensures per-class overrides that RAISE verbosity above the
+# global keep their tier's function alive. Per-class overrides that LOWER
+# verbosity are still handled inside __boop.log's per-class threshold check.
+#
+# Trade-off: if any class has a high-verbosity override the corresponding
+# global function stays real for everyone. That is the correct behaviour --
+# silencing it globally would suppress that class's legitimate output.
+__boop.__applyLogBypass() {
+  local -i __boop_applyLogBypass_max=$__boop_logLevel
+  local    __boop_applyLogBypass_cls
+  for __boop_applyLogBypass_cls in "${!__boop_classLogLevel[@]}"; do
+    (( __boop_classLogLevel[$__boop_applyLogBypass_cls] > __boop_applyLogBypass_max )) &&
+      __boop_applyLogBypass_max=${__boop_classLogLevel[$__boop_applyLogBypass_cls]}
+  done
+
+  if (( __boop_applyLogBypass_max < __boop_LOG_ERROR )); then
+    _Error() { :; }
+  else
+    _Error() { __boop.log $__boop_LOG_ERROR "$@"; }
+  fi
+  if (( __boop_applyLogBypass_max < __boop_LOG_WARN )); then
+    _Warn() { :; }
+  else
+    _Warn() { __boop.log $__boop_LOG_WARN "$@"; }
+  fi
+  if (( __boop_applyLogBypass_max < __boop_LOG_INFO )); then
+    _Info() { :; }
+  else
+    _Info() { __boop.log $__boop_LOG_INFO "$@"; }
+  fi
+  if (( __boop_applyLogBypass_max < __boop_LOG_DEBUG )); then
+    _Debug() { :; }
+  else
+    _Debug() { __boop.log $__boop_LOG_DEBUG "$@"; }
+  fi
+  if (( __boop_applyLogBypass_max < __boop_LOG_TRACE )); then
+    _Trace() { :; }
+  else
+    _Trace() { __boop.log $__boop_LOG_TRACE "$@"; }
+  fi
+}
+
+# Establish initial state from the default log level (warn=2).
+# At warn: _Error and _Warn are active; _Info, _Debug, _Trace are no-ops.
+__boop.__applyLogBypass
 
 # _LogLevel: convenience wrapper for __boop.setLogLevel
 _LogLevel() { __boop.setLogLevel "$@"; }
