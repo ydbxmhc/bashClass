@@ -44,9 +44,9 @@ __timer_start
 
 printf "\nOriginal:\n"
 for (( r=0; r < N; r++ )); do
-  into=row $matrix.get "$r"
+  into=row $matrix.getAt "$r"
   for (( c=0; c < N; c++ )); do
-    into=val $row.get "$c"
+    into=val $row.getAt "$c"
     printf "%4s" "$val"
   done
   printf "\n"
@@ -64,8 +64,8 @@ into=transposed List
 for (( c=0; c < N; c++ )); do
   into=new_row List
   for (( r=0; r < N; r++ )); do
-    into=src_row $matrix.get "$r"
-    into=val $src_row.get "$c"
+    into=src_row $matrix.getAt "$r"
+    into=val $src_row.getAt "$c"
     $new_row.push "$val"
   done
   $transposed.push "$new_row"
@@ -81,9 +81,9 @@ __timer_start
 
 printf "\nTransposed:\n"
 for (( r=0; r < N; r++ )); do
-  into=row $transposed.get "$r"
+  into=row $transposed.getAt "$r"
   for (( c=0; c < N; c++ )); do
-    into=val $row.get "$c"
+    into=val $row.getAt "$c"
     printf "%4s" "$val"
   done
   printf "\n"
@@ -99,10 +99,10 @@ __timer_start
 
 into=flipped List
 for (( r=0; r < N; r++ )); do
-  into=src_row $matrix.get "$r"
+  into=src_row $matrix.getAt "$r"
   into=new_row List
   for (( c=N-1; c >= 0; c-- )); do
-    into=val $src_row.get "$c"
+    into=val $src_row.getAt "$c"
     $new_row.push "$val"
   done
   $flipped.push "$new_row"
@@ -118,9 +118,9 @@ __timer_start
 
 printf "\nH-Flipped:\n"
 for (( r=0; r < N; r++ )); do
-  into=row $flipped.get "$r"
+  into=row $flipped.getAt "$r"
   for (( c=0; c < N; c++ )); do
-    into=val $row.get "$c"
+    into=val $row.getAt "$c"
     printf "%4s" "$val"
   done
   printf "\n"

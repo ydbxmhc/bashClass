@@ -66,11 +66,11 @@ List.new() {
 #
 # The nameref __List_get_arr avoids a subshell by pointing directly
 # at the companion array. Combined with ${into:-} passthrough, a
-# get-into-local is zero-copy: into=val $list.get 0
+# getAt-into-local is zero-copy: into=val $list.getAt 0
 #
-# Usage: into=val $list.get 0      # first element
-#        into=val $list.get -1     # last element
-#        $list.get 99              # empty string (no crash)
+# Usage: into=val $list.getAt 0      # first element
+#        into=val $list.getAt -1     # last element
+#        $list.getAt 99              # empty string (no crash)
 List.getAt() {
   local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
   local -i __List_getAt_idx="$1"
