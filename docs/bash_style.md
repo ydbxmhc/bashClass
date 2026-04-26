@@ -546,6 +546,39 @@ data="$(<input.txt)"
 data="$(cat input.txt)"
 ```
 
+### Don't Round-Trip Through Disk
+
+If you have a string in memory and need to feed it to a function that
+reads a file, **don't write it to a tmpfile to call that function**.
+Refactor the function: extract the read-loop into a helper that takes
+stdin, then have the file variant pipe in `< "$file"` and the string
+variant pipe in `<<< "$str"`.
+
+```bash
+# Bad — writes string to disk just to reuse a file-reading function
+fromString() {
+  local tmp; tmp=$(mktemp)
+  printf '%s\n' "$1" > "$tmp"
+  loadFromFile "$tmp"      # reads the file we just wrote
+  rm -f "$tmp"
+}
+
+# Good — extract the parser, share it between both forms
+__parseLines() {
+  local line
+  while IFS= read -r line; do
+    # ...parse $line into globals/state...
+  done
+}
+loadFromFile()  { __parseLines < "$1"; }
+fromString()    { __parseLines <<< "$1"; }
+```
+
+The file-routing version pays for `mktemp`, `printf >`, `< "$file"`,
+and `rm` — plus a tmpfile leak window if the parse crashes mid-flight
+(no `trap` cleanup). The refactored version is shorter, faster, and
+crash-safe. See STANDARDS.md "Primitives Inward, Wrappers Outward".
+
 ---
 
 ## Builtins Over External Commands

@@ -372,6 +372,55 @@ __boop.registerClass ClassName
 
 ---
 
+## API Shape
+
+### Primitives Inward, Wrappers Outward
+
+When a class exposes the same operation over multiple input forms (a
+string, a file path, a stream), the **reduced form is the primitive**.
+Other entry points are thin wrappers that produce the reduced form and
+delegate.
+
+For text parsing the reduced form is "lines on stdin." `loadFile` reads
+the file and pipes into the parser; `fromString` feeds the string in
+via `<<<`; `fromStdin` is the parser itself. The parsing logic exists
+exactly once.
+
+The inverse — making the file variant the primitive and routing
+in-memory data through `mktemp`, `printf >`, and `rm` to reuse it —
+is forbidden. It pays for a subshell, two syscalls of disk I/O, and a
+tmpfile leak window on `_Crash`, all to skip a one-function refactor.
+A `while read; done < "$file"` loop and a `while read; done <<< "$str"`
+loop are the *same loop* — extract it.
+
+The same shape applies elsewhere:
+
+- **Serializers**: the in-memory form (`toString`) is the primitive;
+  `save <file>` writes its output. Never `save` to a tmpfile then
+  `cat` it back to stdout.
+- **Iteration**: a callback/visitor primitive is the core; `forEach`,
+  `map`, `filter` wrap it. Never reimplement the walk.
+- **Constructors**: `new` (empty) is the primitive; `fromString`,
+  `fromFile`, `fromArray` build empty then populate via public methods.
+
+### Cost of an I/O Round-Trip
+
+For reference, when judging whether to "just route through the existing
+function":
+
+| Operation              | Approximate cost      |
+|------------------------|-----------------------|
+| `mktemp`               | fork + syscalls       |
+| `printf '%s' >file`    | open/write/close      |
+| `done < file` (re-read)| open/read/close       |
+| `rm -f file`           | fork + unlink         |
+| Subshell `$(...)`      | fork + pipe + wait    |
+
+Compare to extracting the loop body into a private helper: zero. The
+refactor is cheaper than one invocation of the wrong design.
+
+---
+
 ## Test Files
 
 All tests use the TestSuite class. Test files should be thorough,
