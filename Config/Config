@@ -69,6 +69,33 @@ Config.load() {
   boop.pass "$__Config_load_self" ${into:-}
 }
 
+# Parse INI-format lines from stdin into an existing Config object.
+# Reduced-form primitive shared by loadINI (file) and fromString (string).
+# Usage: __Config.parseINI <config_id> < input
+__Config.parseINI() {
+  local __Config_pi_self="$1"
+  local -n __Config_pi_data="__boop_config_${__Config_pi_self}"
+  local -n __Config_pi_keys_arr="__boop_config_keys_${__Config_pi_self}"
+  local __Config_pi_line __Config_pi_section="" __Config_pi_key __Config_pi_val
+
+  while IFS= read -r __Config_pi_line; do
+    [[ -z "$__Config_pi_line" || "$__Config_pi_line" == '#'* ]] && continue
+    if [[ "$__Config_pi_line" =~ ^\[([^]]+)\]$ ]]; then
+      __Config_pi_section="${BASH_REMATCH[1]}"
+      continue
+    fi
+    [[ "$__Config_pi_line" != *'='* ]] && continue
+    __Config_pi_key="${__Config_pi_line%%=*}"
+    __Config_pi_val="${__Config_pi_line#*=}"
+    [[ -z "$__Config_pi_key" ]] && continue
+    [[ -n "$__Config_pi_section" ]] && __Config_pi_key="${__Config_pi_section}.${__Config_pi_key}"
+    if [[ -z "${__Config_pi_data[$__Config_pi_key]+set}" ]]; then
+      __Config_pi_keys_arr+=("$__Config_pi_key")
+    fi
+    __Config_pi_data[$__Config_pi_key]="$__Config_pi_val"
+  done
+}
+
 # Load an INI-format file.
 # [section] headers group key=value pairs. Keys stored as "section.key".
 # Keys before the first header are top-level (stored as-is, no prefix).
@@ -84,26 +111,7 @@ Config.loadINI() {
   declare -gA "__boop_config_${__Config_ini_self}"
   declare -ga "__boop_config_keys_${__Config_ini_self}"
 
-  local -n __Config_ini_data="__boop_config_${__Config_ini_self}"
-  local -n __Config_ini_keys_arr="__boop_config_keys_${__Config_ini_self}"
-  local __Config_ini_line __Config_ini_section="" __Config_ini_key __Config_ini_val
-
-  while IFS= read -r __Config_ini_line; do
-    [[ -z "$__Config_ini_line" || "$__Config_ini_line" == '#'* ]] && continue
-    if [[ "$__Config_ini_line" =~ ^\[([^]]+)\]$ ]]; then
-      __Config_ini_section="${BASH_REMATCH[1]}"
-      continue
-    fi
-    [[ "$__Config_ini_line" != *'='* ]] && continue
-    __Config_ini_key="${__Config_ini_line%%=*}"
-    __Config_ini_val="${__Config_ini_line#*=}"
-    [[ -z "$__Config_ini_key" ]] && continue
-    [[ -n "$__Config_ini_section" ]] && __Config_ini_key="${__Config_ini_section}.${__Config_ini_key}"
-    if [[ -z "${__Config_ini_data[$__Config_ini_key]+set}" ]]; then
-      __Config_ini_keys_arr+=("$__Config_ini_key")
-    fi
-    __Config_ini_data[$__Config_ini_key]="$__Config_ini_val"
-  done < "$__Config_ini_file"
+  __Config.parseINI "$__Config_ini_self" < "$__Config_ini_file"
 
   boop.pass "$__Config_ini_self" ${into:-}
 }
@@ -285,13 +293,13 @@ Config.toINI() {
 # Usage: into=cfg Config.fromString "$schema_string"
 Config.fromString() {
   local _Class="${_Class:-Config}"
-  local __Config_fromString_str="${1:-}"
-  local __Config_fromString_tmp __Config_fromString_self
-  __Config_fromString_tmp=$(mktemp) || _Crash "Config.fromString: mktemp failed"
-  printf '%s\n' "$__Config_fromString_str" > "$__Config_fromString_tmp"
-  into=__Config_fromString_self Config.loadINI "$__Config_fromString_tmp"
-  rm -f "$__Config_fromString_tmp"
-  boop.pass "$__Config_fromString_self" ${into:-}
+  local __Config_fs_str="${1:-}"
+  local __Config_fs_self
+  into=__Config_fs_self __boop.new format=ini
+  declare -gA "__boop_config_${__Config_fs_self}"
+  declare -ga "__boop_config_keys_${__Config_fs_self}"
+  __Config.parseINI "$__Config_fs_self" <<< "$__Config_fs_str"
+  boop.pass "$__Config_fs_self" ${into:-}
 }
 
 # ============================================================================
