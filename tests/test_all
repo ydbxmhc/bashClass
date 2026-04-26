@@ -29,7 +29,7 @@ printf '\ntest_smoke...\n'
 if [[ "$__ta_mode" == all || "$__ta_mode" == unit ]]; then
   for f in test_testsuite_ts test_box_cube_ts test_containers_ts \
             test_logging_ts test_math_ts test_classpath_ts test_classpath_pbt \
-            test_config_ts; do
+            test_config_ts test_args_ts; do
     printf '\n%s...\n' "$f"
     "$__ta_dir/unit/$f" || rc=1
   done
