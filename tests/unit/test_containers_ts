@@ -580,4 +580,49 @@ into=v2 $exiter.next;  $t.assert_eq "explicit next 1 = a" "$v2" "a"
 into=v3 $dlist2.next;  $t.assert_eq "implicit next 2 = b" "$v3" "b"
 into=v4 $exiter.next;  $t.assert_eq "explicit next 2 = b" "$v4" "b"
 
+# ============================================================================
+# _Delimiter: custom element separator
+# ============================================================================
+
+$t.section "_Delimiter: List.toArray"
+
+into=dl List
+$dl.push "alpha" "beta" "gamma"
+
+into=v $dl.toArray
+$t.assert_eq "default delimiter is newline" "$v" "$(printf 'alpha\nbeta\ngamma')"
+
+_Delimiter=$'\t' into=v $dl.toArray
+$t.assert_eq "tab delimiter"   "$v" "$(printf 'alpha\tbeta\tgamma')"
+
+_Delimiter=$'|' into=v $dl.toArray
+$t.assert_eq "pipe delimiter"  "$v" "alpha|beta|gamma"
+
+_Delimiter=$'\r\n' into=v $dl.toArray
+$t.assert_eq "CRLF delimiter"  "$v" "$(printf 'alpha\r\nbeta\r\ngamma')"
+
+$t.section "_Delimiter: List.slice"
+
+into=v _Delimiter=$'|' $dl.slice 0 2
+$t.assert_eq "slice with pipe delimiter" "$v" "alpha|beta"
+
+$t.section "_Delimiter: Map.keys / values / toArray"
+
+into=dm Map
+$dm.setAt host localhost
+$dm.setAt port 8080
+$dm.setAt user admin
+
+_Delimiter=$'|' into=v $dm.keys
+$t.assert_eq "Map.keys pipe"     "$v" "host|port|user"
+
+_Delimiter=$'|' into=v $dm.values
+$t.assert_eq "Map.values pipe"   "$v" "localhost|8080|admin"
+
+_Delimiter=$'|' into=v $dm.toArray
+$t.assert_eq "Map.toArray pipe"  "$v" "host=localhost|port=8080|user=admin"
+
+_Delimiter=$'\r\n' into=v $dm.keys
+$t.assert_eq "Map.keys CRLF"     "$v" "$(printf 'host\r\nport\r\nuser')"
+
 $t.summary

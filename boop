@@ -106,6 +106,19 @@ declare -g _OutMode="${_OutMode:-auto}"
 #   _EOL=""      # raw — no trailing newline (pipe-friendly)
 declare -g _EOL="${_EOL:-$'\n'}"
 
+# _Delimiter — element separator for multi-value return strings.
+#
+# Used by Map.keys, Map.values, Map.toArray, List.toArray, List.slice,
+# Config.keys, Config.sections, and similar methods that join multiple
+# values into a single string. Defaults to _EOL when not set, so the
+# common case (newline-separated) requires no configuration.
+#
+# Set it to override the separator without changing _EOL:
+#   _Delimiter=$'\t'    # tab-separated values
+#   _Delimiter=$'\r\n'  # CRLF (Windows-style)
+#   _Delimiter='|'      # pipe-separated
+declare -g _Delimiter="${_Delimiter:-}"
+
 # TODO: See TODO.md "Configurable Baked-Wrapper Typecast Behavior"
 # TODO: See TODO.md "Argument-Parsing Object"
 
@@ -474,21 +487,30 @@ _FatalLevel() { __boop.setFatalLevel "$@"; }
 # used by into=varname delegation chains.
 #
 # When no target is provided, the global mode governs:
-#   auto       → global in main shell, stdout in subshell (detected via BASHPID)
+#   auto       → stdout (default; same as stdout mode)
 #   global     → writes to _Out
 #   stdout     → printf to stdout (natural for $() capture)
-#   nameref    → crashes (target is required — this is intentional)
+#   nameref    → crashes (target is required -- this is intentional)
 #   filesystem → writes to a temp file keyed by caller function name + PID
 #
+# Subshell footgun: if into=varname is used inside a $() subshell, the
+# nameref write succeeds within the subshell scope but the value is lost
+# when the subshell exits. A _Debug message is emitted when this is
+# detected (BASHPID != __boop_rootPID). Note: this cannot distinguish a
+# legitimate "use the value inside this same subshell" pattern from a
+# genuine mistake -- the debug message is advisory, not an error.
+#
 # Usage:
-#   boop.pass "$value"              # uses global mode (auto default)
-#   boop.pass "$value" target_var   # nameref — always direct write
+#   boop.pass "$value"              # uses current mode (auto = stdout)
+#   boop.pass "$value" target_var   # nameref -- always direct write
 boop.pass() {
   local __boop_pass_val="${1:-}" __boop_pass_target="${2:-}"
   local __boop_pass_mode="${_OutMode:-auto}"
 
   # If a nameref target is explicitly provided, always use it.
   if [[ -n "${__boop_pass_target:-}" ]]; then
+    [[ $BASHPID != $__boop_rootPID ]] &&
+      _Debug "boop.pass: into=$__boop_pass_target used in subshell -- value will not reach parent scope"
     local -n __boop_pass_ref="$__boop_pass_target"
     __boop_pass_ref="${__boop_pass_val:-}"
     return
@@ -555,7 +577,15 @@ _OutMode() {
 #
 # Uses ${1-$_EOL} (no colon) so empty string passes through as a
 # valid value, while no argument falls back to the current setting.
-_EOL() { boop.pass "${1-$_EOL}" ${into:-_EOL}; } 
+_EOL() { boop.pass "${1-$_EOL}" ${into:-_EOL}; }
+
+# _Delimiter — get or set the element separator for multi-value returns.
+#
+# Works as both a variable and a function:
+#   _Delimiter=$'\t'    # set directly
+#   _Delimiter $'\t'    # set via function (also prints new value)
+#   into=d _Delimiter   # read without side effects
+_Delimiter() { boop.pass "${1-${_Delimiter:-$_EOL}}" ${into:-_Delimiter}; }
 
 # ============================================================================
 # VALUE ENCODING/DECODING
@@ -980,6 +1010,86 @@ __boop.toString() {
   __boop_toString_output="$__boop_toString_output}"
 
   boop.pass "$__boop_toString_output" ${into:-}
+}
+
+# Pretty-print an object's full state for debugging.
+#
+# Shows: class + full inheritance chain, all user-defined properties
+# with their decoded values aligned in columns, and the flat method
+# list inherited from the entire chain.
+#
+# Output always goes to stdout -- this is a debug display function,
+# not a value producer. into= is intentionally not supported.
+#
+# Usage:
+#   $obj.inspect             # dump to stdout
+#   $obj.inspect | less      # page through a big object
+#
+# Example output:
+#   [Box _1a2b3c]
+#     class:   Box extends boop
+#     height = 7
+#     length = 5
+#     width  = 3
+#     methods: new, volume, area, top, side, front, get, set, isa, toString
+__boop.inspect() {
+  local -I _Self; local _Class="${_Class:-boop}"
+
+  : "build inheritance chain label"
+  local __boop_inspect_chain="$_Class"
+  local __boop_inspect_walk
+  __boop.parse "$_Class" "parent" __boop_inspect_walk
+  while [[ -n "$__boop_inspect_walk" ]]; do
+    __boop_inspect_chain="$__boop_inspect_chain extends $__boop_inspect_walk"
+    __boop.parse "$__boop_inspect_walk" "parent" __boop_inspect_walk
+  done
+
+  : "collect user-defined properties from object descriptor"
+  local __boop_inspect_desc="${__boop_registry[$_Self]:-}"
+  local __boop_inspect_field __boop_inspect_raw __boop_inspect_decoded
+  local -a __boop_inspect_keys=() __boop_inspect_vals=()
+  local -i __boop_inspect_maxlen=0
+  while [[ "$__boop_inspect_desc" =~ \|([^=]+)=([^|]*) ]]; do
+    __boop_inspect_field="${BASH_REMATCH[1]}"
+    __boop_inspect_raw="${BASH_REMATCH[2]}"
+    __boop_inspect_desc="${__boop_inspect_desc#*"${BASH_REMATCH[0]}"}"
+    case "$__boop_inspect_field" in
+      class|parent|methods|properties) continue ;;
+    esac
+    __boop.decode "$__boop_inspect_raw" __boop_inspect_decoded
+    __boop_inspect_keys+=("$__boop_inspect_field")
+    __boop_inspect_vals+=("$__boop_inspect_decoded")
+    (( ${#__boop_inspect_field} > __boop_inspect_maxlen )) && __boop_inspect_maxlen=${#__boop_inspect_field} || true
+  done
+
+  : "collect all callable methods walking the full inheritance chain; deduplicate"
+  local __boop_inspect_methods="" __boop_inspect_m __boop_inspect_sep=""
+  local -A __boop_inspect_seen=()
+  __boop_inspect_walk="$_Class"
+  while [[ -n "$__boop_inspect_walk" ]]; do
+    __boop.parse "$__boop_inspect_walk" "methods" __boop_inspect_m
+    local __boop_inspect_name
+    IFS=',' read -ra __boop_inspect_mlist <<< "$__boop_inspect_m"
+    for __boop_inspect_name in "${__boop_inspect_mlist[@]}"; do
+      [[ -z "$__boop_inspect_name" ]] && continue
+      [[ -n "${__boop_inspect_seen[$__boop_inspect_name]+set}" ]] && continue
+      __boop_inspect_seen[$__boop_inspect_name]=1
+      __boop_inspect_methods="${__boop_inspect_methods}${__boop_inspect_sep}${__boop_inspect_name}"
+      __boop_inspect_sep=", "
+    done
+    __boop.parse "$__boop_inspect_walk" "parent" __boop_inspect_walk
+  done
+
+  : "print"
+  printf "[%s %s]\n" "$_Class" "$_Self"
+  printf "  class:   %s\n" "$__boop_inspect_chain"
+  local -i __boop_inspect_i
+  for (( __boop_inspect_i=0; __boop_inspect_i < ${#__boop_inspect_keys[@]}; __boop_inspect_i++ )); do
+    printf "  %-${__boop_inspect_maxlen}s = %s\n" \
+      "${__boop_inspect_keys[$__boop_inspect_i]}" "${__boop_inspect_vals[$__boop_inspect_i]}"
+  done
+  (( ${#__boop_inspect_keys[@]} == 0 )) && printf "  (no properties)\n"
+  printf "  methods: %s\n" "$__boop_inspect_methods"
 }
 
 # Object constructor. This is the beating heart of object creation.
@@ -1717,6 +1827,10 @@ boop.classPath() {
 # The loading flag is unset after each successful source. If the source fails
 # (exit code != 0), we crash — a half-loaded class is worse than no class.
 __boop.import() {
+  # Non-fatal loader. Returns 0 on success, 1 on failure (not found or
+  # source error). Callers that need fatal behavior use _Require, which
+  # calls _Load, which calls this. The import args block (`. boop Class`)
+  # uses _Require so user-facing class-file sourcing remains fatal.
   local __boop_import_class
   for __boop_import_class in "$@"; do
     _Debug "import: '$__boop_import_class'"
@@ -1739,8 +1853,15 @@ __boop.import() {
     local __boop_import_path=""
     if __boop.classResolve "$__boop_import_class" __boop_import_path; then
       _Debug "import: '$__boop_import_class' resolved to '$__boop_import_path'"
-      . "$__boop_import_path" ||
-        _Crash "Failed to load class '$__boop_import_class' from $__boop_import_path"
+      # Clear $@ before sourcing so class files that call `. boop` with no
+      # explicit args don't inherit this function's positional parameters
+      # and accidentally trigger a second recursive import of the full list.
+      set --
+      if ! . "$__boop_import_path"; then
+        unset '__boop_loading[$__boop_import_class]'
+        _Warn "import: failed to source '$__boop_import_class' from $__boop_import_path"
+        return 1
+      fi
       unset '__boop_loading[$__boop_import_class]'
       _Trace "import: '$__boop_import_class' loaded successfully"
       continue
@@ -1748,14 +1869,62 @@ __boop.import() {
 
     # Raw source fallback -- let bash try PATH directly
     _Debug "import: '$__boop_import_class' not resolved, trying raw source fallback"
-    . "$__boop_import_class" && {
+    set --
+    if . "$__boop_import_class" 2>/dev/null; then
       unset '__boop_loading[$__boop_import_class]'
       _Info "import: '$__boop_import_class' loaded via raw source fallback"
       continue
-    }
+    fi
 
-    # Complete resolution failure
-    _Crash "Class '$__boop_import_class' not found (checked classPath, index, roots)"
+    # Complete resolution failure — non-fatal, return 1
+    unset '__boop_loading[$__boop_import_class]'
+    _Debug "import: '$__boop_import_class' not found (checked classPath, index, roots)"
+    return 1
+  done
+}
+
+# ============================================================================
+# CLASS LOADING — PUBLIC API
+# ============================================================================
+
+# _Load — non-fatal class loader.
+#
+# Loads each named class if not already in the registry. Returns 0 if all
+# classes are available (already loaded or successfully loaded now). Returns
+# 1 if any class cannot be found or fails to source. Never crashes.
+#
+# Use for optional or graceful-degradation dependencies:
+#   _Load Math || printf "precision math unavailable, using native arithmetic\n"
+#   if _Load Args; then _Load ArgParser; fi   # load ArgParser only if Args present
+#   _Load Math Config                          # 0 only if both succeed
+#
+# Tier-2 inherited variables: none.
+_Load() {
+  local __Load_class __Load_rc=0
+  for __Load_class in "$@"; do
+    [[ -n "${__boop_registry[$__Load_class]+set}" ]] && continue
+    __boop.import "$__Load_class" || __Load_rc=1
+  done
+  return $__Load_rc
+}
+
+# _Require — fatal class loader. Hard dependency declaration.
+#
+# Loads each named class or crashes if any cannot be loaded. Use when a
+# class or feature is non-negotiable: without it, the script cannot run.
+#
+# The `. boop ClassName` entry point uses _Require internally, so class
+# files sourcing their own dependencies via `. boop X` remain fatal.
+#
+#   _Require Config           # crash if Config unavailable
+#   _Require Math Config List # crash if any are unavailable
+#
+# Tier-2 inherited variables: _Err (exit code on crash, default 1).
+_Require() {
+  local __Require_class
+  for __Require_class in "$@"; do
+    _Load "$__Require_class" ||
+      _Crash "_Require: '$__Require_class' could not be loaded"
   done
 }
 
@@ -2013,7 +2182,7 @@ _Bless() {
 # from it (parent chain terminates at boop's empty parent field).
 # The standard methods registered here (get, set, isa, toString, new, super)
 # are available to all objects unless overridden by a subclass.
-__boop_registry["boop"]="|class=boop|parent=|methods=new,get,set,isa,toString,super|properties="
+__boop_registry["boop"]="|class=boop|parent=|methods=new,get,set,isa,toString,inspect,super|properties="
 
 #boopClass boop '
 #  custom:new=__boop.new,get=__boop.get,set=__boop.set,isa=__boop.isa,toString=__boop.toString
@@ -2023,6 +2192,7 @@ __boop.registerMethod boop get __boop.get
 __boop.registerMethod boop set __boop.set
 __boop.registerMethod boop isa __boop.isa
 __boop.registerMethod boop toString __boop.toString
+__boop.registerMethod boop inspect __boop.inspect
 __boop.registerMethod boop new __boop.new
 __boop.registerMethod boop resolve boop.resolve
 __boop.registerMethod boop classPath boop.classPath
@@ -2049,5 +2219,5 @@ fi  # end of (( ! __boop_loaded ))
 # but this block still runs and imports Box. This is the mechanism that lets
 # class files declare dependencies via their source line.
 if (( $# )); then
-  __boop.import "$@"
+  _Require "$@"
 fi

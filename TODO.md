@@ -564,6 +564,92 @@ Source: `boop`, all class files.
 
 ---
 
+## Args — CLI Argument Parser ★ IN PROGRESS
+
+Two entry points, one class. Implementation at `Args/Args`.
+
+### `Args.getOpts` — POSIX short options (thin getopts wrapper)
+```bash
+Args.getOpts ":vf:" "$@"
+shift $((OPTIND-1))
+# Sets: $v=1 (boolean), $f=<value> (value-taking)
+# $__Args_orig holds original args array
+```
+Leading `:` in optstr = silent error mode. Value-taking options (letter`:`) get
+the value; booleans get `"1"`. Unknown option or missing value → `_Crash`.
+Caller must `shift $((OPTIND-1))` after to consume processed args.
+
+### `Args.parse` — GNU long + subcommand parser
+
+Schema is an INI-style string passed as the first argument.
+
+```bash
+Args.parse '
+[Use]
+  ${0##*/} [options] ACTION [args]
+
+[Options]
+  verbose | v                       # boolean flag → $verbose
+  output | o = /tmp/out.txt         # value-taking, with default → $output
+  : required | r =                  # required, value-taking → $required
+
+[Subcommands]
+  deploy | d                        # canonical name is "deploy"
+  rollback | rb
+
+[deploy]
+  env | e =                         # deploy-specific option → $env
+
+[rollback]
+  : version | ver =                 # required for rollback → $version
+' "$@"
+```
+
+**Option line syntax** (left of `#` is parsed, right is help text):
+- `[: ] varName [| alias...] [= [default] | :]`
+- Leading `:` → required
+- Trailing `=` → takes a value; `= default` sets the default
+- Trailing `:` → takes a value (no default form)
+- No sigil → boolean (absent=`""`, present=`"1"`)
+- First entry = variable name (must be valid bash identifier, no hyphens)
+- Additional entries = CLI aliases (may contain hyphens)
+- Single-char entries map to `-x`; multi-char entries map to `--name`
+
+**After parse (scope-write mode — no `into=`):**
+- `$varName` set for each option (value or default or empty)
+- `$_Action` = canonical subcommand name (or empty)
+- `$_ArgsRemaining` = array of remaining positionals
+- `$__Args_orig` = array of original args
+- To restore `$@`: `set -- "${_ArgsRemaining[@]}"`
+
+**Object mode (`into=args Args.parse schema "$@"`):**
+- Returns a Config object. `_Require Config` called internally.
+- Access: `$args.get varName`, `$args.get _action`, `$args.get _remaining`
+- Scope vars are NOT set in object mode.
+
+**Behavior:**
+- `--` terminates option processing; remainder → `_ArgsRemaining`
+- Short clustering: `-abc` = `-a -b -c`
+- `-xVALUE` attaches value to short option within cluster
+- Unknown option → `_Crash`
+- Missing required value → `_Crash`
+- Missing required option → `_Crash` (checked after full parse)
+- All option sections (`[Options]`, `[subcommandName]`) contribute to the
+  same alias pool. Subcommand-specific options are globally available
+  (cross-subcommand validation is a future enhancement).
+
+### What's done
+- `Args/Args` — full implementation of both entry points
+- `Config.fromString` — added to `Config/Config` (used by future tooling)
+
+### What's pending
+- `tests/unit/test_args_ts` — test file not yet written
+- `tests/test_all` — needs `test_args_ts` in unit loop and `Args/Args` in naming check
+- `--help` auto-generation from schema (deferred — needs description storage)
+- Cross-subcommand option isolation (deferred — currently all options share alias pool)
+
+---
+
 ## Argument-Parsing Object -- See Meta-Components
 
 Now part of the ★ Meta-Components system. ArgParser becomes an
@@ -704,21 +790,21 @@ the framework is mature enough to worry about hostile environments.
 
 ---
 
-## Inline Class Definitions in Executable Scripts
+## Inline Class Definitions in Executable Scripts ✓
 
-Currently, class files must be separate files to be both sourceable
-(for testing/reuse) and executable (for standalone scripts). The
-blackjack example originally defined all classes inline, but this
-prevented sourcing just the classes without running the game loop.
+The `BASH_SOURCE[0]` vs `$0` guard is the pattern. After `boopClass`
+registration, add:
 
-Investigate a pattern for defining classes inline in an executable
-script while still allowing them to be sourced separately. Options:
+```bash
+[[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0
+# main logic here — only runs when executed directly, not sourced
+```
 
-- `BASH_SOURCE` vs `$0` guard before the main logic
-- A `__boop.main` convention that registerClass can detect
-- A flag/property on the class that marks the file as executable
+`blackjack` demonstrates this: sourcing it loads `BlackjackHand` for
+tests; executing it runs the game. No separate class file needed.
 
-Related: "Class File Execution Guard" section above.
+See also: "Class File Execution Guard" section above for the remaining
+work (auto-help when sourced-as-executed without this guard).
 
 ---
 
@@ -859,6 +945,76 @@ Source: PLAN.md Phase 5.
 
 ---
 
+## Config Class ✓
+
+A Config object that reads and writes structured config files in pure
+bash. Two formats, one interface.
+
+### Property file (flat key=value)
+
+Same format as `.boop.cfg` — one `key=value` per line, `#` comments,
+blank lines ignored. Keys are top-level; no sections.
+
+```bash
+into=cfg Config.load ~/.myapp.cfg
+$cfg.get theme          # → "dark"
+$cfg.set theme light
+$cfg.save ~/.myapp.cfg  # rewrite in place
+```
+
+### INI file
+
+`[section]` headers divide key=value groups. Keys are stored
+internally as `section.key` so the same get/set/has interface works
+for both formats. Section name `""` (empty) is the implicit top-level
+for keys before the first header.
+
+```bash
+into=cfg Config.loadINI /etc/myapp.ini
+$cfg.get database.host  # → "localhost"
+$cfg.get database.port  # → "5432"
+$cfg.keys database      # → "host port user password"
+$cfg.sections           # → "database server logging"
+```
+
+### Interface
+
+```
+Config.load file        → new Config object backed by property file
+Config.loadINI file     → new Config object backed by INI file
+Config.new              → empty Config object (no file)
+$cfg.get key            → value or empty string
+$cfg.set key val        → update in memory
+$cfg.has key            → exit code 0/1
+$cfg.keys [section]     → space-separated key list
+$cfg.sections           → section list (INI only)
+$cfg.save [file]        → write current state back
+$cfg.toINI [file]       → write as INI format
+$cfg.toFlat [file]      → write as flat key=value
+```
+
+### Implementation notes
+
+- Backed by a per-object associative array `__boop_config_${_Self}`
+  (same pattern as Map's companion storage).
+- `Config.load` / `Config.loadINI` parse with a `while IFS= read -r`
+  loop — pure bash, zero forks. Regex matching for `[section]` headers
+  and `key=value` lines via `[[ =~ ]]`.
+- Keys in flat files stored as-is. Keys in INI files stored as
+  `section.key`; the section prefix is stripped by `$cfg.get` when
+  a bare key is given and it matches exactly one section.
+- `$cfg.save` rewrites the file entirely (not append). Preserves
+  comments from the original file if they were captured during load.
+  (Comment preservation is optional / Phase 2.)
+- Deliberately does NOT `source` the file — pure data parsing, no
+  code execution. See "Security: Parse Config Files as Data" section.
+
+Implementation complete: `Config/Config`, 71 tests in `tests/unit/test_config_ts`.
+
+Source: discussed as extension of .boop.cfg concept.
+
+---
+
 ## Return System Filesystem Mode
 
 `boop.passPath` — use call stack introspection to determine a
@@ -912,8 +1068,8 @@ Priority areas:
 - **Property access** — `__boop.get`/`__boop.set` at `_Trace`
   level. Too noisy for anything less.
 
-- **`boop.pass`** — log mode selection (auto→global, auto→stdout)
-  and target variable at `_Trace`.
+- **`boop.pass`** — log mode selection and target variable at `_Trace`.
+  Subshell footgun `_Debug` already added (into= in subshell emits advisory).
 
 - **Class files** — each class's `.new()` should log construction
   at `_Debug`. Complex methods (Container iteration, Math
@@ -980,6 +1136,23 @@ Caveats:
 - **`boop_install` bootstrap script**: puts boop on PATH, generates
   initial `.boopIndex`, creates starter `~/.booprc`. See Classpath
   section for full spec.
+- **`boop.inspect`**: pretty-print an object's full state for debugging.
+  Should show class, inheritance chain, all properties with current
+  values, and method list. Registered on root `boop` class so every
+  object inherits it. Tier 3 public, output to stdout by default.
+  ```
+  [Box _abc123]
+    class:  Box (extends boop)
+    length: 5
+    width:  3
+    height: 7
+    methods: new, volume, area, top, side, front, toString
+  ```
+- **Scaffolding (`boop new MyClass`)**: generate a class file skeleton
+  from a template. Could live as a subcommand on the `boop` root class
+  or as a standalone `boop_new` script. Output is a ready-to-edit file
+  with load guard, boopClass declaration, and stub `.new()`. High
+  friction reducer for new users.
 
 ---
 

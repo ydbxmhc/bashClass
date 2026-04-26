@@ -1,0 +1,420 @@
+#!/bin/bash
+set -uo pipefail
+
+# Config class tests
+#
+# Classification: UNIT (Config class)
+# Covers: Config.new, Config.load, Config.loadINI, get, set, has, keys,
+#         sections, save, toFlat, toINI, round-trip, error cases.
+
+. boop TestSuite Config
+
+into=t TestSuite name="Config Tests"
+
+# Shared temp-file helpers — cleaned up at exit
+declare -a __test_config_tmpfiles=()
+__tc_tmpfile() {
+  local f; f=$(mktemp)
+  __test_config_tmpfiles+=("$f")
+  printf "%s" "$f"
+}
+trap 'rm -f "${__test_config_tmpfiles[@]+"${__test_config_tmpfiles[@]}"}"' EXIT
+
+# ============================================================================
+# Config.new — empty object
+# ============================================================================
+
+$t.section "Config.new: empty object"
+
+into=cfg Config.new
+$t.assert_match "valid ID"       "$cfg" "_[0-9a-f]*"
+$t.assert_ok    "isa Config"     $cfg.isa Config
+$t.assert_ok    "isa boop"       $cfg.isa boop
+
+into=v $cfg.get missing
+$t.assert_eq "get on empty returns empty" "$v" ""
+
+$cfg.has missing
+$t.assert_fail "has on empty key → false" $cfg.has missing
+
+into=k $cfg.keys
+$t.assert_eq "keys on empty is empty" "$k" ""
+
+# ============================================================================
+# Config.set / get / has
+# ============================================================================
+
+$t.section "Config: set / get / has"
+
+into=cfg Config.new
+$cfg.set theme dark
+$cfg.set host localhost
+$cfg.set port 8080
+
+into=v $cfg.get theme;   $t.assert_eq "get theme"     "$v" "dark"
+into=v $cfg.get host;    $t.assert_eq "get host"      "$v" "localhost"
+into=v $cfg.get port;    $t.assert_eq "get port"      "$v" "8080"
+into=v $cfg.get missing; $t.assert_eq "get missing"   "$v" ""
+
+$t.assert_ok   "has existing key"  $cfg.has theme
+$t.assert_fail "has absent key"    $cfg.has nope
+
+# Overwrite preserves position, updates value
+$cfg.set theme light
+into=v $cfg.get theme; $t.assert_eq "overwrite value" "$v" "light"
+into=k $cfg.keys
+first="${k%%$'\n'*}"
+$t.assert_eq "overwrite preserves position" "$first" "theme"
+
+# Value containing = sign
+$cfg.set url http://host:8080/path?foo=bar
+into=v $cfg.get url
+$t.assert_eq "value with = preserved" "$v" "http://host:8080/path?foo=bar"
+
+# ============================================================================
+# Config.keys
+# ============================================================================
+
+$t.section "Config: keys"
+
+into=cfg Config.new
+$cfg.set alpha 1
+$cfg.set beta 2
+$cfg.set gamma 3
+into=k $cfg.keys
+$t.assert_eq "keys in insertion order" "$k" "$(printf 'alpha\nbeta\ngamma')"
+
+# Section-qualified keys (INI style, via set)
+into=cfg2 Config.new
+$cfg2.set top 0
+$cfg2.set db.host localhost
+$cfg2.set db.port 5432
+$cfg2.set srv.workers 4
+
+into=k $cfg2.keys db
+$t.assert_eq "keys with section filter" "$k" "$(printf 'host\nport')"
+
+into=k $cfg2.keys srv
+$t.assert_eq "keys single-entry section" "$k" "workers"
+
+into=k $cfg2.keys missing
+$t.assert_eq "keys for absent section is empty" "$k" ""
+
+# ============================================================================
+# Config.sections
+# ============================================================================
+
+$t.section "Config: sections"
+
+into=cfg Config.new
+into=v $cfg.sections
+$t.assert_eq "sections on flat config is empty" "$v" ""
+
+$cfg.set alpha 1
+$cfg.set db.host h
+$cfg.set db.port p
+$cfg.set srv.port 80
+into=s $cfg.sections
+$t.assert_eq "sections in insertion order" "$s" "$(printf 'db\nsrv')"
+
+# ============================================================================
+# Config.load — flat file
+# ============================================================================
+
+$t.section "Config.load: flat file"
+
+flat_file=$(__tc_tmpfile)
+printf '%s\n' \
+  '# Comment line' \
+  '' \
+  'theme=dark' \
+  'host=localhost' \
+  'port=8080' \
+  'equals_in_val=a=b=c' \
+  > "$flat_file"
+
+into=cfg Config.load "$flat_file"
+$t.assert_match "loaded object valid ID" "$cfg" "_[0-9a-f]*"
+$t.assert_ok    "isa Config"             $cfg.isa Config
+
+into=v $cfg.get theme;         $t.assert_eq "load: theme"              "$v" "dark"
+into=v $cfg.get host;          $t.assert_eq "load: host"               "$v" "localhost"
+into=v $cfg.get port;          $t.assert_eq "load: port"               "$v" "8080"
+into=v $cfg.get equals_in_val; $t.assert_eq "load: value with = signs" "$v" "a=b=c"
+
+# comment and blank lines not treated as keys
+$t.assert_fail "# comment not a key"   $cfg.has "# Comment line"
+$t.assert_fail "blank line not a key"  $cfg.has ""
+
+into=k $cfg.keys
+expected="$(printf 'theme\nhost\nport\nequals_in_val')"
+$t.assert_eq "load: insertion order preserved" "$k" "$expected"
+
+# Duplicate key — last write wins, position preserved
+dup_file=$(__tc_tmpfile)
+printf '%s\n' 'key=first' 'key=second' > "$dup_file"
+into=cfg2 Config.load "$dup_file"
+into=v $cfg2.get key; $t.assert_eq "duplicate key: last write wins" "$v" "second"
+into=k $cfg2.keys;    $t.assert_eq "duplicate key: appears once"    "$k" "key"
+
+# Error: file not found
+$t.assert_fail "load missing file crashes" bash -c '. boop Config; Config.load /nonexistent/file.cfg'
+
+# ============================================================================
+# Config.loadINI — INI file
+# ============================================================================
+
+$t.section "Config.loadINI: INI file"
+
+ini_file=$(__tc_tmpfile)
+cat > "$ini_file" << 'INIEOF'
+# App-level config
+app=myapp
+
+[database]
+host=localhost
+port=5432
+user=admin
+
+[server]
+port=8080
+workers=4
+INIEOF
+
+into=cfg Config.loadINI "$ini_file"
+
+into=v $cfg.get app;            $t.assert_eq "INI: top-level key"       "$v" "myapp"
+into=v $cfg.get database.host;  $t.assert_eq "INI: database.host"       "$v" "localhost"
+into=v $cfg.get database.port;  $t.assert_eq "INI: database.port"       "$v" "5432"
+into=v $cfg.get database.user;  $t.assert_eq "INI: database.user"       "$v" "admin"
+into=v $cfg.get server.port;    $t.assert_eq "INI: server.port"         "$v" "8080"
+into=v $cfg.get server.workers; $t.assert_eq "INI: server.workers"      "$v" "4"
+into=v $cfg.get missing;        $t.assert_eq "INI: absent key is empty" "$v" ""
+
+into=k $cfg.keys database
+$t.assert_eq "INI: keys in section" "$k" "$(printf 'host\nport\nuser')"
+
+into=k $cfg.keys server
+$t.assert_eq "INI: keys in server" "$k" "$(printf 'port\nworkers')"
+
+into=s $cfg.sections
+$t.assert_eq "INI: sections in order" "$s" "$(printf 'database\nserver')"
+
+# top-level key is not a section
+$t.assert_fail "top-level key not in sections" bash -c '
+. boop Config
+f=$(mktemp)
+printf "[db]\nhost=h\n" > "$f"
+into=cfg Config.loadINI "$f"
+into=s $cfg.sections
+[[ "$s" == *"app"* ]] || exit 1
+rm "$f"
+'
+
+# Error: file not found
+$t.assert_fail "loadINI missing file crashes" bash -c '. boop Config; Config.loadINI /nonexistent/file.ini'
+
+# ============================================================================
+# Config.toFlat — string output
+# ============================================================================
+
+$t.section "Config.toFlat: string output"
+
+into=cfg Config.new
+$cfg.set theme dark
+$cfg.set host localhost
+
+into=out $cfg.toFlat
+expected="$(printf 'theme=dark\nhost=localhost')"
+$t.assert_eq "toFlat returns key=value lines" "$out" "$expected"
+
+# Empty config
+into=empty Config.new
+into=out $empty.toFlat
+$t.assert_eq "toFlat on empty is empty" "$out" ""
+
+# ============================================================================
+# Config.toINI — string output
+# ============================================================================
+
+$t.section "Config.toINI: string output"
+
+into=cfg Config.new
+$cfg.set app myapp
+$cfg.set db.host localhost
+$cfg.set db.port 5432
+$cfg.set srv.workers 4
+
+into=out $cfg.toINI
+$t.assert_contains "toINI: top-level line"     "$out" "app=myapp"
+$t.assert_contains "toINI: db header"          "$out" "[db]"
+$t.assert_contains "toINI: host under db"      "$out" "host=localhost"
+$t.assert_contains "toINI: srv header"         "$out" "[srv]"
+$t.assert_contains "toINI: workers under srv"  "$out" "workers=4"
+
+# top-level keys come before any section header: app= appears before [db]
+__tc_app_first() { [[ "${1%%$'\n'[*}" == *"app="* ]]; }
+$t.assert_ok "toINI: top-level before section" __tc_app_first "$out"
+
+# ============================================================================
+# Config.toFlat / toINI — write to file
+# ============================================================================
+
+$t.section "Config: write to file"
+
+into=cfg Config.new
+$cfg.set x 1
+$cfg.set y 2
+
+out_file=$(__tc_tmpfile)
+$cfg.toFlat "$out_file"
+content=$(<"$out_file")
+$t.assert_eq "toFlat to file" "$content" "$(printf 'x=1\ny=2')"
+
+into=cfg2 Config.new
+$cfg2.set top val
+$cfg2.set sec.k v
+ini_out=$(__tc_tmpfile)
+$cfg2.toINI "$ini_out"
+ini_content=$(<"$ini_out")
+$t.assert_contains "toINI to file: section header" "$ini_content" "[sec]"
+$t.assert_contains "toINI to file: top-level key"  "$ini_content" "top=val"
+
+# ============================================================================
+# Config.save — auto format and file detection
+# ============================================================================
+
+$t.section "Config.save"
+
+# Save flat config back to its source file
+src_flat=$(__tc_tmpfile)
+printf 'theme=dark\nhost=localhost\n' > "$src_flat"
+into=cfg Config.load "$src_flat"
+$cfg.set theme light
+$cfg.save
+content=$(<"$src_flat")
+$t.assert_contains "save: flat writes back to source" "$content" "theme=light"
+$t.assert_contains "save: flat preserves other keys"  "$content" "host=localhost"
+
+# Save to explicit file overrides stored path
+dest=$(__tc_tmpfile)
+$cfg.save "$dest"
+$t.assert_contains "save: explicit file works" "$(<"$dest")" "theme=light"
+
+# Save INI format
+src_ini=$(__tc_tmpfile)
+cat > "$src_ini" << 'INIEOF2'
+[db]
+host=localhost
+INIEOF2
+into=cfg2 Config.loadINI "$src_ini"
+$cfg2.set db.host remotehost
+$cfg2.save
+$t.assert_contains "save: INI format writes section header" "$(<"$src_ini")" "[db]"
+$t.assert_contains "save: INI format writes updated value"  "$(<"$src_ini")" "host=remotehost"
+
+# Save with no file and no stored path crashes
+$t.assert_fail "save with no file crashes" bash -c '
+. boop Config
+into=cfg Config.new
+$cfg.save
+'
+
+# ============================================================================
+# Round-trip: flat → load → mutate → save → reload
+# ============================================================================
+
+$t.section "Config: flat round-trip"
+
+rt_file=$(__tc_tmpfile)
+into=cfg Config.new
+$cfg.set color blue
+$cfg.set size 10
+$cfg.toFlat "$rt_file"
+
+into=cfg2 Config.load "$rt_file"
+into=v $cfg2.get color; $t.assert_eq "round-trip: color" "$v" "blue"
+into=v $cfg2.get size;  $t.assert_eq "round-trip: size"  "$v" "10"
+$cfg2.set size 20
+$cfg2.save
+into=cfg3 Config.load "$rt_file"
+into=v $cfg3.get size;  $t.assert_eq "round-trip: mutated size" "$v" "20"
+into=v $cfg3.get color; $t.assert_eq "round-trip: color intact" "$v" "blue"
+
+# ============================================================================
+# Round-trip: INI → load → mutate → save → reload
+# ============================================================================
+
+$t.section "Config: INI round-trip"
+
+rt_ini=$(__tc_tmpfile)
+into=cfg Config.new
+$cfg.set title App
+$cfg.set db.host localhost
+$cfg.set db.port 5432
+$cfg.toINI "$rt_ini"
+
+into=cfg2 Config.loadINI "$rt_ini"
+into=v $cfg2.get title;   $t.assert_eq "INI round-trip: title"      "$v" "App"
+into=v $cfg2.get db.host; $t.assert_eq "INI round-trip: db.host"    "$v" "localhost"
+into=v $cfg2.get db.port; $t.assert_eq "INI round-trip: db.port"    "$v" "5432"
+
+$cfg2.set db.host remotehost
+$cfg2.save
+into=cfg3 Config.loadINI "$rt_ini"
+into=v $cfg3.get db.host; $t.assert_eq "INI round-trip: mutated host" "$v" "remotehost"
+into=v $cfg3.get db.port; $t.assert_eq "INI round-trip: port intact"  "$v" "5432"
+
+# ============================================================================
+# Summary
+# ============================================================================
+
+# ============================================================================
+# _Delimiter: custom element separator on Config.keys and Config.sections
+# ============================================================================
+
+$t.section "_Delimiter: Config.keys and Config.sections"
+
+into=cfg Config.new
+$cfg.set alpha 1
+$cfg.set beta 2
+$cfg.set gamma 3
+$cfg.set db.host localhost
+$cfg.set db.port 5432
+$cfg.set srv.workers 4
+
+_Delimiter=$'|' into=k $cfg.keys
+$t.assert_eq "Config.keys pipe"           "$k" "alpha|beta|gamma|db.host|db.port|srv.workers"
+
+_Delimiter=$'\t' into=k $cfg.keys
+$t.assert_eq "Config.keys tab"            "$k" "$(printf 'alpha\tbeta\tgamma\tdb.host\tdb.port\tsrv.workers')"
+
+_Delimiter=$'|' into=k $cfg.keys db
+$t.assert_eq "Config.keys section pipe"   "$k" "host|port"
+
+_Delimiter=$'\r\n' into=k $cfg.keys db
+$t.assert_eq "Config.keys section CRLF"   "$k" "$(printf 'host\r\nport')"
+
+_Delimiter=$'|' into=s $cfg.sections
+$t.assert_eq "Config.sections pipe"       "$s" "db|srv"
+
+_Delimiter=$'\r\n' into=s $cfg.sections
+$t.assert_eq "Config.sections CRLF"       "$s" "$(printf 'db\r\nsrv')"
+
+$t.section "_Delimiter: Config.toFlat and Config.toINI string output"
+
+into=cfg2 Config.new
+$cfg2.set x 1
+$cfg2.set y 2
+$cfg2.set sec.a A
+$cfg2.set sec.b B
+
+_Delimiter=$'|' into=out $cfg2.toFlat
+$t.assert_eq "toFlat pipe"  "$out" "x=1|y=2|sec.a=A|sec.b=B"
+
+_Delimiter=$'|' into=out $cfg2.toINI
+$t.assert_contains "toINI pipe: top-level"     "$out" "x=1|y=2"
+$t.assert_contains "toINI pipe: section header" "$out" "[sec]"
+$t.assert_contains "toINI pipe: section keys"   "$out" "a=A|b=B"
+
+$t.summary
