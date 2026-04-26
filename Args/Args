@@ -1,0 +1,305 @@
+#!/bin/bash
+
+# Args — CLI argument parser.
+#
+# Two entry points:
+#   Args.getOpts ":x:y" "$@"   — POSIX short options via getopts
+#   Args.parse 'schema' "$@"   — GNU long + subcommand parser
+#
+# Schema format (INI-style string, left of # is parsed):
+#   [Use]         — synopsis text, documentation only
+#   [Options]     — global options
+#   [Subcommands] — valid subcommands: name [| alias...]  [# description]
+#   [SubcmdName]  — options specific to that subcommand
+#
+# Option line syntax:
+#   [: ] varName [| alias...]  [= [default] | :]
+#   Leading :   → required
+#   Trailing =  → takes a value; "= default" sets the default
+#   Trailing :  → takes a value (no default)
+#   No sigil    → boolean (absent → "", present → "1")
+#
+# First entry is the variable name (valid bash identifier, no hyphens).
+# Remaining entries are CLI aliases (may contain hyphens).
+# Single-char entries map to -x; multi-char entries map to --name.
+#
+# Scope-write mode (no into=):
+#   Sets $varName for each option, $_Action (subcommand if any),
+#   $__Args_orig (original args array), $_ArgsRemaining (remaining positionals array).
+#   To restore $@: set -- "${_ArgsRemaining[@]}"
+#
+# Object mode (into=):
+#   Returns a Config object. Requires Config installed. Scope vars not set.
+#   Access: $obj.get varName  /  $obj.get _action  /  $obj.get _remaining
+
+[[ -n "${__boop_registry[Args]+set}" ]] && return 2>/dev/null
+
+. boop
+
+# ============================================================================
+# Args.getOpts — thin getopts wrapper
+# ============================================================================
+
+# Parses POSIX short options and sets a variable per recognized option.
+# Value-taking options (letter followed by : in optstr) get the value string.
+# Boolean options get "1". Caller must: shift $((OPTIND-1))
+# Usage: Args.getOpts ":vf:" "$@"
+Args.getOpts() {
+  local __Args_getOpts_optstr="${1:-}"; shift
+  local __Args_getOpts_opt
+  declare -ga __Args_orig=("$@")
+  OPTIND=1
+  while getopts "$__Args_getOpts_optstr" __Args_getOpts_opt "$@"; do
+    case "$__Args_getOpts_opt" in
+      '?') _Crash "Args.getOpts: unknown option: -$OPTARG" ;;
+      ':') _Crash "Args.getOpts: -$OPTARG requires a value" ;;
+      *)
+        if [[ "$__Args_getOpts_optstr" == *"${__Args_getOpts_opt}:"* ]]; then
+          declare -g "${__Args_getOpts_opt}=${OPTARG}"
+        else
+          declare -g "${__Args_getOpts_opt}=1"
+        fi
+        ;;
+    esac
+  done
+}
+
+# ============================================================================
+# Internal schema parsers (global tables __Args_* set during Args.parse)
+# ============================================================================
+
+# Parse one subcommand definition line into __Args_subcmd_map.
+__Args.parseSubcmdLine() {
+  local __Args_psl_line="${1%%#*}"
+  __Args_psl_line="${__Args_psl_line%"${__Args_psl_line##*[![:space:]]}"}"
+  [[ -z "$__Args_psl_line" ]] && return 0
+
+  local __Args_psl_canonical="" __Args_psl_part __Args_psl_rest="$__Args_psl_line"
+  while [[ -n "$__Args_psl_rest" ]]; do
+    if [[ "$__Args_psl_rest" == *'|'* ]]; then
+      __Args_psl_part="${__Args_psl_rest%%|*}"
+      __Args_psl_rest="${__Args_psl_rest#*|}"
+    else
+      __Args_psl_part="$__Args_psl_rest"; __Args_psl_rest=""
+    fi
+    __Args_psl_part="${__Args_psl_part#"${__Args_psl_part%%[![:space:]]*}"}"
+    __Args_psl_part="${__Args_psl_part%"${__Args_psl_part##*[![:space:]]}"}"
+    [[ -z "$__Args_psl_part" ]] && continue
+    [[ -z "$__Args_psl_canonical" ]] && __Args_psl_canonical="$__Args_psl_part"
+    __Args_subcmd_map[$__Args_psl_part]="$__Args_psl_canonical"
+  done
+}
+
+# Parse one option definition line. Populates __Args_alias_map, __Args_takes_val,
+# __Args_required, __Args_defaults, __Args_varlist.
+__Args.parseOptLine() {
+  local __Args_pol_line="${1%%#*}"
+  __Args_pol_line="${__Args_pol_line%"${__Args_pol_line##*[![:space:]]}"}"
+  [[ -z "$__Args_pol_line" ]] && return 0
+
+  # Required marker (leading :)
+  local __Args_pol_required=0
+  if [[ "$__Args_pol_line" == :* ]]; then
+    __Args_pol_required=1
+    __Args_pol_line="${__Args_pol_line#:}"
+    __Args_pol_line="${__Args_pol_line#"${__Args_pol_line%%[![:space:]]*}"}"
+  fi
+
+  # Value sigil: trailing = (with optional default) or trailing :
+  local __Args_pol_takesVal=0 __Args_pol_default=""
+  if [[ "$__Args_pol_line" =~ ^(.*[^[:space:]])[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+    __Args_pol_takesVal=1
+    __Args_pol_default="${BASH_REMATCH[2]}"
+    __Args_pol_default="${__Args_pol_default%"${__Args_pol_default##*[![:space:]]}"}"
+    __Args_pol_line="${BASH_REMATCH[1]}"
+  elif [[ "$__Args_pol_line" =~ ^(.*[^[:space:]])[[:space:]]*:[[:space:]]*$ ]]; then
+    __Args_pol_takesVal=1
+    __Args_pol_line="${BASH_REMATCH[1]}"
+  fi
+
+  # Split on | — first part is the variable name, rest are aliases
+  local __Args_pol_varName="" __Args_pol_part __Args_pol_rest="$__Args_pol_line"
+  while [[ -n "$__Args_pol_rest" ]]; do
+    if [[ "$__Args_pol_rest" == *'|'* ]]; then
+      __Args_pol_part="${__Args_pol_rest%%|*}"
+      __Args_pol_rest="${__Args_pol_rest#*|}"
+    else
+      __Args_pol_part="$__Args_pol_rest"; __Args_pol_rest=""
+    fi
+    __Args_pol_part="${__Args_pol_part#"${__Args_pol_part%%[![:space:]]*}"}"
+    __Args_pol_part="${__Args_pol_part%"${__Args_pol_part##*[![:space:]]}"}"
+    [[ -z "$__Args_pol_part" ]] && continue
+
+    if [[ -z "$__Args_pol_varName" ]]; then
+      [[ "$__Args_pol_part" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || \
+        _Crash "Args: '$__Args_pol_part' is not a valid variable name (hyphens only allowed in aliases)"
+      __Args_pol_varName="$__Args_pol_part"
+      __Args_varlist+=("$__Args_pol_varName")
+      __Args_takes_val[$__Args_pol_varName]=$__Args_pol_takesVal
+      __Args_required[$__Args_pol_varName]=$__Args_pol_required
+      __Args_defaults[$__Args_pol_varName]="$__Args_pol_default"
+    fi
+
+    # Single-char → -x, multi-char → --name
+    if [[ ${#__Args_pol_part} -eq 1 ]]; then
+      __Args_alias_map["-${__Args_pol_part}"]="$__Args_pol_varName"
+    else
+      __Args_alias_map["--${__Args_pol_part}"]="$__Args_pol_varName"
+    fi
+  done
+}
+
+# ============================================================================
+# Args.parse — GNU long + subcommand parser
+# ============================================================================
+
+Args.parse() {
+  local __Args_parse_schema="${1:-}"; shift
+  [[ -n "$__Args_parse_schema" ]] || _Crash "Args.parse: schema required"
+
+  # Working tables — global for duration of parse, cleaned up before return
+  declare -gA __Args_alias_map=()
+  declare -gA __Args_takes_val=()
+  declare -gA __Args_required=()
+  declare -gA __Args_defaults=()
+  declare -gA __Args_subcmd_map=()
+  declare -ga __Args_varlist=()
+
+  # --- Phase 1: Parse schema ---
+  local __Args_parse_section="" __Args_parse_ln
+  while IFS= read -r __Args_parse_ln; do
+    __Args_parse_ln="${__Args_parse_ln#"${__Args_parse_ln%%[![:space:]]*}"}"
+    [[ -z "$__Args_parse_ln" ]] && continue
+    if [[ "$__Args_parse_ln" =~ ^\[([^]]+)\]$ ]]; then
+      __Args_parse_section="${BASH_REMATCH[1]}"; continue
+    fi
+    case "$__Args_parse_section" in
+      Use|'') : ;;
+      Subcommands) __Args.parseSubcmdLine "$__Args_parse_ln" ;;
+      *)           __Args.parseOptLine    "$__Args_parse_ln" ;;
+    esac
+  done <<< "$__Args_parse_schema"
+
+  # Snapshot varlist before cleanup (needed for object-mode pass)
+  local -a __Args_parse_vars=("${__Args_varlist[@]+"${__Args_varlist[@]}"}")
+
+  # --- Phase 2: Initialize result variables ---
+  declare -ga __Args_orig=("$@")
+  declare -g  _Action=""
+  declare -ga _ArgsRemaining=()
+
+  local __Args_parse_v
+  for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
+    declare -g "${__Args_parse_v}=${__Args_defaults[$__Args_parse_v]:-}"
+  done
+
+  # --- Phase 3: Walk args ---
+  local __Args_parse_endopts=0
+  while [[ $# -gt 0 ]]; do
+    local __Args_parse_arg="$1"; shift
+
+    if [[ "$__Args_parse_arg" == "--" && $__Args_parse_endopts -eq 0 ]]; then
+      __Args_parse_endopts=1; continue
+    fi
+
+    if [[ $__Args_parse_endopts -eq 1 ]]; then
+      _ArgsRemaining+=("$__Args_parse_arg"); continue
+    fi
+
+    # Long option: --name or --name=value
+    if [[ "$__Args_parse_arg" == --?* ]]; then
+      local __Args_parse_key __Args_parse_val="" __Args_parse_hasval=0
+      if [[ "$__Args_parse_arg" == *=* ]]; then
+        __Args_parse_key="${__Args_parse_arg%%=*}"
+        __Args_parse_val="${__Args_parse_arg#*=}"
+        __Args_parse_hasval=1
+      else
+        __Args_parse_key="$__Args_parse_arg"
+      fi
+      local __Args_parse_vn="${__Args_alias_map[$__Args_parse_key]:-}"
+      [[ -n "$__Args_parse_vn" ]] || _Crash "Args.parse: unknown option: $__Args_parse_key"
+      if [[ "${__Args_takes_val[$__Args_parse_vn]}" == 1 ]]; then
+        if [[ $__Args_parse_hasval -eq 0 ]]; then
+          [[ $# -gt 0 ]] || _Crash "Args.parse: $__Args_parse_key requires a value"
+          __Args_parse_val="$1"; shift
+        fi
+        declare -g "${__Args_parse_vn}=${__Args_parse_val}"
+      else
+        [[ $__Args_parse_hasval -eq 0 ]] || \
+          _Crash "Args.parse: $__Args_parse_key is a boolean flag, does not take a value"
+        declare -g "${__Args_parse_vn}=1"
+      fi
+      continue
+    fi
+
+    # Short option(s): -x, -xVALUE, or cluster -abc
+    if [[ "$__Args_parse_arg" == -?* ]]; then
+      local __Args_parse_cluster="${__Args_parse_arg#-}"
+      while [[ -n "$__Args_parse_cluster" ]]; do
+        local __Args_parse_c="${__Args_parse_cluster:0:1}"
+        __Args_parse_cluster="${__Args_parse_cluster:1}"
+        local __Args_parse_cvn="${__Args_alias_map["-${__Args_parse_c}"]:-}"
+        [[ -n "$__Args_parse_cvn" ]] || _Crash "Args.parse: unknown option: -${__Args_parse_c}"
+        if [[ "${__Args_takes_val[$__Args_parse_cvn]}" == 1 ]]; then
+          local __Args_parse_sv
+          if [[ -n "$__Args_parse_cluster" ]]; then
+            __Args_parse_sv="$__Args_parse_cluster"; __Args_parse_cluster=""
+          else
+            [[ $# -gt 0 ]] || _Crash "Args.parse: -${__Args_parse_c} requires a value"
+            __Args_parse_sv="$1"; shift
+          fi
+          declare -g "${__Args_parse_cvn}=${__Args_parse_sv}"
+        else
+          declare -g "${__Args_parse_cvn}=1"
+        fi
+      done
+      continue
+    fi
+
+    # Positional: check for subcommand match (first positional only)
+    if [[ -z "$_Action" && ${#__Args_subcmd_map[@]} -gt 0 ]]; then
+      local __Args_parse_canon="${__Args_subcmd_map[$__Args_parse_arg]:-}"
+      if [[ -n "$__Args_parse_canon" ]]; then
+        declare -g "_Action=$__Args_parse_canon"; continue
+      fi
+    fi
+
+    _ArgsRemaining+=("$__Args_parse_arg")
+  done
+
+  # --- Phase 4: Validate required ---
+  local __Args_parse_missing=""
+  for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
+    if [[ "${__Args_required[$__Args_parse_v]:-0}" == 1 && -z "${!__Args_parse_v}" ]]; then
+      __Args_parse_missing="${__Args_parse_missing:+$__Args_parse_missing, }$__Args_parse_v"
+    fi
+  done
+  [[ -z "$__Args_parse_missing" ]] || _Crash "Args.parse: required options not provided: $__Args_parse_missing"
+
+  # Cleanup working tables
+  unset __Args_alias_map __Args_takes_val __Args_required __Args_defaults \
+        __Args_subcmd_map __Args_varlist
+
+  # --- Phase 5: Object mode ---
+  if [[ -n "${into:-}" ]]; then
+    _Require Config
+    local __Args_parse_obj
+    into=__Args_parse_obj Config.new
+    for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
+      $__Args_parse_obj.set "$__Args_parse_v" "${!__Args_parse_v}"
+      unset "$__Args_parse_v"
+    done
+    $__Args_parse_obj.set _action    "$_Action"
+    $__Args_parse_obj.set _remaining "${_ArgsRemaining[*]}"
+    unset _Action _ArgsRemaining
+    boop.pass "$__Args_parse_obj" ${into:-}
+  fi
+}
+
+# ============================================================================
+# Class Declaration
+# ============================================================================
+
+boopClass Args '
+  public:getOpts,parse
+'

@@ -564,6 +564,92 @@ Source: `boop`, all class files.
 
 ---
 
+## Args — CLI Argument Parser ★ IN PROGRESS
+
+Two entry points, one class. Implementation at `Args/Args`.
+
+### `Args.getOpts` — POSIX short options (thin getopts wrapper)
+```bash
+Args.getOpts ":vf:" "$@"
+shift $((OPTIND-1))
+# Sets: $v=1 (boolean), $f=<value> (value-taking)
+# $__Args_orig holds original args array
+```
+Leading `:` in optstr = silent error mode. Value-taking options (letter`:`) get
+the value; booleans get `"1"`. Unknown option or missing value → `_Crash`.
+Caller must `shift $((OPTIND-1))` after to consume processed args.
+
+### `Args.parse` — GNU long + subcommand parser
+
+Schema is an INI-style string passed as the first argument.
+
+```bash
+Args.parse '
+[Use]
+  ${0##*/} [options] ACTION [args]
+
+[Options]
+  verbose | v                       # boolean flag → $verbose
+  output | o = /tmp/out.txt         # value-taking, with default → $output
+  : required | r =                  # required, value-taking → $required
+
+[Subcommands]
+  deploy | d                        # canonical name is "deploy"
+  rollback | rb
+
+[deploy]
+  env | e =                         # deploy-specific option → $env
+
+[rollback]
+  : version | ver =                 # required for rollback → $version
+' "$@"
+```
+
+**Option line syntax** (left of `#` is parsed, right is help text):
+- `[: ] varName [| alias...] [= [default] | :]`
+- Leading `:` → required
+- Trailing `=` → takes a value; `= default` sets the default
+- Trailing `:` → takes a value (no default form)
+- No sigil → boolean (absent=`""`, present=`"1"`)
+- First entry = variable name (must be valid bash identifier, no hyphens)
+- Additional entries = CLI aliases (may contain hyphens)
+- Single-char entries map to `-x`; multi-char entries map to `--name`
+
+**After parse (scope-write mode — no `into=`):**
+- `$varName` set for each option (value or default or empty)
+- `$_Action` = canonical subcommand name (or empty)
+- `$_ArgsRemaining` = array of remaining positionals
+- `$__Args_orig` = array of original args
+- To restore `$@`: `set -- "${_ArgsRemaining[@]}"`
+
+**Object mode (`into=args Args.parse schema "$@"`):**
+- Returns a Config object. `_Require Config` called internally.
+- Access: `$args.get varName`, `$args.get _action`, `$args.get _remaining`
+- Scope vars are NOT set in object mode.
+
+**Behavior:**
+- `--` terminates option processing; remainder → `_ArgsRemaining`
+- Short clustering: `-abc` = `-a -b -c`
+- `-xVALUE` attaches value to short option within cluster
+- Unknown option → `_Crash`
+- Missing required value → `_Crash`
+- Missing required option → `_Crash` (checked after full parse)
+- All option sections (`[Options]`, `[subcommandName]`) contribute to the
+  same alias pool. Subcommand-specific options are globally available
+  (cross-subcommand validation is a future enhancement).
+
+### What's done
+- `Args/Args` — full implementation of both entry points
+- `Config.fromString` — added to `Config/Config` (used by future tooling)
+
+### What's pending
+- `tests/unit/test_args_ts` — test file not yet written
+- `tests/test_all` — needs `test_args_ts` in unit loop and `Args/Args` in naming check
+- `--help` auto-generation from schema (deferred — needs description storage)
+- Cross-subcommand option isolation (deferred — currently all options share alias pool)
+
+---
+
 ## Argument-Parsing Object -- See Meta-Components
 
 Now part of the ★ Meta-Components system. ArgParser becomes an

@@ -281,10 +281,23 @@ Config.toINI() {
   fi
 }
 
+# Parse an INI-format string directly (no file required).
+# Usage: into=cfg Config.fromString "$schema_string"
+Config.fromString() {
+  local _Class="${_Class:-Config}"
+  local __Config_fromString_str="${1:-}"
+  local __Config_fromString_tmp __Config_fromString_self
+  __Config_fromString_tmp=$(mktemp) || _Crash "Config.fromString: mktemp failed"
+  printf '%s\n' "$__Config_fromString_str" > "$__Config_fromString_tmp"
+  into=__Config_fromString_self Config.loadINI "$__Config_fromString_tmp"
+  rm -f "$__Config_fromString_tmp"
+  boop.pass "$__Config_fromString_self" ${into:-}
+}
+
 # ============================================================================
 # Class Declaration
 # ============================================================================
 
 boopClass Config has:file,format '
-  public:new,load,loadINI,get,set,has,keys,sections,save,toFlat,toINI
+  public:new,load,loadINI,fromString,get,set,has,keys,sections,save,toFlat,toINI
 '
