@@ -1827,6 +1827,10 @@ boop.classPath() {
 # The loading flag is unset after each successful source. If the source fails
 # (exit code != 0), we crash — a half-loaded class is worse than no class.
 __boop.import() {
+  # Non-fatal loader. Returns 0 on success, 1 on failure (not found or
+  # source error). Callers that need fatal behavior use _Require, which
+  # calls _Load, which calls this. The import args block (`. boop Class`)
+  # uses _Require so user-facing class-file sourcing remains fatal.
   local __boop_import_class
   for __boop_import_class in "$@"; do
     _Debug "import: '$__boop_import_class'"
@@ -1853,8 +1857,11 @@ __boop.import() {
       # explicit args don't inherit this function's positional parameters
       # and accidentally trigger a second recursive import of the full list.
       set --
-      . "$__boop_import_path" ||
-        _Crash "Failed to load class '$__boop_import_class' from $__boop_import_path"
+      if ! . "$__boop_import_path"; then
+        unset '__boop_loading[$__boop_import_class]'
+        _Warn "import: failed to source '$__boop_import_class' from $__boop_import_path"
+        return 1
+      fi
       unset '__boop_loading[$__boop_import_class]'
       _Trace "import: '$__boop_import_class' loaded successfully"
       continue
@@ -1863,14 +1870,61 @@ __boop.import() {
     # Raw source fallback -- let bash try PATH directly
     _Debug "import: '$__boop_import_class' not resolved, trying raw source fallback"
     set --
-    . "$__boop_import_class" && {
+    if . "$__boop_import_class" 2>/dev/null; then
       unset '__boop_loading[$__boop_import_class]'
       _Info "import: '$__boop_import_class' loaded via raw source fallback"
       continue
-    }
+    fi
 
-    # Complete resolution failure
-    _Crash "Class '$__boop_import_class' not found (checked classPath, index, roots)"
+    # Complete resolution failure — non-fatal, return 1
+    unset '__boop_loading[$__boop_import_class]'
+    _Debug "import: '$__boop_import_class' not found (checked classPath, index, roots)"
+    return 1
+  done
+}
+
+# ============================================================================
+# CLASS LOADING — PUBLIC API
+# ============================================================================
+
+# _Load — non-fatal class loader.
+#
+# Loads each named class if not already in the registry. Returns 0 if all
+# classes are available (already loaded or successfully loaded now). Returns
+# 1 if any class cannot be found or fails to source. Never crashes.
+#
+# Use for optional or graceful-degradation dependencies:
+#   _Load Math || printf "precision math unavailable, using native arithmetic\n"
+#   if _Load Args; then _Load ArgParser; fi   # load ArgParser only if Args present
+#   _Load Math Config                          # 0 only if both succeed
+#
+# Tier-2 inherited variables: none.
+_Load() {
+  local __Load_class __Load_rc=0
+  for __Load_class in "$@"; do
+    [[ -n "${__boop_registry[$__Load_class]+set}" ]] && continue
+    __boop.import "$__Load_class" || __Load_rc=1
+  done
+  return $__Load_rc
+}
+
+# _Require — fatal class loader. Hard dependency declaration.
+#
+# Loads each named class or crashes if any cannot be loaded. Use when a
+# class or feature is non-negotiable: without it, the script cannot run.
+#
+# The `. boop ClassName` entry point uses _Require internally, so class
+# files sourcing their own dependencies via `. boop X` remain fatal.
+#
+#   _Require Config           # crash if Config unavailable
+#   _Require Math Config List # crash if any are unavailable
+#
+# Tier-2 inherited variables: _Err (exit code on crash, default 1).
+_Require() {
+  local __Require_class
+  for __Require_class in "$@"; do
+    _Load "$__Require_class" ||
+      _Crash "_Require: '$__Require_class' could not be loaded"
   done
 }
 
@@ -2165,5 +2219,5 @@ fi  # end of (( ! __boop_loaded ))
 # but this block still runs and imports Box. This is the mechanism that lets
 # class files declare dependencies via their source line.
 if (( $# )); then
-  __boop.import "$@"
+  _Require "$@"
 fi

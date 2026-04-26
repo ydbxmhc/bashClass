@@ -399,4 +399,76 @@ $t.assert_ok "Box loads via new import" bash -c '. "'"$__ct_boop_path"'" Box; in
 $t.assert_ok "Math loads via new import" bash -c '. "'"$__ct_boop_path"'" Math; Math.abs -5' 2>/dev/null
 $t.assert_ok "List loads via new import" bash -c '. "'"$__ct_boop_path"'" List; into=l List; $l.length' 2>/dev/null
 
+# ============================================================================
+# _Load — non-fatal class loader
+# ============================================================================
+
+$t.section "_Load: non-fatal loader"
+
+# Already-loaded class returns 0 immediately (boop itself is always loaded)
+$t.assert_ok "_Load on already-loaded class returns 0" _Load boop
+
+# Loading a real class succeeds and makes it available
+$t.assert_ok "_Load Box succeeds"             _Load Box
+$t.assert_ok "Box in registry after _Load"    test -n "${__boop_registry[Box]+set}"
+$t.assert_ok "_Load Config succeeds"          _Load Config
+$t.assert_ok "Config in registry after _Load" test -n "${__boop_registry[Config]+set}"
+
+# Non-existent class returns 1 — does NOT crash
+$t.assert_fail "_Load nonexistent returns 1"  _Load __NoSuchClass__
+$t.assert_ok   "_Load nonexistent does not crash" \
+  bash -c '. "'"$__ct_boop_path"'"; _Load __NoSuchClass__ ; true'
+
+# Multiple args: all succeed → 0
+$t.assert_ok "_Load multiple: both present returns 0" _Load boop boop
+
+# Multiple args: any fails → 1, but already-loaded ones remain available
+_Load Map __NoSuchClass__
+__ct_multi_rc=$?
+$t.assert_eq "_Load multiple: fails if any absent" "$__ct_multi_rc" "1"
+$t.assert_ok  "_Load multiple: loaded class still available" \
+  test -n "${__boop_registry[Map]+set}"
+
+# _Load is idempotent — calling twice on the same class is harmless
+_Load List
+_Load List
+$t.assert_ok "_Load idempotent: List still usable" \
+  bash -c '. "'"$__ct_boop_path"'" List; into=l List; $l.push x; into=v $l.length; [[ "$v" == 1 ]]'
+
+# ============================================================================
+# _Require — fatal class loader
+# ============================================================================
+
+$t.section "_Require: fatal loader"
+
+# Already-loaded class: no crash
+$t.assert_ok "_Require on loaded class succeeds" _Require boop
+
+# Loadable class: loads it and succeeds
+$t.assert_ok "_Require Box succeeds"  _Require Box
+$t.assert_ok "_Require List succeeds" _Require List
+
+# Multiple args: all available → succeeds
+$t.assert_ok "_Require multiple loaded classes" _Require boop Box List
+
+# Non-existent class: crashes
+$t.assert_fail "_Require nonexistent crashes" \
+  bash -c '. "'"$__ct_boop_path"'"; _Require __NoSuchClass__'
+
+# Multiple args with one missing: crashes
+$t.assert_fail "_Require multiple with missing crashes" \
+  bash -c '. "'"$__ct_boop_path"'"; _Require boop __NoSuchClass__'
+
+# ============================================================================
+# Entry point (. boop ClassName) remains fatal
+# ============================================================================
+
+$t.section "Entry point: . boop ClassName remains fatal"
+
+$t.assert_fail ". boop nonexistent class crashes" \
+  bash -c '. "'"$__ct_boop_path"'" __NoSuchClass__'
+
+$t.assert_ok ". boop real class still works" \
+  bash -c '. "'"$__ct_boop_path"'" Config; into=c Config.new; $c.set x 1'
+
 $t.summary

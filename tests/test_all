@@ -64,7 +64,7 @@ __nc_files+=" $__nc_root/Games/Card/Card $__nc_root/Games/PlayingCard/PlayingCar
 __nc_files+=" $__nc_root/Collection/Container/Container $__nc_root/Collection/List/List $__nc_root/Collection/Map/Map"
 __nc_files+=" $__nc_root/Math/Math $__nc_root/Testing/TestSuite/TestSuite $__nc_root/blackjack"
 __nc_files+=" $__nc_root/Config/Config"
-__nc_exclude='__boop_\|__boop\.\|__Crash_\|__Container_\|__Iterator_\|__Iter_\|__List_\|__Map_\|__Math_\|__Box_\|__Cube_\|__Card_\|__Deck_\|__PlayingCard_\|__TestSuite_\|__BJ_\|__FC_\|__boopClass_\|__init\|__Config_\|__tc_'
+__nc_exclude='__boop_\|__boop\.\|__Crash_\|__Container_\|__Iterator_\|__Iter_\|__List_\|__Map_\|__Math_\|__Box_\|__Cube_\|__Card_\|__Deck_\|__PlayingCard_\|__TestSuite_\|__BJ_\|__FC_\|__boopClass_\|__init\|__Config_\|__tc_\|__Load_\|__Require_'
 __nc_hits=$(grep -rn '__[a-z]\+_' $__nc_files 2>/dev/null | grep -v "$__nc_exclude" | grep -v '#')
 if [[ -n "$__nc_hits" ]]; then
   printf '  FAIL: non-compliant variable names found:\n%s\n' "$__nc_hits"
