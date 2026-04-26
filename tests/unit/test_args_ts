@@ -1,0 +1,241 @@
+#!/bin/bash
+set -uo pipefail
+
+# Args class tests
+#
+# Classification: UNIT (Args class)
+# Covers: Args.getOpts (POSIX short opts), Args.parse (GNU long + subcommand
+#         schema parser), defaults, required validation, aliases, cluster
+#         short flags, --, _Action / _ArgsRemaining, object mode (into=).
+
+. boop TestSuite Args
+
+into=t TestSuite name="Args Tests"
+
+# ============================================================================
+# Args.getOpts — POSIX short options via getopts
+# ============================================================================
+
+$t.section "Args.getOpts: boolean and value-taking"
+
+unset v f x
+Args.getOpts ":vf:" -v -f myfile
+$t.assert_eq "boolean -v sets to 1"  "${v:-}" "1"
+$t.assert_eq "value -f captured"     "${f:-}" "myfile"
+
+unset v f
+Args.getOpts ":vf:" -f another
+$t.assert_eq "absent boolean stays unset" "${v:-UNSET}" "UNSET"
+$t.assert_eq "value option set"      "${f:-}" "another"
+
+# __Args_orig snapshot
+unset v
+Args.getOpts ":v" -v positional1 positional2
+$t.assert_eq "__Args_orig[0]" "${__Args_orig[0]}" "-v"
+$t.assert_eq "__Args_orig[2]" "${__Args_orig[2]}" "positional2"
+
+$t.section "Args.getOpts: error cases"
+
+$t.assert_fail "unknown short opt crashes" \
+  bash -c '. boop Args; Args.getOpts ":v" -q'
+$t.assert_fail "missing value crashes" \
+  bash -c '. boop Args; Args.getOpts ":f:" -f'
+
+# ============================================================================
+# Args.parse — schema, defaults, simple long options
+# ============================================================================
+
+$t.section "Args.parse: long options with values"
+
+unset name port
+Args.parse '
+[Options]
+name=
+port = 8080
+' --name alice --port 9000
+$t.assert_eq "long --name value"          "$name" "alice"
+$t.assert_eq "long --port overrides default" "$port" "9000"
+
+unset name port
+Args.parse '
+[Options]
+name=
+port = 8080
+' --name=bob
+$t.assert_eq "long --name=value (=form)"  "$name" "bob"
+$t.assert_eq "default applied when absent" "$port" "8080"
+
+# ============================================================================
+# Args.parse — short options, clusters, attached values
+# ============================================================================
+
+$t.section "Args.parse: short options"
+
+unset verbose file
+Args.parse '
+[Options]
+verbose | v
+file | f =
+' -v -f data.txt
+$t.assert_eq "boolean -v"          "$verbose" "1"
+$t.assert_eq "short -f value"      "$file"    "data.txt"
+
+unset verbose file
+Args.parse '
+[Options]
+verbose | v
+file | f =
+' -fdata.txt
+$t.assert_eq "attached -fVALUE"    "$file"    "data.txt"
+
+unset verbose debug quiet
+Args.parse '
+[Options]
+verbose | v
+debug   | d
+quiet   | q
+' -vdq
+$t.assert_eq "cluster: -v"  "$verbose" "1"
+$t.assert_eq "cluster: -d"  "$debug"   "1"
+$t.assert_eq "cluster: -q"  "$quiet"   "1"
+
+# ============================================================================
+# Args.parse — required validation
+# ============================================================================
+
+$t.section "Args.parse: required"
+
+unset name
+Args.parse '
+[Options]
+:name=
+' --name alice
+$t.assert_eq "required when given"  "$name" "alice"
+
+$t.assert_fail "missing required crashes" \
+  bash -c '. boop Args; Args.parse "[Options]
+:name=" '
+
+$t.assert_fail "unknown long option crashes" \
+  bash -c '. boop Args; Args.parse "[Options]
+foo=" --bar value'
+
+$t.assert_fail "boolean with =value crashes" \
+  bash -c '. boop Args; Args.parse "[Options]
+verbose | v" --verbose=yes'
+
+$t.assert_fail "long opt missing value crashes" \
+  bash -c '. boop Args; Args.parse "[Options]
+name=" --name'
+
+$t.assert_fail "hyphen in varname crashes" \
+  bash -c '. boop Args; Args.parse "[Options]
+my-opt=" --my-opt x'
+
+# ============================================================================
+# Args.parse — positionals, --, _Action, _ArgsRemaining
+# ============================================================================
+
+$t.section "Args.parse: remaining positionals"
+
+unset verbose
+Args.parse '
+[Options]
+verbose | v
+' -v one two three
+$t.assert_eq "remaining count"  "${#_ArgsRemaining[@]}" "3"
+$t.assert_eq "remaining[0]"     "${_ArgsRemaining[0]}"  "one"
+$t.assert_eq "remaining[2]"     "${_ArgsRemaining[2]}"  "three"
+
+unset verbose
+Args.parse '
+[Options]
+verbose | v
+' -v -- --not-an-option more
+$t.assert_eq "after --: count"        "${#_ArgsRemaining[@]}" "2"
+$t.assert_eq "after --: dashes kept"  "${_ArgsRemaining[0]}"  "--not-an-option"
+
+# ============================================================================
+# Args.parse — subcommands and aliases
+# ============================================================================
+
+$t.section "Args.parse: subcommands"
+
+unset verbose
+Args.parse '
+[Subcommands]
+build | b | bld
+test  | t
+
+[Options]
+verbose | v
+' build -v
+$t.assert_eq "subcommand canonical"  "$_Action"  "build"
+$t.assert_eq "verbose set after subcmd" "$verbose" "1"
+
+Args.parse '
+[Subcommands]
+build | b | bld
+test  | t
+' bld
+$t.assert_eq "alias resolves to canonical" "$_Action" "build"
+
+Args.parse '
+[Subcommands]
+build | b
+test  | t
+' notasubcmd extra
+$t.assert_eq "non-subcmd first positional → empty action" "$_Action" ""
+$t.assert_eq "non-subcmd treated as positional"  "${_ArgsRemaining[0]}" "notasubcmd"
+
+# ============================================================================
+# Args.parse — schema sections (Use, comments)
+# ============================================================================
+
+$t.section "Args.parse: schema parsing edge cases"
+
+unset name
+Args.parse '
+[Use]
+mytool [options] <file>
+
+[Options]
+# comment line with leading hash
+name = default     # trailing comment
+verbose | v
+' --name override -v
+$t.assert_eq "comments stripped, value parsed"  "$name"    "override"
+$t.assert_eq "boolean still works"              "$verbose" "1"
+
+unset name
+Args.parse '
+[Options]
+name = default
+'
+$t.assert_eq "default applied with no args"  "$name" "default"
+
+# ============================================================================
+# Args.parse — object mode (into=)
+# ============================================================================
+
+$t.section "Args.parse: object mode (into=)"
+
+into=cfg Args.parse '
+[Subcommands]
+build | b
+[Options]
+name=
+verbose | v
+' build --name alice -v rest1 rest2
+
+$t.assert_ok    "returned a Config object"   $cfg.isa Config
+into=v $cfg.get name;     $t.assert_eq "obj: name"      "$v" "alice"
+into=v $cfg.get verbose;  $t.assert_eq "obj: verbose"   "$v" "1"
+into=v $cfg.get _action;  $t.assert_eq "obj: _action"   "$v" "build"
+into=v $cfg.get _remaining; $t.assert_eq "obj: _remaining" "$v" "rest1 rest2"
+
+# Scope vars must NOT be set in object mode
+$t.assert_eq "scope name unset in obj mode" "${name:-UNSET}" "UNSET"
+$t.assert_eq "scope _Action unset in obj mode" "${_Action:-UNSET}" "UNSET"
+
+$t.summary
