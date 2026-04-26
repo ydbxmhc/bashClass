@@ -153,13 +153,14 @@ Config.keys() {
   local __Config_keys_out="" __Config_keys_k __Config_keys_sep=""
   local __Config_keys_prefix="${__Config_keys_section:+${__Config_keys_section}.}"
 
+  local __Config_keys_d="${_Delimiter:-$_EOL}"
   for __Config_keys_k in "${__Config_keys_list[@]+"${__Config_keys_list[@]}"}"; do
     if [[ -n "$__Config_keys_section" ]]; then
       [[ "$__Config_keys_k" == "$__Config_keys_prefix"* ]] || continue
       __Config_keys_k="${__Config_keys_k#"$__Config_keys_prefix"}"
     fi
     __Config_keys_out="${__Config_keys_out}${__Config_keys_sep}${__Config_keys_k}"
-    __Config_keys_sep=$'\n'
+    __Config_keys_sep="${__Config_keys_d}"
   done
   boop.pass "$__Config_keys_out" ${into:-}
 }
@@ -170,6 +171,7 @@ Config.keys() {
 Config.sections() {
   local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
   local -n __Config_sections_keys="__boop_config_keys_${_Self}"
+  local __Config_sections_d="${_Delimiter:-$_EOL}"
   local __Config_sections_out="" __Config_sections_sep=""
   local -A __Config_sections_seen=()
   local __Config_sections_k __Config_sections_s
@@ -180,7 +182,7 @@ Config.sections() {
     [[ -n "${__Config_sections_seen[$__Config_sections_s]+set}" ]] && continue
     __Config_sections_seen[$__Config_sections_s]=1
     __Config_sections_out="${__Config_sections_out}${__Config_sections_sep}${__Config_sections_s}"
-    __Config_sections_sep=$'\n'
+    __Config_sections_sep="${__Config_sections_d}"
   done
   boop.pass "$__Config_sections_out" ${into:-}
 }
@@ -215,11 +217,12 @@ Config.toFlat() {
   local __Config_toFlat_file="${1:-}"
   local -n __Config_toFlat_data="__boop_config_${_Self}"
   local -n __Config_toFlat_keys="__boop_config_keys_${_Self}"
+  local __Config_toFlat_d="${_Delimiter:-$_EOL}"
   local __Config_toFlat_out="" __Config_toFlat_k __Config_toFlat_sep=""
 
   for __Config_toFlat_k in "${__Config_toFlat_keys[@]+"${__Config_toFlat_keys[@]}"}"; do
     __Config_toFlat_out="${__Config_toFlat_out}${__Config_toFlat_sep}${__Config_toFlat_k}=${__Config_toFlat_data[$__Config_toFlat_k]}"
-    __Config_toFlat_sep=$'\n'
+    __Config_toFlat_sep="${__Config_toFlat_d}"
   done
 
   if [[ -n "$__Config_toFlat_file" ]]; then
@@ -239,6 +242,7 @@ Config.toINI() {
   local __Config_toINI_file="${1:-}"
   local -n __Config_toINI_data="__boop_config_${_Self}"
   local -n __Config_toINI_keys="__boop_config_keys_${_Self}"
+  local __Config_toINI_d="${_Delimiter:-$_EOL}"
   local __Config_toINI_out="" __Config_toINI_k __Config_toINI_s __Config_toINI_bare
   local -a __Config_toINI_sections=()
   local -A __Config_toINI_sec_seen=()
@@ -246,7 +250,7 @@ Config.toINI() {
   # Top-level keys first (no dot in key name)
   for __Config_toINI_k in "${__Config_toINI_keys[@]+"${__Config_toINI_keys[@]}"}"; do
     [[ "$__Config_toINI_k" == *'.'* ]] && continue
-    __Config_toINI_out="${__Config_toINI_out}${__Config_toINI_k}=${__Config_toINI_data[$__Config_toINI_k]}"$'\n'
+    __Config_toINI_out="${__Config_toINI_out}${__Config_toINI_k}=${__Config_toINI_data[$__Config_toINI_k]}${__Config_toINI_d}"
   done
 
   # Collect section names in insertion order
@@ -260,15 +264,15 @@ Config.toINI() {
 
   # Write each section
   for __Config_toINI_s in "${__Config_toINI_sections[@]+"${__Config_toINI_sections[@]}"}"; do
-    __Config_toINI_out="${__Config_toINI_out}"$'\n'"[${__Config_toINI_s}]"$'\n'
+    __Config_toINI_out="${__Config_toINI_out}${__Config_toINI_d}[${__Config_toINI_s}]${__Config_toINI_d}"
     for __Config_toINI_k in "${__Config_toINI_keys[@]+"${__Config_toINI_keys[@]}"}"; do
       [[ "$__Config_toINI_k" == "${__Config_toINI_s}."* ]] || continue
       __Config_toINI_bare="${__Config_toINI_k#"${__Config_toINI_s}."}"
-      __Config_toINI_out="${__Config_toINI_out}${__Config_toINI_bare}=${__Config_toINI_data[$__Config_toINI_k]}"$'\n'
+      __Config_toINI_out="${__Config_toINI_out}${__Config_toINI_bare}=${__Config_toINI_data[$__Config_toINI_k]}${__Config_toINI_d}"
     done
   done
 
-  __Config_toINI_out="${__Config_toINI_out%$'\n'}"
+  __Config_toINI_out="${__Config_toINI_out%"${__Config_toINI_d}"}"
 
   if [[ -n "$__Config_toINI_file" ]]; then
     printf "%s\n" "$__Config_toINI_out" > "$__Config_toINI_file"

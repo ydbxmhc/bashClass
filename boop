@@ -106,6 +106,19 @@ declare -g _OutMode="${_OutMode:-auto}"
 #   _EOL=""      # raw — no trailing newline (pipe-friendly)
 declare -g _EOL="${_EOL:-$'\n'}"
 
+# _Delimiter — element separator for multi-value return strings.
+#
+# Used by Map.keys, Map.values, Map.toArray, List.toArray, List.slice,
+# Config.keys, Config.sections, and similar methods that join multiple
+# values into a single string. Defaults to _EOL when not set, so the
+# common case (newline-separated) requires no configuration.
+#
+# Set it to override the separator without changing _EOL:
+#   _Delimiter=$'\t'    # tab-separated values
+#   _Delimiter=$'\r\n'  # CRLF (Windows-style)
+#   _Delimiter='|'      # pipe-separated
+declare -g _Delimiter="${_Delimiter:-}"
+
 # TODO: See TODO.md "Configurable Baked-Wrapper Typecast Behavior"
 # TODO: See TODO.md "Argument-Parsing Object"
 
@@ -564,7 +577,15 @@ _OutMode() {
 #
 # Uses ${1-$_EOL} (no colon) so empty string passes through as a
 # valid value, while no argument falls back to the current setting.
-_EOL() { boop.pass "${1-$_EOL}" ${into:-_EOL}; } 
+_EOL() { boop.pass "${1-$_EOL}" ${into:-_EOL}; }
+
+# _Delimiter — get or set the element separator for multi-value returns.
+#
+# Works as both a variable and a function:
+#   _Delimiter=$'\t'    # set directly
+#   _Delimiter $'\t'    # set via function (also prints new value)
+#   into=d _Delimiter   # read without side effects
+_Delimiter() { boop.pass "${1-${_Delimiter:-$_EOL}}" ${into:-_Delimiter}; }
 
 # ============================================================================
 # VALUE ENCODING/DECODING

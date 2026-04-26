@@ -369,4 +369,52 @@ into=v $cfg3.get db.port; $t.assert_eq "INI round-trip: port intact"  "$v" "5432
 # Summary
 # ============================================================================
 
+# ============================================================================
+# _Delimiter: custom element separator on Config.keys and Config.sections
+# ============================================================================
+
+$t.section "_Delimiter: Config.keys and Config.sections"
+
+into=cfg Config.new
+$cfg.set alpha 1
+$cfg.set beta 2
+$cfg.set gamma 3
+$cfg.set db.host localhost
+$cfg.set db.port 5432
+$cfg.set srv.workers 4
+
+_Delimiter=$'|' into=k $cfg.keys
+$t.assert_eq "Config.keys pipe"           "$k" "alpha|beta|gamma|db.host|db.port|srv.workers"
+
+_Delimiter=$'\t' into=k $cfg.keys
+$t.assert_eq "Config.keys tab"            "$k" "$(printf 'alpha\tbeta\tgamma\tdb.host\tdb.port\tsrv.workers')"
+
+_Delimiter=$'|' into=k $cfg.keys db
+$t.assert_eq "Config.keys section pipe"   "$k" "host|port"
+
+_Delimiter=$'\r\n' into=k $cfg.keys db
+$t.assert_eq "Config.keys section CRLF"   "$k" "$(printf 'host\r\nport')"
+
+_Delimiter=$'|' into=s $cfg.sections
+$t.assert_eq "Config.sections pipe"       "$s" "db|srv"
+
+_Delimiter=$'\r\n' into=s $cfg.sections
+$t.assert_eq "Config.sections CRLF"       "$s" "$(printf 'db\r\nsrv')"
+
+$t.section "_Delimiter: Config.toFlat and Config.toINI string output"
+
+into=cfg2 Config.new
+$cfg2.set x 1
+$cfg2.set y 2
+$cfg2.set sec.a A
+$cfg2.set sec.b B
+
+_Delimiter=$'|' into=out $cfg2.toFlat
+$t.assert_eq "toFlat pipe"  "$out" "x=1|y=2|sec.a=A|sec.b=B"
+
+_Delimiter=$'|' into=out $cfg2.toINI
+$t.assert_contains "toINI pipe: top-level"     "$out" "x=1|y=2"
+$t.assert_contains "toINI pipe: section header" "$out" "[sec]"
+$t.assert_contains "toINI pipe: section keys"   "$out" "a=A|b=B"
+
 $t.summary

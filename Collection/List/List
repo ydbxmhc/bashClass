@@ -280,9 +280,10 @@ List.slice() {
   (( __List_slice_end < 0 )) && (( __List_slice_end += __List_slice_len ))
   local -i __List_slice_count=$(( __List_slice_end - __List_slice_start ))
   (( __List_slice_count <= 0 )) && { boop.pass "" ${into:-}; return; }
+  local __List_slice_d="${_Delimiter:-$_EOL}"
   local __List_slice_out
-  printf -v __List_slice_out "%s\n" "${__List_slice_arr[@]:$__List_slice_start:$__List_slice_count}"
-  __List_slice_out="${__List_slice_out%$'\n'}"
+  printf -v __List_slice_out "%s${__List_slice_d}" "${__List_slice_arr[@]:$__List_slice_start:$__List_slice_count}"
+  __List_slice_out="${__List_slice_out%"${__List_slice_d}"}"
   boop.pass "$__List_slice_out" ${into:-}
 }
 
@@ -301,13 +302,14 @@ List.slice() {
 List.toArray() {
   local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
   local -n __List_toArray_arr="__boop_data_${_Self}"
+  local __List_toArray_d="${_Delimiter:-$_EOL}"
   local __List_toArray_out
   if ! [[ -n "${!__List_toArray_arr[@]}" ]] || (( ${#__List_toArray_arr[@]} == 0 )); then
     boop.pass "" ${into:-}
     return
   fi
-  printf -v __List_toArray_out "%s\n" "${__List_toArray_arr[@]}"
-  __List_toArray_out="${__List_toArray_out%$'\n'}"
+  printf -v __List_toArray_out "%s${__List_toArray_d}" "${__List_toArray_arr[@]}"
+  __List_toArray_out="${__List_toArray_out%"${__List_toArray_d}"}"
   boop.pass "$__List_toArray_out" ${into:-}
 }
 

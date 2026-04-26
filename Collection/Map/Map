@@ -143,13 +143,14 @@ Map.has() {
 Map.keys() {
   local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
   local -n __Map_keys_keys="__boop_keys_${_Self}"
+  local __Map_keys_d="${_Delimiter:-$_EOL}"
   local __Map_keys_out
   if ! [[ -n "${!__Map_keys_keys[@]}" ]] || (( ${#__Map_keys_keys[@]} == 0 )); then
     boop.pass "" ${into:-}
     return
   fi
-  printf -v __Map_keys_out "%s\n" "${__Map_keys_keys[@]}"
-  __Map_keys_out="${__Map_keys_out%$'\n'}"
+  printf -v __Map_keys_out "%s${__Map_keys_d}" "${__Map_keys_keys[@]}"
+  __Map_keys_out="${__Map_keys_out%"${__Map_keys_d}"}"
   boop.pass "$__Map_keys_out" ${into:-}
 }
 
@@ -168,10 +169,10 @@ Map.values() {
     boop.pass "" ${into:-}
     return
   fi
+  local __Map_values_d="${_Delimiter:-$_EOL}"
   local __Map_values_k __Map_values_first=1
   for __Map_values_k in "${__Map_values_keys[@]}"; do
-    (( __Map_values_first )) || __Map_values_out="$__Map_values_out
-"
+    (( __Map_values_first )) || __Map_values_out="${__Map_values_out}${__Map_values_d}"
     __Map_values_out="$__Map_values_out${__Map_values_arr[$__Map_values_k]}"
     __Map_values_first=0
   done
@@ -185,11 +186,11 @@ Map.toArray() {
   local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
   local -n __Map_toArray_arr="__boop_data_${_Self}"
   local -n __Map_toArray_keys="__boop_keys_${_Self}"
+  local __Map_toArray_d="${_Delimiter:-$_EOL}"
   local __Map_toArray_out="" __Map_toArray_key __Map_toArray_first=1
   if [[ -n "${!__Map_toArray_keys[@]}" ]]; then
     for __Map_toArray_key in "${__Map_toArray_keys[@]}"; do
-      (( __Map_toArray_first )) || __Map_toArray_out="$__Map_toArray_out
-"
+      (( __Map_toArray_first )) || __Map_toArray_out="${__Map_toArray_out}${__Map_toArray_d}"
       __Map_toArray_out="$__Map_toArray_out$__Map_toArray_key=${__Map_toArray_arr[$__Map_toArray_key]}"
       __Map_toArray_first=0
     done
