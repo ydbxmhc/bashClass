@@ -63,6 +63,7 @@ declare -g _AutoAlias="full"   # default
 | Value | Behavior |
 |-------|----------|
 | `full` | Auto-alias at all levels (short + intermediate + full). Default. |
+| `best` | Auto-alias only the shortest unique (unambiguous) level + full FQN. |
 | `short` | Auto-alias only the short name + full FQN. |
 | `none` | No auto-aliasing. Only explicit `_Import` creates aliases. Full FQN always works. |
 

@@ -55,8 +55,9 @@ disambiguation.
     alias names to FQNs.
 
 2.6 A global toggle `_AutoAlias` SHALL control auto-aliasing behavior:
-    `full` (all levels, default), `short` (short name + FQN only),
-    `none` (no auto-aliasing, explicit `_Import` only).
+    `full` (all levels, default), `best` (shortest unique alias + FQN
+    only), `short` (short name + FQN only), `none` (no auto-aliasing,
+    explicit `_Import` only).
 
 2.7 `_AutoAlias` SHALL be settable in `.booprc` or per-script.
 
