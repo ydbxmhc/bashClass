@@ -558,71 +558,94 @@ __boop.autoAlias() {
   # Apply based on _AutoAlias mode
   local __boop_aa_best_set=0
   for __boop_aa_candidate in "${__boop_aa_candidates[@]}"; do
-    # FQN itself always gets aliased
-    if [[ "$__boop_aa_candidate" == "$__boop_aa_fqn" ]]; then
-      __boop_alias["$__boop_aa_candidate"]="$__boop_aa_fqn"
+    # FQN itself -- skip, already registered
+    [[ "$__boop_aa_candidate" == "$__boop_aa_fqn" ]] && continue
+
+    local __boop_aa_should_create=0
+    case "$_AutoAlias" in
+      short)
+        [[ "$__boop_aa_candidate" == "${__boop_aa_candidates[0]}" ]] && __boop_aa_should_create=1
+        ;;
+      best)
+        (( ! __boop_aa_best_set )) && __boop_aa_should_create=1
+        ;;
+      full|*)
+        __boop_aa_should_create=1
+        ;;
+    esac
+
+    (( __boop_aa_should_create )) || continue
+
+    # Check for collision
+    if [[ -n "${__boop_registry[$__boop_aa_candidate]+set}" ]]; then
+      local __boop_aa_existing_true
+      __boop.parse "$__boop_aa_candidate" "trueClass" __boop_aa_existing_true
+      if [[ "$__boop_aa_existing_true" != "$__boop_aa_fqn" ]]; then
+        _Info "Alias '$__boop_aa_candidate' is ambiguous ($__boop_aa_existing_true vs $__boop_aa_fqn)"
+        continue
+      fi
+      # Already aliased to same FQN, skip
       continue
     fi
 
-    case "$_AutoAlias" in
-      short)
-        # Only the shortest (first candidate) + FQN
-        if [[ "$__boop_aa_candidate" == "${__boop_aa_candidates[0]}" ]]; then
-          if [[ -z "${__boop_alias[$__boop_aa_candidate]+set}" ]]; then
-            __boop_alias["$__boop_aa_candidate"]="$__boop_aa_fqn"
-          elif [[ "${__boop_alias[$__boop_aa_candidate]}" != "$__boop_aa_fqn" ]]; then
-            _Info "Alias '$__boop_aa_candidate' is ambiguous (${__boop_alias[$__boop_aa_candidate]} vs $__boop_aa_fqn)"
-          fi
-        fi
-        ;;
-      best)
-        # Only the shortest unique + FQN
-        if (( ! __boop_aa_best_set )); then
-          if [[ -z "${__boop_alias[$__boop_aa_candidate]+set}" ]]; then
-            __boop_alias["$__boop_aa_candidate"]="$__boop_aa_fqn"
-            __boop_aa_best_set=1
-          elif [[ "${__boop_alias[$__boop_aa_candidate]}" != "$__boop_aa_fqn" ]]; then
-            _Info "Alias '$__boop_aa_candidate' is ambiguous (${__boop_alias[$__boop_aa_candidate]} vs $__boop_aa_fqn)"
-            # Try next level up
-          fi
-        fi
-        ;;
-      full|*)
-        # All levels
-        if [[ -z "${__boop_alias[$__boop_aa_candidate]+set}" ]]; then
-          __boop_alias["$__boop_aa_candidate"]="$__boop_aa_fqn"
-        elif [[ "${__boop_alias[$__boop_aa_candidate]}" != "$__boop_aa_fqn" ]]; then
-          _Info "Alias '$__boop_aa_candidate' is ambiguous (${__boop_alias[$__boop_aa_candidate]} vs $__boop_aa_fqn)"
-        fi
-        ;;
-    esac
-  done
+    # Create the alias as a real registry entry
+    __boop.createAlias "$__boop_aa_candidate" "$__boop_aa_fqn"
+    __boop_alias["$__boop_aa_candidate"]="$__boop_aa_fqn"
 
-  # Create constructor shorthands for all aliases pointing to this FQN
-  local __boop_aa_key
-  for __boop_aa_key in "${!__boop_alias[@]}"; do
-    [[ "${__boop_alias[$__boop_aa_key]}" == "$__boop_aa_fqn" ]] || continue
-    __boop.aliasShorthand "$__boop_aa_key" "$__boop_aa_fqn"
+    if [[ "$_AutoAlias" == "best" ]]; then
+      __boop_aa_best_set=1
+    fi
   done
 }
 
-# __boop.aliasShorthand -- create a constructor shorthand for an alias.
+# __boop.createAlias -- create a real registry entry for an alias.
 #
-# If the FQN has a .new method registered, creates:
-#   AliasName() { _Class='FQN' FQN.new "$@"; }
-# Otherwise uses the default constructor:
-#   AliasName() { _Class='FQN' __boop.new "$@"; }
-#
-# Skips if the alias name equals the FQN (registerClass already handles that).
-__boop.aliasShorthand() {
-  local __boop_as_alias="$1" __boop_as_fqn="$2"
-  [[ "$__boop_as_alias" == "$__boop_as_fqn" ]] && return
-  # Don't overwrite an existing function (might be a real class)
-  declare -f "$__boop_as_alias" >/dev/null && return
-  if declare -f "${__boop_as_fqn}.new" >/dev/null; then
-    eval "$__boop_as_alias() { _Class='$__boop_as_fqn' ${__boop_as_fqn}.new \"\$@\"; }"
+# Clones the FQN's descriptor with class=alias and trueClass=FQN.
+# Clones all method registry entries as alias.method -> FQN.method.
+# Creates wrapper functions alias.method() that forward to FQN.method().
+# Creates constructor shorthand alias() that forwards to FQN.new().
+__boop.createAlias() {
+  local __boop_ca_alias="$1" __boop_ca_fqn="$2"
+
+  # Clone descriptor: replace class= but keep trueClass= pointing to FQN
+  local __boop_ca_desc="${__boop_registry[$__boop_ca_fqn]:-}"
+  [[ -n "$__boop_ca_desc" ]] || return
+  __boop_ca_desc="${__boop_ca_desc/"|class=$__boop_ca_fqn"/"|class=$__boop_ca_alias"}"
+  __boop_registry["$__boop_ca_alias"]="$__boop_ca_desc"
+
+  # Clone method registry entries from FQN to alias
+  local __boop_ca_key __boop_ca_method __boop_ca_impl
+  for __boop_ca_key in "${!__boop_methodRegistry[@]}"; do
+    [[ "$__boop_ca_key" == "$__boop_ca_fqn."* ]] || continue
+    __boop_ca_method="${__boop_ca_key#"$__boop_ca_fqn".}"
+    __boop_ca_impl="${__boop_methodRegistry[$__boop_ca_key]}"
+    __boop_methodRegistry["$__boop_ca_alias.$__boop_ca_method"]="$__boop_ca_impl"
+    # Create wrapper function
+    eval "$__boop_ca_alias.$__boop_ca_method() { _Self=\"\$_Self\" _Class='$__boop_ca_alias' $__boop_ca_impl \"\$@\"; }"
+  done
+
+  # Also create wrappers for inherited methods (walk parent chain)
+  local __boop_ca_parent
+  __boop.parse "$__boop_ca_fqn" "parent" __boop_ca_parent
+  while [[ -n "$__boop_ca_parent" ]]; do
+    for __boop_ca_key in "${!__boop_methodRegistry[@]}"; do
+      [[ "$__boop_ca_key" == "$__boop_ca_parent."* ]] || continue
+      __boop_ca_method="${__boop_ca_key#"$__boop_ca_parent".}"
+      # Skip if already defined (own methods take priority)
+      [[ -n "${__boop_methodRegistry[$__boop_ca_alias.$__boop_ca_method]+set}" ]] && continue
+      __boop_ca_impl="${__boop_methodRegistry[$__boop_ca_key]}"
+      __boop_methodRegistry["$__boop_ca_alias.$__boop_ca_method"]="$__boop_ca_impl"
+      declare -f "$__boop_ca_alias.$__boop_ca_method" >/dev/null && continue
+      eval "$__boop_ca_alias.$__boop_ca_method() { _Self=\"\$_Self\" _Class='$__boop_ca_alias' $__boop_ca_impl \"\$@\"; }"
+    done
+    __boop.parse "$__boop_ca_parent" "parent" __boop_ca_parent
+  done
+
+  # Constructor shorthand
+  if declare -f "${__boop_ca_fqn}.new" >/dev/null; then
+    eval "$__boop_ca_alias() { _Class='$__boop_ca_alias' ${__boop_ca_fqn}.new \"\$@\"; }"
   else
-    eval "$__boop_as_alias() { _Class='$__boop_as_fqn' __boop.new \"\$@\"; }"
+    eval "$__boop_ca_alias() { _Class='$__boop_ca_alias' __boop.new \"\$@\"; }"
   fi
 }
 
@@ -646,9 +669,9 @@ _Import() {
   # Check for "as" clause
   if [[ "${1:-}" == "as" && -n "${2:-}" ]]; then
     local __boop_import_alias="$2"
-    # Explicit alias -- store literally, overrides any existing
+    # Explicit alias -- create real registry entry, overrides any existing
+    __boop.createAlias "$__boop_import_alias" "$__boop_import_fqn"
     __boop_alias["$__boop_import_alias"]="$__boop_import_fqn"
-    __boop.aliasShorthand "$__boop_import_alias" "$__boop_import_fqn"
     _Debug "import: aliased '$__boop_import_alias' -> '$__boop_import_fqn'"
   fi
   # Auto-aliasing happens during class load (in __boop.import)
@@ -998,9 +1021,6 @@ __boop.methodResolve() {
   local __boop_methodResolve_class="$1" __boop_methodResolve_method="$2"
   local -n __boop_methodResolve_out="$3"
 
-  # Resolve through aliases
-  __boop.resolveAlias "$__boop_methodResolve_class" __boop_methodResolve_class
-
   [[ -n "${__boop_registry[$__boop_methodResolve_class]:-}" ]] || \
     _Crash "Unknown class: '$__boop_methodResolve_class'"
 
@@ -1113,13 +1133,18 @@ __boop.isa() {
     return 0
   fi
 
-  # Resolve query through alias registry
-  local __boop_isa_resolved
-  __boop.resolveAlias "$__boop_isa_query" __boop_isa_resolved
+  # Get the trueClass of the query (resolve alias to FQN)
+  local __boop_isa_query_true
+  __boop.parse "$__boop_isa_query" "trueClass" __boop_isa_query_true
+  : "${__boop_isa_query_true:=$__boop_isa_query}"
 
+  # Walk the inheritance chain comparing trueClass values
   local __boop_isa_current="$_Class"
   while [[ -n "$__boop_isa_current" ]]; do
-    [[ "$__boop_isa_current" == "$__boop_isa_resolved" ]] && return 0
+    local __boop_isa_current_true
+    __boop.parse "$__boop_isa_current" "trueClass" __boop_isa_current_true
+    : "${__boop_isa_current_true:=$__boop_isa_current}"
+    [[ "$__boop_isa_current_true" == "$__boop_isa_query_true" ]] && return 0
     __boop.parse "$__boop_isa_current" "parent" __boop_isa_current
   done
   return 1
@@ -1301,8 +1326,11 @@ __boop.new() {
   # Generate unique object ID
   local _Self; printf -v _Self "_%x" "${EPOCHREALTIME//.}"
 
-  # Build descriptor
-  local __boop_new_descriptor="|class=$_Class"
+  # Build descriptor -- trueClass comes from the class's trueClass
+  local __boop_new_trueClass
+  __boop.parse "$_Class" "trueClass" __boop_new_trueClass
+  : "${__boop_new_trueClass:=$_Class}"
+  local __boop_new_descriptor="|class=$_Class|trueClass=$__boop_new_trueClass"
 
   # Parse arguments and encode values.
   # If a key already exists in the descriptor (e.g., a subclass passes
@@ -2249,7 +2277,7 @@ boopClass() {
   local __boopClass_allMethods
   __boopClass.methodList __boopClass_allMethods
 
-  __boop_registry["$__boopClass_class"]="|class=$__boopClass_class|parent=$__boopClass_parent|methods=$__boopClass_allMethods|properties=$__boopClass_has"
+  __boop_registry["$__boopClass_class"]="|class=$__boopClass_class|trueClass=$__boopClass_class|parent=$__boopClass_parent|methods=$__boopClass_allMethods|properties=$__boopClass_has"
   __boopClass.registerMethods "$__boopClass_class" "$__boopClass_public" "$__boopClass_custom"
   __boop.registerClass "$__boopClass_class"
   __boop.autoAlias "$__boopClass_class"
@@ -2378,7 +2406,7 @@ _Bless() {
 # from it (parent chain terminates at boop's empty parent field).
 # The standard methods registered here (get, set, isa, toString, new, super)
 # are available to all objects unless overridden by a subclass.
-__boop_registry["boop"]="|class=boop|parent=|methods=new,get,set,isa,toString,inspect,super|properties="
+__boop_registry["boop"]="|class=boop|trueClass=boop|parent=|methods=new,get,set,isa,toString,inspect,super|properties="
 
 #boopClass boop '
 #  custom:new=__boop.new,get=__boop.get,set=__boop.set,isa=__boop.isa,toString=__boop.toString
