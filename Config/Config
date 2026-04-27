@@ -36,6 +36,28 @@ Config.new() {
   boop.pass "$__Config_new_self" ${into:-}
 }
 
+# Parse flat key=value lines from stdin into an existing Config object.
+# Reduced-form primitive shared by load (file) and fromFlatString (string).
+# Usage: __Config.parseFlat <config_id> < input
+__Config.parseFlat() {
+  local __Config_pf_self="$1"
+  local -n __Config_pf_data="__boop_config_${__Config_pf_self}"
+  local -n __Config_pf_keys_arr="__boop_config_keys_${__Config_pf_self}"
+  local __Config_pf_line __Config_pf_key __Config_pf_val
+
+  while IFS= read -r __Config_pf_line; do
+    [[ -z "$__Config_pf_line" || "$__Config_pf_line" == '#'* ]] && continue
+    [[ "$__Config_pf_line" != *'='* ]] && continue
+    __Config_pf_key="${__Config_pf_line%%=*}"
+    __Config_pf_val="${__Config_pf_line#*=}"
+    [[ -z "$__Config_pf_key" ]] && continue
+    if [[ -z "${__Config_pf_data[$__Config_pf_key]+set}" ]]; then
+      __Config_pf_keys_arr+=("$__Config_pf_key")
+    fi
+    __Config_pf_data[$__Config_pf_key]="$__Config_pf_val"
+  done
+}
+
 # Load a flat key=value property file.
 # Lines starting with # are comments. Blank lines are ignored.
 # Usage: into=cfg Config.load ~/.myapp.cfg
@@ -50,23 +72,22 @@ Config.load() {
   declare -gA "__boop_config_${__Config_load_self}"
   declare -ga "__boop_config_keys_${__Config_load_self}"
 
-  local -n __Config_load_data="__boop_config_${__Config_load_self}"
-  local -n __Config_load_keys_arr="__boop_config_keys_${__Config_load_self}"
-  local __Config_load_line __Config_load_key __Config_load_val
-
-  while IFS= read -r __Config_load_line; do
-    [[ -z "$__Config_load_line" || "$__Config_load_line" == '#'* ]] && continue
-    [[ "$__Config_load_line" != *'='* ]] && continue
-    __Config_load_key="${__Config_load_line%%=*}"
-    __Config_load_val="${__Config_load_line#*=}"
-    [[ -z "$__Config_load_key" ]] && continue
-    if [[ -z "${__Config_load_data[$__Config_load_key]+set}" ]]; then
-      __Config_load_keys_arr+=("$__Config_load_key")
-    fi
-    __Config_load_data[$__Config_load_key]="$__Config_load_val"
-  done < "$__Config_load_file"
+  __Config.parseFlat "$__Config_load_self" < "$__Config_load_file"
 
   boop.pass "$__Config_load_self" ${into:-}
+}
+
+# Parse a flat key=value string directly (no file required).
+# Usage: into=cfg Config.fromFlatString "$prop_string"
+Config.fromFlatString() {
+  local _Class="${_Class:-Config}"
+  local __Config_ffs_str="${1:-}"
+  local __Config_ffs_self
+  into=__Config_ffs_self __boop.new format=flat
+  declare -gA "__boop_config_${__Config_ffs_self}"
+  declare -ga "__boop_config_keys_${__Config_ffs_self}"
+  __Config.parseFlat "$__Config_ffs_self" <<< "$__Config_ffs_str"
+  boop.pass "$__Config_ffs_self" ${into:-}
 }
 
 # Parse INI-format lines from stdin into an existing Config object.
@@ -307,5 +328,5 @@ Config.fromString() {
 # ============================================================================
 
 boopClass Config has:file,format '
-  public:new,load,loadINI,fromString,get,set,has,keys,sections,save,toFlat,toINI
+  public:new,load,loadINI,fromString,fromFlatString,get,set,has,keys,sections,save,toFlat,toINI
 '
