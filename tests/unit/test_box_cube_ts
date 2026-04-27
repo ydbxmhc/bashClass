@@ -58,8 +58,8 @@ $t.assert_ok   "cube isa boop"     $cube2.isa boop
 $t.assert_fail "cube not String"   $cube2.isa String
 
 # isa with no arg returns class name
-into=v $cube2.isa; $t.assert_eq "isa no-arg returns class" "$v" "Cube"
-into=v $box2.isa;  $t.assert_eq "box isa no-arg returns class" "$v" "Box"
+into=v $cube2.isa; $t.assert_eq "isa no-arg returns class" "$v" "Geometry.Cube"
+into=v $box2.isa;  $t.assert_eq "box isa no-arg returns class" "$v" "Geometry.Box"
 
 # ============================================================================
 # _Bless — parent-constructor + bless to child
@@ -73,19 +73,19 @@ into=v $box2.isa;  $t.assert_eq "box isa no-arg returns class" "$v" "Box"
 $t.section "_Bless"
 # Cube.new calls Box.new (via _Super), which creates the object with
 # class=Box, then _Bless stamps it as Cube. All wrappers must be
-# regenerated with _Class=Cube.
+# regenerated with _Class=Geometry.Cube.
 into=bc Cube size=5
 
 # Identity — the blessed class must be visible everywhere
 $t.assert_ok   "blessed isa Cube"       $bc.isa Cube
 $t.assert_ok   "blessed isa Box"        $bc.isa Box
-into=v $bc.isa; $t.assert_eq "isa no-arg = Cube" "$v" "Cube"
+into=v $bc.isa; $t.assert_eq "isa no-arg = Cube" "$v" "Geometry.Cube"
 
 # toString must show Cube(...), not Box(...)
 into=s $bc.toString
-$t.assert_contains "toString shows Cube(" "$s" "Cube("
+$t.assert_contains "toString shows Cube(" "$s" "Geometry.Cube("
 $t.assert_ok       "toString does not show Box(" \
-  test "${s}" = "${s/Box(/}"
+  test "${s}" = "${s/Geometry.Box(/}"
 
 # Methods must dispatch correctly for the blessed class
 into=v $bc.volume; $t.assert_eq "Cube.volume via blessed" "$v" "125"
@@ -115,7 +115,7 @@ into=ts_box  Box  length=5 width=3 height=7
 
 # Compact mode: ClassName(id){ field=val ... }
 into=s $ts_cube.toString
-$t.assert_contains "cube compact has class"  "$s" "Cube("
+$t.assert_contains "cube compact has class"  "$s" "Geometry.Cube("
 $t.assert_contains "cube compact has size"   "$s" "size=4"
 $t.assert_contains "cube compact has unit"   "$s" "unit=cm"
 # Internal fields must be suppressed
@@ -124,7 +124,7 @@ $t.assert_ok "parent field suppressed"  test "${s}" = "${s/parent=/}"
 $t.assert_ok "methods field suppressed" test "${s}" = "${s/methods=/}"
 
 into=s $ts_box.toString
-$t.assert_contains "box compact has class"   "$s" "Box("
+$t.assert_contains "box compact has class"   "$s" "Geometry.Box("
 $t.assert_contains "box compact has length"  "$s" "length=5"
 $t.assert_contains "box compact has width"   "$s" "width=3"
 $t.assert_contains "box compact has height"  "$s" "height=7"
@@ -132,7 +132,7 @@ $t.assert_contains "box compact has height"  "$s" "height=7"
 # Pretty mode: ClassName(id) {\n  field = val\n}
 into=s $ts_cube.toString pretty
 $t.assert_contains "pretty has newlines"     "$s" $'\n'
-$t.assert_contains "pretty has class name"   "$s" "Cube("
+$t.assert_contains "pretty has class name"   "$s" "Geometry.Cube("
 $t.assert_contains "pretty has size field"   "$s" "size"
 
 # ============================================================================
@@ -170,10 +170,10 @@ into=v $b2.get "length"; $t.assert_eq "b2 unaffected by b1 mutation" "$v" "10"
 $t.section "Typecasting"
 into=tc Cube size=4
 into=v $tc.volume;              $t.assert_eq "cube as Cube"    "$v" "64"
-into=v _Class=Box $tc.volume;   $t.assert_eq "cube as Box"     "$v" "64"
+into=v _Class=Geometry.Box $tc.volume;   $t.assert_eq "cube as Box"     "$v" "64"
 into=v $tc.volume;              $t.assert_eq "back to Cube"    "$v" "64"
 # Typecast to Box uses Box.side (length × height), not Cube.side
-into=v _Class=Box $tc.side;     $t.assert_eq "Box.side on cube" "$v" "16"
+into=v _Class=Geometry.Box $tc.side;     $t.assert_eq "Box.side on cube" "$v" "16"
 
 # ============================================================================
 # Value Encoding — round-trip through set/get
@@ -234,7 +234,7 @@ $t.assert_contains "wrapper calls Box.volume" "$__boop_wrap_def" "Box.volume"
 $t.section "Typecast with Baked Wrapper"
 into=tc2 new Cube size=3
 into=v $tc2.volume;             $t.assert_eq "as Cube"       "$v" "27"
-into=v _Class=Box $tc2.volume;  $t.assert_eq "typecast to Box" "$v" "27"
+into=v _Class=Geometry.Box $tc2.volume;  $t.assert_eq "typecast to Box" "$v" "27"
 into=v $tc2.volume;             $t.assert_eq "back to Cube"  "$v" "27"
 
 # ============================================================================

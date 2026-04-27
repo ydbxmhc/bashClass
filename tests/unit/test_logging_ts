@@ -111,11 +111,11 @@ $t.section "Caller context"
 # Define a temporary test method on Box and call it with explicit _Self/_Class,
 # which is exactly what the baked wrapper does internally.
 Box.test_log() {
-  local -I _Self; local _Class="${_Class:-Box}"
+  local -I _Self; local _Class="${_Class:-Geometry.Box}"
   _Warn "from method"
 }
 into=__lt_box Box length=1 width=1 height=1
-_lc; _Self="$__lt_box" _Class=Box Box.test_log 2>"$__lf"
+_lc; _Self="$__lt_box" _Class=Geometry.Box Box.test_log 2>"$__lf"
 $t.assert_contains "caller shows method name" "$(<"$__lf")" "Box.test_log"
 
 # Top-level call shows "main"
@@ -129,16 +129,16 @@ $t.assert_contains "top-level caller is main" "$(<"$__lf")" "main"
 $t.section "Per-class override"
 
 _LogLevel warn
-_LogLevel trace Box
+_LogLevel trace Geometry.Box
 
-_lc; _Class=Box _Trace "box trace" 2>"$__lf"
+_lc; _Class=Geometry.Box _Trace "box trace" 2>"$__lf"
 $t.assert_contains "per-class trace shows" "$(<"$__lf")" "box trace"
 
 # No class context — falls back to global (warn)
 _lc; _Trace "global trace" 2>"$__lf"
 $t.assert_eq "global trace hidden" "$(<"$__lf")" ""
 
-unset '__boop_classLogLevel[Box]'
+unset '__boop_classLogLevel[Geometry.Box]'
 __boop_resolvedLogLevel=()
 _LogLevel warn
 
@@ -149,15 +149,15 @@ _LogLevel warn
 $t.section "Inheritance resolution"
 
 _LogLevel warn
-_LogLevel debug Box
+_LogLevel debug Geometry.Box
 
-_lc; _Class=Cube _Debug "cube debug" 2>"$__lf"
+_lc; _Class=Geometry.Cube _Debug "cube debug" 2>"$__lf"
 $t.assert_contains "Cube inherits Box debug" "$(<"$__lf")" "cube debug"
 
-_lc; _Class=Cube _Trace "cube trace" 2>"$__lf"
+_lc; _Class=Geometry.Cube _Trace "cube trace" 2>"$__lf"
 $t.assert_eq "Cube trace hidden at inherited debug" "$(<"$__lf")" ""
 
-unset '__boop_classLogLevel[Box]'
+unset '__boop_classLogLevel[Geometry.Box]'
 __boop_resolvedLogLevel=()
 _LogLevel warn
 
@@ -168,20 +168,20 @@ _LogLevel warn
 $t.section "Child override beats parent"
 
 _LogLevel warn
-_LogLevel trace Box
-_LogLevel error Cube
+_LogLevel trace Geometry.Box
+_LogLevel error Geometry.Cube
 
-_lc; _Class=Cube _Warn "cube warn" 2>"$__lf"
+_lc; _Class=Geometry.Cube _Warn "cube warn" 2>"$__lf"
 $t.assert_eq "Cube warn hidden (own override=error)" "$(<"$__lf")" ""
 
-_lc; _Class=Cube _Error "cube error" 2>"$__lf"
+_lc; _Class=Geometry.Cube _Error "cube error" 2>"$__lf"
 $t.assert_contains "Cube error shows" "$(<"$__lf")" "cube error"
 
-_lc; _Class=Box _Trace "box trace" 2>"$__lf"
+_lc; _Class=Geometry.Box _Trace "box trace" 2>"$__lf"
 $t.assert_contains "Box still at trace" "$(<"$__lf")" "box trace"
 
-unset '__boop_classLogLevel[Box]'
-unset '__boop_classLogLevel[Cube]'
+unset '__boop_classLogLevel[Geometry.Box]'
+unset '__boop_classLogLevel[Geometry.Cube]'
 __boop_resolvedLogLevel=()
 _LogLevel warn
 
@@ -193,23 +193,23 @@ $t.section "Cache invalidation"
 
 _LogLevel warn
 
-_lc; _Class=Box _Debug "before" 2>"$__lf"
+_lc; _Class=Geometry.Box _Debug "before" 2>"$__lf"
 $t.assert_eq "debug hidden before change" "$(<"$__lf")" ""
 
 # Change Box to debug — cache should invalidate
-_LogLevel debug Box
-_lc; _Class=Box _Debug "after" 2>"$__lf"
+_LogLevel debug Geometry.Box
+_lc; _Class=Geometry.Box _Debug "after" 2>"$__lf"
 $t.assert_contains "debug shows after level change" "$(<"$__lf")" "after"
 
 # Global change tightens threshold for classes without per-class override
-unset '__boop_classLogLevel[Box]'
+unset '__boop_classLogLevel[Geometry.Box]'
 __boop_resolvedLogLevel=()
 _LogLevel debug
-_lc; _Class=Box _Debug "first" 2>"$__lf"
+_lc; _Class=Geometry.Box _Debug "first" 2>"$__lf"
 $t.assert_contains "first debug shows" "$(<"$__lf")" "first"
 
 _LogLevel error
-_lc; _Class=Box _Debug "second" 2>"$__lf"
+_lc; _Class=Geometry.Box _Debug "second" 2>"$__lf"
 $t.assert_eq "debug hidden after global tightens" "$(<"$__lf")" ""
 
 _LogLevel warn
@@ -221,13 +221,13 @@ _LogLevel warn
 $t.section "Per-class survives global change"
 
 _LogLevel warn
-_LogLevel debug Box
+_LogLevel debug Geometry.Box
 _LogLevel error   # tighten global — Box should keep its own level
 
-_lc; _Class=Box _Debug "survives" 2>"$__lf"
+_lc; _Class=Geometry.Box _Debug "survives" 2>"$__lf"
 $t.assert_contains "per-class debug survives global error" "$(<"$__lf")" "survives"
 
-unset '__boop_classLogLevel[Box]'
+unset '__boop_classLogLevel[Geometry.Box]'
 __boop_resolvedLogLevel=()
 _LogLevel warn
 
@@ -297,25 +297,25 @@ $t.assert_contains "special chars" "$(<"$__lf")" "pipes | and equals = here"
 $t.section "Cache reuse"
 
 _LogLevel warn
-_LogLevel trace Box
+_LogLevel trace Geometry.Box
 
-_lc; _Class=Box _Trace "call1" 2>"$__lf"
+_lc; _Class=Geometry.Box _Trace "call1" 2>"$__lf"
 $t.assert_contains "first cached call" "$(<"$__lf")" "call1"
 
-_lc; _Class=Box _Trace "call2" 2>"$__lf"
+_lc; _Class=Geometry.Box _Trace "call2" 2>"$__lf"
 $t.assert_contains "second cached call" "$(<"$__lf")" "call2"
 
-_lc; _Class=Box _Trace "call3" 2>"$__lf"
+_lc; _Class=Geometry.Box _Trace "call3" 2>"$__lf"
 $t.assert_contains "third cached call" "$(<"$__lf")" "call3"
 
 # Verify cache entry exists
-if [[ -n "${__boop_resolvedLogLevel[Box]+set}" ]]; then
+if [[ -n "${__boop_resolvedLogLevel[Geometry.Box]+set}" ]]; then
   $t.assert_ok "cache entry exists for Box" true
 else
   $t.assert_ok "cache entry exists for Box" false
 fi
 
-unset '__boop_classLogLevel[Box]'
+unset '__boop_classLogLevel[Geometry.Box]'
 __boop_resolvedLogLevel=()
 _LogLevel warn
 
@@ -339,15 +339,15 @@ $t.section "Deep inheritance chain"
 _LogLevel warn
 _LogLevel trace boop
 
-_lc; _Class=Cube _Trace "deep inherit" 2>"$__lf"
+_lc; _Class=Geometry.Cube _Trace "deep inherit" 2>"$__lf"
 $t.assert_contains "Cube inherits from boop" "$(<"$__lf")" "deep inherit"
 
 # Override at Box — Cube should pick up Box, not boop
-_LogLevel error Box
-_lc; _Class=Cube _Warn "should hide" 2>"$__lf"
+_LogLevel error Geometry.Box
+_lc; _Class=Geometry.Cube _Warn "should hide" 2>"$__lf"
 $t.assert_eq "Cube picks Box override over boop" "$(<"$__lf")" ""
 
-unset '__boop_classLogLevel[Box]'
+unset '__boop_classLogLevel[Geometry.Box]'
 unset '__boop_classLogLevel[boop]'
 __boop_resolvedLogLevel=()
 _LogLevel warn
@@ -442,14 +442,14 @@ $t.assert_eq "_Error not fatal after reset to crash" "$__fat_rc" "0"
 $t.section "Fatality threshold: per-class"
 
 $t.assert_fail "Box _Error crashes with per-class error threshold" \
-  bash -c '. boop Box; _FatalLevel error Box; _LogLevel error; _Class=Box _Error "x" 2>/dev/null'
+  bash -c '. boop Box; _FatalLevel error Geometry.Box; _LogLevel error; _Class=Geometry.Box _Error "x" 2>/dev/null'
 
 __fat_rc=0
-bash -c '. boop; _FatalLevel error Box; _LogLevel error; _Class=boop _Error "x" 2>/dev/null' || __fat_rc=$?
+bash -c '. boop; _FatalLevel error Geometry.Box; _LogLevel error; _Class=boop _Error "x" 2>/dev/null' || __fat_rc=$?
 $t.assert_eq "unrelated class not affected by Box per-class threshold" "$__fat_rc" "0"
 
 $t.assert_fail "Cube inherits Box per-class error threshold" \
-  bash -c '. boop Box Cube; _FatalLevel error Box; _LogLevel error; _Class=Cube _Error "x" 2>/dev/null'
+  bash -c '. boop Box Cube; _FatalLevel error Geometry.Box; _LogLevel error; _Class=Geometry.Cube _Error "x" 2>/dev/null'
 
 # ============================================================================
 # Fatality threshold: cache
@@ -457,22 +457,22 @@ $t.assert_fail "Cube inherits Box per-class error threshold" \
 
 $t.section "Fatality threshold: cache"
 
-_FatalLevel error Box
+_FatalLevel error Geometry.Box
 _LogLevel warn
 
-_Class=Box _Warn "cache warm" 2>/dev/null  # level 2 > threshold 1, no crash
-if [[ -n "${__boop_resolvedFatalLevel[Box]+set}" ]]; then
+_Class=Geometry.Box _Warn "cache warm" 2>/dev/null  # level 2 > threshold 1, no crash
+if [[ -n "${__boop_resolvedFatalLevel[Geometry.Box]+set}" ]]; then
   $t.assert_ok "fatal resolved cache populated for Box" true
 else
   $t.assert_ok "fatal resolved cache populated for Box" false
 fi
 
 _FatalLevel crash
-unset '__boop_classFatalLevel[Box]'
+unset '__boop_classFatalLevel[Geometry.Box]'
 __boop_resolvedFatalLevel=()
 _LogLevel warn
 
-if [[ -z "${__boop_resolvedFatalLevel[Box]+set}" ]]; then
+if [[ -z "${__boop_resolvedFatalLevel[Geometry.Box]+set}" ]]; then
   $t.assert_ok "fatal resolved cache cleared on reset" true
 else
   $t.assert_ok "fatal resolved cache cleared on reset" false

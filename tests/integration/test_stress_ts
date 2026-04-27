@@ -190,10 +190,10 @@ $t.assert_fail "resolve method injection: volume;ls" bash -c '. boop Cube;
    __boop.methodResolve Box "volume;ls" impl'
 
 #$t.section "dispatch"
-#$t.assert_fail "dispatch nonexistent method" bash -c '. boop Cube; new Box length=1 width=1 height=1; _Class=Box __boop.dispatch explode'
+#$t.assert_fail "dispatch nonexistent method" bash -c '. boop Cube; new Box length=1 width=1 height=1; _Class=Geometry.Box __boop.dispatch explode'
 #$t.assert_fail "dispatch with invalid class (has dash)" bash -c '. boop Cube; _Class=my-class __boop.dispatch new'
-#$t.assert_fail "dispatch with empty method" bash -c '. boop Cube; _Class=Box __boop.dispatch ""'
-#$t.assert_fail "dispatch method injection: volume;ls" bash -c '. boop Cube; _Class=Box __boop.dispatch "volume;ls"'
+#$t.assert_fail "dispatch with empty method" bash -c '. boop Cube; _Class=Geometry.Box __boop.dispatch ""'
+#$t.assert_fail "dispatch method injection: volume;ls" bash -c '. boop Cube; _Class=Geometry.Box __boop.dispatch "volume;ls"'
 #$t.assert_fail "dispatch to unregistered class" bash -c '. boop Cube; _Class=Sphere __boop.dispatch new'
 
 # ============================================================================
@@ -235,14 +235,14 @@ $t.assert_eq "Cube class-as-constructor" "$__ccube_vol" "27"
 # Explicit MRO constructor
 __dbox_impl=''
 __boop.methodResolve Box new __dbox_impl
-into=__dbox _Class=Box $__dbox_impl length=2 width=3 height=4
+into=__dbox _Class=Geometry.Box $__dbox_impl length=2 width=3 height=4
 into=__dbox_vol $__dbox.volume
 $t.assert_eq "explicit MRO constructor Box" "$__dbox_vol" "24"
 unset __dbox_impl
 
 __dcube_impl=''
 __boop.methodResolve Cube new __dcube_impl
-into=__dcube _Class=Cube $__dcube_impl size=5
+into=__dcube _Class=Geometry.Cube $__dcube_impl size=5
 into=__dcube_vol $__dcube.volume
 $t.assert_eq "explicit MRO constructor Cube" "$__dcube_vol" "125"
 unset __dcube_impl
@@ -280,10 +280,10 @@ $t.assert_eq "shorthand set/get" "$__gs_val" "77"
 
 $t.section "isa"
 into=__isa_val $cube.isa
-$t.assert_eq "isa no-arg returns class name" "$__isa_val" "Cube"
+$t.assert_eq "isa no-arg returns class name" "$__isa_val" "Geometry.Cube"
 $t.assert_fail "isa Sphere returns false" $cube.isa "Sphere"
 into=__isa_val $cube.isa ""
-$t.assert_eq "isa empty string returns class name" "$__isa_val" "Cube"
+$t.assert_eq "isa empty string returns class name" "$__isa_val" "Geometry.Cube"
 $t.assert_ok "isa boop from Cube (full chain)" $cube.isa boop
 
 # ============================================================================
@@ -345,7 +345,7 @@ $t.section "typecasting"
 into=__tc new Cube size=5
 into=__tc_vol $__tc.volume
 $t.assert_eq "Cube volume normal" "$__tc_vol" "125"
-into=__tc_vol _Class=Box $__tc.volume
+into=__tc_vol _Class=Geometry.Box $__tc.volume
 $t.assert_eq "Cube volume typecast to Box" "$__tc_vol" "125"
 # Typecast to nonexistent class — tier 3 (unrelated class) silently ignores
 # the bogus class and uses the baked class instead. This is correct behavior:
@@ -353,7 +353,7 @@ $t.assert_eq "Cube volume typecast to Box" "$__tc_vol" "125"
 into=__tc_vol _Class=Sphere $__tc.volume
 $t.assert_eq "typecast to nonexistent class uses baked class" "$__tc_vol" "125"
 
-into=__tc_side _Class=Box $__tc.side
+into=__tc_side _Class=Geometry.Box $__tc.side
 into=__tc_side2 $__tc.side
 $t.assert_eq "typecast to Box.side" "$__tc_side" "25"
 $t.assert_eq "normal Cube.side after typecast" "$__tc_side2" "25"
@@ -387,13 +387,13 @@ $t.section "_Super"
 
 # Success — explicit _Super call with _Self and _Class set directly
 into=c Cube size=4
-into=v _Self="$c" _Class=Cube _Super side
+into=v _Self="$c" _Class=Geometry.Cube _Super side
 $t.assert_eq "_Super Cube→Box.side" "$v" "16"
 
 # _Super: into= forwarded when called inside a method with no explicit into= on the dispatch
 Cube.stressTestSuperProxy() { _Super side; }
 into=__sup_cube Cube size=4
-into=__sup_ival _Self="$__sup_cube" _Class=Cube Cube.stressTestSuperProxy
+into=__sup_ival _Self="$__sup_cube" _Class=Geometry.Cube Cube.stressTestSuperProxy
 $t.assert_eq "_Super: outer into= forwarded through internal super call" "$__sup_ival" "16"
 unset __sup_cube
 
@@ -405,12 +405,12 @@ $t.assert_fail "_Super from root class" bash -c '. boop Cube
 # Fail — parent exists but method not found there
 $t.assert_fail "_Super method not found in parent" bash -c '. boop Cube
   new Box length=1 width=1 height=1; obj=$_Out
-  _Self=$obj _Class=Box _Super volume
+  _Self=$obj _Class=Geometry.Box _Super volume
 '
 # Fail — no method name given
 $t.assert_fail "_Super no method name" bash -c '. boop Cube
   new Cube size=1; obj=$_Out
-  _Self=$obj _Class=Cube _Super
+  _Self=$obj _Class=Geometry.Cube _Super
 '
 
 # ============================================================================
@@ -421,12 +421,12 @@ $t.section "_Cast"
 
 # Success — call Box.area directly, passing args explicitly (no property lookup)
 into=c Cube size=5
-into=v _Cast Box "$c" area 3 4
-$t.assert_eq "_Cast Box.area with explicit args" "$v" "12"
+into=v _Cast Geometry.Box "$c" area 3 4
+$t.assert_eq "_Cast Geometry.Box.area with explicit args" "$v" "12"
 unset c
 
 # _Cast: into= forwarded when called inside a method with no explicit into= on the dispatch
-__stress_cast_indirect() { _Cast Box "$1" area 3 4; }
+__stress_cast_indirect() { _Cast Geometry.Box "$1" area 3 4; }
 into=__cast_cube Cube size=5
 into=__cast_ival __stress_cast_indirect "$__cast_cube"
 $t.assert_eq "_Cast: outer into= forwarded through internal cast" "$__cast_ival" "12"
@@ -443,7 +443,7 @@ $t.assert_fail "_Cast no class" bash -c '. boop Cube
 '
 $t.assert_fail "_Cast no method" bash -c '. boop Cube
   new Cube size=1; obj=$_Out
-  _Cast Box "$obj"
+  _Cast Geometry.Box "$obj"
 '
 
 # ============================================================================
@@ -602,7 +602,7 @@ into=__rt_class $__rt_box.isa
 $t.assert_eq "into on isa = Box" "$__rt_class" "Box"
 
 into=__rt_str $__rt_box.toString
-$t.assert_contains "into on toString contains Box(" "$__rt_str" "Box("
+$t.assert_contains "into on toString contains Box(" "$__rt_str" "Geometry.Box("
 
 into=__rt_pretty $__rt_box.toString pretty
 $t.assert_contains "into on toString pretty contains newlines" "$__rt_pretty" "
@@ -625,7 +625,7 @@ into=__rt_check $__rt_box.volume
 $t.assert_eq "into bypasses _Out" "$_Out" "sentinel"
 
 # into with typecast to parent class
-into=__rt_tc _Class=Box $__rt_cube.volume
+into=__rt_tc _Class=Geometry.Box $__rt_cube.volume
 $t.assert_eq "into with typecast to Box = 64" "$__rt_tc" "64"
 
 # ============================================================================

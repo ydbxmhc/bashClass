@@ -998,6 +998,9 @@ __boop.methodResolve() {
   local __boop_methodResolve_class="$1" __boop_methodResolve_method="$2"
   local -n __boop_methodResolve_out="$3"
 
+  # Resolve through aliases
+  __boop.resolveAlias "$__boop_methodResolve_class" __boop_methodResolve_class
+
   [[ -n "${__boop_registry[$__boop_methodResolve_class]:-}" ]] || \
     _Crash "Unknown class: '$__boop_methodResolve_class'"
 
