@@ -804,6 +804,7 @@ __boop.validate() {
   local __boop_validate_pat; local -l type; : "${type:=identifier}"
   case $type in
     func|function) __boop_validate_pat='^[A-Za-z_][A-Za-z0-9_.]*$' ;;
+    class)         __boop_validate_pat='^[A-Za-z_][A-Za-z0-9_.]*$' ;;
     *)             __boop_validate_pat='^[A-Za-z_][A-Za-z0-9_]*$' ;;
   esac
   [[ "$1" =~ $__boop_validate_pat ]] || _Crash "Invalid $type: '$1'"
@@ -847,7 +848,7 @@ __boop.setDefaultMode() {
 __boop.parse() {
   local __boop_parse_key="$1" __boop_parse_field="$2" __boop_parse_target="${3:-}"
 
-  __boop.validate "$__boop_parse_key"
+  type=class __boop.validate "$__boop_parse_key"
 
   local __boop_parse_descriptor="${__boop_registry[$__boop_parse_key]:-}"
   local __boop_parse_pattern="\\|${__boop_parse_field}=([^|]*)"
@@ -880,7 +881,7 @@ __boop.registerMethod() {
   local __boop_registerMethod_class="$1" __boop_registerMethod_method="$2"
   local __boop_registerMethod_impl="${3:-$1.$2}"
 
-  __boop.validate "$__boop_registerMethod_class"
+  type=class __boop.validate "$__boop_registerMethod_class"
   __boop.validate "$__boop_registerMethod_method"
   type=function __boop.validate "$__boop_registerMethod_impl"
 
@@ -1021,7 +1022,7 @@ __boop.deserialize() {
   [[ -f "$__boop_deserialize_file" ]] || _Crash "File not found: $__boop_deserialize_file"
   local __boop_deserialize_key __boop_deserialize_descriptor
   while IFS=$'\t' read -r __boop_deserialize_key __boop_deserialize_descriptor; do
-    __boop.validate "$__boop_deserialize_key"
+    type=class __boop.validate "$__boop_deserialize_key"
     __boop_registry[$__boop_deserialize_key]="$__boop_deserialize_descriptor"
   done < "$__boop_deserialize_file"
 }
@@ -1381,7 +1382,7 @@ __boop.refresh() {
 # when called directly.
 __boop.registerClass() {
   local __boop_registerClass_class="$1"
-  __boop.validate "$__boop_registerClass_class"
+  type=class __boop.validate "$__boop_registerClass_class"
 
   [[ -n "${__boop_registry[$__boop_registerClass_class]:-}" ]] || 
     _Crash "No descriptor for class '$__boop_registerClass_class' — register it first"

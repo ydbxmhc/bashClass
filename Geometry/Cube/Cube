@@ -1,64 +1,59 @@
 #!/bin/bash
 
-# Cube class
+# Geometry.Cube class
 
-# Load guard — if already registered, nothing to do
-[[ -n "${__boop_registry[Cube]+set}" ]] && return 2>/dev/null
+# Load guard
+[[ -n "${__boop_registry[Geometry.Cube]+set}" ]] && return 2>/dev/null
 
-. boop Box
+. boop Geometry::Box
 
 # ============================================================================
-# Cube Implementation Functions
+# Geometry.Cube Implementation Functions
 # ============================================================================
 
 # Cube constructor - sets all dimensions equal to size
-Cube.new() {
-  local _Class="${_Class:-Cube}" __Cube_new_size="" __Cube_new_self
+Geometry.Cube.new() {
+  local _Class="${_Class:-Geometry.Cube}" __Geometry_Cube_new_size="" __Geometry_Cube_new_self
 
-  # Extract size from arguments
-  for __Cube_new_arg in "$@"; do [[ "$__Cube_new_arg" =~ ^size= ]] || continue
-      [[ -n "${__Cube_new_size:-}" ]] && _Crash "repeated argument '$__Cube_new_arg'"
-      [[ "$__Cube_new_arg" =~ ^size=([1-9][0-9]*)$ ]] || 
-        _Crash "Cube: size requires a positive integer, got '$__Cube_new_arg'"
-      __Cube_new_size="${BASH_REMATCH[1]}"; 
+  for __Geometry_Cube_new_arg in "$@"; do [[ "$__Geometry_Cube_new_arg" =~ ^size= ]] || continue
+      [[ -n "${__Geometry_Cube_new_size:-}" ]] && _Crash "repeated argument '$__Geometry_Cube_new_arg'"
+      [[ "$__Geometry_Cube_new_arg" =~ ^size=([1-9][0-9]*)$ ]] ||
+        _Crash "Cube: size requires a positive integer, got '$__Geometry_Cube_new_arg'"
+      __Geometry_Cube_new_size="${BASH_REMATCH[1]}"
   done
-  [[ -n "$__Cube_new_size" ]] || _Crash "Cube: size is required"
+  [[ -n "$__Geometry_Cube_new_size" ]] || _Crash "Cube: size is required"
 
-  # Delegate to parent constructor with derived dimensions
-  #set -vx; : in Cube.new
-  into=__Cube_new_self _Super new "$@" length="$__Cube_new_size" width="$__Cube_new_size" height="$__Cube_new_size"
-  _Bless "$__Cube_new_self" Cube
-  boop.pass "$__Cube_new_self" ${into:-}
+  into=__Geometry_Cube_new_self _Super new "$@" length="$__Geometry_Cube_new_size" width="$__Geometry_Cube_new_size" height="$__Geometry_Cube_new_size"
+  _Bless "$__Geometry_Cube_new_self" Geometry.Cube
+  boop.pass "$__Geometry_Cube_new_self" ${into:-}
 }
-#  into=__Cube_new_self _Super new "$@" size=$__Cube_new_size length=$__Cube_new_size width=$__Cube_new_size height=$__Cube_new_size
-#  boop.pass "$__Cube_new_self" ${into:-}
 
 # Calculate side face area (all faces equal for cube)
-Cube.side() {
-  local _Self="${_Self:-${_Class:-Cube}}" _Class="${_Class:-Cube}"
-  local __Cube_side_size __Cube_side_val
-  into=__Cube_side_size $_Self.size
-  into=__Cube_side_val $_Self.area "$__Cube_side_size" "$__Cube_side_size"
-  boop.pass "$__Cube_side_val" ${into:-}
+Geometry.Cube.side() {
+  local _Self="${_Self:-${_Class:-Geometry.Cube}}" _Class="${_Class:-Geometry.Cube}"
+  local __Geometry_Cube_side_size __Geometry_Cube_side_val
+  into=__Geometry_Cube_side_size $_Self.size
+  into=__Geometry_Cube_side_val $_Self.area "$__Geometry_Cube_side_size" "$__Geometry_Cube_side_size"
+  boop.pass "$__Geometry_Cube_side_val" ${into:-}
 }
 
-# all faces same as side for cube
-Cube.top    () { local _Self="${_Self:-${_Class:-Cube}}" _Class="${_Class:-Cube}"; $_Self.side; }
-Cube.end    () { local _Self="${_Self:-${_Class:-Cube}}" _Class="${_Class:-Cube}"; $_Self.side; }
-Cube.bottom () { local _Self="${_Self:-${_Class:-Cube}}" _Class="${_Class:-Cube}"; $_Self.side; }
+# All faces same as side for cube
+Geometry.Cube.top    () { local _Self="${_Self:-${_Class:-Geometry.Cube}}" _Class="${_Class:-Geometry.Cube}"; $_Self.side; }
+Geometry.Cube.end    () { local _Self="${_Self:-${_Class:-Geometry.Cube}}" _Class="${_Class:-Geometry.Cube}"; $_Self.side; }
+Geometry.Cube.bottom () { local _Self="${_Self:-${_Class:-Geometry.Cube}}" _Class="${_Class:-Geometry.Cube}"; $_Self.side; }
 
 # Calculate volume
-Cube.volume() {
-  local _Self="${_Self:-${_Class:-Cube}}" _Class="${_Class:-Cube}"
-  local __Cube_volume_size __Cube_volume_vol
-  into=__Cube_volume_size $_Self.size
-  into=__Cube_volume_vol required=3 $_Self.calc "$__Cube_volume_size" "$__Cube_volume_size" "$__Cube_volume_size"
-  boop.pass "$__Cube_volume_vol" ${into:-}
+Geometry.Cube.volume() {
+  local _Self="${_Self:-${_Class:-Geometry.Cube}}" _Class="${_Class:-Geometry.Cube}"
+  local __Geometry_Cube_volume_size __Geometry_Cube_volume_vol
+  into=__Geometry_Cube_volume_size $_Self.size
+  into=__Geometry_Cube_volume_vol required=3 $_Self.calc "$__Geometry_Cube_volume_size" "$__Geometry_Cube_volume_size" "$__Geometry_Cube_volume_size"
+  boop.pass "$__Geometry_Cube_volume_vol" ${into:-}
 }
 
 # ============================================================================
 # Class Declaration
 # ============================================================================
 
-boopClass Cube isa:Box has:size
-   
+boopClass Geometry.Cube isa:Geometry.Box has:size
+
