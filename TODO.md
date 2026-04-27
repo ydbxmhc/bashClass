@@ -1388,7 +1388,7 @@ apply here:
 Tiny PR. Mostly mechanical. Lock in the principle by demonstrating
 it across both formats.
 
-#### A2. `Map.values` / `Map.toArray` / `Map.toString` — single-printf serialization
+#### A2. `Map.values` / `Map.toArray` / `Map.toString` — single-printf serialization ✓ DONE
 
 **File:** `Collection/Map/Map:163-220`
 
@@ -1570,7 +1570,7 @@ If picking these up, suggested order:
 2. ~~**C1** (delete dead `__boop.dispatch` body) — pure cleanup, no risk.~~ ✓ DONE
 3. ~~**C2** (fix Container.toString pretty + test) — latent bug.~~ ✓ DONE
 4. ~~**A3** (lazy stderr in TestSuite.exec) — biggest wall-clock win.~~ ✓ DONE
-5. **A2** (Map serializer cleanup) — small, mostly cosmetic.
+5. ~~**A2** (Map serializer cleanup) — small, mostly cosmetic.~~ ✓ DONE
 6. **D1** (TestSuite._route arg encoding) — only matters if queue
    mode gets real use.
 7. **B1** / **B2** — measure first; defer until there's evidence

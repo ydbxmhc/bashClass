@@ -164,18 +164,19 @@ Map.values() {
   local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
   local -n __Map_values_arr="__boop_data_${_Self}"
   local -n __Map_values_keys="__boop_keys_${_Self}"
-  local __Map_values_out=""
   if ! [[ -n "${!__Map_values_keys[@]}" ]] || (( ${#__Map_values_keys[@]} == 0 )); then
     boop.pass "" ${into:-}
     return
   fi
   local __Map_values_d="${_Delimiter:-$_EOL}"
-  local __Map_values_k __Map_values_first=1
+  local -a __Map_values_buf=()
+  local __Map_values_k
   for __Map_values_k in "${__Map_values_keys[@]}"; do
-    (( __Map_values_first )) || __Map_values_out="${__Map_values_out}${__Map_values_d}"
-    __Map_values_out="$__Map_values_out${__Map_values_arr[$__Map_values_k]}"
-    __Map_values_first=0
+    __Map_values_buf+=("${__Map_values_arr[$__Map_values_k]}")
   done
+  local __Map_values_out
+  printf -v __Map_values_out "%s${__Map_values_d}" "${__Map_values_buf[@]}"
+  __Map_values_out="${__Map_values_out%"${__Map_values_d}"}"
   boop.pass "$__Map_values_out" ${into:-}
 }
 
@@ -186,15 +187,19 @@ Map.toArray() {
   local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
   local -n __Map_toArray_arr="__boop_data_${_Self}"
   local -n __Map_toArray_keys="__boop_keys_${_Self}"
-  local __Map_toArray_d="${_Delimiter:-$_EOL}"
-  local __Map_toArray_out="" __Map_toArray_key __Map_toArray_first=1
-  if [[ -n "${!__Map_toArray_keys[@]}" ]]; then
-    for __Map_toArray_key in "${__Map_toArray_keys[@]}"; do
-      (( __Map_toArray_first )) || __Map_toArray_out="${__Map_toArray_out}${__Map_toArray_d}"
-      __Map_toArray_out="$__Map_toArray_out$__Map_toArray_key=${__Map_toArray_arr[$__Map_toArray_key]}"
-      __Map_toArray_first=0
-    done
+  if ! [[ -n "${!__Map_toArray_keys[@]}" ]] || (( ${#__Map_toArray_keys[@]} == 0 )); then
+    boop.pass "" ${into:-}
+    return
   fi
+  local __Map_toArray_d="${_Delimiter:-$_EOL}"
+  local -a __Map_toArray_buf=()
+  local __Map_toArray_key
+  for __Map_toArray_key in "${__Map_toArray_keys[@]}"; do
+    __Map_toArray_buf+=("$__Map_toArray_key=${__Map_toArray_arr[$__Map_toArray_key]}")
+  done
+  local __Map_toArray_out
+  printf -v __Map_toArray_out "%s${__Map_toArray_d}" "${__Map_toArray_buf[@]}"
+  __Map_toArray_out="${__Map_toArray_out%"${__Map_toArray_d}"}"
   boop.pass "$__Map_toArray_out" ${into:-}
 }
 
@@ -207,16 +212,18 @@ Map.toString() {
   local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
   local -n __Map_ts_arr="__boop_data_${_Self}"
   local -n __Map_ts_keys="__boop_keys_${_Self}"
-  local __Map_ts_out="Map($_Self){ " __Map_ts_key __Map_ts_first=1
-  if [[ -n "${!__Map_ts_keys[@]}" ]]; then
-    for __Map_ts_key in "${__Map_ts_keys[@]}"; do
-      (( __Map_ts_first )) || __Map_ts_out="$__Map_ts_out, "
-      __Map_ts_out="$__Map_ts_out$__Map_ts_key=\"${__Map_ts_arr[$__Map_ts_key]}\""
-      __Map_ts_first=0
-    done
+  if ! [[ -n "${!__Map_ts_keys[@]}" ]] || (( ${#__Map_ts_keys[@]} == 0 )); then
+    boop.pass "Map($_Self){ }" ${into:-}
+    return
   fi
-  __Map_ts_out="$__Map_ts_out }"
-  boop.pass "$__Map_ts_out" ${into:-}
+  local -a __Map_ts_buf=()
+  local __Map_ts_key
+  for __Map_ts_key in "${__Map_ts_keys[@]}"; do
+    __Map_ts_buf+=("$__Map_ts_key=\"${__Map_ts_arr[$__Map_ts_key]}\"")
+  done
+  local __Map_ts_body
+  printf -v __Map_ts_body "%s, " "${__Map_ts_buf[@]}"
+  boop.pass "Map($_Self){ ${__Map_ts_body%, } }" ${into:-}
 }
 
 # Iterate over all entries in insertion order, calling a user function for each.
