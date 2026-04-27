@@ -164,18 +164,19 @@ Collection.Map.values() {
   local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
   local -n __Collection_Map_values_arr="__boop_data_${_Self}"
   local -n __Collection_Map_values_keys="__boop_keys_${_Self}"
-  local __Collection_Map_values_out=""
-  if ! [[ -n "${!__Collection_Map_values_keys[@]}" ]] || (( ${#__Collection_Map_values_keys[@]} == 0 )); then
+  if ! [[ -n "${__Collection_Map_values_keys[@]:-}" ]]; then
     boop.pass "" ${into:-}
     return
   fi
   local __Collection_Map_values_d="${_Delimiter:-$_EOL}"
-  local __Collection_Map_values_k __Collection_Map_values_first=1
+  local -a __Collection_Map_values_buf=()
+  local __Collection_Map_values_k
   for __Collection_Map_values_k in "${__Collection_Map_values_keys[@]}"; do
-    (( __Collection_Map_values_first )) || __Collection_Map_values_out="${__Collection_Map_values_out}${__Collection_Map_values_d}"
-    __Collection_Map_values_out="$__Collection_Map_values_out${__Collection_Map_values_arr[$__Collection_Map_values_k]}"
-    __Collection_Map_values_first=0
+    __Collection_Map_values_buf+=("${__Collection_Map_values_arr[$__Collection_Map_values_k]}")
   done
+  local __Collection_Map_values_out
+  printf -v __Collection_Map_values_out "%s${__Collection_Map_values_d}" "${__Collection_Map_values_buf[@]}"
+  __Collection_Map_values_out="${__Collection_Map_values_out%"${__Collection_Map_values_d}"}"
   boop.pass "$__Collection_Map_values_out" ${into:-}
 }
 
@@ -186,15 +187,19 @@ Collection.Map.toArray() {
   local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
   local -n __Collection_Map_toArray_arr="__boop_data_${_Self}"
   local -n __Collection_Map_toArray_keys="__boop_keys_${_Self}"
-  local __Collection_Map_toArray_d="${_Delimiter:-$_EOL}"
-  local __Collection_Map_toArray_out="" __Collection_Map_toArray_key __Collection_Map_toArray_first=1
-  if [[ -n "${!__Collection_Map_toArray_keys[@]}" ]]; then
-    for __Collection_Map_toArray_key in "${__Collection_Map_toArray_keys[@]}"; do
-      (( __Collection_Map_toArray_first )) || __Collection_Map_toArray_out="${__Collection_Map_toArray_out}${__Collection_Map_toArray_d}"
-      __Collection_Map_toArray_out="$__Collection_Map_toArray_out$__Collection_Map_toArray_key=${__Collection_Map_toArray_arr[$__Collection_Map_toArray_key]}"
-      __Collection_Map_toArray_first=0
-    done
+  if ! [[ -n "${__Collection_Map_toArray_keys[@]:-}" ]]; then
+    boop.pass "" ${into:-}
+    return
   fi
+  local __Collection_Map_toArray_d="${_Delimiter:-$_EOL}"
+  local -a __Collection_Map_toArray_buf=()
+  local __Collection_Map_toArray_key
+  for __Collection_Map_toArray_key in "${__Collection_Map_toArray_keys[@]}"; do
+    __Collection_Map_toArray_buf+=("$__Collection_Map_toArray_key=${__Collection_Map_toArray_arr[$__Collection_Map_toArray_key]}")
+  done
+  local __Collection_Map_toArray_out
+  printf -v __Collection_Map_toArray_out "%s${__Collection_Map_toArray_d}" "${__Collection_Map_toArray_buf[@]}"
+  __Collection_Map_toArray_out="${__Collection_Map_toArray_out%"${__Collection_Map_toArray_d}"}"
   boop.pass "$__Collection_Map_toArray_out" ${into:-}
 }
 
@@ -207,16 +212,18 @@ Collection.Map.toString() {
   local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
   local -n __Collection_Map_ts_arr="__boop_data_${_Self}"
   local -n __Collection_Map_ts_keys="__boop_keys_${_Self}"
-  local __Collection_Map_ts_out="Map($_Self){ " __Collection_Map_ts_key __Collection_Map_ts_first=1
-  if [[ -n "${!__Collection_Map_ts_keys[@]}" ]]; then
-    for __Collection_Map_ts_key in "${__Collection_Map_ts_keys[@]}"; do
-      (( __Collection_Map_ts_first )) || __Collection_Map_ts_out="$__Collection_Map_ts_out, "
-      __Collection_Map_ts_out="$__Collection_Map_ts_out$__Collection_Map_ts_key=\"${__Collection_Map_ts_arr[$__Collection_Map_ts_key]}\""
-      __Collection_Map_ts_first=0
-    done
+  if ! [[ -n "${__Collection_Map_ts_keys[@]:-}" ]]; then
+    boop.pass "Map($_Self){ }" ${into:-}
+    return
   fi
-  __Collection_Map_ts_out="$__Collection_Map_ts_out }"
-  boop.pass "$__Collection_Map_ts_out" ${into:-}
+  local -a __Collection_Map_ts_buf=()
+  local __Collection_Map_ts_key
+  for __Collection_Map_ts_key in "${__Collection_Map_ts_keys[@]}"; do
+    __Collection_Map_ts_buf+=("$__Collection_Map_ts_key=\"${__Collection_Map_ts_arr[$__Collection_Map_ts_key]}\"")
+  done
+  local __Collection_Map_ts_body
+  printf -v __Collection_Map_ts_body "%s, " "${__Collection_Map_ts_buf[@]}"
+  boop.pass "Map($_Self){ ${__Collection_Map_ts_body%, } }" ${into:-}
 }
 
 # Iterate over all entries in insertion order, calling a user function for each.
