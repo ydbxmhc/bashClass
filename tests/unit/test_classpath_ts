@@ -471,4 +471,52 @@ $t.assert_fail ". boop nonexistent class crashes" \
 $t.assert_ok ". boop real class still works" \
   bash -c '. "'"$__ct_boop_path"'" Config; into=c Config.new; $c.set x 1'
 
+# ============================================================================
+# Namespace normalization in classPath API
+# ============================================================================
+
+$t.section "classPath :: normalization"
+
+# classPath set should normalize :: to / in the key
+printf '# stub\n' > "$__ct_tmp/NormStub"
+_CfgFile="$__ct_tmp/.boop_norm.cfg" boop.classPath set "Foo::Bar" "$__ct_tmp/NormStub"
+# Lookup with / should find it
+into=__ct_norm_val boop.classPath get "Foo/Bar"
+$t.assert_eq "set with :: found via /" "$__ct_norm_val" "$__ct_tmp/NormStub"
+# Lookup with :: should also find it
+into=__ct_norm_val boop.classPath get "Foo::Bar"
+$t.assert_eq "set with :: found via ::" "$__ct_norm_val" "$__ct_tmp/NormStub"
+# has works with both forms
+$t.assert_ok "has with / after :: set" boop.classPath has "Foo/Bar"
+$t.assert_ok "has with :: after :: set" boop.classPath has "Foo::Bar"
+# Clean up
+_CfgFile="$__ct_tmp/.boop_norm.cfg" boop.classPath remove "Foo::Bar"
+# Verify removal works -- get should return empty, has should fail
+into=__ct_norm_val boop.classPath get "Foo/Bar"
+$t.assert_eq "get after :: remove returns empty" "$__ct_norm_val" ""
+into=__ct_norm_val boop.classPath get "Foo::Bar"
+$t.assert_eq "get with :: after :: remove returns empty" "$__ct_norm_val" ""
+__ct_norm_rc=0
+boop.classPath has "Foo/Bar" || __ct_norm_rc=$?
+$t.assert_eq "has with / after :: remove fails" "$__ct_norm_rc" "1"
+
+# classPath set with / key, lookup with ::
+printf '# stub2\n' > "$__ct_tmp/NormStub2"
+_CfgFile="$__ct_tmp/.boop_norm.cfg" boop.classPath set "Baz/Qux" "$__ct_tmp/NormStub2"
+into=__ct_norm_val boop.classPath get "Baz::Qux"
+$t.assert_eq "set with / found via ::" "$__ct_norm_val" "$__ct_tmp/NormStub2"
+# Remove with :: when set with /
+_CfgFile="$__ct_tmp/.boop_norm.cfg" boop.classPath remove "Baz::Qux"
+into=__ct_norm_val boop.classPath get "Baz/Qux"
+$t.assert_eq "remove with :: clears / entry" "$__ct_norm_val" ""
+
+# _Load with :: after classPath set with ::
+printf '#!/bin/bash\n' > "$__ct_tmp/FakeClass"
+_CfgFile="$__ct_tmp/.boop_norm.cfg" boop.classPath set "Ns::Fake" "$__ct_tmp/FakeClass"
+$t.assert_ok "_Load with :: resolves classPath :: entry" \
+  bash -c '. "'"$__ct_boop_path"'"; boop.classPath set "Ns::Fake" "'"$__ct_tmp/FakeClass"'"; _Load Ns::Fake'
+
+# Clean up
+_CfgFile="$__ct_tmp/.boop_norm.cfg" boop.classPath remove "Ns/Fake"
+
 $t.summary

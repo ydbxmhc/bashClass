@@ -1664,6 +1664,7 @@ boop.classPath() {
   case "$__boop_cp_sub" in
     set)
       local __boop_cp_class="${1:-}" __boop_cp_path="${2:-}"
+      __boop_cp_class="${__boop_cp_class//::/"/"}"
       [[ -n "$__boop_cp_class" ]] || _Crash "boop.classPath set: class name required"
       [[ -f "$__boop_cp_path" && -r "$__boop_cp_path" ]] ||
         _Crash "boop.classPath set: '$__boop_cp_path' is not a readable file"
@@ -1674,7 +1675,9 @@ boop.classPath() {
       __boop.classPath.writeCfg
       ;;
     get)
-      boop.pass "${__boop_classPath[${1:-}]:-}" "${into:-}"
+      local __boop_cp_gkey="${1:-}"
+      __boop_cp_gkey="${__boop_cp_gkey//::/"/"}"
+      boop.pass "${__boop_classPath[$__boop_cp_gkey]:-}" "${into:-}"
       ;;
     list)
       local __boop_cp_out=""
@@ -1688,6 +1691,7 @@ boop.classPath() {
       ;;
     remove)
       local __boop_cp_class="${1:-}"
+      __boop_cp_class="${__boop_cp_class//::/"/"}"
       if [[ -z "${__boop_classPath[$__boop_cp_class]:-}" ]]; then
         _Info "boop.classPath remove: '$__boop_cp_class' is not registered"
       else
@@ -1696,7 +1700,9 @@ boop.classPath() {
       __boop.classPath.writeCfg
       ;;
     has)
-      [[ -n "${__boop_classPath[${1:-}]:-}" ]]
+      local __boop_cp_hkey="${1:-}"
+      __boop_cp_hkey="${__boop_cp_hkey//::/"/"}"
+      [[ -n "${__boop_classPath[$__boop_cp_hkey]:-}" ]]
       return $?
       ;;
     dirs)
@@ -1749,7 +1755,7 @@ boop.classPath() {
       local -A __boop_cp_short2ns   # short-name → namespace path (first hit)
       local -A __boop_cp_conflicts  # short-name → 1 if conflicting
 
-      # Walk the tree looking for dirs that contain a same-named file
+      # Walk the tree looking for R1-convention class files (dir/Name/Name)
       local __boop_cp_entry
       while IFS= read -r -d '' __boop_cp_entry; do
         # Glob includes directories -- skip non-files
@@ -1759,9 +1765,9 @@ boop.classPath() {
         local __boop_cp_file="${__boop_cp_entry##*/}"
         local __boop_cp_dirname="${__boop_cp_dir##*/}"
 
-        # R1 convention: directory name matches file name
+        # R1 convention: directory name must match file name
         [[ "$__boop_cp_file" == "$__boop_cp_dirname" ]] || continue
-        # Skip hidden dirs and the root itself
+        # Skip the root itself
         [[ "$__boop_cp_dir" == "$__boop_cp_root" ]] && continue
 
         # Compute namespace path relative to root

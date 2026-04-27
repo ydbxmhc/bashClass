@@ -908,6 +908,36 @@ set/delete operations update the index automatically.
 - No pass-by-reference for subtrees (pass doc + prefix path)
 - No insertion order guarantee
 
+### Status
+
+✓ Initial implementation complete (`Collection/Map/Fast/Fast`).
+Loadable via `Fast` (short name, index) or `Collection::Map::Fast`
+(full namespace). `Map::Fast` (partial namespace) does NOT resolve --
+see Namespace Resolution below.
+
+---
+
+## Partial Namespace Resolution
+
+`Map::Fast` normalizes to `Map/Fast` but the resolver doesn't
+check the index for the first segment and append the rest. Today
+the index maps whole short names (`Fast` -> `Collection/Map/Fast`),
+not namespace prefixes.
+
+Options:
+1. Teach the resolver to split on `/`, check the index for the
+   first segment, and resolve the remainder against that root.
+   `Map::Fast` -> index says `Map` is `Collection/Map` -> try
+   `Collection/Map/Fast/Fast` (R1) then `Collection/Map/Fast` (bare).
+2. Allow the index to contain compound entries:
+   `[Map::Fast]="Collection/Map/Fast"`
+3. Standardize that partial namespaces are not supported -- always
+   use the full path or the short name.
+
+Option 1 is the most natural. Needs a spec pass to handle edge
+cases (what if the first segment isn't in the index? what about
+three-level partials?).
+
 ---
 
 ## JSON Parser

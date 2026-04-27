@@ -4,10 +4,13 @@ declare -gA __boop_Index=(
   [Cube]="Geometry/Cube"
   [PlayingCard]="Games/PlayingCard"
   [TestSuite]="Testing/TestSuite"
+  [Config]="Config"
   [Card]="Games/Card"
   [Map]="Collection/Map"
   [List]="Collection/List"
   [Container]="Collection/Container"
+  [Args]="Args"
+  [Fast]="Collection/Map/Fast"
   [Deck]="Games/Deck"
   [Box]="Geometry/Box"
 )
