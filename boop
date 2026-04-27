@@ -80,6 +80,12 @@ declare -gA __boop_static
 # effective BOOPPATH take precedence for duplicate short names.
 declare -gA __boop_Index
 
+# Alias registry. Maps user-facing names to fully qualified class names (FQNs).
+# Aliases are created automatically on class load (if unambiguous) or explicitly
+# via _Import. Keys are stored literally as specified by the user.
+# Values are always FQNs (dot-separated).
+declare -gA __boop_alias
+
 # Framework version string. Used for mismatch detection when RC files indicate
 # a preferred version. Read-only after initialization.
 declare -gr __boop_version="0.1.0"
@@ -88,9 +94,16 @@ declare -gr __boop_version="0.1.0"
 # GLOBALS - Configuration
 # ============================================================================
 
+# Controls auto-aliasing behavior on class load.
+# full:  alias at all namespace levels (short + intermediate + FQN). Default.
+# best:  alias only the shortest unique (unambiguous) level + FQN.
+# short: alias only the short name + FQN.
+# none:  no auto-aliasing; only explicit _Import creates aliases.
+declare -g _AutoAlias="${_AutoAlias:-full}"
+
 # Controls how boop.pass delivers values when no explicit nameref
 # target is provided. Modes: auto (global in main shell, stdout in subshell),
-# nameref (requires target — crashes without one), stdout, global, filesystem.
+# nameref (requires target -- crashes without one), stdout, global, filesystem.
 # Can be overridden per-call via environment: _OutMode=stdout $obj.volume
 declare -g _OutMode="${_OutMode:-auto}"
 
@@ -472,6 +485,146 @@ _LogLevel() { __boop.setLogLevel "$@"; }
 
 # _FatalLevel: convenience wrapper for __boop.setFatalLevel
 _FatalLevel() { __boop.setFatalLevel "$@"; }
+
+# ============================================================================
+# ALIAS RESOLUTION
+# ============================================================================
+
+# __boop.resolveAlias -- resolve a name through the alias registry.
+#
+# If the name is a registered FQN, returns it as-is.
+# If the name is an alias, returns the FQN it maps to.
+# If neither, returns the name unchanged (caller decides what to do).
+#
+# Usage: __boop.resolveAlias "Box" __result
+__boop.resolveAlias() {
+  local __boop_ra_name="${1:-}" __boop_ra_target="${2:-}"
+  local __boop_ra_resolved="$__boop_ra_name"
+
+  # Normalize :: and / to . for FQN lookup
+  local __boop_ra_normalized="${__boop_ra_name//::/.}"
+  __boop_ra_normalized="${__boop_ra_normalized//\//.}"
+
+  # Check registry directly (is it already an FQN?)
+  if [[ -n "${__boop_registry[$__boop_ra_normalized]+set}" ]]; then
+    __boop_ra_resolved="$__boop_ra_normalized"
+  # Check alias registry (literal key first, then normalized)
+  elif [[ -n "${__boop_alias[$__boop_ra_name]+set}" ]]; then
+    __boop_ra_resolved="${__boop_alias[$__boop_ra_name]}"
+  elif [[ -n "${__boop_alias[$__boop_ra_normalized]+set}" ]]; then
+    __boop_ra_resolved="${__boop_alias[$__boop_ra_normalized]}"
+  fi
+
+  if [[ -n "$__boop_ra_target" ]]; then
+    local -n __boop_ra_ref="$__boop_ra_target"
+    __boop_ra_ref="$__boop_ra_resolved"
+  fi
+}
+
+# __boop.autoAlias -- create auto-aliases for a class at multiple levels.
+#
+# For FQN "Collection.Map.Fast", attempts aliases:
+#   Fast, Map.Fast, Collection.Map.Fast
+# Each level checks for collisions independently.
+#
+# Respects _AutoAlias setting (full/best/short/none).
+__boop.autoAlias() {
+  local __boop_aa_fqn="$1"
+  [[ "$_AutoAlias" == "none" ]] && return
+
+  # Split FQN on dots to get segments
+  local __boop_aa_IFS_save="$IFS"
+  local -a __boop_aa_parts
+  IFS='.'; read -ra __boop_aa_parts <<< "$__boop_aa_fqn"; IFS="$__boop_aa_IFS_save"
+
+  local -i __boop_aa_len=${#__boop_aa_parts[@]}
+  (( __boop_aa_len == 0 )) && return
+
+  # Build alias candidates from shortest to longest
+  # For A.B.C: candidates are C, B.C, A.B.C
+  local -a __boop_aa_candidates=()
+  local -i __boop_aa_i
+  local __boop_aa_candidate
+  for (( __boop_aa_i = __boop_aa_len - 1; __boop_aa_i >= 0; __boop_aa_i-- )); do
+    __boop_aa_candidate=""
+    local -i __boop_aa_j
+    for (( __boop_aa_j = __boop_aa_i; __boop_aa_j < __boop_aa_len; __boop_aa_j++ )); do
+      [[ -n "$__boop_aa_candidate" ]] && __boop_aa_candidate+="."
+      __boop_aa_candidate+="${__boop_aa_parts[$__boop_aa_j]}"
+    done
+    __boop_aa_candidates+=("$__boop_aa_candidate")
+  done
+
+  # Apply based on _AutoAlias mode
+  local __boop_aa_best_set=0
+  for __boop_aa_candidate in "${__boop_aa_candidates[@]}"; do
+    # FQN itself always gets aliased
+    if [[ "$__boop_aa_candidate" == "$__boop_aa_fqn" ]]; then
+      __boop_alias["$__boop_aa_candidate"]="$__boop_aa_fqn"
+      continue
+    fi
+
+    case "$_AutoAlias" in
+      short)
+        # Only the shortest (first candidate) + FQN
+        if [[ "$__boop_aa_candidate" == "${__boop_aa_candidates[0]}" ]]; then
+          if [[ -z "${__boop_alias[$__boop_aa_candidate]+set}" ]]; then
+            __boop_alias["$__boop_aa_candidate"]="$__boop_aa_fqn"
+          elif [[ "${__boop_alias[$__boop_aa_candidate]}" != "$__boop_aa_fqn" ]]; then
+            _Info "Alias '$__boop_aa_candidate' is ambiguous (${__boop_alias[$__boop_aa_candidate]} vs $__boop_aa_fqn)"
+          fi
+        fi
+        ;;
+      best)
+        # Only the shortest unique + FQN
+        if (( ! __boop_aa_best_set )); then
+          if [[ -z "${__boop_alias[$__boop_aa_candidate]+set}" ]]; then
+            __boop_alias["$__boop_aa_candidate"]="$__boop_aa_fqn"
+            __boop_aa_best_set=1
+          elif [[ "${__boop_alias[$__boop_aa_candidate]}" != "$__boop_aa_fqn" ]]; then
+            _Info "Alias '$__boop_aa_candidate' is ambiguous (${__boop_alias[$__boop_aa_candidate]} vs $__boop_aa_fqn)"
+            # Try next level up
+          fi
+        fi
+        ;;
+      full|*)
+        # All levels
+        if [[ -z "${__boop_alias[$__boop_aa_candidate]+set}" ]]; then
+          __boop_alias["$__boop_aa_candidate"]="$__boop_aa_fqn"
+        elif [[ "${__boop_alias[$__boop_aa_candidate]}" != "$__boop_aa_fqn" ]]; then
+          _Info "Alias '$__boop_aa_candidate' is ambiguous (${__boop_alias[$__boop_aa_candidate]} vs $__boop_aa_fqn)"
+        fi
+        ;;
+    esac
+  done
+}
+
+# _Import -- load a class and create an alias.
+#
+# Usage:
+#   _Import Collection::Map::Fast           # load + auto-alias
+#   _Import Collection::Map::Fast as MapFast  # load + explicit alias
+#   _Import Collection::Map::Fast as Map::Fast  # literal alias key
+_Import() {
+  local __boop_import_class="$1"
+  shift || true
+
+  # Normalize the target to FQN (dots)
+  local __boop_import_fqn="${__boop_import_class//::/.}"
+  __boop_import_fqn="${__boop_import_fqn//\//.}"
+
+  # Load the class
+  _Require "$__boop_import_class"
+
+  # Check for "as" clause
+  if [[ "${1:-}" == "as" && -n "${2:-}" ]]; then
+    local __boop_import_alias="$2"
+    # Explicit alias -- store literally, overrides any existing
+    __boop_alias["$__boop_import_alias"]="$__boop_import_fqn"
+    _Debug "import: aliased '$__boop_import_alias' -> '$__boop_import_fqn'"
+  fi
+  # Auto-aliasing happens during class load (in __boop.import)
+}
 
 # ============================================================================
 # UNIVERSAL RETURN HANDLER
@@ -1870,6 +2023,10 @@ __boop.import() {
       fi
       unset '__boop_loading[$__boop_import_class]'
       _Trace "import: '$__boop_import_class' loaded successfully"
+      # Auto-alias the loaded class (Phase 1: FQN == short name for existing classes)
+      local __boop_import_normalized="${__boop_import_class//::/.}"
+      __boop_import_normalized="${__boop_import_normalized//\//.}"
+      __boop.autoAlias "$__boop_import_normalized"
       continue
     fi
 
@@ -1879,6 +2036,9 @@ __boop.import() {
     if . "$__boop_import_class" 2>/dev/null; then
       unset '__boop_loading[$__boop_import_class]'
       _Info "import: '$__boop_import_class' loaded via raw source fallback"
+      local __boop_import_normalized="${__boop_import_class//::/.}"
+      __boop_import_normalized="${__boop_import_normalized//\//.}"
+      __boop.autoAlias "$__boop_import_normalized"
       continue
     fi
 
