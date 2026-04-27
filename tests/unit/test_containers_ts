@@ -331,6 +331,35 @@ $t.assert_fail "Container.toArray crashes" bash -c '. boop Container; into=c Con
 $t.assert_fail "Container.each crashes"   bash -c '. boop Container; into=c Container; $c.each fn'
 
 # ============================================================================
+# Container.toString — generic implementation (default and pretty)
+#
+# List/Map override toString, so the base Container.toString only runs
+# when invoked directly. Both branches are exercised here so the
+# generic format doesn't silently rot.
+# ============================================================================
+
+$t.section "Container.toString: generic format"
+
+into=l List
+$l.push "a"; $l.push "b"
+
+# Default (single-line) form
+into=s _Self="$l" _Class=List Container.toString
+$t.assert_contains "default: class header"   "$s" "List($l)"
+$t.assert_contains "default: type field"     "$s" "type=indexed"
+$t.assert_contains "default: length field"   "$s" "length=2"
+
+# Pretty (multi-line) form — was previously broken by a missing line
+# continuation; this test guards against regression.
+into=s _Self="$l" _Class=List Container.toString pretty
+$t.assert_contains "pretty: class header"    "$s" "List($l)"
+$t.assert_contains "pretty: type label"      "$s" "type   = indexed"
+$t.assert_contains "pretty: length label"    "$s" "length = 2"
+$t.assert_contains "pretty: has newline"     "$s" $'\n'
+$t.assert_contains "pretty: open brace"      "$s" "{"
+$t.assert_contains "pretty: close brace"     "$s" "}"
+
+# ============================================================================
 # Destroy — observable via public API
 # ============================================================================
 
