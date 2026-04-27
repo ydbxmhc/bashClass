@@ -1361,6 +1361,115 @@ explicit error handling.
 
 ---
 
+## README Rewrite (Manual)
+
+The current `README.md` is scattered, artificial, and mostly
+pointless — Quick Start, Requirements, Install, Return System,
+Import System, Collections, Math, Writing a Class, Conventions,
+Class Hierarchy, Tests, Documentation, Status all jostling for
+attention in 270 lines. It tries to be a tour, a reference, and
+an onboarding doc simultaneously and succeeds at none.
+
+**Owner: human.** This is a manual rewrite — needs a real read
+through the whole codebase first. Do NOT let an agent take a
+swing at this; it will produce another scattered artifact.
+
+Notes for whenever this happens:
+
+- Decide what the README is *for*. Probably: "what is boop, why
+  would you use it, how do you load a class and call a method."
+  Everything past that goes in `docs/`.
+- The Quick Start example is fine; almost everything below it
+  duplicates docs/ content at lower fidelity.
+- "Status" section is doomed — it ages out of date instantly.
+  Either kill it or replace with a link to DEVLOG.md.
+- The "fun is a feature" / "filename is the personality" sentence
+  in the lead is good — keep voice like that.
+- Class Hierarchy diagram belongs in docs/, not the front page.
+
+---
+
+## Refactor All Classes to Use Existing Tools (Args, Config, etc.)
+
+Most class constructors and method entry points still parse
+`key=value` arguments by hand:
+
+```bash
+for __X_new_arg in "$@"; do
+  case "$__X_new_arg" in
+    name=*)    __X_new_name="${__X_new_arg#name=}" ;;
+    mode=*)    __X_new_mode="${__X_new_arg#mode=}" ;;
+    ...
+  esac
+done
+```
+
+`Args` (and to a lesser extent `Config.fromFlatString`) already
+exist for exactly this. As of 2026-04-26 the count of classes that
+*use* `Args.parse` or `Args.getOpts` is **zero**. Files with
+hand-rolled `for arg; case ... esac` parsing:
+
+- `boop` — `__boop.new` and a couple of internal helpers parse
+  `field=value` pairs into descriptor metadata.
+- `Testing/TestSuite/TestSuite` — `TestSuite.new` parses
+  `name=`, `mode=`, `verbose=` by hand.
+- `Collection/Container/Container` — constructor metadata.
+- `Geometry/Box/Box` — `length=`, `width=`, `height=`.
+- `Geometry/Cube/Cube` — `size=`, `unit=`.
+- `blackjack` — script-level CLI args (the strongest candidate
+  — it's already a CLI script, would benefit most from
+  `Args.parse` with subcommands).
+
+### Open Questions Before Starting
+
+1. **Load order / circular deps.** `Args` depends on `boop`;
+   `boop` is the framework root. Constructors in `boop` itself
+   can't use `Args` without inverting the dependency. The
+   `__boop.new` parsing loop probably has to stay hand-rolled.
+2. **Performance.** `Args.parse` does considerably more work than
+   a `for arg; case` loop (regex schema parsing, alias map
+   construction, validation pass). For class constructors called
+   thousands of times in tight loops (e.g. inside Math hot
+   paths), the schema parse cost could swamp the constructor.
+   Profile before refactoring; consider a "schema cache" so
+   repeated calls don't re-parse the schema.
+3. **Sigil semantics.** Class constructors typically take
+   metadata that ends up in the descriptor — no required
+   args, no flags, just `key=value` pairs. `Args.parse` is
+   built for CLI ergonomics (`--long`, `-x`, subcommands,
+   defaults) which is overkill for object construction.
+   `Config.fromFlatString` may actually be the better fit for
+   the constructor case, with `Args.parse` reserved for true
+   CLI scripts (blackjack and any future executables).
+
+### Suggested Order
+
+1. **blackjack** — pure CLI script, biggest payoff, no perf risk.
+   Replace the hand-rolled flag handling with `Args.parse` and a
+   real `[Subcommands]` schema.
+2. **Geometry classes (Box, Cube)** — low-traffic constructors,
+   small surface, good warm-up case for "constructor via
+   Args/Config" pattern.
+3. **TestSuite.new** — the `name= mode= verbose=` parse is
+   small and self-contained; clean fit.
+4. **Container metadata** — last, because it sits in the
+   inheritance root of all collections and ANY perf regression
+   propagates everywhere.
+5. **boop core** — probably stays hand-rolled. Don't bend the
+   bootstrap to satisfy a uniformity goal.
+
+### Acceptance
+
+- Each refactored class keeps full backward compat on its public
+  constructor signature.
+- No new test failures, no measurable perf regression in the
+  affected class's test suite.
+- One class per commit, same shape as the API-shape audit
+  refactors (extract first, swap in second, document the
+  primitive).
+
+---
+
 ## Codebase Audit — Refactor & Tune Candidates (2026-04-26)
 
 Walk-through of the framework + class files looking for the same
