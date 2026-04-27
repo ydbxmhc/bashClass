@@ -1,0 +1,189 @@
+#!/bin/bash
+set -uo pipefail
+
+# Alias infrastructure tests
+#
+# Tests: auto-aliasing, _Import, resolveAlias, _AutoAlias modes,
+# collision detection, isa through aliases.
+
+. boop TestSuite Box Cube
+
+into=t TestSuite name="Alias Tests"
+
+# ============================================================================
+# Auto-aliasing on load
+# ============================================================================
+
+$t.section "Auto-aliasing on load"
+
+# Box should be auto-aliased after loading
+$t.assert_eq "Box auto-aliased" "${__boop_alias[Box]:-NONE}" "Box"
+
+# Cube should be auto-aliased
+$t.assert_eq "Cube auto-aliased" "${__boop_alias[Cube]:-NONE}" "Cube"
+
+# TestSuite should be auto-aliased
+$t.assert_eq "TestSuite auto-aliased" "${__boop_alias[TestSuite]:-NONE}" "TestSuite"
+
+# ============================================================================
+# resolveAlias
+# ============================================================================
+
+$t.section "resolveAlias"
+
+# Resolve a known alias
+__boop.resolveAlias "Box" __ra_result
+$t.assert_eq "resolve alias Box" "$__ra_result" "Box"
+
+# Resolve an FQN directly (in registry)
+__boop.resolveAlias "Box" __ra_result
+$t.assert_eq "resolve FQN Box" "$__ra_result" "Box"
+
+# Resolve unknown name -- returns unchanged
+__boop.resolveAlias "NoSuchThing" __ra_result
+$t.assert_eq "resolve unknown returns unchanged" "$__ra_result" "NoSuchThing"
+
+# ============================================================================
+# _Import with as clause
+# ============================================================================
+
+$t.section "_Import with as"
+
+_Import Box as MyBox
+$t.assert_eq "_Import as creates alias" "${__boop_alias[MyBox]:-NONE}" "Box"
+
+# Resolve through the new alias
+__boop.resolveAlias "MyBox" __ra_result
+$t.assert_eq "resolve MyBox -> Box" "$__ra_result" "Box"
+
+# Original alias still works
+__boop.resolveAlias "Box" __ra_result
+$t.assert_eq "original Box alias unchanged" "$__ra_result" "Box"
+
+# Multiple aliases for same class
+_Import Box as B1
+_Import Box as B2
+$t.assert_eq "B1 -> Box" "${__boop_alias[B1]:-NONE}" "Box"
+$t.assert_eq "B2 -> Box" "${__boop_alias[B2]:-NONE}" "Box"
+
+# Alias with :: in the name (stored literally)
+_Import Box as My::Box
+$t.assert_eq "alias with :: stored literally" "${__boop_alias[My::Box]:-NONE}" "Box"
+
+# Resolve alias with :: key
+__boop.resolveAlias "My::Box" __ra_result
+$t.assert_eq "resolve My::Box -> Box" "$__ra_result" "Box"
+
+# ============================================================================
+# _Import overrides existing alias
+# ============================================================================
+
+$t.section "_Import override"
+
+_Import Box as Override
+$t.assert_eq "Override -> Box" "${__boop_alias[Override]:-NONE}" "Box"
+
+_Import Cube as Override
+$t.assert_eq "Override now -> Cube" "${__boop_alias[Override]:-NONE}" "Cube"
+
+# ============================================================================
+# _AutoAlias modes
+# ============================================================================
+
+$t.section "_AutoAlias modes"
+
+# Test with a simulated multi-segment FQN
+# We can't easily create a real multi-segment class in Phase 1,
+# but we can test __boop.autoAlias directly.
+
+# --- full mode (default) ---
+_AutoAlias=full
+# Clear any existing test aliases
+unset '__boop_alias[C]' '__boop_alias[B.C]' '__boop_alias[A.B.C]' 2>/dev/null || true
+__boop.autoAlias "A.B.C"
+$t.assert_eq "full: short alias C" "${__boop_alias[C]:-NONE}" "A.B.C"
+$t.assert_eq "full: mid alias B.C" "${__boop_alias[B.C]:-NONE}" "A.B.C"
+$t.assert_eq "full: FQN alias A.B.C" "${__boop_alias[A.B.C]:-NONE}" "A.B.C"
+
+# --- short mode ---
+_AutoAlias=short
+unset '__boop_alias[D]' '__boop_alias[E.D]' '__boop_alias[F.E.D]' 2>/dev/null || true
+__boop.autoAlias "F.E.D"
+$t.assert_eq "short: short alias D" "${__boop_alias[D]:-NONE}" "F.E.D"
+$t.assert_eq "short: mid alias E.D not created" "${__boop_alias[E.D]:-NONE}" "NONE"
+$t.assert_eq "short: FQN alias F.E.D" "${__boop_alias[F.E.D]:-NONE}" "F.E.D"
+
+# --- none mode ---
+_AutoAlias=none
+unset '__boop_alias[G]' '__boop_alias[H.G]' '__boop_alias[I.H.G]' 2>/dev/null || true
+__boop.autoAlias "I.H.G"
+$t.assert_eq "none: short alias G not created" "${__boop_alias[G]:-NONE}" "NONE"
+$t.assert_eq "none: FQN alias I.H.G not created" "${__boop_alias[I.H.G]:-NONE}" "NONE"
+
+# --- best mode ---
+_AutoAlias=best
+unset '__boop_alias[J]' '__boop_alias[K.J]' '__boop_alias[L.K.J]' 2>/dev/null || true
+__boop.autoAlias "L.K.J"
+$t.assert_eq "best: shortest unique J" "${__boop_alias[J]:-NONE}" "L.K.J"
+$t.assert_eq "best: mid K.J not created" "${__boop_alias[K.J]:-NONE}" "NONE"
+$t.assert_eq "best: FQN L.K.J" "${__boop_alias[L.K.J]:-NONE}" "L.K.J"
+
+# best with collision on short name
+__boop_alias[M]="Other.M"  # simulate existing alias
+unset '__boop_alias[N.M]' '__boop_alias[O.N.M]' 2>/dev/null || true
+_AutoAlias=best
+__boop.autoAlias "O.N.M" 2>/dev/null
+$t.assert_eq "best: M collides, skipped" "${__boop_alias[M]}" "Other.M"
+$t.assert_eq "best: falls back to N.M" "${__boop_alias[N.M]:-NONE}" "O.N.M"
+unset '__boop_alias[M]'
+
+# Reset
+_AutoAlias=full
+
+
+# ============================================================================
+# Collision detection
+# ============================================================================
+
+$t.section "Collision detection"
+
+# Simulate two classes with same short name
+_AutoAlias=full
+unset '__boop_alias[Shared]' '__boop_alias[X.Shared]' '__boop_alias[Y.Shared]' 2>/dev/null || true
+__boop.autoAlias "X.Shared" 2>/dev/null
+$t.assert_eq "first Shared alias created" "${__boop_alias[Shared]:-NONE}" "X.Shared"
+
+# Second class with same short name -- should NOT overwrite
+__boop.autoAlias "Y.Shared" 2>/dev/null
+$t.assert_eq "Shared not overwritten by collision" "${__boop_alias[Shared]}" "X.Shared"
+
+# But the FQN aliases are independent
+$t.assert_eq "X.Shared FQN alias" "${__boop_alias[X.Shared]:-NONE}" "X.Shared"
+$t.assert_eq "Y.Shared FQN alias" "${__boop_alias[Y.Shared]:-NONE}" "Y.Shared"
+
+# Clean up
+unset '__boop_alias[Shared]' '__boop_alias[X.Shared]' '__boop_alias[Y.Shared]'
+
+# ============================================================================
+# isa through aliases
+# ============================================================================
+
+$t.section "isa through aliases"
+
+_Import Box as GeomBox
+into=b Box length=1 width=1 height=1
+
+# isa with the alias name
+$t.assert_ok "isa via alias GeomBox" $b.isa GeomBox
+
+# isa with the original name
+$t.assert_ok "isa via original Box" $b.isa Box
+
+# isa with a different alias for the same class
+_Import Box as AnotherBox
+$t.assert_ok "isa via second alias AnotherBox" $b.isa AnotherBox
+
+# isa with wrong class still fails
+$t.assert_fail "isa wrong class via alias" $b.isa Cube
+
+$t.summary

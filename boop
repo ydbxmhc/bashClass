@@ -1081,9 +1081,13 @@ __boop.isa() {
     return 0
   fi
 
+  # Resolve query through alias registry
+  local __boop_isa_resolved
+  __boop.resolveAlias "$__boop_isa_query" __boop_isa_resolved
+
   local __boop_isa_current="$_Class"
   while [[ -n "$__boop_isa_current" ]]; do
-    [[ "$__boop_isa_current" == "$__boop_isa_query" ]] && return 0
+    [[ "$__boop_isa_current" == "$__boop_isa_resolved" ]] && return 0
     __boop.parse "$__boop_isa_current" "parent" __boop_isa_current
   done
   return 1
