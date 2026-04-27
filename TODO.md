@@ -868,6 +868,107 @@ Source: PLAN.md Phase 2.
 
 ---
 
+## Map::Fast -- Flat Compound-Key Store
+
+A purpose-built flat associative array with compound keys for O(1)
+point lookups. Tuned for config data, parsed documents, lookup
+tables, and caches. Explicitly not good at enumeration, subtree
+deletion, or length queries -- use Map for those.
+
+### Design
+
+Internally a single bash associative array. Keys are dot-delimited
+compound paths: `users.0.name`, `server.port`, `db.host`. Values
+are always strings (which can be object references if needed).
+
+```bash
+into=doc Map::Fast
+$doc.set "server.host" "localhost"
+$doc.set "server.port" "8080"
+into=h $doc.get "server.host"       # "localhost" -- one hash lookup
+```
+
+### Key Separator
+
+Use a separator that can't appear in natural keys. Default `.`,
+overridable per-instance. Consider `\x1F` (unit separator) for
+data where dots are legitimate key content.
+
+### Optional Prefix Indexing
+
+A toggle that maintains a prefix index for `keys("users.*")`
+style queries. Off by default -- pay for what you use. When on,
+set/delete operations update the index automatically.
+
+### Tradeoffs (document explicitly)
+
+- O(1) get/set by full path
+- Enumeration requires scanning all keys (slow for large stores)
+- Subtree deletion requires prefix scan
+- No pass-by-reference for subtrees (pass doc + prefix path)
+- No insertion order guarantee
+
+---
+
+## JSON Parser
+
+Two-stage pipeline: fast flat parse, optional deep conversion.
+
+### `JSON.parse` (default -- flat)
+
+Parses JSON into a `Map::Fast` with compound keys. One hash
+lookup per value access. No object-per-node overhead.
+
+```bash
+into=doc JSON.parse '{"users":[{"name":"Alice"},{"name":"Bob"}]}'
+into=name $doc.get "users.0.name"    # "Alice"
+into=port $doc.get "server.port"     # "8080"
+```
+
+This is the 90% use case: grab values by path from parsed data.
+
+### `JSON.parseDeep` (full object tree)
+
+Takes a `Map::Fast` (or raw JSON) and inflates it into real
+Map/List objects. Each node is a proper boop object you can
+pass around, iterate, hand to functions.
+
+```bash
+into=tree JSON.parseDeep "$doc"      # or JSON.parseDeep '{"..."}'
+into=users $tree.get "users"         # a real List object
+$users.each show_user               # iterate with callbacks
+```
+
+Two-stage: parse flat first, deep-convert only if needed.
+
+### `JSON.stringify`
+
+Serializes a Map::Fast or Map/List tree back to JSON string.
+
+### Implementation Notes
+
+- Pure bash string walking with parameter expansion for tokenization
+- No external dependencies (no jq, no python)
+- Handles: objects, arrays, strings, numbers, booleans, null
+- Nested structures map to compound keys with `.` separator
+- Array indices are numeric: `users.0`, `users.1`
+- Would benefit from String class but not blocked on it
+
+---
+
+## YAML / XML Parsers (Future)
+
+YAML: indentation-sensitive, harder than JSON. Consider a subset
+parser (flat key-value, simple lists) before attempting full spec.
+
+XML: attributes + content + nesting. Significantly more complex.
+May not be worth pure-bash implementation -- consider requiring
+an external tool as an optional dependency.
+
+Both deferred until JSON is proven and Map::Fast is stable.
+
+---
+
 ## String Class (Phase 3)
 
 Heavy string work is happening natively everywhere. A proper wrapper
