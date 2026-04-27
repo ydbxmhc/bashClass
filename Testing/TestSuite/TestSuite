@@ -69,29 +69,35 @@ __TestSuite._exec() {
       # Clear _Self/_Class so the user's command doesn't see TestSuite's
       # identity leaking into the code under test. The if/else captures
       # the exit code without triggering set -e on failure.
+      #
+      # Stderr is forwarded to _Debug only when DEBUG-level logging is
+      # active. In the common case (warn or below) _Debug is a ':' no-op
+      # — skip the mktemp/rm pair entirely and discard stderr, saving
+      # two forks per assertion.
       local -i __TS_exec_rc=0
-      local __TS_exec_stderr; __TS_exec_stderr=$(mktemp)
-      if _Self="" _Class="" "$@" 2>"$__TS_exec_stderr"; then
-        __TS_exec_rc=0
+      if (( __boop_logLevel >= __boop_LOG_DEBUG )); then
+        local __TS_exec_stderr; __TS_exec_stderr=$(mktemp)
+        if _Self="" _Class="" "$@" 2>"$__TS_exec_stderr"; then __TS_exec_rc=0; else __TS_exec_rc=$?; fi
+        [[ -s "$__TS_exec_stderr" ]] && _Debug "$(<"$__TS_exec_stderr")"
+        rm -f "$__TS_exec_stderr"
       else
-        __TS_exec_rc=$?
+        if _Self="" _Class="" "$@" 2>/dev/null; then __TS_exec_rc=0; else __TS_exec_rc=$?; fi
       fi
-      [[ -s "$__TS_exec_stderr" ]] && _Debug "$(<"$__TS_exec_stderr")"
-      rm -f "$__TS_exec_stderr"
       (( __TS_exec_rc == 0 )) && __TestSuite._pass "$__TS_exec_desc" ||
         __TestSuite._fail "$__TS_exec_desc" "exit code $__TS_exec_rc"
       ;;
     fail)
       # Subshell contains any exit from the user's command.
+      # Same lazy-stderr strategy as the ok case.
       local -i __TS_exec_rc=0
-      local __TS_exec_stderr; __TS_exec_stderr=$(mktemp)
-      if ( _Self="" _Class="" "$@" ) 2>"$__TS_exec_stderr"; then
-        __TS_exec_rc=0
+      if (( __boop_logLevel >= __boop_LOG_DEBUG )); then
+        local __TS_exec_stderr; __TS_exec_stderr=$(mktemp)
+        if ( _Self="" _Class="" "$@" ) 2>"$__TS_exec_stderr"; then __TS_exec_rc=0; else __TS_exec_rc=$?; fi
+        [[ -s "$__TS_exec_stderr" ]] && _Debug "$(<"$__TS_exec_stderr")"
+        rm -f "$__TS_exec_stderr"
       else
-        __TS_exec_rc=$?
+        if ( _Self="" _Class="" "$@" ) 2>/dev/null; then __TS_exec_rc=0; else __TS_exec_rc=$?; fi
       fi
-      [[ -s "$__TS_exec_stderr" ]] && _Debug "$(<"$__TS_exec_stderr")"
-      rm -f "$__TS_exec_stderr"
       (( __TS_exec_rc != 0 )) && __TestSuite._pass "$__TS_exec_desc" ||
         __TestSuite._fail "$__TS_exec_desc" "expected non-zero exit, got 0"
       ;;

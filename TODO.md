@@ -1415,7 +1415,7 @@ Same shape applies to `Map.toString` and the per-iteration
 concatenation in `Map.each`'s siblings. Worth a small unification
 pass.
 
-#### A3. `TestSuite.exec` — lazy stderr capture
+#### A3. `TestSuite.exec` — lazy stderr capture ✓ DONE
 
 **File:** `Testing/TestSuite/TestSuite:68-97`
 
@@ -1569,7 +1569,7 @@ If picking these up, suggested order:
 1. ~~**A1** (Config.fromFlatString) — locks in the API-shape rule.~~ ✓ DONE
 2. ~~**C1** (delete dead `__boop.dispatch` body) — pure cleanup, no risk.~~ ✓ DONE
 3. ~~**C2** (fix Container.toString pretty + test) — latent bug.~~ ✓ DONE
-4. **A3** (lazy stderr in TestSuite.exec) — biggest wall-clock win.
+4. ~~**A3** (lazy stderr in TestSuite.exec) — biggest wall-clock win.~~ ✓ DONE
 5. **A2** (Map serializer cleanup) — small, mostly cosmetic.
 6. **D1** (TestSuite._route arg encoding) — only matters if queue
    mode gets real use.
