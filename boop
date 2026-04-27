@@ -739,66 +739,19 @@ __boop.registerMethod() {
 # ============================================================================
 # METHOD DISPATCH
 # ============================================================================
-
-# Unified dispatcher with inheritance support, MRO caching, and lazy baking.
 #
-# Resolution: checks __boop_methodRegistry for "class.method" first (O(1)).
-# On cache miss, walks the parent chain via descriptor "parent" fields until
-# it finds a registered implementation, then caches the result under the
-# original class so the walk never happens again for that pair.
+# There is no longer a runtime dispatcher function. Method calls go directly
+# to the resolved implementation via wrappers written at creation time:
 #
-# Unified dispatcher with MRO resolution and direct call-through.
+#   - Class-level methods: registerClass writes Box.toString as a wrapper
+#     that calls _Self=$_Self _Class='Box' __boop.toString "$@".
+#   - Instance methods: wrapperAll writes per-instance wrappers (e.g.
+#     _abc123.length) at object creation that delegate the same way.
+#   - Constructor shorthand: Box() { _Class='Box' Box.new "$@"; }
 #
-# Resolves a method name to its implementing function by checking the
-# method registry cache first (O(1)), then walking the inheritance chain
-# on cache miss. Caches the result so the walk never repeats for that
-# class+method pair.
-#
-# After resolution, calls the impl directly. No baking, no stubs, no
-# tiers — wrappers are written at creation time by registerClass (for
-# class-level functions) and wrapperAll (for object instances).
-#
-# Dispatch is still called by:
-#   - Constructor shorthands (Box() → dispatch new)
-#   - Property accessors (get/set routing)
-#   - __boop.super (parent method resolution)
-#   - Any explicit MRO lookup
-#
-# It is NOT called by normal method invocations — those go through
-# the direct wrappers written at creation time.
-#__boop.dispatch() {
-#  local __boop_dispatch_class="${_Class:-boop}"
-#  local _Self="${_Self:-${__boop_dispatch_class}}"
-#  local __boop_dispatch_method="$1"; shift
-#
-#  __boop.validate "$_Self"
-#  __boop.validate "$__boop_dispatch_class"
-#  __boop.validate "$__boop_dispatch_method"
-#
-#  # Check cache first (direct lookup — O(1) in the common case)
-#  local __boop_dispatch_cachekey="$__boop_dispatch_class.$__boop_dispatch_method"
-#  local __boop_dispatch_impl="${__boop_methodRegistry[$__boop_dispatch_cachekey]:-}"
-#
-#  # Cache miss: walk the inheritance chain (parent → grandparent → ...).
-#  # When found in an ancestor, cache it under the calling class so this
-#  # walk only happens once per class+method combination.
-#  if [[ -z "$__boop_dispatch_impl" ]]; then
-#    local __boop_dispatch_current="$__boop_dispatch_class"
-#    while [[ -n "$__boop_dispatch_current" ]]; do
-#      __boop_dispatch_impl="${__boop_methodRegistry[$__boop_dispatch_current.$__boop_dispatch_method]:-}"
-#      if [[ -n "$__boop_dispatch_impl" ]]; then
-#        [[ "$__boop_dispatch_current" != "$__boop_dispatch_class" ]] && __boop_methodRegistry[$__boop_dispatch_cachekey]="$__boop_dispatch_impl"
-#        break
-#      fi
-#      __boop.parse "$__boop_dispatch_current" "parent" __boop_dispatch_current
-#    done
-#  fi
-#
-#  [[ -n "$__boop_dispatch_impl" ]] || _Crash "Method not found: $__boop_dispatch_class.$__boop_dispatch_method"
-#
-#  # Call the resolved implementation directly
-#  _Self="$_Self" _Class="$__boop_dispatch_class" $__boop_dispatch_impl "$@"
-#}
+# MRO walks are explicit (see __boop.methodResolve below) and used only by
+# registerClass / refresh / backfill at class-construction time. Once the
+# wrappers are baked, normal method invocation has zero dispatch overhead.
 
 # __boop.methodResolve — MRO lookup for a class+method pair.
 #
@@ -1215,7 +1168,7 @@ __boop.refresh() {
 #      Box.toString() { _Self=$_Self _Class='Box' __boop.toString "$@"; }
 #    These are one-hop delegations — no dispatch on normal calls.
 # 3. If the class name itself isn't already a function, creates a
-#    constructor shorthand: Box() { _Class=Box __boop.dispatch new "$@"; }
+#    constructor shorthand: Box() { _Class='Box' Box.new "$@"; }
 #    This enables the clean `Box length=5 width=3 height=7` syntax.
 #
 # Methods already defined by the class author (e.g., Box.calc as a real

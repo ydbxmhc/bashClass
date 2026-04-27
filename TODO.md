@@ -1510,7 +1510,7 @@ real workload hits it.
 
 ### C. Dead code
 
-#### C1. `__boop.dispatch` — large commented-out function
+#### C1. `__boop.dispatch` — large commented-out function ✓ DONE
 
 **File:** `boop:769-801`
 
@@ -1567,7 +1567,7 @@ the 1-line "good enough."
 If picking these up, suggested order:
 
 1. ~~**A1** (Config.fromFlatString) — locks in the API-shape rule.~~ ✓ DONE
-2. **C1** (delete dead `__boop.dispatch` body) — pure cleanup, no risk.
+2. ~~**C1** (delete dead `__boop.dispatch` body) — pure cleanup, no risk.~~ ✓ DONE
 3. **C2** (fix Container.toString pretty + test) — latent bug.
 4. **A3** (lazy stderr in TestSuite.exec) — biggest wall-clock win.
 5. **A2** (Map serializer cleanup) — small, mostly cosmetic.

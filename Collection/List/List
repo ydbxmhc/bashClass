@@ -42,7 +42,7 @@
 # __boop.new and end up in the descriptor as metadata.
 #
 # Usage: into=mylist List
-#        into=mylist _Class=List __boop.dispatch new
+#        into=mylist List.new          # explicit method form
 List.new() {
   local _Class="${_Class:-List}"
   local __List_new_self
