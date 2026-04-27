@@ -1545,7 +1545,7 @@ pretty so this is no longer dead code path.
 
 ### D. Known fragility (already commented in source)
 
-#### D1. `TestSuite._route` — pipe-delimited arg packing in queue mode
+#### D1. `TestSuite._route` — pipe-delimited arg packing in queue mode ✓ DONE
 
 **File:** `Testing/TestSuite/TestSuite:122-132`
 
@@ -1571,7 +1571,7 @@ If picking these up, suggested order:
 3. ~~**C2** (fix Container.toString pretty + test) — latent bug.~~ ✓ DONE
 4. ~~**A3** (lazy stderr in TestSuite.exec) — biggest wall-clock win.~~ ✓ DONE
 5. ~~**A2** (Map serializer cleanup) — small, mostly cosmetic.~~ ✓ DONE
-6. **D1** (TestSuite._route arg encoding) — only matters if queue
-   mode gets real use.
+6. ~~**D1** (TestSuite._route arg encoding) — only matters if queue
+   mode gets real use.~~ ✓ DONE
 7. **B1** / **B2** — measure first; defer until there's evidence
    the cost matters in a real workload.

@@ -124,17 +124,16 @@ __TestSuite._route() {
   if [[ "$__TS_route_mode" == "immediate" ]]; then
     __TestSuite._exec "$@"
   else
-    # Queue mode: store as a Map in the queue List.
-    # @@ pipe-delimited args are fragile if args contain literal pipes.
-    local __TS_route_map __TS_route_queue __TS_route_args="" __TS_route_arg
+    # Queue mode: store as a Map in the queue List. Args go into a
+    # nested List object (not a packed string) so values containing
+    # delimiters round-trip cleanly.
+    local __TS_route_map __TS_route_queue __TS_route_args
     into=__TS_route_map _Delegate Map
     _Delegate $__TS_route_map.setAt "type" "$__TS_route_type"
     _Delegate $__TS_route_map.setAt "desc" "$2"
     shift 2
-    for __TS_route_arg in "$@"; do
-      [[ -n "$__TS_route_args" ]] && __TS_route_args="$__TS_route_args|$__TS_route_arg" ||
-        __TS_route_args="$__TS_route_arg"
-    done
+    into=__TS_route_args _Delegate List
+    (( $# > 0 )) && _Delegate $__TS_route_args.push "$@"
     _Delegate $__TS_route_map.setAt "args" "$__TS_route_args"
     into=__TS_route_queue $_Self.get queue
     _Delegate $__TS_route_queue.push "$__TS_route_map"
@@ -228,18 +227,24 @@ TestSuite.run() {
   into=__TS_run_queue $_Self.get queue
   into=__TS_run_len _Delegate $__TS_run_queue.length
 
-  local -i __TS_run_i
+  local -i __TS_run_i __TS_run_j __TS_run_alen
   for (( __TS_run_i=0; __TS_run_i < __TS_run_len; __TS_run_i++ )); do
-    local __TS_run_map __TS_run_type __TS_run_desc __TS_run_args_str
-    into=__TS_run_map _Delegate      $__TS_run_queue.getAt $__TS_run_i
-    into=__TS_run_type _Delegate     $__TS_run_map.getAt "type"
-    into=__TS_run_desc _Delegate     $__TS_run_map.getAt "desc"
-    into=__TS_run_args_str _Delegate $__TS_run_map.getAt "args"
+    local __TS_run_map __TS_run_type __TS_run_desc __TS_run_args_list __TS_run_arg
+    into=__TS_run_map        _Delegate $__TS_run_queue.getAt $__TS_run_i
+    into=__TS_run_type       _Delegate $__TS_run_map.getAt "type"
+    into=__TS_run_desc       _Delegate $__TS_run_map.getAt "desc"
+    into=__TS_run_args_list  _Delegate $__TS_run_map.getAt "args"
 
     local -a __TS_run_args=()
-    [[ -n "$__TS_run_args_str" ]] && IFS='|' read -ra __TS_run_args <<< "$__TS_run_args_str"
+    if [[ -n "$__TS_run_args_list" ]]; then
+      into=__TS_run_alen _Delegate $__TS_run_args_list.length
+      for (( __TS_run_j=0; __TS_run_j < __TS_run_alen; __TS_run_j++ )); do
+        into=__TS_run_arg _Delegate $__TS_run_args_list.getAt $__TS_run_j
+        __TS_run_args+=("$__TS_run_arg")
+      done
+    fi
 
-    __TestSuite._exec "$__TS_run_type" "$__TS_run_desc" "${__TS_run_args[@]}"
+    __TestSuite._exec "$__TS_run_type" "$__TS_run_desc" "${__TS_run_args[@]+"${__TS_run_args[@]}"}"
   done
 
   _Delegate $__TS_run_queue.clear

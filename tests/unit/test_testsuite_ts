@@ -232,12 +232,19 @@ $q.assert_fail     "queued fail"     false
 $q.assert_match    "queued match"    "foo"    "f*"
 $q.assert_contains "queued contains" "foobar" "oba"
 
+# Args containing the old packing delimiter (|) and other punctuation
+# must round-trip through the queue intact. Previously these args would
+# be split on | when un-packed and the assertions would mis-compare.
+$q.assert_eq       "queued eq with pipe"     "a|b|c"  "a|b|c"
+$q.assert_eq       "queued eq with spaces"   "x y z"  "x y z"
+$q.assert_contains "queued contains pipe"    "alpha|beta|gamma" "|beta|"
+
 # Nothing should have printed yet — run the batch
 $q.run
 $q.summary
 
-# Verify the queue suite's counts
-into=v $q.get "passed"; $t.assert_eq "queue passed count" "$v" "6"
+# Verify the queue suite's counts (6 original + 3 delimiter-safe)
+into=v $q.get "passed"; $t.assert_eq "queue passed count" "$v" "9"
 into=v $q.get "failed"; $t.assert_eq "queue failed count" "$v" "0"
 
 # ============================================================================
