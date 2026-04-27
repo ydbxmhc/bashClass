@@ -940,6 +940,66 @@ three-level partials?).
 
 ---
 
+## ★ Fully Qualified Class Names and Import Aliasing
+
+**Priority item.** The class system currently uses short names
+everywhere: registry keys, method names, baked wrappers, constructor
+shorthands. `Box.volume`, `Math.add`, `List.push`. This works only
+because every class has a unique short name today.
+
+As soon as two namespaces define a class with the same short name
+(`Geometry::Box` and `Sport::Box`, or `Map::Fast` and `JSON::Fast`),
+everything collides: registry entries, method function names, baked
+wrappers, constructor shorthands.
+
+### The Java Import Model
+
+Classes should register with their full qualified name internally:
+`Geometry.Box`, `Collection.Map.Fast`. Method functions use the
+full name: `Geometry.Box.volume`, `Collection.Map.Fast.get`.
+
+But casual use should still allow short names when unambiguous.
+`_Import Geometry::Box` (or a similar mechanism) creates a local
+alias so the user can write `Box.new` and it resolves to
+`Geometry.Box.new`. If both `Geometry::Box` and `Sport::Box` are
+loaded, the user must use the full name for at least one.
+
+### What Needs to Change
+
+- `boopClass` registers with full qualified name
+- Method functions use full qualified name
+- Baked wrappers map short name -> full name (the alias layer)
+- Constructor shorthands use the alias
+- `_Import` (new Tier 2 function) creates short-name aliases
+  after loading, similar to Java's `import` statement
+- The index maps short names to full names (already does this)
+- Conflict detection removes ambiguous short aliases (already does)
+- `boop.classPath set` provides manual alias overrides (already does)
+
+### Backward Compatibility
+
+Existing classes with unique short names (`Box`, `Math`, `List`)
+continue to work as-is -- their full name happens to equal their
+short name (or the alias is unambiguous). The refactor is additive
+for existing code.
+
+### Open Questions
+
+- Does `_Import` create aliases in the current shell scope, or
+  globally? Global is simpler but means one script's imports
+  affect another's.
+- Should `_Import` support `_Import Geometry::Box as GBox`?
+- How do per-class method names interact with inheritance?
+  If `Geometry.Box` inherits from `boop`, is the parent method
+  `boop.get` or `Geometry.Box.get`?
+- Internal variable naming: `__Geometry_Box_volume_result` or
+  `__GeometryBox_volume_result`?
+
+Needs a full spec pass. This is the biggest remaining architectural
+decision in the framework.
+
+---
+
 ## JSON Parser
 
 Two-stage pipeline: fast flat parse, optional deep conversion.

@@ -1,0 +1,214 @@
+#!/bin/bash
+set -uo pipefail
+
+# Map::Fast tests -- flat compound-key store
+#
+# Tests: construction, get/set, has, delete, length, clear,
+# keys, keysUnder, deleteUnder, toString, custom separator.
+
+. boop TestSuite Fast
+
+into=t TestSuite name="Fast Tests"
+
+# ============================================================================
+# Construction
+# ============================================================================
+
+$t.section "Construction"
+
+into=doc Fast
+$t.assert_match "constructor returns object ID" "$doc" "_*"
+into=sep __boop.parse "$doc" "sep"
+$t.assert_eq "default separator is ." "$sep" "."
+
+into=doc2 Fast sep="/"
+into=sep2 __boop.parse "$doc2" "sep"
+$t.assert_eq "custom separator" "$sep2" "/"
+
+# ============================================================================
+# set / get
+# ============================================================================
+
+$t.section "set / get"
+
+into=d Fast
+$d.set "server.host" "localhost"
+$d.set "server.port" "8080"
+$d.set "users.0.name" "Alice"
+$d.set "users.1.name" "Bob"
+
+into=v $d.get "server.host"
+$t.assert_eq "get server.host" "$v" "localhost"
+
+into=v $d.get "server.port"
+$t.assert_eq "get server.port" "$v" "8080"
+
+into=v $d.get "users.0.name"
+$t.assert_eq "get users.0.name" "$v" "Alice"
+
+into=v $d.get "users.1.name"
+$t.assert_eq "get users.1.name" "$v" "Bob"
+
+into=v $d.get "nonexistent"
+$t.assert_eq "get missing key returns empty" "$v" ""
+
+# Overwrite
+$d.set "server.host" "10.0.0.1"
+into=v $d.get "server.host"
+$t.assert_eq "overwrite existing key" "$v" "10.0.0.1"
+
+# Empty value
+$d.set "empty" ""
+into=v $d.get "empty"
+$t.assert_eq "set/get empty string" "$v" ""
+
+# Special characters in value
+$d.set "special" "pipe|equals=percent%newline"
+into=v $d.get "special"
+$t.assert_eq "special chars in value" "$v" "pipe|equals=percent%newline"
+
+
+# ============================================================================
+# has
+# ============================================================================
+
+$t.section "has"
+
+$t.assert_ok "has existing key" $d.has "server.host"
+$t.assert_ok "has nested key" $d.has "users.0.name"
+__fast_rc=0
+$d.has "nope" || __fast_rc=$?
+$t.assert_eq "has missing key returns 1" "$__fast_rc" "1"
+
+# ============================================================================
+# delete
+# ============================================================================
+
+$t.section "delete"
+
+$d.set "temp" "gone"
+$t.assert_ok "temp exists before delete" $d.has "temp"
+$d.delete "temp"
+__fast_rc=0
+$d.has "temp" || __fast_rc=$?
+$t.assert_eq "temp gone after delete" "$__fast_rc" "1"
+
+# Delete nonexistent key -- should not crash
+$d.delete "never_existed"
+$t.assert_ok "delete nonexistent key no crash" true
+
+# ============================================================================
+# length
+# ============================================================================
+
+$t.section "length"
+
+into=n $d.length
+# server.host, server.port, users.0.name, users.1.name, empty, special = 6
+$t.assert_eq "length after sets" "$n" "6"
+
+$d.delete "empty"
+$d.delete "special"
+into=n $d.length
+$t.assert_eq "length after deletes" "$n" "4"
+
+# ============================================================================
+# clear
+# ============================================================================
+
+$t.section "clear"
+
+into=d2 Fast
+$d2.set "a" "1"
+$d2.set "b" "2"
+$d2.clear
+into=n $d2.length
+$t.assert_eq "length after clear" "$n" "0"
+__fast_rc=0
+$d2.has "a" || __fast_rc=$?
+$t.assert_eq "has after clear fails" "$__fast_rc" "1"
+
+# ============================================================================
+# keys
+# ============================================================================
+
+$t.section "keys"
+
+into=d3 Fast
+$d3.set "x.a" "1"
+$d3.set "x.b" "2"
+$d3.set "y.c" "3"
+into=k $d3.keys
+$t.assert_contains "keys includes x.a" "$k" "x.a"
+$t.assert_contains "keys includes x.b" "$k" "x.b"
+$t.assert_contains "keys includes y.c" "$k" "y.c"
+
+# ============================================================================
+# keysUnder
+# ============================================================================
+
+$t.section "keysUnder"
+
+into=ku $d.keysUnder "server"
+$t.assert_contains "keysUnder server includes host" "$ku" "server.host"
+$t.assert_contains "keysUnder server includes port" "$ku" "server.port"
+
+into=ku $d.keysUnder "users"
+$t.assert_contains "keysUnder users includes 0.name" "$ku" "users.0.name"
+$t.assert_contains "keysUnder users includes 1.name" "$ku" "users.1.name"
+
+into=ku $d.keysUnder "nope"
+$t.assert_eq "keysUnder nonexistent prefix is empty" "$ku" ""
+
+# ============================================================================
+# deleteUnder
+# ============================================================================
+
+$t.section "deleteUnder"
+
+into=d4 Fast
+$d4.set "a.1" "x"
+$d4.set "a.2" "y"
+$d4.set "b.1" "z"
+$d4.deleteUnder "a"
+__fast_rc=0
+$d4.has "a.1" || __fast_rc=$?
+$t.assert_eq "a.1 gone after deleteUnder a" "$__fast_rc" "1"
+__fast_rc=0
+$d4.has "a.2" || __fast_rc=$?
+$t.assert_eq "a.2 gone after deleteUnder a" "$__fast_rc" "1"
+$t.assert_ok "b.1 survives deleteUnder a" $d4.has "b.1"
+
+# ============================================================================
+# toString
+# ============================================================================
+
+$t.section "toString"
+
+into=d5 Fast
+$d5.set "k1" "v1"
+$d5.set "k2" "v2"
+into=s $d5.toString
+$t.assert_contains "toString includes k1=v1" "$s" "k1=v1"
+$t.assert_contains "toString includes k2=v2" "$s" "k2=v2"
+
+# ============================================================================
+# Custom separator
+# ============================================================================
+
+$t.section "Custom separator"
+
+into=d6 Fast sep="/"
+$d6.set "a/b/c" "deep"
+into=v $d6.get "a/b/c"
+$t.assert_eq "custom sep get" "$v" "deep"
+
+into=ku $d6.keysUnder "a"
+$t.assert_contains "custom sep keysUnder" "$ku" "a/b/c"
+
+$d6.set "a/x" "shallow"
+$d6.deleteUnder "a"
+into=n $d6.length
+$t.assert_eq "custom sep deleteUnder clears all" "$n" "0"
+
+$t.summary
