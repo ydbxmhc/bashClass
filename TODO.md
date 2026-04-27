@@ -1520,7 +1520,7 @@ wrappers) does. The comment block above is useful; the carcass
 below is just noise. Delete the body, keep the explanatory comment
 about why dispatch is no longer the primary call path.
 
-#### C2. `Container.toString` pretty-print branch is broken *and* dead
+#### C2. `Container.toString` pretty-print branch is broken *and* dead ✓ DONE
 
 **File:** `Collection/Container/Container:223-240`
 
@@ -1568,7 +1568,7 @@ If picking these up, suggested order:
 
 1. ~~**A1** (Config.fromFlatString) — locks in the API-shape rule.~~ ✓ DONE
 2. ~~**C1** (delete dead `__boop.dispatch` body) — pure cleanup, no risk.~~ ✓ DONE
-3. **C2** (fix Container.toString pretty + test) — latent bug.
+3. ~~**C2** (fix Container.toString pretty + test) — latent bug.~~ ✓ DONE
 4. **A3** (lazy stderr in TestSuite.exec) — biggest wall-clock win.
 5. **A2** (Map serializer cleanup) — small, mostly cosmetic.
 6. **D1** (TestSuite._route arg encoding) — only matters if queue

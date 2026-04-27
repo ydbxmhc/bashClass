@@ -234,7 +234,7 @@ Container.toString() {
   fi
 
   local __Container_ts_out
-  printf -v __Container_ts_out "%s(%s) {\n  type   = %s\n  length = %s\n}" 
+  printf -v __Container_ts_out "%s(%s) {\n  type   = %s\n  length = %s\n}" \
     "$_Class" "$_Self" "$__Container_ts_type" "$__Container_ts_len"
   boop.pass "$__Container_ts_out" ${into:-}
 }
