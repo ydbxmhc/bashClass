@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Map — insertion-ordered associative array container.
+# Collection.Map — insertion-ordered associative array container.
 #
 # Wraps a bash associative array (declare -gA) with object semantics.
 # Implements the Container contract with key-value operations: get, set,
@@ -25,9 +25,9 @@
 # different shell.
 
 # Load guard — if already registered, nothing to do
-[[ -n "${__boop_registry[Map]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Collection.Map]+set}" ]] && return 2>/dev/null
 
-. boop Container
+. boop Collection::Container
 
 # ============================================================================
 # Map Implementation Functions
@@ -36,16 +36,16 @@
 # Constructor — creates a new Map instance with an associative companion array
 # and an indexed companion array for tracking insertion order.
 #
-# Usage: into=mymap Map
-Map.new() {
-  local _Class="${_Class:-Map}"
-  local __Map_new_self
-  into=__Map_new_self __boop.new type=associative "$@"
-  declare -gA "__boop_data_${__Map_new_self}"
-  declare -ga "__boop_keys_${__Map_new_self}"
-  eval "__boop_data_${__Map_new_self}+=()"
-  eval "__boop_keys_${__Map_new_self}+=()"
-  boop.pass "$__Map_new_self" ${into:-}
+# Usage: into=mymap Collection.Map
+Collection.Map.new() {
+  local _Class="${_Class:-Collection.Map}"
+  local __Collection_Map_new_self
+  into=__Collection_Map_new_self __boop.new type=associative "$@"
+  declare -gA "__boop_data_${__Collection_Map_new_self}"
+  declare -ga "__boop_keys_${__Collection_Map_new_self}"
+  eval "__boop_data_${__Collection_Map_new_self}+=()"
+  eval "__boop_keys_${__Collection_Map_new_self}+=()"
+  boop.pass "$__Collection_Map_new_self" ${into:-}
 }
 
 # Retrieve a value by its string key.
@@ -53,11 +53,11 @@ Map.new() {
 # Returns empty string if the key doesn't exist — not a crash.
 #
 # Usage: into=val $map.get "host"
-Map.getAt() {
-  local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
-  local __Map_getAt_key="$1"
-  local -n __Map_getAt_arr="__boop_data_${_Self}"
-  boop.pass "${__Map_getAt_arr[$__Map_getAt_key]:-}" ${into:-}
+Collection.Map.getAt() {
+  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local __Collection_Map_getAt_key="$1"
+  local -n __Collection_Map_getAt_arr="__boop_data_${_Self}"
+  boop.pass "${__Collection_Map_getAt_arr[$__Collection_Map_getAt_key]:-}" ${into:-}
 }
 
 # Store a key-value pair in the map.
@@ -67,18 +67,18 @@ Map.getAt() {
 # to the ordered key list.
 #
 # Usage: $map.set "host" "localhost"
-Map.setAt() {
-  local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
-  local __Map_setAt_key="$1" __Map_setAt_val="$2"
-  local -n __Map_setAt_arr="__boop_data_${_Self}"
-  local -n __Map_setAt_keys="__boop_keys_${_Self}"
+Collection.Map.setAt() {
+  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local __Collection_Map_setAt_key="$1" __Collection_Map_setAt_val="$2"
+  local -n __Collection_Map_setAt_arr="__boop_data_${_Self}"
+  local -n __Collection_Map_setAt_keys="__boop_keys_${_Self}"
 
   # If key is new, append to ordered key list
-  if [[ -z "${__Map_setAt_arr[$__Map_setAt_key]+set}" ]]; then
-    __Map_setAt_keys+=("$__Map_setAt_key")
+  if [[ -z "${__Collection_Map_setAt_arr[$__Collection_Map_setAt_key]+set}" ]]; then
+    __Collection_Map_setAt_keys+=("$__Collection_Map_setAt_key")
   fi
 
-  __Map_setAt_arr[$__Map_setAt_key]="$__Map_setAt_val"
+  __Collection_Map_setAt_arr[$__Collection_Map_setAt_key]="$__Collection_Map_setAt_val"
 }
 
 # Remove a key-value pair from the map.
@@ -87,71 +87,71 @@ Map.setAt() {
 # Silent no-op if the key doesn't exist.
 #
 # Usage: $map.delete "debug"
-Map.delete() {
-  local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
-  local __Map_del_key="$1"
-  local -n __Map_del_arr="__boop_data_${_Self}"
-  local -n __Map_del_keys="__boop_keys_${_Self}"
+Collection.Map.delete() {
+  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local __Collection_Map_del_key="$1"
+  local -n __Collection_Map_del_arr="__boop_data_${_Self}"
+  local -n __Collection_Map_del_keys="__boop_keys_${_Self}"
 
-  unset "__Map_del_arr[$__Map_del_key]"
+  unset "__Collection_Map_del_arr[$__Collection_Map_del_key]"
 
   # Remove from ordered key list and compact
-  local -a __Map_del_new=()
-  local __Map_del_k
-  if [[ -n "${!__Map_del_keys[@]}" ]]; then
-    for __Map_del_k in "${__Map_del_keys[@]}"; do
-      [[ "$__Map_del_k" != "$__Map_del_key" ]] && __Map_del_new+=("$__Map_del_k")
+  local -a __Collection_Map_del_new=()
+  local __Collection_Map_del_k
+  if [[ -n "${!__Collection_Map_del_keys[@]}" ]]; then
+    for __Collection_Map_del_k in "${__Collection_Map_del_keys[@]}"; do
+      [[ "$__Collection_Map_del_k" != "$__Collection_Map_del_key" ]] && __Collection_Map_del_new+=("$__Collection_Map_del_k")
     done
   fi
-  __Map_del_keys=("${__Map_del_new[@]+"${__Map_del_new[@]}"}")
+  __Collection_Map_del_keys=("${__Collection_Map_del_new[@]+"${__Collection_Map_del_new[@]}"}")
 }
 
 # Return the number of key-value pairs in the map.
 #
 # Usage: into=len $map.length
-Map.length() {
-  local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
-  local -n __Map_length_arr="__boop_data_${_Self}"
-  local -i __Map_length_len=0; [[ -n "${!__Map_length_arr[@]}" ]] && __Map_length_len=${#__Map_length_arr[@]}
-  boop.pass "$__Map_length_len" ${into:-}
+Collection.Map.length() {
+  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local -n __Collection_Map_length_arr="__boop_data_${_Self}"
+  local -i __Collection_Map_length_len=0; [[ -n "${!__Collection_Map_length_arr[@]}" ]] && __Collection_Map_length_len=${#__Collection_Map_length_arr[@]}
+  boop.pass "$__Collection_Map_length_len" ${into:-}
 }
 
 # Remove all key-value pairs from the map.
 #
 # Usage: $map.clear
-Map.clear() {
-  local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
-  local -n __Map_clear_arr="__boop_data_${_Self}"
-  local -n __Map_clear_keys="__boop_keys_${_Self}"
-  __Map_clear_arr=()
-  __Map_clear_keys=()
+Collection.Map.clear() {
+  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local -n __Collection_Map_clear_arr="__boop_data_${_Self}"
+  local -n __Collection_Map_clear_keys="__boop_keys_${_Self}"
+  __Collection_Map_clear_arr=()
+  __Collection_Map_clear_keys=()
 }
 
 # Check whether a key exists in the map.
 #
 # Usage: $map.has "host" && printf "host is configured"
-Map.has() {
-  local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
-  local __Map_has_key="$1"
-  local -n __Map_has_arr="__boop_data_${_Self}"
-  [[ -n "${__Map_has_arr[$__Map_has_key]+set}" ]] && return 0 || return 1
+Collection.Map.has() {
+  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local __Collection_Map_has_key="$1"
+  local -n __Collection_Map_has_arr="__boop_data_${_Self}"
+  [[ -n "${__Collection_Map_has_arr[$__Collection_Map_has_key]+set}" ]] && return 0 || return 1
 }
 
 # Return all keys as a newline-delimited string in insertion order.
 #
 # Usage: into=k $map.keys
-Map.keys() {
-  local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
-  local -n __Map_keys_keys="__boop_keys_${_Self}"
-  local __Map_keys_d="${_Delimiter:-$_EOL}"
-  local __Map_keys_out
-  if ! [[ -n "${!__Map_keys_keys[@]}" ]] || (( ${#__Map_keys_keys[@]} == 0 )); then
+Collection.Map.keys() {
+  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local -n __Collection_Map_keys_keys="__boop_keys_${_Self}"
+  local __Collection_Map_keys_d="${_Delimiter:-$_EOL}"
+  local __Collection_Map_keys_out
+  if ! [[ -n "${!__Collection_Map_keys_keys[@]}" ]] || (( ${#__Collection_Map_keys_keys[@]} == 0 )); then
     boop.pass "" ${into:-}
     return
   fi
-  printf -v __Map_keys_out "%s${__Map_keys_d}" "${__Map_keys_keys[@]}"
-  __Map_keys_out="${__Map_keys_out%"${__Map_keys_d}"}"
-  boop.pass "$__Map_keys_out" ${into:-}
+  printf -v __Collection_Map_keys_out "%s${__Collection_Map_keys_d}" "${__Collection_Map_keys_keys[@]}"
+  __Collection_Map_keys_out="${__Collection_Map_keys_out%"${__Collection_Map_keys_d}"}"
+  boop.pass "$__Collection_Map_keys_out" ${into:-}
 }
 
 # Return all values as a newline-delimited string in insertion order.
@@ -160,42 +160,42 @@ Map.keys() {
 # matches the Nth key line.
 #
 # Usage: into=v $map.values
-Map.values() {
-  local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
-  local -n __Map_values_arr="__boop_data_${_Self}"
-  local -n __Map_values_keys="__boop_keys_${_Self}"
-  local __Map_values_out=""
-  if ! [[ -n "${!__Map_values_keys[@]}" ]] || (( ${#__Map_values_keys[@]} == 0 )); then
+Collection.Map.values() {
+  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local -n __Collection_Map_values_arr="__boop_data_${_Self}"
+  local -n __Collection_Map_values_keys="__boop_keys_${_Self}"
+  local __Collection_Map_values_out=""
+  if ! [[ -n "${!__Collection_Map_values_keys[@]}" ]] || (( ${#__Collection_Map_values_keys[@]} == 0 )); then
     boop.pass "" ${into:-}
     return
   fi
-  local __Map_values_d="${_Delimiter:-$_EOL}"
-  local __Map_values_k __Map_values_first=1
-  for __Map_values_k in "${__Map_values_keys[@]}"; do
-    (( __Map_values_first )) || __Map_values_out="${__Map_values_out}${__Map_values_d}"
-    __Map_values_out="$__Map_values_out${__Map_values_arr[$__Map_values_k]}"
-    __Map_values_first=0
+  local __Collection_Map_values_d="${_Delimiter:-$_EOL}"
+  local __Collection_Map_values_k __Collection_Map_values_first=1
+  for __Collection_Map_values_k in "${__Collection_Map_values_keys[@]}"; do
+    (( __Collection_Map_values_first )) || __Collection_Map_values_out="${__Collection_Map_values_out}${__Collection_Map_values_d}"
+    __Collection_Map_values_out="$__Collection_Map_values_out${__Collection_Map_values_arr[$__Collection_Map_values_k]}"
+    __Collection_Map_values_first=0
   done
-  boop.pass "$__Map_values_out" ${into:-}
+  boop.pass "$__Collection_Map_values_out" ${into:-}
 }
 
 # Serialize all entries as newline-delimited "key=value" lines in insertion order.
 #
 # Usage: into=entries $map.toArray
-Map.toArray() {
-  local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
-  local -n __Map_toArray_arr="__boop_data_${_Self}"
-  local -n __Map_toArray_keys="__boop_keys_${_Self}"
-  local __Map_toArray_d="${_Delimiter:-$_EOL}"
-  local __Map_toArray_out="" __Map_toArray_key __Map_toArray_first=1
-  if [[ -n "${!__Map_toArray_keys[@]}" ]]; then
-    for __Map_toArray_key in "${__Map_toArray_keys[@]}"; do
-      (( __Map_toArray_first )) || __Map_toArray_out="${__Map_toArray_out}${__Map_toArray_d}"
-      __Map_toArray_out="$__Map_toArray_out$__Map_toArray_key=${__Map_toArray_arr[$__Map_toArray_key]}"
-      __Map_toArray_first=0
+Collection.Map.toArray() {
+  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local -n __Collection_Map_toArray_arr="__boop_data_${_Self}"
+  local -n __Collection_Map_toArray_keys="__boop_keys_${_Self}"
+  local __Collection_Map_toArray_d="${_Delimiter:-$_EOL}"
+  local __Collection_Map_toArray_out="" __Collection_Map_toArray_key __Collection_Map_toArray_first=1
+  if [[ -n "${!__Collection_Map_toArray_keys[@]}" ]]; then
+    for __Collection_Map_toArray_key in "${__Collection_Map_toArray_keys[@]}"; do
+      (( __Collection_Map_toArray_first )) || __Collection_Map_toArray_out="${__Collection_Map_toArray_out}${__Collection_Map_toArray_d}"
+      __Collection_Map_toArray_out="$__Collection_Map_toArray_out$__Collection_Map_toArray_key=${__Collection_Map_toArray_arr[$__Collection_Map_toArray_key]}"
+      __Collection_Map_toArray_first=0
     done
   fi
-  boop.pass "$__Map_toArray_out" ${into:-}
+  boop.pass "$__Collection_Map_toArray_out" ${into:-}
 }
 
 # Human-readable representation in insertion order.
@@ -203,20 +203,20 @@ Map.toArray() {
 # Format: Map(_a1b2c3){ host="localhost", port="8080" }
 #
 # Usage: $map.toString
-Map.toString() {
-  local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
-  local -n __Map_ts_arr="__boop_data_${_Self}"
-  local -n __Map_ts_keys="__boop_keys_${_Self}"
-  local __Map_ts_out="Map($_Self){ " __Map_ts_key __Map_ts_first=1
-  if [[ -n "${!__Map_ts_keys[@]}" ]]; then
-    for __Map_ts_key in "${__Map_ts_keys[@]}"; do
-      (( __Map_ts_first )) || __Map_ts_out="$__Map_ts_out, "
-      __Map_ts_out="$__Map_ts_out$__Map_ts_key=\"${__Map_ts_arr[$__Map_ts_key]}\""
-      __Map_ts_first=0
+Collection.Map.toString() {
+  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local -n __Collection_Map_ts_arr="__boop_data_${_Self}"
+  local -n __Collection_Map_ts_keys="__boop_keys_${_Self}"
+  local __Collection_Map_ts_out="Map($_Self){ " __Collection_Map_ts_key __Collection_Map_ts_first=1
+  if [[ -n "${!__Collection_Map_ts_keys[@]}" ]]; then
+    for __Collection_Map_ts_key in "${__Collection_Map_ts_keys[@]}"; do
+      (( __Collection_Map_ts_first )) || __Collection_Map_ts_out="$__Collection_Map_ts_out, "
+      __Collection_Map_ts_out="$__Collection_Map_ts_out$__Collection_Map_ts_key=\"${__Collection_Map_ts_arr[$__Collection_Map_ts_key]}\""
+      __Collection_Map_ts_first=0
     done
   fi
-  __Map_ts_out="$__Map_ts_out }"
-  boop.pass "$__Map_ts_out" ${into:-}
+  __Collection_Map_ts_out="$__Collection_Map_ts_out }"
+  boop.pass "$__Collection_Map_ts_out" ${into:-}
 }
 
 # Iterate over all entries in insertion order, calling a user function for each.
@@ -225,15 +225,15 @@ Map.toString() {
 # If the callback returns non-zero, iteration stops immediately.
 #
 # Usage: $map.each my_callback
-Map.each() {
-  local _Self="${_Self:-${_Class:-Map}}" _Class="${_Class:-Map}"
-  local __Map_each_fn="$1"
-  local -n __Map_each_arr="__boop_data_${_Self}"
-  local -n __Map_each_keys="__boop_keys_${_Self}"
-  [[ -n "${!__Map_each_keys[@]}" ]] || return 0
-  local __Map_each_key
-  for __Map_each_key in "${__Map_each_keys[@]}"; do
-    "$__Map_each_fn" "$__Map_each_key" "${__Map_each_arr[$__Map_each_key]}" || return
+Collection.Map.each() {
+  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local __Collection_Map_each_fn="$1"
+  local -n __Collection_Map_each_arr="__boop_data_${_Self}"
+  local -n __Collection_Map_each_keys="__boop_keys_${_Self}"
+  [[ -n "${!__Collection_Map_each_keys[@]}" ]] || return 0
+  local __Collection_Map_each_key
+  for __Collection_Map_each_key in "${__Collection_Map_each_keys[@]}"; do
+    "$__Collection_Map_each_fn" "$__Collection_Map_each_key" "${__Collection_Map_each_arr[$__Collection_Map_each_key]}" || return
   done
 }
 
@@ -241,6 +241,6 @@ Map.each() {
 # Class Declaration
 # ============================================================================
 
-boopClass Map isa:Container has:type '
+boopClass Collection.Map isa:Collection.Container has:type '
   public:new,getAt,setAt,delete,length,clear,has,keys,values,toArray,toString,each
 '

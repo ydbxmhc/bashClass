@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Fast -- flat compound-key store for O(1) point lookups.
+# Collection.Map.Fast -- flat compound-key store for O(1) point lookups.
 #
 # A purpose-built associative array with dot-delimited compound keys.
 # Tuned for config data, parsed documents, lookup tables, and caches.
@@ -22,10 +22,10 @@
 #   __boop_data_${_Self}["server.port"]="8080"
 #
 # The separator defaults to "." and is stored as a property.
-# Override per-instance: into=doc Fast sep="/"
+# Override per-instance: into=doc Collection.Map.Fast sep="/"
 
 # Load guard
-[[ -n "${__boop_registry[Fast]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Collection.Map.Fast]+set}" ]] && return 2>/dev/null
 
 . boop
 
@@ -33,18 +33,18 @@
 # Constructor
 # ============================================================================
 
-Fast.new() {
-  local -I _Class; : "${_Class:=Fast}"
-  local __Fast_new_self __Fast_new_sep="."
-  local __Fast_new_arg
-  for __Fast_new_arg in "$@"; do
-    case "$__Fast_new_arg" in
-      sep=*) __Fast_new_sep="${__Fast_new_arg#sep=}" ;;
+Collection.Map.Fast.new() {
+  local -I _Class; : "${_Class:=Collection.Map.Fast}"
+  local __Collection_Map_Fast_new_self __Collection_Map_Fast_new_sep="."
+  local __Collection_Map_Fast_new_arg
+  for __Collection_Map_Fast_new_arg in "$@"; do
+    case "$__Collection_Map_Fast_new_arg" in
+      sep=*) __Collection_Map_Fast_new_sep="${__Collection_Map_Fast_new_arg#sep=}" ;;
     esac
   done
-  into=__Fast_new_self __boop.new sep="$__Fast_new_sep"
-  declare -gA "__boop_data_${__Fast_new_self}"
-  boop.pass "$__Fast_new_self" "${into:-}"
+  into=__Collection_Map_Fast_new_self __boop.new sep="$__Collection_Map_Fast_new_sep"
+  declare -gA "__boop_data_${__Collection_Map_Fast_new_self}"
+  boop.pass "$__Collection_Map_Fast_new_self" "${into:-}"
 }
 
 # ============================================================================
@@ -54,124 +54,123 @@ Fast.new() {
 # Get a value by compound key. Returns empty string if not set.
 #
 # Usage: into=val $doc.get "users.0.name"
-Fast.get() {
+Collection.Map.Fast.get() {
   local -I _Self _Class
-  local -n __Fast_get_data="__boop_data_${_Self}"
-  boop.pass "${__Fast_get_data[${1:-}]:-}" "${into:-}"
+  local -n __Collection_Map_Fast_get_data="__boop_data_${_Self}"
+  boop.pass "${__Collection_Map_Fast_get_data[${1:-}]:-}" "${into:-}"
 }
 
 # Set a value by compound key.
 #
 # Usage: $doc.set "users.0.name" "Alice"
-Fast.set() {
+Collection.Map.Fast.set() {
   local -I _Self _Class
-  local -n __Fast_set_data="__boop_data_${_Self}"
-  __Fast_set_data["${1:-}"]="${2:-}"
+  local -n __Collection_Map_Fast_set_data="__boop_data_${_Self}"
+  __Collection_Map_Fast_set_data["${1:-}"]="${2:-}"
 }
 
 # Check if a compound key exists. Returns exit code 0/1.
 #
 # Usage: $doc.has "server.port" && echo "yes"
-Fast.has() {
+Collection.Map.Fast.has() {
   local -I _Self _Class
-  local -n __Fast_has_data="__boop_data_${_Self}"
-  [[ -n "${__Fast_has_data[${1:-}]+set}" ]]
+  local -n __Collection_Map_Fast_has_data="__boop_data_${_Self}"
+  [[ -n "${__Collection_Map_Fast_has_data[${1:-}]+set}" ]]
 }
 
 # Delete a single compound key.
 #
 # Usage: $doc.delete "users.0.name"
-Fast.delete() {
+Collection.Map.Fast.delete() {
   local -I _Self _Class
-  local -n __Fast_delete_data="__boop_data_${_Self}"
-  unset "__Fast_delete_data[${1:-}]"
+  local -n __Collection_Map_Fast_delete_data="__boop_data_${_Self}"
+  unset "__Collection_Map_Fast_delete_data[${1:-}]"
 }
 
 # Return the number of keys in the store.
 #
 # Usage: into=n $doc.length
-Fast.length() {
+Collection.Map.Fast.length() {
   local -I _Self _Class
-  local -n __Fast_length_data="__boop_data_${_Self}"
-  boop.pass "${#__Fast_length_data[@]}" "${into:-}"
+  local -n __Collection_Map_Fast_length_data="__boop_data_${_Self}"
+  boop.pass "${#__Collection_Map_Fast_length_data[@]}" "${into:-}"
 }
 
 # Clear all keys.
 #
 # Usage: $doc.clear
-Fast.clear() {
+Collection.Map.Fast.clear() {
   local -I _Self _Class
-  local -n __Fast_clear_data="__boop_data_${_Self}"
-  __Fast_clear_data=()
+  local -n __Collection_Map_Fast_clear_data="__boop_data_${_Self}"
+  __Collection_Map_Fast_clear_data=()
 }
 
 # Return all keys, one per line.
 #
 # Usage: into=k $doc.keys
-Fast.keys() {
+Collection.Map.Fast.keys() {
   local -I _Self _Class
-  local -n __Fast_keys_data="__boop_data_${_Self}"
-  local __Fast_keys_out=""
-  local __Fast_keys_k
-  for __Fast_keys_k in "${!__Fast_keys_data[@]}"; do
-    [[ -n "$__Fast_keys_out" ]] && __Fast_keys_out+="${_Delimiter}"
-    __Fast_keys_out+="$__Fast_keys_k"
+  local -n __Collection_Map_Fast_keys_data="__boop_data_${_Self}"
+  local __Collection_Map_Fast_keys_out=""
+  local __Collection_Map_Fast_keys_k
+  for __Collection_Map_Fast_keys_k in "${!__Collection_Map_Fast_keys_data[@]}"; do
+    [[ -n "$__Collection_Map_Fast_keys_out" ]] && __Collection_Map_Fast_keys_out+="${_Delimiter}"
+    __Collection_Map_Fast_keys_out+="$__Collection_Map_Fast_keys_k"
   done
-  boop.pass "$__Fast_keys_out" "${into:-}"
+  boop.pass "$__Collection_Map_Fast_keys_out" "${into:-}"
 }
 
 # Return all keys matching a prefix, one per line.
 # This is the expensive operation -- scans all keys.
 #
 # Usage: into=k $doc.keysUnder "users"
-Fast.keysUnder() {
+Collection.Map.Fast.keysUnder() {
   local -I _Self _Class
-  local -n __Fast_ku_data="__boop_data_${_Self}"
-  local __Fast_ku_prefix="${1:-}"
-  local __Fast_ku_sep
-  into=__Fast_ku_sep __boop.parse "$_Self" "sep"
-  local __Fast_ku_out="" __Fast_ku_k
-  for __Fast_ku_k in "${!__Fast_ku_data[@]}"; do
-    [[ "$__Fast_ku_k" == "${__Fast_ku_prefix}${__Fast_ku_sep}"* ]] || continue
-    [[ -n "$__Fast_ku_out" ]] && __Fast_ku_out+="${_Delimiter}"
-    __Fast_ku_out+="$__Fast_ku_k"
+  local -n __Collection_Map_Fast_ku_data="__boop_data_${_Self}"
+  local __Collection_Map_Fast_ku_prefix="${1:-}"
+  local __Collection_Map_Fast_ku_sep
+  into=__Collection_Map_Fast_ku_sep __boop.parse "$_Self" "sep"
+  local __Collection_Map_Fast_ku_out="" __Collection_Map_Fast_ku_k
+  for __Collection_Map_Fast_ku_k in "${!__Collection_Map_Fast_ku_data[@]}"; do
+    [[ "$__Collection_Map_Fast_ku_k" == "${__Collection_Map_Fast_ku_prefix}${__Collection_Map_Fast_ku_sep}"* ]] || continue
+    [[ -n "$__Collection_Map_Fast_ku_out" ]] && __Collection_Map_Fast_ku_out+="${_Delimiter}"
+    __Collection_Map_Fast_ku_out+="$__Collection_Map_Fast_ku_k"
   done
-  boop.pass "$__Fast_ku_out" "${into:-}"
+  boop.pass "$__Collection_Map_Fast_ku_out" "${into:-}"
 }
 
 # Delete all keys matching a prefix.
 #
 # Usage: $doc.deleteUnder "users.0"
-Fast.deleteUnder() {
+Collection.Map.Fast.deleteUnder() {
   local -I _Self _Class
-  local -n __Fast_du_data="__boop_data_${_Self}"
-  local __Fast_du_prefix="${1:-}"
-  local __Fast_du_sep
-  into=__Fast_du_sep __boop.parse "$_Self" "sep"
-  local __Fast_du_k
-  for __Fast_du_k in "${!__Fast_du_data[@]}"; do
-    [[ "$__Fast_du_k" == "${__Fast_du_prefix}${__Fast_du_sep}"* || "$__Fast_du_k" == "$__Fast_du_prefix" ]] &&
-      unset "__Fast_du_data[$__Fast_du_k]"
+  local -n __Collection_Map_Fast_du_data="__boop_data_${_Self}"
+  local __Collection_Map_Fast_du_prefix="${1:-}"
+  local __Collection_Map_Fast_du_sep
+  into=__Collection_Map_Fast_du_sep __boop.parse "$_Self" "sep"
+  local __Collection_Map_Fast_du_k
+  for __Collection_Map_Fast_du_k in "${!__Collection_Map_Fast_du_data[@]}"; do
+    [[ "$__Collection_Map_Fast_du_k" == "${__Collection_Map_Fast_du_prefix}${__Collection_Map_Fast_du_sep}"* || "$__Collection_Map_Fast_du_k" == "$__Collection_Map_Fast_du_prefix" ]] &&
+      unset "__Collection_Map_Fast_du_data[$__Collection_Map_Fast_du_k]"
   done
 }
 
 # Dump all key=value pairs, one per line.
 #
 # Usage: into=dump $doc.toString
-Fast.toString() {
+Collection.Map.Fast.toString() {
   local -I _Self _Class
-  local -n __Fast_ts_data="__boop_data_${_Self}"
-  local __Fast_ts_out="" __Fast_ts_k
-  for __Fast_ts_k in "${!__Fast_ts_data[@]}"; do
-    [[ -n "$__Fast_ts_out" ]] && __Fast_ts_out+="${_Delimiter}"
-    __Fast_ts_out+="${__Fast_ts_k}=${__Fast_ts_data[$__Fast_ts_k]}"
+  local -n __Collection_Map_Fast_ts_data="__boop_data_${_Self}"
+  local __Collection_Map_Fast_ts_out="" __Collection_Map_Fast_ts_k
+  for __Collection_Map_Fast_ts_k in "${!__Collection_Map_Fast_ts_data[@]}"; do
+    [[ -n "$__Collection_Map_Fast_ts_out" ]] && __Collection_Map_Fast_ts_out+="${_Delimiter}"
+    __Collection_Map_Fast_ts_out+="${__Collection_Map_Fast_ts_k}=${__Collection_Map_Fast_ts_data[$__Collection_Map_Fast_ts_k]}"
   done
-  boop.pass "$__Fast_ts_out" "${into:-}"
+  boop.pass "$__Collection_Map_Fast_ts_out" "${into:-}"
 }
 
 # ============================================================================
 # Registration
 # ============================================================================
 
-boopClass Fast 'has:sep public:new,get,set,has,delete,length,clear,keys,keysUnder,deleteUnder,toString'
-
+boopClass Collection.Map.Fast 'has:sep public:new,get,set,has,delete,length,clear,keys,keysUnder,deleteUnder,toString'

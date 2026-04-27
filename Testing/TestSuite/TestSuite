@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# TestSuite — structured test harness for boop
+# Testing.TestSuite — structured test harness for boop
 #
 # Provides consistent assertion syntax, section grouping with timing,
 # pass/fail accumulation, and a clean summary. Tests boop with boop.
@@ -15,26 +15,26 @@
 #   to see PASS lines, INFO lines, section headers, and section timing.
 #
 # Usage:
-#   . boop TestSuite
-#   into=t TestSuite name="My Tests"
+#   . boop Testing::TestSuite
+#   into=t Testing.TestSuite name="My Tests"
 #   $t.section "Basics"
 #   $t.assert_eq "one is one" "1" "1"
 #   $t.assert_ok "true is true" true
 #   $t.summary
 #
 #   # Verbose: TESTSUITE_VERBOSE=1 bash my_test
-#   # Or:     into=t TestSuite name="My Tests" verbose=1
+#   # Or:     into=t Testing.TestSuite name="My Tests" verbose=1
 
-[[ -n "${__boop_registry[TestSuite]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Testing.TestSuite]+set}" ]] && return 2>/dev/null
 
-. boop List Map
+. boop Collection::List Collection::Map
 
 # ============================================================================
 # Private helpers — _Self inherited from calling scope, not passed as $1
 # ============================================================================
 
 # Record a passing assertion. Prints PASS line if verbose.
-__TestSuite._pass() {
+__Testing_TestSuite._pass() {
   local __TS_pass_desc="$1" __TS_pass_v __TS_pass_p
   into=__TS_pass_v $_Self.get verbose
   [[ "$__TS_pass_v" == "1" ]] && printf "  PASS: %s\n" "$__TS_pass_desc"
@@ -43,7 +43,7 @@ __TestSuite._pass() {
 }
 
 # Record a failing assertion. Always prints FAIL line.
-__TestSuite._fail() {
+__Testing_TestSuite._fail() {
   local __TS_fail_desc="$1" __TS_fail_detail="${2:-}" __TS_fail_f
   [[ -n "$__TS_fail_detail" ]]                                       && 
     printf "  FAIL: %s — %s\n" "$__TS_fail_desc" "$__TS_fail_detail" ||
@@ -55,15 +55,15 @@ __TestSuite._fail() {
 # Execute a single assertion.
 # Called directly in immediate mode, or by $t.run for each queued assertion.
 # Args: type desc [arg1 arg2 ...]
-__TestSuite._exec() {
+__Testing_TestSuite._exec() {
   local __TS_exec_type="$1" __TS_exec_desc="$2"; shift 2
 
   case "$__TS_exec_type" in
-    eq) [[ "$1" == "$2" ]] && __TestSuite._pass "$__TS_exec_desc" ||
-        __TestSuite._fail "$__TS_exec_desc" "expected '$2' got '$1'"
+    eq) [[ "$1" == "$2" ]] && __Testing_TestSuite._pass "$__TS_exec_desc" ||
+        __Testing_TestSuite._fail "$__TS_exec_desc" "expected '$2' got '$1'"
       ;;
-    ne) [[ "$1" != "$2" ]] && __TestSuite._pass "$__TS_exec_desc" ||
-        __TestSuite._fail "$__TS_exec_desc" "expected not '$2'"
+    ne) [[ "$1" != "$2" ]] && __Testing_TestSuite._pass "$__TS_exec_desc" ||
+        __Testing_TestSuite._fail "$__TS_exec_desc" "expected not '$2'"
       ;;
     ok)
       # Clear _Self/_Class so the user's command doesn't see TestSuite's
@@ -78,8 +78,8 @@ __TestSuite._exec() {
       fi
       [[ -s "$__TS_exec_stderr" ]] && _Debug "$(<"$__TS_exec_stderr")"
       rm -f "$__TS_exec_stderr"
-      (( __TS_exec_rc == 0 )) && __TestSuite._pass "$__TS_exec_desc" ||
-        __TestSuite._fail "$__TS_exec_desc" "exit code $__TS_exec_rc"
+      (( __TS_exec_rc == 0 )) && __Testing_TestSuite._pass "$__TS_exec_desc" ||
+        __Testing_TestSuite._fail "$__TS_exec_desc" "exit code $__TS_exec_rc"
       ;;
     fail)
       # Subshell contains any exit from the user's command.
@@ -92,14 +92,14 @@ __TestSuite._exec() {
       fi
       [[ -s "$__TS_exec_stderr" ]] && _Debug "$(<"$__TS_exec_stderr")"
       rm -f "$__TS_exec_stderr"
-      (( __TS_exec_rc != 0 )) && __TestSuite._pass "$__TS_exec_desc" ||
-        __TestSuite._fail "$__TS_exec_desc" "expected non-zero exit, got 0"
+      (( __TS_exec_rc != 0 )) && __Testing_TestSuite._pass "$__TS_exec_desc" ||
+        __Testing_TestSuite._fail "$__TS_exec_desc" "expected non-zero exit, got 0"
       ;;
-    match) [[ "$1" == $2 ]] && __TestSuite._pass "$__TS_exec_desc" ||
-        __TestSuite._fail "$__TS_exec_desc" "'$1' doesn't match '$2'"
+    match) [[ "$1" == $2 ]] && __Testing_TestSuite._pass "$__TS_exec_desc" ||
+        __Testing_TestSuite._fail "$__TS_exec_desc" "'$1' doesn't match '$2'"
       ;;
-    contains) [[ "$1" == *"$2"* ]] && __TestSuite._pass "$__TS_exec_desc" ||
-      __TestSuite._fail "$__TS_exec_desc" "'$1' doesn't contain '$2'"
+    contains) [[ "$1" == *"$2"* ]] && __Testing_TestSuite._pass "$__TS_exec_desc" ||
+      __Testing_TestSuite._fail "$__TS_exec_desc" "'$1' doesn't contain '$2'"
       ;;
     info)
       local __TS_exec_v
@@ -111,17 +111,17 @@ __TestSuite._exec() {
 
 # Route an assertion: execute immediately or store in the queue.
 # Args: type desc [arg1 arg2 ...]
-__TestSuite._route() {
+__Testing_TestSuite._route() {
   local __TS_route_type="$1" __TS_route_mode
   into=__TS_route_mode $_Self.get mode
 
   if [[ "$__TS_route_mode" == "immediate" ]]; then
-    __TestSuite._exec "$@"
+    __Testing_TestSuite._exec "$@"
   else
     # Queue mode: store as a Map in the queue List.
     # @@ pipe-delimited args are fragile if args contain literal pipes.
     local __TS_route_map __TS_route_queue __TS_route_args="" __TS_route_arg
-    into=__TS_route_map _Delegate Map
+    into=__TS_route_map _Delegate Collection.Map
     _Delegate $__TS_route_map.setAt "type" "$__TS_route_type"
     _Delegate $__TS_route_map.setAt "desc" "$2"
     shift 2
@@ -139,8 +139,8 @@ __TestSuite._route() {
 # Constructor
 # ============================================================================
 
-TestSuite.new() {
-  local _Self="${_Self:-TestSuite}"; local _Class="${_Class:-TestSuite}"
+Testing.TestSuite.new() {
+  local _Self="${_Self:-Testing.TestSuite}"; local _Class="${_Class:-Testing.TestSuite}"
   local __TS_new_self __TS_new_name="" __TS_new_mode="immediate"
   local __TS_new_verbose="${TESTSUITE_VERBOSE:-0}"
   local __TS_new_arg __TS_new_args
@@ -165,7 +165,7 @@ TestSuite.new() {
   # Object is registered — safe to use method syntax now
   local _Self="$__TS_new_self"
   local __TS_new_queue
-  into=__TS_new_queue _Delegate List
+  into=__TS_new_queue _Delegate Collection.List
   $_Self.set queue "$__TS_new_queue"
 
   printf "=== %s ===\n" "$__TS_new_name"
@@ -176,8 +176,8 @@ TestSuite.new() {
 # Section management
 # ============================================================================
 
-TestSuite.section() {
-  local _Self="${_Self:-$_Class}"; local _Class="${_Class:-TestSuite}"
+Testing.TestSuite.section() {
+  local _Self="${_Self:-$_Class}"; local _Class="${_Class:-Testing.TestSuite}"
   local __TS_sec_name="$1" __TS_sec_verbose __TS_sec_prev_start __TS_sec_mode
   into=__TS_sec_verbose    $_Self.get verbose
   into=__TS_sec_prev_start $_Self.get section_start
@@ -198,15 +198,15 @@ TestSuite.section() {
 # Public assertion methods
 # ============================================================================
 
-TestSuite.assert_eq()       { local _Self="${_Self:-$_Class}"; local _Class="${_Class:-TestSuite}"; __TestSuite._route eq       "$@"; }
-TestSuite.assert_ne()       { local _Self="${_Self:-$_Class}"; local _Class="${_Class:-TestSuite}"; __TestSuite._route ne       "$@"; }
-TestSuite.assert_ok()       { local _Self="${_Self:-$_Class}"; local _Class="${_Class:-TestSuite}"; __TestSuite._route ok       "$@"; }
-TestSuite.assert_fail()     { local _Self="${_Self:-$_Class}"; local _Class="${_Class:-TestSuite}"; __TestSuite._route fail     "$@"; }
-TestSuite.assert_match()    { local _Self="${_Self:-$_Class}"; local _Class="${_Class:-TestSuite}"; __TestSuite._route match    "$@"; }
-TestSuite.assert_contains() { local _Self="${_Self:-$_Class}"; local _Class="${_Class:-TestSuite}"; __TestSuite._route contains "$@"; }
+Testing.TestSuite.assert_eq()       { local _Self="${_Self:-$_Class}"; local _Class="${_Class:-Testing.TestSuite}"; __Testing_TestSuite._route eq       "$@"; }
+Testing.TestSuite.assert_ne()       { local _Self="${_Self:-$_Class}"; local _Class="${_Class:-Testing.TestSuite}"; __Testing_TestSuite._route ne       "$@"; }
+Testing.TestSuite.assert_ok()       { local _Self="${_Self:-$_Class}"; local _Class="${_Class:-Testing.TestSuite}"; __Testing_TestSuite._route ok       "$@"; }
+Testing.TestSuite.assert_fail()     { local _Self="${_Self:-$_Class}"; local _Class="${_Class:-Testing.TestSuite}"; __Testing_TestSuite._route fail     "$@"; }
+Testing.TestSuite.assert_match()    { local _Self="${_Self:-$_Class}"; local _Class="${_Class:-Testing.TestSuite}"; __Testing_TestSuite._route match    "$@"; }
+Testing.TestSuite.assert_contains() { local _Self="${_Self:-$_Class}"; local _Class="${_Class:-Testing.TestSuite}"; __Testing_TestSuite._route contains "$@"; }
 
-TestSuite.info() {
-  local _Self="${_Self:-$_Class}"; local _Class="${_Class:-TestSuite}"
+Testing.TestSuite.info() {
+  local _Self="${_Self:-$_Class}"; local _Class="${_Class:-Testing.TestSuite}"
   local __TS_info_v
   into=__TS_info_v $_Self.get verbose
   [[ "$__TS_info_v" == "1" ]] && printf "  INFO: %s\n" "$1"
@@ -216,8 +216,8 @@ TestSuite.info() {
 # Queue execution (queue mode only)
 # ============================================================================
 
-TestSuite.run() {
-  local _Self="${_Self:-$_Class}"; local _Class="${_Class:-TestSuite}"
+Testing.TestSuite.run() {
+  local _Self="${_Self:-$_Class}"; local _Class="${_Class:-Testing.TestSuite}"
   local __TS_run_queue __TS_run_len
   into=__TS_run_queue $_Self.get queue
   into=__TS_run_len _Delegate $__TS_run_queue.length
@@ -233,7 +233,7 @@ TestSuite.run() {
     local -a __TS_run_args=()
     [[ -n "$__TS_run_args_str" ]] && IFS='|' read -ra __TS_run_args <<< "$__TS_run_args_str"
 
-    __TestSuite._exec "$__TS_run_type" "$__TS_run_desc" "${__TS_run_args[@]}"
+    __Testing_TestSuite._exec "$__TS_run_type" "$__TS_run_desc" "${__TS_run_args[@]}"
   done
 
   _Delegate $__TS_run_queue.clear
@@ -250,8 +250,8 @@ TestSuite.run() {
 # Summary
 # ============================================================================
 
-TestSuite.summary() {
-  local _Self="${_Self:-$_Class}"; local _Class="${_Class:-TestSuite}"
+Testing.TestSuite.summary() {
+  local _Self="${_Self:-$_Class}"; local _Class="${_Class:-Testing.TestSuite}"
   local __TS_sum_verbose __TS_sum_mode __TS_sum_sec_start
   into=__TS_sum_verbose   $_Self.get verbose
   into=__TS_sum_mode      $_Self.get mode
@@ -286,7 +286,7 @@ TestSuite.summary() {
 # Class Declaration
 # ============================================================================
 
-boopClass TestSuite ' 
+boopClass Testing.TestSuite ' 
   has:name,mode,verbose,passed,failed,section_name,section_start,suite_start,queue
   public:new,section,run,summary
   public:assert_eq,assert_ne,assert_ok,assert_fail

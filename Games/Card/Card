@@ -1,24 +1,24 @@
 #!/bin/bash
 
-# Card — generic card base class
+# Games.Card — generic card base class
 #
 # A card is just a bag of properties. No game logic, no assumptions
 # about what a card contains. Subclasses add domain-specific behavior.
 
-[[ -n "${__boop_registry[Card]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Games.Card]+set}" ]] && return 2>/dev/null
 
 . boop
 
-Card.new() {
-  local _Class="${_Class:-Card}"
-  local __Card_new_self
-  into=__Card_new_self __boop.new "$@"
-  boop.pass "$__Card_new_self" ${into:-}
+Games.Card.new() {
+  local _Class="${_Class:-Games.Card}"
+  local __Games_Card_new_self
+  into=__Games_Card_new_self __boop.new "$@"
+  boop.pass "$__Games_Card_new_self" ${into:-}
 }
 
-Card.toString() {
-  local _Self="${_Self:-${Class:-Card}}" _Class="${_Class:-Card}"
+Games.Card.toString() {
+  local _Self="${_Self:-${Class:-Games.Card}}" _Class="${_Class:-Games.Card}"
   boop.pass "$_Self" ${into:-}
 }
 
-boopClass Card public:new,toString
+boopClass Games.Card public:new,toString

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# PlayingCard — standard playing card with suit and rank
+# Games.PlayingCard — standard playing card with suit and rank
 #
 # A PlayingCard knows its suit (♠ ♥ ♦ ♣) and rank (A 2-10 J Q K).
 # It does not assign numeric values — that's game-specific logic.
@@ -9,44 +9,44 @@
 # It respects _Class, so subclasses that inherit newDeck get their
 # own type in the deck.
 #
-# Inheritance: boop → Card → PlayingCard
+# Inheritance: boop → Games.Card → Games.PlayingCard
 
-[[ -n "${__boop_registry[PlayingCard]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Games.PlayingCard]+set}" ]] && return 2>/dev/null
 
-. boop Card Deck
+. boop Games::Card Games::Deck
 
 # ═════════════════════════════════════════════════════════════════════
-# PlayingCard — suit + rank, toString, newDeck
+# Games.PlayingCard — suit + rank, toString, newDeck
 # ═════════════════════════════════════════════════════════════════════
 
-PlayingCard.new() {
-  local _Class="${_Class:-PlayingCard}"
-  Card.new "$@"
+Games.PlayingCard.new() {
+  local _Class="${_Class:-Games.PlayingCard}"
+  Games.Card.new "$@"
 }
 
-PlayingCard.toString() {
-  local _Self="${_Self:-${Class:-PlayingCard}}" _Class="${_Class:-PlayingCard}"
-  local __PlayingCard_toString_rank __PlayingCard_toString_suit
-  __boop.parse "$_Self" "rank" __PlayingCard_toString_rank
-  __boop.parse "$_Self" "suit" __PlayingCard_toString_suit
-  boop.pass "${__PlayingCard_toString_rank}${__PlayingCard_toString_suit}" ${into:-}
+Games.PlayingCard.toString() {
+  local _Self="${_Self:-${Class:-Games.PlayingCard}}" _Class="${_Class:-Games.PlayingCard}"
+  local __Games_PlayingCard_toString_rank __Games_PlayingCard_toString_suit
+  __boop.parse "$_Self" "rank" __Games_PlayingCard_toString_rank
+  __boop.parse "$_Self" "suit" __Games_PlayingCard_toString_suit
+  boop.pass "${__Games_PlayingCard_toString_rank}${__Games_PlayingCard_toString_suit}" ${into:-}
 }
 
 # Fill a Deck with 52 standard playing cards and shuffle it.
 # Uses _Class for card construction — subclasses that inherit
 # newDeck get a deck filled with their own type.
-PlayingCard.newDeck() {
-  local _Class="${_Class:-PlayingCard}" __PlayingCard_newDeck_deck __PlayingCard_newDeck_card __PlayingCard_newDeck_s __PlayingCard_newDeck_r
-  into=__PlayingCard_newDeck_deck Deck
-  local __PlayingCard_newDeck_suits=("♠" "♥" "♦" "♣")
-  for __PlayingCard_newDeck_s in "${__PlayingCard_newDeck_suits[@]}"; do
-    for __PlayingCard_newDeck_r in A 2 3 4 5 6 7 8 9 10 J Q K; do
-      into=__PlayingCard_newDeck_card $_Class suit="$__PlayingCard_newDeck_s" rank="$__PlayingCard_newDeck_r"
-      $__PlayingCard_newDeck_deck.push "$__PlayingCard_newDeck_card"
+Games.PlayingCard.newDeck() {
+  local _Class="${_Class:-Games.PlayingCard}" __Games_PlayingCard_newDeck_deck __Games_PlayingCard_newDeck_card __Games_PlayingCard_newDeck_s __Games_PlayingCard_newDeck_r
+  into=__Games_PlayingCard_newDeck_deck Games.Deck
+  local __Games_PlayingCard_newDeck_suits=("♠" "♥" "♦" "♣")
+  for __Games_PlayingCard_newDeck_s in "${__Games_PlayingCard_newDeck_suits[@]}"; do
+    for __Games_PlayingCard_newDeck_r in A 2 3 4 5 6 7 8 9 10 J Q K; do
+      into=__Games_PlayingCard_newDeck_card $_Class suit="$__Games_PlayingCard_newDeck_s" rank="$__Games_PlayingCard_newDeck_r"
+      $__Games_PlayingCard_newDeck_deck.push "$__Games_PlayingCard_newDeck_card"
     done
   done
-  $__PlayingCard_newDeck_deck.shuffle
-  boop.pass "$__PlayingCard_newDeck_deck" ${into:-}
+  $__Games_PlayingCard_newDeck_deck.shuffle
+  boop.pass "$__Games_PlayingCard_newDeck_deck" ${into:-}
 }
 
-boopClass PlayingCard isa:Card public:new,toString,newDeck has:suit,rank
+boopClass Games.PlayingCard isa:Games.Card public:new,toString,newDeck has:suit,rank

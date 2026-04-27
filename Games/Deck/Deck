@@ -1,47 +1,47 @@
 #!/bin/bash
 
-# Deck — a shuffleable, drawable collection
+# Games.Deck — a shuffleable, drawable collection
 #
 # A Deck is a List you can shuffle and draw from. It has no opinion
 # about what's in it — the consumer (or a card class's newDeck method)
 # populates it.
 #
-# Inheritance: boop → Container → List → Deck
+# Inheritance: boop → Collection.Container → Collection.List → Games.Deck
 
-[[ -n "${__boop_registry[Deck]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Games.Deck]+set}" ]] && return 2>/dev/null
 
-. boop List
+. boop Collection::List
 
 # ═════════════════════════════════════════════════════════════════════
-# Deck extends List — shuffle, draw
+# Games.Deck extends Collection.List — shuffle, draw
 # ═════════════════════════════════════════════════════════════════════
 
-Deck.new() {
-  local _Class="${_Class:-Deck}"
-  List.new "$@"
+Games.Deck.new() {
+  local _Class="${_Class:-Games.Deck}"
+  Collection.List.new "$@"
 }
 
 # Fisher-Yates shuffle — walks the list backward, swapping each
 # element with a random earlier element.
-Deck.shuffle() {
-  local _Self="${_Self:-${Class:-Deck}}" _Class="${_Class:-Deck}"
-  local -i __Deck_shuf_len __Deck_shuf_i __Deck_shuf_j
-  local __Deck_shuf_a __Deck_shuf_b
-  into=__Deck_shuf_len $_Self.length
-  for (( __Deck_shuf_i = __Deck_shuf_len - 1; __Deck_shuf_i > 0; __Deck_shuf_i-- )); do
-    __Deck_shuf_j=$(( RANDOM % (__Deck_shuf_i + 1) ))
-    into=__Deck_shuf_a $_Self.getAt $__Deck_shuf_i
-    into=__Deck_shuf_b $_Self.getAt $__Deck_shuf_j
-    $_Self.setAt $__Deck_shuf_i "$__Deck_shuf_b"
-    $_Self.setAt $__Deck_shuf_j "$__Deck_shuf_a"
+Games.Deck.shuffle() {
+  local _Self="${_Self:-${Class:-Games.Deck}}" _Class="${_Class:-Games.Deck}"
+  local -i __Games_Deck_shuf_len __Games_Deck_shuf_i __Games_Deck_shuf_j
+  local __Games_Deck_shuf_a __Games_Deck_shuf_b
+  into=__Games_Deck_shuf_len $_Self.length
+  for (( __Games_Deck_shuf_i = __Games_Deck_shuf_len - 1; __Games_Deck_shuf_i > 0; __Games_Deck_shuf_i-- )); do
+    __Games_Deck_shuf_j=$(( RANDOM % (__Games_Deck_shuf_i + 1) ))
+    into=__Games_Deck_shuf_a $_Self.getAt $__Games_Deck_shuf_i
+    into=__Games_Deck_shuf_b $_Self.getAt $__Games_Deck_shuf_j
+    $_Self.setAt $__Games_Deck_shuf_i "$__Games_Deck_shuf_b"
+    $_Self.setAt $__Games_Deck_shuf_j "$__Games_Deck_shuf_a"
   done
 }
 
 # Draw the top card (pop from the end of the list).
-Deck.draw() {
-  local _Self="${_Self:-${Class:-Deck}}" _Class="${_Class:-Deck}"
-  local __Deck_draw_card; into=__Deck_draw_card $_Self.pop
-  boop.pass "$__Deck_draw_card" ${into:-}
+Games.Deck.draw() {
+  local _Self="${_Self:-${Class:-Games.Deck}}" _Class="${_Class:-Games.Deck}"
+  local __Games_Deck_draw_card; into=__Games_Deck_draw_card $_Self.pop
+  boop.pass "$__Games_Deck_draw_card" ${into:-}
 }
 
-boopClass Deck isa:List public:new,shuffle,draw has:type
+boopClass Games.Deck isa:Collection.List public:new,shuffle,draw has:type

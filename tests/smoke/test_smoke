@@ -22,8 +22,8 @@ $t.section "Framework"
 $t.assert_ok "boop loaded" test "${__boop_loaded:-0}" -eq 1
 $t.assert_ok "registry exists" test "${#__boop_registry[@]}" -gt 0
 $t.assert_ok "boop class registered" test -n "${__boop_registry[boop]+set}"
-$t.assert_ok "Box class registered"  test -n "${__boop_registry[Box]+set}"
-$t.assert_ok "Cube class registered" test -n "${__boop_registry[Cube]+set}"
+$t.assert_ok "Box class registered"  test -n "${__boop_registry[Geometry.Box]+set}"
+$t.assert_ok "Cube class registered" test -n "${__boop_registry[Geometry.Cube]+set}"
 
 # ============================================================================
 # Object creation and method dispatch

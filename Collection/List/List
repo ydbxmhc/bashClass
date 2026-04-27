@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# List — indexed array container.
+# Collection.List — indexed array container.
 #
 # Wraps a bash indexed array (declare -ga) with object semantics.
 # Implements the Container contract with standard list operations:
@@ -21,9 +21,9 @@
 # doesn't care what's inside — it's turtles all the way down.
 
 # Load guard — if already registered, nothing to do
-[[ -n "${__boop_registry[List]+set}" ]] && return 2>/dev/null
+[[ -n "${__boop_registry[Collection.List]+set}" ]] && return 2>/dev/null
 
-. boop Container
+. boop Collection::Container
 
 # ============================================================================
 # List Implementation Functions
@@ -41,15 +41,15 @@
 # a List, not a bare Container. Any extra key=value args pass through to
 # __boop.new and end up in the descriptor as metadata.
 #
-# Usage: into=mylist List
-#        into=mylist _Class=List __boop.dispatch new
-List.new() {
-  local _Class="${_Class:-List}"
-  local __List_new_self
-  into=__List_new_self __boop.new type=indexed "$@"
-  declare -ga "__boop_data_${__List_new_self}"
-  eval "__boop_data_${__List_new_self}+=()"
-  boop.pass "$__List_new_self" ${into:-}
+# Usage: into=mylist Collection.List
+#        into=mylist _Class=Collection.List __boop.dispatch new
+Collection.List.new() {
+  local _Class="${_Class:-Collection.List}"
+  local __Collection_List_new_self
+  into=__Collection_List_new_self __boop.new type=indexed "$@"
+  declare -ga "__boop_data_${__Collection_List_new_self}"
+  eval "__boop_data_${__Collection_List_new_self}+=()"
+  boop.pass "$__Collection_List_new_self" ${into:-}
 }
 
 # Retrieve an element by integer index.
@@ -64,24 +64,24 @@ List.new() {
 # missing key. Callers who need bounds enforcement should check has()
 # first or validate the return.
 #
-# The nameref __List_get_arr avoids a subshell by pointing directly
+# The nameref __Collection_List_get_arr avoids a subshell by pointing directly
 # at the companion array. Combined with ${into:-} passthrough, a
 # getAt-into-local is zero-copy: into=val $list.getAt 0
 #
 # Usage: into=val $list.getAt 0      # first element
 #        into=val $list.getAt -1     # last element
 #        $list.getAt 99              # empty string (no crash)
-List.getAt() {
-  local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
-  local -i __List_getAt_idx="$1"
-  local -n __List_getAt_arr="__boop_data_${_Self}"
-  local -i __List_getAt_len=0; [[ -n "${!__List_getAt_arr[@]}" ]] && __List_getAt_len=${#__List_getAt_arr[@]}
-  (( __List_getAt_idx < 0 )) && (( __List_getAt_idx += __List_getAt_len ))
-  if (( __List_getAt_idx < 0 || __List_getAt_idx >= __List_getAt_len )); then
+Collection.List.getAt() {
+  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local -i __Collection_List_getAt_idx="$1"
+  local -n __Collection_List_getAt_arr="__boop_data_${_Self}"
+  local -i __Collection_List_getAt_len=0; [[ -n "${!__Collection_List_getAt_arr[@]}" ]] && __Collection_List_getAt_len=${#__Collection_List_getAt_arr[@]}
+  (( __Collection_List_getAt_idx < 0 )) && (( __Collection_List_getAt_idx += __Collection_List_getAt_len ))
+  if (( __Collection_List_getAt_idx < 0 || __Collection_List_getAt_idx >= __Collection_List_getAt_len )); then
     boop.pass "" ${into:-}
     return
   fi
-  boop.pass "${__List_getAt_arr[$__List_getAt_idx]}" ${into:-}
+  boop.pass "${__Collection_List_getAt_arr[$__Collection_List_getAt_idx]}" ${into:-}
 }
 
 # Store a value at a specific index.
@@ -100,16 +100,16 @@ List.getAt() {
 # Usage: $list.set 0 "new_first"    # replace first element
 #        $list.set -1 "new_last"    # replace last element
 #        $list.set 5 "append"       # append if length is 5
-List.setAt() {
-  local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
-  local -i __List_setAt_idx="$1"
-  local __List_setAt_val="$2"
-  local -n __List_setAt_arr="__boop_data_${_Self}"
-  local -i __List_setAt_len=0; [[ -n "${!__List_setAt_arr[@]}" ]] && __List_setAt_len=${#__List_setAt_arr[@]}
-  (( __List_setAt_idx < 0 )) && (( __List_setAt_idx += __List_setAt_len ))
-  (( __List_setAt_idx < 0 || __List_setAt_idx > __List_setAt_len )) && \
-    _Crash "List index out of range: $1 (length: $__List_setAt_len)"
-  __List_setAt_arr[$__List_setAt_idx]="$__List_setAt_val"
+Collection.List.setAt() {
+  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local -i __Collection_List_setAt_idx="$1"
+  local __Collection_List_setAt_val="$2"
+  local -n __Collection_List_setAt_arr="__boop_data_${_Self}"
+  local -i __Collection_List_setAt_len=0; [[ -n "${!__Collection_List_setAt_arr[@]}" ]] && __Collection_List_setAt_len=${#__Collection_List_setAt_arr[@]}
+  (( __Collection_List_setAt_idx < 0 )) && (( __Collection_List_setAt_idx += __Collection_List_setAt_len ))
+  (( __Collection_List_setAt_idx < 0 || __Collection_List_setAt_idx > __Collection_List_setAt_len )) && \
+    _Crash "List index out of range: $1 (length: $__Collection_List_setAt_len)"
+  __Collection_List_setAt_arr[$__Collection_List_setAt_idx]="$__Collection_List_setAt_val"
 }
 
 # Remove an element at a specific index and re-index the array.
@@ -118,7 +118,7 @@ List.setAt() {
 # deleting a nonexistent element is a logic error, not a no-op).
 #
 # Implementation detail: bash's `unset` on an indexed array element leaves
-# a hole (sparse array). The re-assignment __List_del_arr=("${__List_del_arr[@]}")
+# a hole (sparse array). The re-assignment __Collection_List_del_arr=("${__Collection_List_del_arr[@]}")
 # compacts the array back to contiguous indices. This is O(n) but necessary —
 # sparse indexed arrays break length calculations and iteration patterns.
 #
@@ -128,16 +128,16 @@ List.setAt() {
 #
 # Usage: $list.delete 0     # remove first, shift everything down
 #        $list.delete -1    # remove last (same as pop, but no return)
-List.delete() {
-  local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
-  local -i __List_del_idx="$1"
-  local -n __List_del_arr="__boop_data_${_Self}"
-  local -i __List_del_len=0; [[ -n "${!__List_del_arr[@]}" ]] && __List_del_len=${#__List_del_arr[@]}
-  (( __List_del_idx < 0 )) && (( __List_del_idx += __List_del_len ))
-  (( __List_del_idx < 0 || __List_del_idx >= __List_del_len )) && \
-    _Crash "List index out of range: $1 (length: $__List_del_len)"
-  unset '__List_del_arr[$__List_del_idx]'
-  __List_del_arr=("${__List_del_arr[@]+"${__List_del_arr[@]}"}")
+Collection.List.delete() {
+  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local -i __Collection_List_del_idx="$1"
+  local -n __Collection_List_del_arr="__boop_data_${_Self}"
+  local -i __Collection_List_del_len=0; [[ -n "${!__Collection_List_del_arr[@]}" ]] && __Collection_List_del_len=${#__Collection_List_del_arr[@]}
+  (( __Collection_List_del_idx < 0 )) && (( __Collection_List_del_idx += __Collection_List_del_len ))
+  (( __Collection_List_del_idx < 0 || __Collection_List_del_idx >= __Collection_List_del_len )) && \
+    _Crash "List index out of range: $1 (length: $__Collection_List_del_len)"
+  unset '__Collection_List_del_arr[$__Collection_List_del_idx]'
+  __Collection_List_del_arr=("${__Collection_List_del_arr[@]+"${__Collection_List_del_arr[@]}"}")
 }
 
 # Return the number of elements in the list.
@@ -147,11 +147,11 @@ List.delete() {
 #
 # Usage: into=len $list.length
 #        $list.length; printf "%s\n" "$_Out"
-List.length() {
-  local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
-  local -n __List_length_arr="__boop_data_${_Self}"
-  local -i __List_length_len=0; [[ -n "${!__List_length_arr[@]}" ]] && __List_length_len=${#__List_length_arr[@]}
-  boop.pass "$__List_length_len" ${into:-}
+Collection.List.length() {
+  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local -n __Collection_List_length_arr="__boop_data_${_Self}"
+  local -i __Collection_List_length_len=0; [[ -n "${!__Collection_List_length_arr[@]}" ]] && __Collection_List_length_len=${#__Collection_List_length_arr[@]}
+  boop.pass "$__Collection_List_length_len" ${into:-}
 }
 
 # Remove all elements from the list.
@@ -160,10 +160,10 @@ List.length() {
 # (it's not unset — that's destroy's job), just emptied. O(1) operation.
 #
 # Usage: $list.clear
-List.clear() {
-  local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
-  local -n __List_clear_arr="__boop_data_${_Self}"
-  __List_clear_arr=()
+Collection.List.clear() {
+  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local -n __Collection_List_clear_arr="__boop_data_${_Self}"
+  __Collection_List_clear_arr=()
 }
 
 # Check whether an index is within bounds.
@@ -176,13 +176,13 @@ List.clear() {
 # Usage: $list.has 0 && printf "has first element"
 #        $list.has -1 && printf "not empty"
 #        $list.has 99 || printf "out of range"
-List.has() {
-  local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
-  local -i __List_has_idx="$1"
-  local -n __List_has_arr="__boop_data_${_Self}"
-  local -i __List_has_len=0; [[ -n "${!__List_has_arr[@]}" ]] && __List_has_len=${#__List_has_arr[@]}
-  (( __List_has_idx < 0 )) && (( __List_has_idx += __List_has_len ))
-  (( __List_has_idx >= 0 && __List_has_idx < __List_has_len )) && return 0 || return 1
+Collection.List.has() {
+  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local -i __Collection_List_has_idx="$1"
+  local -n __Collection_List_has_arr="__boop_data_${_Self}"
+  local -i __Collection_List_has_len=0; [[ -n "${!__Collection_List_has_arr[@]}" ]] && __Collection_List_has_len=${#__Collection_List_has_arr[@]}
+  (( __Collection_List_has_idx < 0 )) && (( __Collection_List_has_idx += __Collection_List_has_len ))
+  (( __Collection_List_has_idx >= 0 && __Collection_List_has_idx < __Collection_List_has_len )) && return 0 || return 1
 }
 
 # Append one or more elements to the end of the list.
@@ -196,10 +196,10 @@ List.has() {
 #
 # Usage: $list.push "alpha"
 #        $list.push "a" "b" "c"    # append three at once
-List.push() {
-  local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
-  local -n __List_push_arr="__boop_data_${_Self}"
-  __List_push_arr+=("$@")
+Collection.List.push() {
+  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local -n __Collection_List_push_arr="__boop_data_${_Self}"
+  __Collection_List_push_arr+=("$@")
 }
 
 # Remove and return the last element (stack-style LIFO).
@@ -213,14 +213,14 @@ List.push() {
 #
 # Usage: into=val $list.pop
 #        $list.pop; printf "%s\n" "$_Out"
-List.pop() {
-  local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
-  local -n __List_pop_arr="__boop_data_${_Self}"
-  local -i __List_pop_len=0; [[ -n "${!__List_pop_arr[@]}" ]] && __List_pop_len=${#__List_pop_arr[@]}
-  (( __List_pop_len == 0 )) && _Crash "pop from empty List"
-  local __List_pop_val="${__List_pop_arr[-1]}"
-  unset '__List_pop_arr[-1]'
-  boop.pass "$__List_pop_val" ${into:-}
+Collection.List.pop() {
+  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local -n __Collection_List_pop_arr="__boop_data_${_Self}"
+  local -i __Collection_List_pop_len=0; [[ -n "${!__Collection_List_pop_arr[@]}" ]] && __Collection_List_pop_len=${#__Collection_List_pop_arr[@]}
+  (( __Collection_List_pop_len == 0 )) && _Crash "pop from empty List"
+  local __Collection_List_pop_val="${__Collection_List_pop_arr[-1]}"
+  unset '__Collection_List_pop_arr[-1]'
+  boop.pass "$__Collection_List_pop_val" ${into:-}
 }
 
 # Remove and return the first element (queue-style FIFO).
@@ -232,14 +232,14 @@ List.pop() {
 #
 # Usage: into=val $list.shift
 #        $list.shift; printf "%s\n" "$_Out"
-List.shift() {
-  local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
-  local -n __List_shift_arr="__boop_data_${_Self}"
-  local -i __List_shift_len=0; [[ -n "${!__List_shift_arr[@]}" ]] && __List_shift_len=${#__List_shift_arr[@]}
-  (( __List_shift_len == 0 )) && _Crash "shift from empty List"
-  local __List_shift_val="${__List_shift_arr[0]}"
-  __List_shift_arr=("${__List_shift_arr[@]:1}")
-  boop.pass "$__List_shift_val" ${into:-}
+Collection.List.shift() {
+  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local -n __Collection_List_shift_arr="__boop_data_${_Self}"
+  local -i __Collection_List_shift_len=0; [[ -n "${!__Collection_List_shift_arr[@]}" ]] && __Collection_List_shift_len=${#__Collection_List_shift_arr[@]}
+  (( __Collection_List_shift_len == 0 )) && _Crash "shift from empty List"
+  local __Collection_List_shift_val="${__Collection_List_shift_arr[0]}"
+  __Collection_List_shift_arr=("${__Collection_List_shift_arr[@]:1}")
+  boop.pass "$__Collection_List_shift_val" ${into:-}
 }
 
 # Prepend one or more elements to the beginning of the list.
@@ -250,10 +250,10 @@ List.shift() {
 #
 # Usage: $list.unshift "first"
 #        $list.unshift "a" "b"    # "a" becomes index 0, "b" index 1
-List.unshift() {
-  local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
-  local -n __List_unshift_arr="__boop_data_${_Self}"
-  __List_unshift_arr=("$@" "${__List_unshift_arr[@]+"${__List_unshift_arr[@]}"}")
+Collection.List.unshift() {
+  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local -n __Collection_List_unshift_arr="__boop_data_${_Self}"
+  __Collection_List_unshift_arr=("$@" "${__Collection_List_unshift_arr[@]+"${__Collection_List_unshift_arr[@]}"}")
 }
 
 # Extract a sub-range of elements as a newline-delimited string.
@@ -270,21 +270,21 @@ List.unshift() {
 # Usage: into=s $list.slice 1 3    # elements at index 1, 2
 #        into=s $list.slice 2      # index 2 through end
 #        into=s $list.slice -2     # last two elements
-List.slice() {
-  local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
-  local -i __List_slice_start="${1:-0}" __List_slice_end
-  local -n __List_slice_arr="__boop_data_${_Self}"
-  local -i __List_slice_len=0; [[ -n "${!__List_slice_arr[@]}" ]] && __List_slice_len=${#__List_slice_arr[@]}
-  __List_slice_end="${2:-$__List_slice_len}"
-  (( __List_slice_start < 0 )) && (( __List_slice_start += __List_slice_len ))
-  (( __List_slice_end < 0 )) && (( __List_slice_end += __List_slice_len ))
-  local -i __List_slice_count=$(( __List_slice_end - __List_slice_start ))
-  (( __List_slice_count <= 0 )) && { boop.pass "" ${into:-}; return; }
-  local __List_slice_d="${_Delimiter:-$_EOL}"
-  local __List_slice_out
-  printf -v __List_slice_out "%s${__List_slice_d}" "${__List_slice_arr[@]:$__List_slice_start:$__List_slice_count}"
-  __List_slice_out="${__List_slice_out%"${__List_slice_d}"}"
-  boop.pass "$__List_slice_out" ${into:-}
+Collection.List.slice() {
+  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local -i __Collection_List_slice_start="${1:-0}" __Collection_List_slice_end
+  local -n __Collection_List_slice_arr="__boop_data_${_Self}"
+  local -i __Collection_List_slice_len=0; [[ -n "${!__Collection_List_slice_arr[@]}" ]] && __Collection_List_slice_len=${#__Collection_List_slice_arr[@]}
+  __Collection_List_slice_end="${2:-$__Collection_List_slice_len}"
+  (( __Collection_List_slice_start < 0 )) && (( __Collection_List_slice_start += __Collection_List_slice_len ))
+  (( __Collection_List_slice_end < 0 )) && (( __Collection_List_slice_end += __Collection_List_slice_len ))
+  local -i __Collection_List_slice_count=$(( __Collection_List_slice_end - __Collection_List_slice_start ))
+  (( __Collection_List_slice_count <= 0 )) && { boop.pass "" ${into:-}; return; }
+  local __Collection_List_slice_d="${_Delimiter:-$_EOL}"
+  local __Collection_List_slice_out
+  printf -v __Collection_List_slice_out "%s${__Collection_List_slice_d}" "${__Collection_List_slice_arr[@]:$__Collection_List_slice_start:$__Collection_List_slice_count}"
+  __Collection_List_slice_out="${__Collection_List_slice_out%"${__Collection_List_slice_d}"}"
+  boop.pass "$__Collection_List_slice_out" ${into:-}
 }
 
 # Serialize all elements to a newline-delimited string.
@@ -299,18 +299,18 @@ List.slice() {
 # with `while IFS= read -r`.
 #
 # Usage: into=all $list.toArray
-List.toArray() {
-  local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
-  local -n __List_toArray_arr="__boop_data_${_Self}"
-  local __List_toArray_d="${_Delimiter:-$_EOL}"
-  local __List_toArray_out
-  if ! [[ -n "${!__List_toArray_arr[@]}" ]] || (( ${#__List_toArray_arr[@]} == 0 )); then
+Collection.List.toArray() {
+  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local -n __Collection_List_toArray_arr="__boop_data_${_Self}"
+  local __Collection_List_toArray_d="${_Delimiter:-$_EOL}"
+  local __Collection_List_toArray_out
+  if ! [[ -n "${!__Collection_List_toArray_arr[@]}" ]] || (( ${#__Collection_List_toArray_arr[@]} == 0 )); then
     boop.pass "" ${into:-}
     return
   fi
-  printf -v __List_toArray_out "%s${__List_toArray_d}" "${__List_toArray_arr[@]}"
-  __List_toArray_out="${__List_toArray_out%"${__List_toArray_d}"}"
-  boop.pass "$__List_toArray_out" ${into:-}
+  printf -v __Collection_List_toArray_out "%s${__Collection_List_toArray_d}" "${__Collection_List_toArray_arr[@]}"
+  __Collection_List_toArray_out="${__Collection_List_toArray_out%"${__Collection_List_toArray_d}"}"
+  boop.pass "$__Collection_List_toArray_out" ${into:-}
 }
 
 # Human-readable representation of the list and its contents.
@@ -328,18 +328,18 @@ List.toArray() {
 #
 # Usage: $list.toString
 #        into=s $list.toString; printf "%s\n" "$s"
-List.toString() {
-  local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
-  local -n __List_ts_arr="__boop_data_${_Self}"
-  local -i __List_ts_len=0; [[ -n "${!__List_ts_arr[@]}" ]] && __List_ts_len=${#__List_ts_arr[@]}
-  local __List_ts_out="List($_Self)[ "
-  local -i __List_ts_i
-  for (( __List_ts_i=0; __List_ts_i < __List_ts_len; __List_ts_i++ )); do
-    (( __List_ts_i > 0 )) && __List_ts_out="$__List_ts_out, "
-    __List_ts_out="$__List_ts_out\"${__List_ts_arr[$__List_ts_i]}\""
+Collection.List.toString() {
+  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local -n __Collection_List_ts_arr="__boop_data_${_Self}"
+  local -i __Collection_List_ts_len=0; [[ -n "${!__Collection_List_ts_arr[@]}" ]] && __Collection_List_ts_len=${#__Collection_List_ts_arr[@]}
+  local __Collection_List_ts_out="List($_Self)[ "
+  local -i __Collection_List_ts_i
+  for (( __Collection_List_ts_i=0; __Collection_List_ts_i < __Collection_List_ts_len; __Collection_List_ts_i++ )); do
+    (( __Collection_List_ts_i > 0 )) && __Collection_List_ts_out="$__Collection_List_ts_out, "
+    __Collection_List_ts_out="$__Collection_List_ts_out\"${__Collection_List_ts_arr[$__Collection_List_ts_i]}\""
   done
-  __List_ts_out="$__List_ts_out ]"
-  boop.pass "$__List_ts_out" ${into:-}
+  __Collection_List_ts_out="$__Collection_List_ts_out ]"
+  boop.pass "$__Collection_List_ts_out" ${into:-}
 }
 
 # Iterate over all elements, calling a user function for each.
@@ -354,14 +354,14 @@ List.toString() {
 # Usage: $list.each my_callback    # calls: my_callback 0 "alpha"
 #                                  #        my_callback 1 "beta"
 #                                  #        ...
-List.each() {
-  local _Self="${_Self:-${Class:-List}}" _Class="${_Class:-List}"
-  local __List_each_fn="$1"
-  local -n __List_each_arr="__boop_data_${_Self}"
-  [[ -n "${!__List_each_arr[@]}" ]] || return 0
-  local -i __List_each_len=${#__List_each_arr[@]} __List_each_i
-  for (( __List_each_i=0; __List_each_i < __List_each_len; __List_each_i++ )); do
-    "$__List_each_fn" "$__List_each_i" "${__List_each_arr[$__List_each_i]}" || return
+Collection.List.each() {
+  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local __Collection_List_each_fn="$1"
+  local -n __Collection_List_each_arr="__boop_data_${_Self}"
+  [[ -n "${!__Collection_List_each_arr[@]}" ]] || return 0
+  local -i __Collection_List_each_len=${#__Collection_List_each_arr[@]} __Collection_List_each_i
+  for (( __Collection_List_each_i=0; __Collection_List_each_i < __Collection_List_each_len; __Collection_List_each_i++ )); do
+    "$__Collection_List_each_fn" "$__Collection_List_each_i" "${__Collection_List_each_arr[$__Collection_List_each_i]}" || return
   done
 }
 
@@ -369,4 +369,4 @@ List.each() {
 # Class Declaration
 # ============================================================================
 
-boopClass List isa:Container public:new,getAt,setAt,delete,length,clear,has,push,pop,shift,unshift,slice,toArray,toString,each has:type
+boopClass Collection.List isa:Collection.Container public:new,getAt,setAt,delete,length,clear,has,push,pop,shift,unshift,slice,toArray,toString,each has:type

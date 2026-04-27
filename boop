@@ -597,6 +597,33 @@ __boop.autoAlias() {
         ;;
     esac
   done
+
+  # Create constructor shorthands for all aliases pointing to this FQN
+  local __boop_aa_key
+  for __boop_aa_key in "${!__boop_alias[@]}"; do
+    [[ "${__boop_alias[$__boop_aa_key]}" == "$__boop_aa_fqn" ]] || continue
+    __boop.aliasShorthand "$__boop_aa_key" "$__boop_aa_fqn"
+  done
+}
+
+# __boop.aliasShorthand -- create a constructor shorthand for an alias.
+#
+# If the FQN has a .new method registered, creates:
+#   AliasName() { _Class='FQN' FQN.new "$@"; }
+# Otherwise uses the default constructor:
+#   AliasName() { _Class='FQN' __boop.new "$@"; }
+#
+# Skips if the alias name equals the FQN (registerClass already handles that).
+__boop.aliasShorthand() {
+  local __boop_as_alias="$1" __boop_as_fqn="$2"
+  [[ "$__boop_as_alias" == "$__boop_as_fqn" ]] && return
+  # Don't overwrite an existing function (might be a real class)
+  declare -f "$__boop_as_alias" >/dev/null && return
+  if declare -f "${__boop_as_fqn}.new" >/dev/null; then
+    eval "$__boop_as_alias() { _Class='$__boop_as_fqn' ${__boop_as_fqn}.new \"\$@\"; }"
+  else
+    eval "$__boop_as_alias() { _Class='$__boop_as_fqn' __boop.new \"\$@\"; }"
+  fi
 }
 
 # _Import -- load a class and create an alias.
@@ -621,6 +648,7 @@ _Import() {
     local __boop_import_alias="$2"
     # Explicit alias -- store literally, overrides any existing
     __boop_alias["$__boop_import_alias"]="$__boop_import_fqn"
+    __boop.aliasShorthand "$__boop_import_alias" "$__boop_import_fqn"
     _Debug "import: aliased '$__boop_import_alias' -> '$__boop_import_fqn'"
   fi
   # Auto-aliasing happens during class load (in __boop.import)
@@ -2028,10 +2056,6 @@ __boop.import() {
       fi
       unset '__boop_loading[$__boop_import_class]'
       _Trace "import: '$__boop_import_class' loaded successfully"
-      # Auto-alias the loaded class (Phase 1: FQN == short name for existing classes)
-      local __boop_import_normalized="${__boop_import_class//::/.}"
-      __boop_import_normalized="${__boop_import_normalized//\//.}"
-      __boop.autoAlias "$__boop_import_normalized"
       continue
     fi
 
@@ -2041,9 +2065,6 @@ __boop.import() {
     if . "$__boop_import_class" 2>/dev/null; then
       unset '__boop_loading[$__boop_import_class]'
       _Info "import: '$__boop_import_class' loaded via raw source fallback"
-      local __boop_import_normalized="${__boop_import_class//::/.}"
-      __boop_import_normalized="${__boop_import_normalized//\//.}"
-      __boop.autoAlias "$__boop_import_normalized"
       continue
     fi
 
@@ -2228,6 +2249,7 @@ boopClass() {
   __boop_registry["$__boopClass_class"]="|class=$__boopClass_class|parent=$__boopClass_parent|methods=$__boopClass_allMethods|properties=$__boopClass_has"
   __boopClass.registerMethods "$__boopClass_class" "$__boopClass_public" "$__boopClass_custom"
   __boop.registerClass "$__boopClass_class"
+  __boop.autoAlias "$__boopClass_class"
 }
 
 # boopExtend — add methods and properties to an existing class.
