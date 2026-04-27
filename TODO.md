@@ -1358,3 +1358,220 @@ threshold (`_FatalLevel`) already provides escalation control.
 
 Revisit if a compelling use case emerges that can't be solved with
 explicit error handling.
+
+---
+
+## Codebase Audit — Refactor & Tune Candidates (2026-04-26)
+
+Walk-through of the framework + class files looking for the same
+shape of issue that motivated the API Shape steering rule (see
+`.kiro/steering/api-shape.md`, `docs/STANDARDS.md`, and
+`docs/bash_style.md`). Findings grouped by severity. None of these
+are urgent; the suite is green and the hot paths that matter most
+(Math, dispatch) are already heavily optimized.
+
+### A. Apply the new "Primitives Inward" rule elsewhere
+
+#### A1. `Config.load` (flat) — symmetric `fromFlatString`
+
+**File:** `Config/Config:42-70`
+
+`Config.load` is the flat `key=value` analogue of `Config.loadINI`,
+but there is no `Config.fromFlatString`. The same extract-a-private-
+parser refactor we just applied to `loadINI`/`fromString` should
+apply here:
+
+- Extract `__Config.parseFlat <self>` reading lines from stdin.
+- `Config.load <file>` → `__Config.parseFlat $self < "$file"`.
+- New `Config.fromFlatString <str>` → `__Config.parseFlat $self <<< "$str"`.
+
+Tiny PR. Mostly mechanical. Lock in the principle by demonstrating
+it across both formats.
+
+#### A2. `Map.values` / `Map.toArray` / `Map.toString` — single-printf serialization
+
+**File:** `Collection/Map/Map:163-220`
+
+`List.toArray` (`List:302-314`) builds its delimited output with one
+`printf -v out "%s${d}" "${arr[@]}"` then trims the trailing
+delimiter — clean, fast, idiomatic. `Map.values` and `Map.toArray`
+instead loop with a `(( first ))` guard and N concatenations:
+
+```bash
+# Map.values today — N concatenations
+for k in "${keys[@]}"; do
+  (( first )) || out="${out}${d}"
+  out="$out${arr[$k]}"
+  first=0
+done
+```
+
+`Map.values` is a direct port of `List.toArray` (just walking
+ordered-keys → values). `Map.toArray` and `Map.toString` need a
+small intermediate step (build the `key=value` / `k="v"` strings
+into a temp array first, then one `printf -v`).
+
+Same shape applies to `Map.toString` and the per-iteration
+concatenation in `Map.each`'s siblings. Worth a small unification
+pass.
+
+#### A3. `TestSuite.exec` — lazy stderr capture
+
+**File:** `Testing/TestSuite/TestSuite:68-97`
+
+`exec ok` and `exec fail` both fork `mktemp`, redirect stderr to
+the tmpfile, then `rm -f` it after — for *every* assertion. The
+captured stderr is only read when `_Debug` is enabled and the
+file is non-empty:
+
+```bash
+local __TS_exec_stderr; __TS_exec_stderr=$(mktemp)
+if _Self="" _Class="" "$@" 2>"$__TS_exec_stderr"; then ...
+[[ -s "$__TS_exec_stderr" ]] && _Debug "$(<"$__TS_exec_stderr")"
+rm -f "$__TS_exec_stderr"
+```
+
+Costs: `mktemp` fork, file create, redirect, file read, fork+rm —
+per assertion. With 1000+ assertions across the suite this is the
+single biggest fork count in test runs.
+
+Options:
+- **Lazy**: only redirect to tmpfile when `__boop_logLevel` is at
+  `DEBUG` or above. In the common case (quiet runs), redirect
+  stderr to `/dev/null` and skip the tmpfile dance entirely.
+- **Process substitution**: `2> >(... capture ...)` — but bash
+  process subst can race with the parent reading state.
+- **Var capture**: `{ stderr=$(cmd 2>&1 1>&3); } 3>&1` — captures
+  stderr to a variable directly, no tmpfile. Standard idiom.
+
+The var-capture form is cleanest; it forks a subshell for the
+capture but no disk I/O. For a test runner the disk-I/O is the
+expensive part on Windows/Git Bash where syscalls are slow.
+
+### B. Hot-path candidates (deeper investigation)
+
+#### B1. `__boop.parse` — descriptor regex on every property read
+
+**File:** `boop:694-707`
+
+Every property read (`$obj.get foo`, every internal `__boop.parse
+"$class" "parent"` during MRO walks, every `Container.toString`
+fetching `type`) runs:
+
+```bash
+local pattern="\\|${field}=([^|]*)"
+[[ "$descriptor" =~ $pattern ]]
+```
+
+That's a regex compile + match against the full descriptor string,
+every time. For a deeply nested `deepGet` walk
+(`Collection/Container/Container:246-257`) it's once per level.
+
+Two possible approaches:
+1. **Cache parsed descriptors** at registration time into
+   per-field associative arrays: `__boop_field_<class>_<field>`.
+   Property reads become an O(1) array lookup. One-time cost at
+   `registerClass`; pays off forever after.
+2. **Cache parsed instance descriptors** lazily on first property
+   access — same idea but per-instance instead of per-class.
+
+This is core architecture, not a small change. Profile first to
+confirm `__boop.parse` is actually a hotspot before doing the
+work; the regex is fast in absolute terms, just runs frequently.
+
+#### B2. `Map.delete` — O(n) array rebuild
+
+**File:** `Collection/Map/Map:90-107`
+
+```bash
+Map.delete() {
+  unset "__Map_del_arr[$key]"
+  local -a __Map_del_new=()
+  for k in "${keys[@]}"; do
+    [[ "$k" != "$key" ]] && __Map_del_new+=("$k")
+  done
+  __Map_del_keys=("${__Map_del_new[@]+...}")
+}
+```
+
+For workloads with many deletes on a large Map this is O(n) per
+delete, O(n²) for clear-by-deletion. Bash arrays don't support
+efficient mid-array splice, so the fundamental cost is hard to
+escape, but:
+
+- Tracking key→position in a companion assoc array makes the
+  search O(1); the splice is still O(n) but skips the linear
+  scan.
+- Tombstone deletion (mark removed, compact lazily) trades
+  memory for speed. Probably overkill.
+
+Document the cost in the method header; flag for revisit if a
+real workload hits it.
+
+### C. Dead code
+
+#### C1. `__boop.dispatch` — large commented-out function
+
+**File:** `boop:769-801`
+
+~33 lines of commented-out function body with a doc-block above it
+explaining what the *replacement* (direct call-through via baked
+wrappers) does. The comment block above is useful; the carcass
+below is just noise. Delete the body, keep the explanatory comment
+about why dispatch is no longer the primary call path.
+
+#### C2. `Container.toString` pretty-print branch is broken *and* dead
+
+**File:** `Collection/Container/Container:223-240`
+
+Line 237 has `printf -v var "format" <newline> args` with no
+backslash continuation:
+
+```bash
+  printf -v __Container_ts_out "%s(%s) {\n  type   = %s\n  length = %s\n}" 
+    "$_Class" "$_Self" "$__Container_ts_type" "$__Container_ts_len"
+```
+
+Bash parses these as two separate commands — the second line would
+try to *execute* `$_Class` with the rest as args. The branch
+doesn't blow up because every concrete subclass (`List`, `Map`)
+overrides `toString` and the branch is never reached on a raw
+`Container`. But it's a latent bug: if anyone ever calls
+`$container.toString pretty` on something that inherits without
+overriding, it breaks.
+
+Two fixes in one: add the `\`, and add a test for raw-Container
+pretty so this is no longer dead code path.
+
+### D. Known fragility (already commented in source)
+
+#### D1. `TestSuite._route` — pipe-delimited arg packing in queue mode
+
+**File:** `Testing/TestSuite/TestSuite:122-132`
+
+Existing comment: `# @@ pipe-delimited args are fragile if args
+contain literal pipes.` Queue mode is rarely used (immediate is
+the default), but the issue is real. Two paths:
+
+- Use a delimiter known not to occur in args (e.g., `$'\x1f'` —
+  ASCII Unit Separator). Cheap, mostly fixes it.
+- Store args in a List instead of a packed string. More objects
+  per assertion, but no encoding fragility. List is already a
+  Container, so this fits the framework.
+
+The List route is the principled answer; the delimiter swap is
+the 1-line "good enough."
+
+### Priority Stack
+
+If picking these up, suggested order:
+
+1. **A1** (Config.fromFlatString) — locks in the API-shape rule.
+2. **C1** (delete dead `__boop.dispatch` body) — pure cleanup, no risk.
+3. **C2** (fix Container.toString pretty + test) — latent bug.
+4. **A3** (lazy stderr in TestSuite.exec) — biggest wall-clock win.
+5. **A2** (Map serializer cleanup) — small, mostly cosmetic.
+6. **D1** (TestSuite._route arg encoding) — only matters if queue
+   mode gets real use.
+7. **B1** / **B2** — measure first; defer until there's evidence
+   the cost matters in a real workload.
