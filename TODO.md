@@ -1372,7 +1372,7 @@ are urgent; the suite is green and the hot paths that matter most
 
 ### A. Apply the new "Primitives Inward" rule elsewhere
 
-#### A1. `Config.load` (flat) — symmetric `fromFlatString`
+#### A1. `Config.load` (flat) — symmetric `fromFlatString` ✓ DONE
 
 **File:** `Config/Config:42-70`
 
@@ -1566,7 +1566,7 @@ the 1-line "good enough."
 
 If picking these up, suggested order:
 
-1. **A1** (Config.fromFlatString) — locks in the API-shape rule.
+1. ~~**A1** (Config.fromFlatString) — locks in the API-shape rule.~~ ✓ DONE
 2. **C1** (delete dead `__boop.dispatch` body) — pure cleanup, no risk.
 3. **C2** (fix Container.toString pretty + test) — latent bug.
 4. **A3** (lazy stderr in TestSuite.exec) — biggest wall-clock win.

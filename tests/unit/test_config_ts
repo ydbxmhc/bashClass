@@ -417,4 +417,84 @@ $t.assert_contains "toINI pipe: top-level"     "$out" "x=1|y=2"
 $t.assert_contains "toINI pipe: section header" "$out" "[sec]"
 $t.assert_contains "toINI pipe: section keys"   "$out" "a=A|b=B"
 
+# ============================================================================
+# Config.fromString (INI string) — primitives-inward parser
+# ============================================================================
+
+$t.section "Config.fromString: INI string parsing"
+
+into=cfg Config.fromString '
+# top-level
+host=localhost
+port=8080
+
+[db]
+host=db.example.com
+port=5432
+'
+into=v $cfg.get host;     $t.assert_eq "fromString top-level host" "$v" "localhost"
+into=v $cfg.get port;     $t.assert_eq "fromString top-level port" "$v" "8080"
+into=v $cfg.get db.host;  $t.assert_eq "fromString section host"   "$v" "db.example.com"
+into=v $cfg.get db.port;  $t.assert_eq "fromString section port"   "$v" "5432"
+$t.assert_ok "fromString isa Config" $cfg.isa Config
+
+# Empty string → empty config (no crash)
+into=cfg Config.fromString ""
+into=k $cfg.keys; $t.assert_eq "fromString empty → no keys" "$k" ""
+
+# Round-trip: toINI → fromString
+into=src Config.new
+$src.set theme dark
+$src.set db.host localhost
+$src.set db.port 5432
+into=ini $src.toINI
+into=rt Config.fromString "$ini"
+into=v $rt.get theme;    $t.assert_eq "fromString round-trip: theme"   "$v" "dark"
+into=v $rt.get db.host;  $t.assert_eq "fromString round-trip: db.host" "$v" "localhost"
+into=v $rt.get db.port;  $t.assert_eq "fromString round-trip: db.port" "$v" "5432"
+
+# ============================================================================
+# Config.fromFlatString (flat string) — symmetric primitive
+# ============================================================================
+
+$t.section "Config.fromFlatString: flat string parsing"
+
+into=cfg Config.fromFlatString '
+# a comment
+theme=dark
+host=localhost
+port=8080
+'
+into=v $cfg.get theme; $t.assert_eq "fromFlatString theme" "$v" "dark"
+into=v $cfg.get host;  $t.assert_eq "fromFlatString host"  "$v" "localhost"
+into=v $cfg.get port;  $t.assert_eq "fromFlatString port"  "$v" "8080"
+$t.assert_ok "fromFlatString isa Config" $cfg.isa Config
+
+# Format metadata is "flat" (no INI section parsing)
+into=cfg Config.fromFlatString 'a.b.c=nested'
+into=v $cfg.get a.b.c
+$t.assert_eq "fromFlatString: dots in keys preserved verbatim" "$v" "nested"
+
+# Empty string
+into=cfg Config.fromFlatString ""
+into=k $cfg.keys; $t.assert_eq "fromFlatString empty → no keys" "$k" ""
+
+# Lines without = are skipped
+into=cfg Config.fromFlatString 'good=1
+no_equals_here
+also_good=2'
+into=v $cfg.get good;      $t.assert_eq "fromFlatString skips bad lines (good)"  "$v" "1"
+into=v $cfg.get also_good; $t.assert_eq "fromFlatString skips bad lines (next)"  "$v" "2"
+
+# Round-trip: toFlat → fromFlatString
+into=src Config.new
+$src.set a 1
+$src.set b 2
+$src.set c.x X
+into=flat $src.toFlat
+into=rt Config.fromFlatString "$flat"
+into=v $rt.get a;    $t.assert_eq "fromFlatString round-trip: a"   "$v" "1"
+into=v $rt.get b;    $t.assert_eq "fromFlatString round-trip: b"   "$v" "2"
+into=v $rt.get c.x;  $t.assert_eq "fromFlatString round-trip: c.x" "$v" "X"
+
 $t.summary
