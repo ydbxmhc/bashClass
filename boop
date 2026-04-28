@@ -490,37 +490,6 @@ _FatalLevel() { __boop.setFatalLevel "$@"; }
 # ALIAS RESOLUTION
 # ============================================================================
 
-# __boop.resolveAlias -- resolve a name through the alias registry.
-#
-# If the name is a registered FQN, returns it as-is.
-# If the name is an alias, returns the FQN it maps to.
-# If neither, returns the name unchanged (caller decides what to do).
-#
-# Usage: __boop.resolveAlias "Box" __result
-__boop.resolveAlias() {
-  local __boop_ra_name="${1:-}" __boop_ra_target="${2:-}"
-  local __boop_ra_resolved="$__boop_ra_name"
-
-  # Normalize :: and / to . for FQN lookup
-  local __boop_ra_normalized="${__boop_ra_name//::/.}"
-  __boop_ra_normalized="${__boop_ra_normalized//\//.}"
-
-  # Check registry directly (is it already an FQN?)
-  if [[ -n "${__boop_registry[$__boop_ra_normalized]+set}" ]]; then
-    __boop_ra_resolved="$__boop_ra_normalized"
-  # Check alias registry (literal key first, then normalized)
-  elif [[ -n "${__boop_alias[$__boop_ra_name]+set}" ]]; then
-    __boop_ra_resolved="${__boop_alias[$__boop_ra_name]}"
-  elif [[ -n "${__boop_alias[$__boop_ra_normalized]+set}" ]]; then
-    __boop_ra_resolved="${__boop_alias[$__boop_ra_normalized]}"
-  fi
-
-  if [[ -n "$__boop_ra_target" ]]; then
-    local -n __boop_ra_ref="$__boop_ra_target"
-    __boop_ra_ref="$__boop_ra_resolved"
-  fi
-}
-
 # __boop.autoAlias -- create auto-aliases for a class at multiple levels.
 #
 # For FQN "Collection.Map.Fast", attempts aliases:
@@ -902,8 +871,7 @@ __boop.setDefaultMode() {
 #   _OutMode=global __boop.parse ... # global variable
 __boop.parse() {
   local __boop_parse_key="$1" __boop_parse_field="$2" __boop_parse_target="${3:-}"
-
-  type=class __boop.validate "$__boop_parse_key"
+  [[ -n "$__boop_parse_key" && "$__boop_parse_key" != *" "* ]] || _Crash "Invalid key: '$__boop_parse_key'"
 
   local __boop_parse_descriptor="${__boop_registry[$__boop_parse_key]:-}"
   local __boop_parse_pattern="\\|${__boop_parse_field}=([^|]*)"
@@ -1389,6 +1357,8 @@ __boop.new() {
 __boop.backfillMethods() {
   local __boop_backfillMethods_self="$1" __boop_backfillMethods_class="$2" __boop_backfillMethods_force="${3:-}"
   local __boop_backfillMethods_current="$__boop_backfillMethods_class" __boop_backfillMethods_method __boop_backfillMethods_tmp
+  local __boop_backfillMethods_tmpfile="${TMPDIR:-/tmp}/__boop_bf_$$"
+  : > "$__boop_backfillMethods_tmpfile"
 
   # Walk inheritance chain, create direct wrappers for all methods
   while [[ -n "$__boop_backfillMethods_current" ]]; do
@@ -1397,10 +1367,11 @@ __boop.backfillMethods() {
     for __boop_backfillMethods_method in "${__boop_backfillMethods_methodList[@]}"; do
       [[ -n "$__boop_backfillMethods_method" ]] || continue
       [[ "$__boop_backfillMethods_force" != "force" ]] && declare -f "$__boop_backfillMethods_self.$__boop_backfillMethods_method" >/dev/null && continue
-      # Direct one-hop wrapper: object → class-level function
-      # _Class is set so methods using local -I _Class don't hit
-      # unbound variable errors under set -u
-      eval "$__boop_backfillMethods_self.$__boop_backfillMethods_method() { _Self='$__boop_backfillMethods_self' _Class='$__boop_backfillMethods_class' $__boop_backfillMethods_class.$__boop_backfillMethods_method \"\$@\"; }"
+      printf '%s.%s() { _Self=%q _Class=%q %s.%s "$@"; }\n' \
+        "$__boop_backfillMethods_self" "$__boop_backfillMethods_method" \
+        "$__boop_backfillMethods_self" "$__boop_backfillMethods_class" \
+        "$__boop_backfillMethods_class" "$__boop_backfillMethods_method" \
+        >> "$__boop_backfillMethods_tmpfile"
     done
     __boop.parse "$__boop_backfillMethods_current" "parent" __boop_backfillMethods_current
   done
@@ -1412,11 +1383,15 @@ __boop.backfillMethods() {
   for __boop_backfillMethods_prop in "${__boop_backfillMethods_propList[@]}"; do
     [[ -n "$__boop_backfillMethods_prop" ]] || continue
     [[ "$__boop_backfillMethods_force" != "force" ]] && declare -f "$__boop_backfillMethods_self.$__boop_backfillMethods_prop" >/dev/null && continue
-    eval "$__boop_backfillMethods_self.$__boop_backfillMethods_prop() {
-      if ((\$#)); then _Self='$__boop_backfillMethods_self' _Class='$__boop_backfillMethods_class' __boop.set '$__boop_backfillMethods_prop' \"\$1\"
-      else _Self='$__boop_backfillMethods_self' _Class='$__boop_backfillMethods_class' __boop.get '$__boop_backfillMethods_prop'; fi
-    }"
+    printf '%s.%s() { if (($#)); then _Self=%q _Class=%q __boop.set %q "$1"; else _Self=%q _Class=%q __boop.get %q; fi; }\n' \
+      "$__boop_backfillMethods_self" "$__boop_backfillMethods_prop" \
+      "$__boop_backfillMethods_self" "$__boop_backfillMethods_class" "$__boop_backfillMethods_prop" \
+      "$__boop_backfillMethods_self" "$__boop_backfillMethods_class" "$__boop_backfillMethods_prop" \
+      >> "$__boop_backfillMethods_tmpfile"
   done
+
+  . "$__boop_backfillMethods_tmpfile"
+  rm -f "$__boop_backfillMethods_tmpfile"
 }
 
 # Re-wrap all methods on an existing object. Tears down existing wrappers
@@ -1452,10 +1427,12 @@ __boop.registerClass() {
   type=class __boop.validate "$__boop_registerClass_class"
 
   [[ -n "${__boop_registry[$__boop_registerClass_class]:-}" ]] || 
-    _Crash "No descriptor for class '$__boop_registerClass_class' — register it first"
+    _Crash "No descriptor for class '$__boop_registerClass_class' -- register it first"
 
   local __boop_registerClass_current="$__boop_registerClass_class"
   local __boop_registerClass_method __boop_registerClass_methods __boop_registerClass_impl
+  local __boop_registerClass_tmpfile="${TMPDIR:-/tmp}/__boop_rc_$$"
+  : > "$__boop_registerClass_tmpfile"
 
   # Walk inheritance chain, create direct class-level wrappers
   while [[ -n "$__boop_registerClass_current" ]]; do
@@ -1463,13 +1440,11 @@ __boop.registerClass() {
     IFS=',' read -ra __boop_registerClass_methodList <<< "${__boop_registerClass_methods:-}"
     for __boop_registerClass_method in "${__boop_registerClass_methodList[@]}"; do
       [[ -n "$__boop_registerClass_method" ]] || continue
-      # Don't overwrite — class author's definitions take priority
+      # Don't overwrite -- class author's definitions take priority
       declare -f "$__boop_registerClass_class.$__boop_registerClass_method" >/dev/null && continue
-      # Resolve the impl via MRO: check this ancestor's registry entry,
-      # then walk up if needed. Cache the result for future lookups.
+      # Resolve the impl via MRO
       __boop_registerClass_impl="${__boop_methodRegistry[$__boop_registerClass_current.$__boop_registerClass_method]:-}"
       if [[ -z "$__boop_registerClass_impl" ]]; then
-        # Walk further up from this ancestor to find the impl
         local __boop_registerClass_walk="$__boop_registerClass_current"
         while [[ -n "$__boop_registerClass_walk" ]]; do
           __boop_registerClass_impl="${__boop_methodRegistry[$__boop_registerClass_walk.$__boop_registerClass_method]:-}"
@@ -1478,20 +1453,27 @@ __boop.registerClass() {
         done
       fi
       [[ -n "$__boop_registerClass_impl" ]] || continue
-      # Direct wrapper: passes _Self through from runtime, hardcodes _Class
-      eval "$__boop_registerClass_class.$__boop_registerClass_method() { _Self=\"\$_Self\" _Class='$__boop_registerClass_class' $__boop_registerClass_impl \"\$@\"; }"
+      printf '%s.%s() { _Self="${_Self:-}" _Class=%q %s "$@"; }\n' \
+        "$__boop_registerClass_class" "$__boop_registerClass_method" \
+        "$__boop_registerClass_class" "$__boop_registerClass_impl" \
+        >> "$__boop_registerClass_tmpfile"
     done
     __boop.parse "$__boop_registerClass_current" "parent" __boop_registerClass_current
   done
 
-  # Make the class name itself a constructor (still uses dispatch for new)
-  if declare -f "${__boop_registerClass_class}.new" >/dev/null 2>&1; then # locally overridden?
-    # use the class-defined, overridden constructor
-    eval "$__boop_registerClass_class() { 
-      _Class='$__boop_registerClass_class' ${__boop_registerClass_class}.new \"\$@\"; }"
-  else # inherit the default constructor
-    eval "$__boop_registerClass_class() { _Class='$__boop_registerClass_class' __boop.new \"\$@\"; }"
+  # Constructor shorthand
+  if declare -f "${__boop_registerClass_class}.new" >/dev/null; then
+    printf '%s() { _Class=%q %s.new "$@"; }\n' \
+      "$__boop_registerClass_class" "$__boop_registerClass_class" "$__boop_registerClass_class" \
+      >> "$__boop_registerClass_tmpfile"
+  else
+    printf '%s() { _Class=%q __boop.new "$@"; }\n' \
+      "$__boop_registerClass_class" "$__boop_registerClass_class" \
+      >> "$__boop_registerClass_tmpfile"
   fi
+
+  . "$__boop_registerClass_tmpfile"
+  rm -f "$__boop_registerClass_tmpfile"
 }
 
 # Global convenience constructor. Slightly friendlier than the class-as-
