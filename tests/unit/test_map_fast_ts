@@ -18,11 +18,11 @@ $t.section "Construction"
 
 into=doc Fast
 $t.assert_match "constructor returns object ID" "$doc" "_*"
-into=sep __boop.parse "$doc" "sep"
+sep=""; __boop.parse "$doc" "sep" sep
 $t.assert_eq "default separator is ." "$sep" "."
 
 into=doc2 Fast sep="/"
-into=sep2 __boop.parse "$doc2" "sep"
+sep2=""; __boop.parse "$doc2" "sep" sep2
 $t.assert_eq "custom separator" "$sep2" "/"
 
 # ============================================================================
@@ -210,5 +210,40 @@ $d6.set "a/x" "shallow"
 $d6.deleteUnder "a"
 into=n $d6.length
 $t.assert_eq "custom sep deleteUnder clears all" "$n" "0"
+
+# ============================================================================
+# FQN access
+# ============================================================================
+
+$t.section "FQN access"
+
+into=d7 Collection.Map.Fast
+$d7.set "fqn.test" "works"
+into=v $d7.get "fqn.test"
+$t.assert_eq "FQN constructor works" "$v" "works"
+
+# ============================================================================
+# .booprc index test
+# ============================================================================
+
+$t.section "booprc index"
+
+# Verify Map::Fast is loadable via the short alias (from .boopIndex)
+__mf_rc=0
+bash -c '. boop Fast; into=d Fast; $d.set "x" "1"; into=v $d.get "x"; [[ "$v" == "1" ]]' || __mf_rc=$?
+$t.assert_eq "Fast loadable via index short name" "$__mf_rc" "0"
+
+# Verify loadable via classPath set with :: notation
+__mf_rc=0
+bash -c '
+  . boop
+  boop.classPath set "Map::Fast" "'"$(realpath Collection/Map/Fast/Fast)"'"
+  _Load Map::Fast
+  into=d Fast
+  $d.set "y" "2"
+  into=v $d.get "y"
+  [[ "$v" == "2" ]]
+' || __mf_rc=$?
+$t.assert_eq "Map::Fast loadable via classPath set with ::" "$__mf_rc" "0"
 
 $t.summary
