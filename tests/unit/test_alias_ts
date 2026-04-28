@@ -183,6 +183,6 @@ $t.assert_fail "isa wrong class via alias" $b.isa Cube
 
 # isa no-arg returns the object's class (alias name used at creation)
 into=__al_cls $b.isa
-$t.assert_eq "isa no-arg returns class used at creation" "$__al_cls" "Box"
+$t.assert_eq "isa no-arg returns FQN" "$__al_cls" "Geometry.Box"
 
 $t.summary

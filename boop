@@ -602,7 +602,8 @@ __boop.autoAlias() {
 #
 # Clones the FQN's descriptor with class=alias and trueClass=FQN.
 # Clones all method registry entries as alias.method -> FQN.method.
-# Creates wrapper functions alias.method() that forward to FQN.method().
+# Writes wrapper functions to a temp file and sources it (faster than
+# eval, no quoting gymnastics).
 # Creates constructor shorthand alias() that forwards to FQN.new().
 __boop.createAlias() {
   local __boop_ca_alias="$1" __boop_ca_fqn="$2"
@@ -614,12 +615,13 @@ __boop.createAlias() {
   __boop_registry["$__boop_ca_alias"]="$__boop_ca_desc"
 
   # Walk the inheritance chain and clone method entries + create wrappers.
-  # Uses the methods= field from each class descriptor (O(1) per method)
-  # instead of scanning the entire method registry.
-  # All wrapper functions are collected into one string and eval'd once.
+  # Uses the methods= field from each class descriptor (O(1) per method).
+  # All wrapper functions are written to a temp file and sourced once.
+  local __boop_ca_tmpfile="${TMPDIR:-/tmp}/__boop_alias_$$"
   local __boop_ca_current="$__boop_ca_fqn"
   local __boop_ca_methods __boop_ca_method __boop_ca_impl
-  local __boop_ca_bulk=""
+
+  : > "$__boop_ca_tmpfile"
   while [[ -n "$__boop_ca_current" ]]; do
     __boop.parse "$__boop_ca_current" "methods" __boop_ca_methods
     IFS=',' read -ra __boop_ca_methodList <<< "${__boop_ca_methods:-}"
@@ -629,19 +631,26 @@ __boop.createAlias() {
       __boop_ca_impl="${__boop_methodRegistry[$__boop_ca_current.$__boop_ca_method]:-}"
       [[ -n "$__boop_ca_impl" ]] || continue
       __boop_methodRegistry["$__boop_ca_alias.$__boop_ca_method"]="$__boop_ca_impl"
-      __boop_ca_bulk+="$__boop_ca_alias.$__boop_ca_method() { _Self=\"\$_Self\" _Class='$__boop_ca_alias' $__boop_ca_impl \"\$@\"; }; "
+      printf '%s.%s() { _Self="${_Self:-}" _Class=%q %s "$@"; }\n' \
+        "$__boop_ca_alias" "$__boop_ca_method" "$__boop_ca_alias" "$__boop_ca_impl" \
+        >> "$__boop_ca_tmpfile"
     done
     __boop.parse "$__boop_ca_current" "parent" __boop_ca_current
   done
 
   # Constructor shorthand
   if declare -f "${__boop_ca_fqn}.new" >/dev/null; then
-    __boop_ca_bulk+="$__boop_ca_alias() { _Class='$__boop_ca_alias' ${__boop_ca_fqn}.new \"\$@\"; }"
+    printf '%s() { _Class=%q %s.new "$@"; }\n' \
+      "$__boop_ca_alias" "$__boop_ca_alias" "$__boop_ca_fqn" \
+      >> "$__boop_ca_tmpfile"
   else
-    __boop_ca_bulk+="$__boop_ca_alias() { _Class='$__boop_ca_alias' __boop.new \"\$@\"; }"
+    printf '%s() { _Class=%q __boop.new "$@"; }\n' \
+      "$__boop_ca_alias" "$__boop_ca_alias" \
+      >> "$__boop_ca_tmpfile"
   fi
 
-  eval "$__boop_ca_bulk"
+  . "$__boop_ca_tmpfile"
+  rm -f "$__boop_ca_tmpfile"
 }
 
 # _Import -- load a class and create an alias.
@@ -1124,10 +1133,10 @@ __boop.isa() {
   local __boop_isa_query="${1:-}"
 
   if [[ -z "$__boop_isa_query" ]]; then
-    # Return the object's class name from its descriptor (preserves alias name)
-    local __boop_isa_cls
-    __boop.parse "$_Self" "class" __boop_isa_cls
-    boop.pass "${__boop_isa_cls:-$_Class}" ${into:-}
+    # Return the object's true class (FQN)
+    local __boop_isa_true
+    __boop.parse "$_Self" "trueClass" __boop_isa_true
+    boop.pass "${__boop_isa_true:-$_Class}" ${into:-}
     return 0
   fi
 
@@ -2384,17 +2393,22 @@ _Bless() {
   [[ -n "${__boop_registry[$__boop_Bless_class]:-}" ]] || 
     _Crash "_Bless: '$__boop_Bless_class' is not a registered class"
 
-  # Stamp the new class
+  # Stamp the new class and trueClass
   local __boop_Bless_old="|class=$__boop_Bless_current_class"
   local __boop_Bless_new="|class=$__boop_Bless_class"
   __boop_registry[$__boop_Bless_id]="${__boop_registry[$__boop_Bless_id]/$__boop_Bless_old/$__boop_Bless_new}"
 
-  # Force-regenerate ALL wrappers (method + property) for the new class.
-  # Without force, backfillMethods skips existing wrappers — but those
-  # wrappers were baked with _Class='old_class' and would report the wrong
-  # type for isa, toString, etc. Force overwrites every wrapper so the
-  # object's full interface reflects the blessed class.
-  __boop.backfillMethods "$__boop_Bless_id" "$__boop_Bless_class" force
+  # Update trueClass to the new class's trueClass
+  local __boop_Bless_old_true __boop_Bless_new_true
+  __boop.parse "$__boop_Bless_id" "trueClass" __boop_Bless_old_true
+  __boop.parse "$__boop_Bless_class" "trueClass" __boop_Bless_new_true
+  : "${__boop_Bless_new_true:=$__boop_Bless_class}"
+  if [[ -n "$__boop_Bless_old_true" ]]; then
+    __boop_registry[$__boop_Bless_id]="${__boop_registry[$__boop_Bless_id]/"|trueClass=$__boop_Bless_old_true"/"|trueClass=$__boop_Bless_new_true"}"
+  fi
+
+  # Force-regenerate ALL wrappers using the trueClass (FQN)
+  __boop.backfillMethods "$__boop_Bless_id" "$__boop_Bless_new_true" force
 }
 
 

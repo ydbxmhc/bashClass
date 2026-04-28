@@ -599,7 +599,7 @@ into=__rt_width $__rt_box.width
 $t.assert_eq "into on shorthand width = 3" "$__rt_width" "3"
 
 into=__rt_class $__rt_box.isa
-$t.assert_eq "into on isa = Box" "$__rt_class" "Box"
+$t.assert_eq "into on isa = Box" "$__rt_class" "Geometry.Box"
 
 into=__rt_str $__rt_box.toString
 $t.assert_contains "into on toString contains Box(" "$__rt_str" "Geometry.Box("
