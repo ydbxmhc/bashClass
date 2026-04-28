@@ -3,8 +3,11 @@ set -uo pipefail
 
 # Alias infrastructure tests
 #
-# Tests: auto-aliasing, _Import, resolveAlias, _AutoAlias modes,
+# Tests: auto-aliasing, _Import, trueClass, _AutoAlias modes,
 # collision detection, isa through aliases.
+#
+# Aliases are real registry entries with trueClass pointing to the FQN.
+# __boop_alias maps alias names to FQNs for bookkeeping.
 
 . boop TestSuite Box Cube
 
@@ -16,32 +19,22 @@ into=t TestSuite name="Alias Tests"
 
 $t.section "Auto-aliasing on load"
 
-# Box should be auto-aliased after loading
-$t.assert_eq "Box auto-aliased" "${__boop_alias[Box]:-NONE}" "Box"
+# Box is auto-aliased: __boop_alias["Box"] -> "Geometry.Box"
+$t.assert_eq "Box alias points to FQN" "${__boop_alias[Box]:-NONE}" "Geometry.Box"
+$t.assert_eq "Cube alias points to FQN" "${__boop_alias[Cube]:-NONE}" "Geometry.Cube"
+$t.assert_eq "TestSuite alias points to FQN" "${__boop_alias[TestSuite]:-NONE}" "Testing.TestSuite"
 
-# Cube should be auto-aliased
-$t.assert_eq "Cube auto-aliased" "${__boop_alias[Cube]:-NONE}" "Cube"
+# Aliases are real registry entries
+$t.assert_ok "Box in registry" test -n "${__boop_registry[Box]+set}"
+$t.assert_ok "Cube in registry" test -n "${__boop_registry[Cube]+set}"
 
-# TestSuite should be auto-aliased
-$t.assert_eq "TestSuite auto-aliased" "${__boop_alias[TestSuite]:-NONE}" "TestSuite"
-
-# ============================================================================
-# resolveAlias
-# ============================================================================
-
-$t.section "resolveAlias"
-
-# Resolve a known alias
-__boop.resolveAlias "Box" __ra_result
-$t.assert_eq "resolve alias Box" "$__ra_result" "Box"
-
-# Resolve an FQN directly (in registry)
-__boop.resolveAlias "Box" __ra_result
-$t.assert_eq "resolve FQN Box" "$__ra_result" "Box"
-
-# Resolve unknown name -- returns unchanged
-__boop.resolveAlias "NoSuchThing" __ra_result
-$t.assert_eq "resolve unknown returns unchanged" "$__ra_result" "NoSuchThing"
+# trueClass matches the FQN
+__al_tc=""
+__boop.parse "Box" "trueClass" __al_tc
+$t.assert_eq "Box trueClass = Geometry.Box" "$__al_tc" "Geometry.Box"
+__al_tc=""
+__boop.parse "Cube" "trueClass" __al_tc
+$t.assert_eq "Cube trueClass = Geometry.Cube" "$__al_tc" "Geometry.Cube"
 
 # ============================================================================
 # _Import with as clause
@@ -49,30 +42,23 @@ $t.assert_eq "resolve unknown returns unchanged" "$__ra_result" "NoSuchThing"
 
 $t.section "_Import with as"
 
-_Import Box as MyBox
-$t.assert_eq "_Import as creates alias" "${__boop_alias[MyBox]:-NONE}" "Box"
+_Import Geometry::Box as MyBox
+$t.assert_eq "_Import as creates alias entry" "${__boop_alias[MyBox]:-NONE}" "Geometry.Box"
+$t.assert_ok "MyBox in registry" test -n "${__boop_registry[MyBox]+set}"
 
-# Resolve through the new alias
-__boop.resolveAlias "MyBox" __ra_result
-$t.assert_eq "resolve MyBox -> Box" "$__ra_result" "Box"
-
-# Original alias still works
-__boop.resolveAlias "Box" __ra_result
-$t.assert_eq "original Box alias unchanged" "$__ra_result" "Box"
+__al_tc=""; __boop.parse "MyBox" "trueClass" __al_tc
+$t.assert_eq "MyBox trueClass = Geometry.Box" "$__al_tc" "Geometry.Box"
 
 # Multiple aliases for same class
-_Import Box as B1
-_Import Box as B2
-$t.assert_eq "B1 -> Box" "${__boop_alias[B1]:-NONE}" "Box"
-$t.assert_eq "B2 -> Box" "${__boop_alias[B2]:-NONE}" "Box"
+_Import Geometry::Box as B1
+_Import Geometry::Box as B2
+$t.assert_eq "B1 -> Geometry.Box" "${__boop_alias[B1]:-NONE}" "Geometry.Box"
+$t.assert_eq "B2 -> Geometry.Box" "${__boop_alias[B2]:-NONE}" "Geometry.Box"
 
 # Alias with :: in the name (stored literally)
-_Import Box as My::Box
-$t.assert_eq "alias with :: stored literally" "${__boop_alias[My::Box]:-NONE}" "Box"
-
-# Resolve alias with :: key
-__boop.resolveAlias "My::Box" __ra_result
-$t.assert_eq "resolve My::Box -> Box" "$__ra_result" "Box"
+_Import Geometry::Box as My::Box
+$t.assert_eq "alias with :: stored literally" "${__boop_alias[My::Box]:-NONE}" "Geometry.Box"
+$t.assert_ok "My::Box in registry" test -n "${__boop_registry[My::Box]+set}"
 
 # ============================================================================
 # _Import overrides existing alias
@@ -80,11 +66,12 @@ $t.assert_eq "resolve My::Box -> Box" "$__ra_result" "Box"
 
 $t.section "_Import override"
 
-_Import Box as Override
-$t.assert_eq "Override -> Box" "${__boop_alias[Override]:-NONE}" "Box"
+_Import Geometry::Box as Override
+$t.assert_eq "Override -> Geometry.Box" "${__boop_alias[Override]:-NONE}" "Geometry.Box"
 
-_Import Cube as Override
-$t.assert_eq "Override now -> Cube" "${__boop_alias[Override]:-NONE}" "Cube"
+_Import Geometry::Cube as Override
+$t.assert_eq "Override now -> Geometry.Cube" "${__boop_alias[Override]:-NONE}" "Geometry.Cube"
+
 
 # ============================================================================
 # _AutoAlias modes
@@ -92,54 +79,64 @@ $t.assert_eq "Override now -> Cube" "${__boop_alias[Override]:-NONE}" "Cube"
 
 $t.section "_AutoAlias modes"
 
-# Test with a simulated multi-segment FQN
-# We can't easily create a real multi-segment class in Phase 1,
-# but we can test __boop.autoAlias directly.
-
 # --- full mode (default) ---
 _AutoAlias=full
-# Clear any existing test aliases
-unset '__boop_alias[C]' '__boop_alias[B.C]' '__boop_alias[A.B.C]' 2>/dev/null || true
+# Simulate a multi-segment FQN by creating a fake registry entry
+__boop_registry["A.B.C"]="|class=A.B.C|trueClass=A.B.C|parent=boop|methods=|properties="
 __boop.autoAlias "A.B.C"
-$t.assert_eq "full: short alias C" "${__boop_alias[C]:-NONE}" "A.B.C"
-$t.assert_eq "full: mid alias B.C" "${__boop_alias[B.C]:-NONE}" "A.B.C"
-$t.assert_eq "full: FQN alias A.B.C" "${__boop_alias[A.B.C]:-NONE}" "A.B.C"
+$t.assert_ok "full: short alias C in registry" test -n "${__boop_registry[C]+set}"
+$t.assert_ok "full: mid alias B.C in registry" test -n "${__boop_registry[B.C]+set}"
+$t.assert_eq "full: C alias entry" "${__boop_alias[C]:-NONE}" "A.B.C"
+$t.assert_eq "full: B.C alias entry" "${__boop_alias[B.C]:-NONE}" "A.B.C"
+# Clean up
+unset '__boop_registry[A.B.C]' '__boop_registry[C]' '__boop_registry[B.C]'
+unset '__boop_alias[C]' '__boop_alias[B.C]'
 
 # --- short mode ---
 _AutoAlias=short
-unset '__boop_alias[D]' '__boop_alias[E.D]' '__boop_alias[F.E.D]' 2>/dev/null || true
+__boop_registry["F.E.D"]="|class=F.E.D|trueClass=F.E.D|parent=boop|methods=|properties="
 __boop.autoAlias "F.E.D"
-$t.assert_eq "short: short alias D" "${__boop_alias[D]:-NONE}" "F.E.D"
-$t.assert_eq "short: mid alias E.D not created" "${__boop_alias[E.D]:-NONE}" "NONE"
-$t.assert_eq "short: FQN alias F.E.D" "${__boop_alias[F.E.D]:-NONE}" "F.E.D"
+$t.assert_ok "short: short alias D in registry" test -n "${__boop_registry[D]+set}"
+$t.assert_eq "short: D alias entry" "${__boop_alias[D]:-NONE}" "F.E.D"
+__al_has_mid=0; [[ -n "${__boop_registry[E.D]+set}" ]] && __al_has_mid=1
+$t.assert_eq "short: mid alias E.D not created" "$__al_has_mid" "0"
+unset '__boop_registry[F.E.D]' '__boop_registry[D]'
+unset '__boop_alias[D]'
 
 # --- none mode ---
 _AutoAlias=none
-unset '__boop_alias[G]' '__boop_alias[H.G]' '__boop_alias[I.H.G]' 2>/dev/null || true
+__boop_registry["I.H.G"]="|class=I.H.G|trueClass=I.H.G|parent=boop|methods=|properties="
 __boop.autoAlias "I.H.G"
-$t.assert_eq "none: short alias G not created" "${__boop_alias[G]:-NONE}" "NONE"
-$t.assert_eq "none: FQN alias I.H.G not created" "${__boop_alias[I.H.G]:-NONE}" "NONE"
+__al_has_g=0; [[ -n "${__boop_registry[G]+set}" ]] && __al_has_g=1
+$t.assert_eq "none: short alias G not created" "$__al_has_g" "0"
+unset '__boop_registry[I.H.G]'
 
 # --- best mode ---
 _AutoAlias=best
-unset '__boop_alias[J]' '__boop_alias[K.J]' '__boop_alias[L.K.J]' 2>/dev/null || true
+__boop_registry["L.K.J"]="|class=L.K.J|trueClass=L.K.J|parent=boop|methods=|properties="
 __boop.autoAlias "L.K.J"
-$t.assert_eq "best: shortest unique J" "${__boop_alias[J]:-NONE}" "L.K.J"
-$t.assert_eq "best: mid K.J not created" "${__boop_alias[K.J]:-NONE}" "NONE"
-$t.assert_eq "best: FQN L.K.J" "${__boop_alias[L.K.J]:-NONE}" "L.K.J"
+$t.assert_ok "best: shortest unique J in registry" test -n "${__boop_registry[J]+set}"
+$t.assert_eq "best: J alias entry" "${__boop_alias[J]:-NONE}" "L.K.J"
+__al_has_kj=0; [[ -n "${__boop_registry[K.J]+set}" ]] && __al_has_kj=1
+$t.assert_eq "best: mid K.J not created" "$__al_has_kj" "0"
+unset '__boop_registry[L.K.J]' '__boop_registry[J]'
+unset '__boop_alias[J]'
 
 # best with collision on short name
-__boop_alias[M]="Other.M"  # simulate existing alias
-unset '__boop_alias[N.M]' '__boop_alias[O.N.M]' 2>/dev/null || true
 _AutoAlias=best
+__boop_registry["Other.M"]="|class=Other.M|trueClass=Other.M|parent=boop|methods=|properties="
+__boop_registry["M"]="|class=M|trueClass=Other.M|parent=boop|methods=|properties="
+__boop_alias["M"]="Other.M"
+__boop_registry["O.N.M"]="|class=O.N.M|trueClass=O.N.M|parent=boop|methods=|properties="
 __boop.autoAlias "O.N.M" 2>/dev/null
-$t.assert_eq "best: M collides, skipped" "${__boop_alias[M]}" "Other.M"
-$t.assert_eq "best: falls back to N.M" "${__boop_alias[N.M]:-NONE}" "O.N.M"
-unset '__boop_alias[M]'
+# M is taken, should fall back to N.M
+$t.assert_ok "best: falls back to N.M" test -n "${__boop_registry[N.M]+set}"
+$t.assert_eq "best: N.M alias entry" "${__boop_alias[N.M]:-NONE}" "O.N.M"
+unset '__boop_registry[Other.M]' '__boop_registry[M]' '__boop_registry[O.N.M]' '__boop_registry[N.M]'
+unset '__boop_alias[M]' '__boop_alias[N.M]'
 
 # Reset
 _AutoAlias=full
-
 
 # ============================================================================
 # Collision detection
@@ -147,22 +144,23 @@ _AutoAlias=full
 
 $t.section "Collision detection"
 
-# Simulate two classes with same short name
 _AutoAlias=full
-unset '__boop_alias[Shared]' '__boop_alias[X.Shared]' '__boop_alias[Y.Shared]' 2>/dev/null || true
+__boop_registry["X.Shared"]="|class=X.Shared|trueClass=X.Shared|parent=boop|methods=|properties="
 __boop.autoAlias "X.Shared" 2>/dev/null
-$t.assert_eq "first Shared alias created" "${__boop_alias[Shared]:-NONE}" "X.Shared"
+$t.assert_ok "first Shared alias created" test -n "${__boop_registry[Shared]+set}"
+__al_tc=""; __boop.parse "Shared" "trueClass" __al_tc
+$t.assert_eq "Shared trueClass = X.Shared" "$__al_tc" "X.Shared"
 
 # Second class with same short name -- should NOT overwrite
+__boop_registry["Y.Shared"]="|class=Y.Shared|trueClass=Y.Shared|parent=boop|methods=|properties="
 __boop.autoAlias "Y.Shared" 2>/dev/null
-$t.assert_eq "Shared not overwritten by collision" "${__boop_alias[Shared]}" "X.Shared"
-
-# But the FQN aliases are independent
-$t.assert_eq "X.Shared FQN alias" "${__boop_alias[X.Shared]:-NONE}" "X.Shared"
-$t.assert_eq "Y.Shared FQN alias" "${__boop_alias[Y.Shared]:-NONE}" "Y.Shared"
+__al_tc=""; __boop.parse "Shared" "trueClass" __al_tc
+$t.assert_eq "Shared not overwritten by collision" "$__al_tc" "X.Shared"
 
 # Clean up
-unset '__boop_alias[Shared]' '__boop_alias[X.Shared]' '__boop_alias[Y.Shared]'
+unset '__boop_registry[X.Shared]' '__boop_registry[Y.Shared]' '__boop_registry[Shared]'
+unset '__boop_alias[Shared]'
+_AutoAlias=full
 
 # ============================================================================
 # isa through aliases
@@ -170,20 +168,21 @@ unset '__boop_alias[Shared]' '__boop_alias[X.Shared]' '__boop_alias[Y.Shared]'
 
 $t.section "isa through aliases"
 
-_Import Box as GeomBox
+_Import Geometry::Box as GeomBox
 into=b Box length=1 width=1 height=1
 
-# isa with the alias name
 $t.assert_ok "isa via alias GeomBox" $b.isa GeomBox
+$t.assert_ok "isa via alias Box" $b.isa Box
+$t.assert_ok "isa via FQN Geometry.Box" $b.isa Geometry.Box
+$t.assert_ok "isa via root boop" $b.isa boop
 
-# isa with the original name
-$t.assert_ok "isa via original Box" $b.isa Box
-
-# isa with a different alias for the same class
-_Import Box as AnotherBox
+_Import Geometry::Box as AnotherBox
 $t.assert_ok "isa via second alias AnotherBox" $b.isa AnotherBox
 
-# isa with wrong class still fails
 $t.assert_fail "isa wrong class via alias" $b.isa Cube
+
+# isa no-arg returns the object's class (alias name used at creation)
+into=__al_cls $b.isa
+$t.assert_eq "isa no-arg returns class used at creation" "$__al_cls" "Box"
 
 $t.summary

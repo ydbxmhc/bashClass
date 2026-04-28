@@ -1124,7 +1124,10 @@ __boop.isa() {
   local __boop_isa_query="${1:-}"
 
   if [[ -z "$__boop_isa_query" ]]; then
-    boop.pass "$_Class" ${into:-}
+    # Return the object's class name from its descriptor (preserves alias name)
+    local __boop_isa_cls
+    __boop.parse "$_Self" "class" __boop_isa_cls
+    boop.pass "${__boop_isa_cls:-$_Class}" ${into:-}
     return 0
   fi
 
