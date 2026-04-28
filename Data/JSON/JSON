@@ -1,0 +1,361 @@
+#!/bin/bash
+
+# Data.JSON -- JSON parser and serializer for boop.
+#
+# Parses JSON strings into Collection.Map.Fast (flat compound-key store)
+# for O(1) point lookups. Optionally inflates into real Map/List objects
+# via parseDeep.
+#
+# Pure bash implementation -- no jq, no python, no external dependencies.
+# Handles: objects, arrays, strings, numbers, booleans, null.
+#
+# Usage:
+#   . boop Data::JSON
+#   into=doc Data.JSON.parse '{"name":"Alice","age":30}'
+#   into=name $doc.get "name"     # "Alice"
+#   into=age $doc.get "age"       # "30"
+#
+#   into=json Data.JSON.stringify "$doc"
+#   printf "%s\n" "$json"         # {"name":"Alice","age":"30"}
+
+# Load guard
+[[ -n "${__boop_registry[Data.JSON]+set}" ]] && return 2>/dev/null
+
+. boop Collection::Map::Fast
+
+# ============================================================================
+# JSON Tokenizer
+# ============================================================================
+
+# __Data_JSON_parse -- recursive descent parser.
+# Reads from __Data_JSON_src starting at __Data_JSON_pos.
+# Writes compound keys into the Fast object referenced by __Data_JSON_doc.
+#
+# All state is passed via globals (set by the public parse function):
+#   __Data_JSON_src   -- the JSON string
+#   __Data_JSON_pos   -- current parse position (integer)
+#   __Data_JSON_len   -- length of src
+#   __Data_JSON_doc   -- object ID of the target Fast instance
+#   __Data_JSON_prefix -- current compound key prefix
+
+# Skip whitespace
+__Data_JSON_skipWS() {
+  local __Data_JSON_skipWS_c
+  while (( __Data_JSON_pos < __Data_JSON_len )); do
+    __Data_JSON_skipWS_c="${__Data_JSON_src:__Data_JSON_pos:1}"
+    [[ "$__Data_JSON_skipWS_c" == " " || "$__Data_JSON_skipWS_c" == $'\t' || "$__Data_JSON_skipWS_c" == $'\n' || "$__Data_JSON_skipWS_c" == $'\r' ]] || break
+    (( __Data_JSON_pos++ ))
+  done
+}
+
+
+# Parse a JSON string value (after opening quote consumed)
+# Sets __Data_JSON_strResult (no subshell)
+__Data_JSON_parseString() {
+  __Data_JSON_strResult=""
+  local __Data_JSON_parseString_c
+  while (( __Data_JSON_pos < __Data_JSON_len )); do
+    __Data_JSON_parseString_c="${__Data_JSON_src:__Data_JSON_pos:1}"
+    (( __Data_JSON_pos++ ))
+    if [[ "$__Data_JSON_parseString_c" == '"' ]]; then
+      return
+    elif [[ "$__Data_JSON_parseString_c" == '\' ]]; then
+      __Data_JSON_parseString_c="${__Data_JSON_src:__Data_JSON_pos:1}"
+      (( __Data_JSON_pos++ ))
+      case "$__Data_JSON_parseString_c" in
+        '"'|'\'|'/') __Data_JSON_strResult+="$__Data_JSON_parseString_c" ;;
+        'n') __Data_JSON_strResult+=$'\n' ;;
+        't') __Data_JSON_strResult+=$'\t' ;;
+        'r') __Data_JSON_strResult+=$'\r' ;;
+        'b') __Data_JSON_strResult+=$'\b' ;;
+        'f') __Data_JSON_strResult+=$'\f' ;;
+        'u') (( __Data_JSON_pos += 4 )) ;;
+        *) __Data_JSON_strResult+="$__Data_JSON_parseString_c" ;;
+      esac
+    else
+      __Data_JSON_strResult+="$__Data_JSON_parseString_c"
+    fi
+  done
+  _Crash "Data.JSON: unterminated string"
+}
+
+# Parse a JSON number -- sets __Data_JSON_numResult (no subshell)
+__Data_JSON_parseNumber() {
+  local __Data_JSON_parseNumber_start=$__Data_JSON_pos __Data_JSON_parseNumber_c
+  while (( __Data_JSON_pos < __Data_JSON_len )); do
+    __Data_JSON_parseNumber_c="${__Data_JSON_src:__Data_JSON_pos:1}"
+    [[ "$__Data_JSON_parseNumber_c" =~ [0-9.eE+\-] ]] || break
+    (( __Data_JSON_pos++ ))
+  done
+  __Data_JSON_numResult="${__Data_JSON_src:__Data_JSON_parseNumber_start:__Data_JSON_pos - __Data_JSON_parseNumber_start}"
+}
+
+# Parse a JSON value at current position, store into doc with given prefix
+__Data_JSON_parseValue() {
+  local __Data_JSON_parseValue_prefix="$1"
+  __Data_JSON_skipWS
+  (( __Data_JSON_pos < __Data_JSON_len )) || _Crash "Data.JSON: unexpected end of input"
+
+  local __Data_JSON_parseValue_c="${__Data_JSON_src:__Data_JSON_pos:1}"
+
+  case "$__Data_JSON_parseValue_c" in
+    '"')
+      # String
+      (( __Data_JSON_pos++ ))
+      __Data_JSON_parseString
+      local -n __Data_JSON_parseValue_data="__boop_data_${__Data_JSON_doc}"
+      __Data_JSON_parseValue_data["$__Data_JSON_parseValue_prefix"]="$__Data_JSON_strResult"
+      ;;
+    '{')
+      # Object
+      (( __Data_JSON_pos++ ))
+      __Data_JSON_skipWS
+      if [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == "}" ]]; then
+        (( __Data_JSON_pos++ ))
+        return
+      fi
+      while :; do
+        __Data_JSON_skipWS
+        # Key
+        [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == '"' ]] || _Crash "Data.JSON: expected '\"' for object key"
+        (( __Data_JSON_pos++ ))
+        __Data_JSON_parseString
+        local __Data_JSON_parseValue_key="$__Data_JSON_strResult"
+        __Data_JSON_skipWS
+        # Colon
+        [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == ":" ]] || _Crash "Data.JSON: expected ':'"
+        (( __Data_JSON_pos++ ))
+        # Value
+        local __Data_JSON_parseValue_childPrefix
+        if [[ -n "$__Data_JSON_parseValue_prefix" ]]; then
+          __Data_JSON_parseValue_childPrefix="${__Data_JSON_parseValue_prefix}.${__Data_JSON_parseValue_key}"
+        else
+          __Data_JSON_parseValue_childPrefix="$__Data_JSON_parseValue_key"
+        fi
+        __Data_JSON_parseValue "$__Data_JSON_parseValue_childPrefix"
+        __Data_JSON_skipWS
+        # Comma or end
+        if [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == "," ]]; then
+          (( __Data_JSON_pos++ ))
+        elif [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == "}" ]]; then
+          (( __Data_JSON_pos++ ))
+          return
+        else
+          _Crash "Data.JSON: expected ',' or '}'"
+        fi
+      done
+      ;;
+    '[')
+      # Array
+      (( __Data_JSON_pos++ ))
+      __Data_JSON_skipWS
+      if [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == "]" ]]; then
+        (( __Data_JSON_pos++ ))
+        return
+      fi
+      local -i __Data_JSON_parseValue_idx=0
+      while :; do
+        local __Data_JSON_parseValue_childPrefix
+        if [[ -n "$__Data_JSON_parseValue_prefix" ]]; then
+          __Data_JSON_parseValue_childPrefix="${__Data_JSON_parseValue_prefix}.${__Data_JSON_parseValue_idx}"
+        else
+          __Data_JSON_parseValue_childPrefix="$__Data_JSON_parseValue_idx"
+        fi
+        __Data_JSON_parseValue "$__Data_JSON_parseValue_childPrefix"
+        (( __Data_JSON_parseValue_idx++ ))
+        __Data_JSON_skipWS
+        if [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == "," ]]; then
+          (( __Data_JSON_pos++ ))
+        elif [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == "]" ]]; then
+          (( __Data_JSON_pos++ ))
+          return
+        else
+          _Crash "Data.JSON: expected ',' or ']'"
+        fi
+      done
+      ;;
+    't')
+      # true
+      [[ "${__Data_JSON_src:__Data_JSON_pos:4}" == "true" ]] || _Crash "Data.JSON: invalid token"
+      (( __Data_JSON_pos += 4 ))
+      local -n __Data_JSON_parseValue_data="__boop_data_${__Data_JSON_doc}"
+      __Data_JSON_parseValue_data["$__Data_JSON_parseValue_prefix"]="true"
+      ;;
+    'f')
+      # false
+      [[ "${__Data_JSON_src:__Data_JSON_pos:5}" == "false" ]] || _Crash "Data.JSON: invalid token"
+      (( __Data_JSON_pos += 5 ))
+      local -n __Data_JSON_parseValue_data="__boop_data_${__Data_JSON_doc}"
+      __Data_JSON_parseValue_data["$__Data_JSON_parseValue_prefix"]="false"
+      ;;
+    'n')
+      # null
+      [[ "${__Data_JSON_src:__Data_JSON_pos:4}" == "null" ]] || _Crash "Data.JSON: invalid token"
+      (( __Data_JSON_pos += 4 ))
+      local -n __Data_JSON_parseValue_data="__boop_data_${__Data_JSON_doc}"
+      __Data_JSON_parseValue_data["$__Data_JSON_parseValue_prefix"]=""
+      ;;
+    '-'|[0-9])
+      # Number
+      __Data_JSON_parseNumber
+      local -n __Data_JSON_parseValue_data="__boop_data_${__Data_JSON_doc}"
+      __Data_JSON_parseValue_data["$__Data_JSON_parseValue_prefix"]="$__Data_JSON_numResult"
+      ;;
+    *)
+      _Crash "Data.JSON: unexpected character '$__Data_JSON_parseValue_c' at position $__Data_JSON_pos"
+      ;;
+  esac
+}
+
+
+# ============================================================================
+# Public API
+# ============================================================================
+
+# Data.JSON.parse -- parse a JSON string into a Collection.Map.Fast.
+#
+# Returns a Fast object with compound keys for O(1) point lookups.
+#
+# Usage:
+#   into=doc Data.JSON.parse '{"name":"Alice","scores":[10,20,30]}'
+#   into=name $doc.get "name"         # "Alice"
+#   into=s $doc.get "scores.1"        # "20"
+Data.JSON.parse() {
+  local __Data_JSON_parse_json="${1:-}"
+  [[ -n "$__Data_JSON_parse_json" ]] || _Crash "Data.JSON.parse: empty input"
+
+  # Create the target Fast object
+  into=__Data_JSON_doc Collection.Map.Fast.new
+
+  # Set up parser state
+  __Data_JSON_src="$__Data_JSON_parse_json"
+  __Data_JSON_pos=0
+  __Data_JSON_len=${#__Data_JSON_src}
+
+  # Parse
+  __Data_JSON_parseValue ""
+
+  boop.pass "$__Data_JSON_doc" "${into:-}"
+}
+
+# Data.JSON.stringify -- serialize a Collection.Map.Fast back to JSON.
+#
+# Reconstructs JSON from compound keys. Objects and arrays are inferred
+# from key structure (numeric keys = array, string keys = object).
+#
+# Usage:
+#   into=json Data.JSON.stringify "$doc"
+Data.JSON.stringify() {
+  local __Data_JSON_stringify_doc="$1"
+  local -n __Data_JSON_stringify_data="__boop_data_${__Data_JSON_stringify_doc}"
+
+  # Collect all top-level keys and build the JSON
+  local __Data_JSON_stringify_result
+  __Data_JSON_stringify_result=$(__Data_JSON_stringifyPrefix "" "$__Data_JSON_stringify_doc")
+  boop.pass "$__Data_JSON_stringify_result" "${into:-}"
+}
+
+# Internal: stringify all keys under a prefix
+__Data_JSON_stringifyPrefix() {
+  local __Data_JSON_sp_prefix="$1" __Data_JSON_sp_doc="$2"
+  local -n __Data_JSON_sp_data="__boop_data_${__Data_JSON_sp_doc}"
+  local __Data_JSON_sp_sep="."
+
+  # Collect direct children of this prefix
+  local -a __Data_JSON_sp_children=()
+  local -A __Data_JSON_sp_seen=()
+  local __Data_JSON_sp_k __Data_JSON_sp_child
+
+  for __Data_JSON_sp_k in "${!__Data_JSON_sp_data[@]}"; do
+    if [[ -z "$__Data_JSON_sp_prefix" ]]; then
+      # Top level: child is everything before first dot
+      __Data_JSON_sp_child="${__Data_JSON_sp_k%%.*}"
+    elif [[ "$__Data_JSON_sp_k" == "${__Data_JSON_sp_prefix}."* ]]; then
+      # Under prefix: child is next segment
+      local __Data_JSON_sp_rest="${__Data_JSON_sp_k#"${__Data_JSON_sp_prefix}".}"
+      __Data_JSON_sp_child="${__Data_JSON_sp_rest%%.*}"
+    else
+      continue
+    fi
+    if [[ -z "${__Data_JSON_sp_seen[$__Data_JSON_sp_child]+set}" ]]; then
+      __Data_JSON_sp_seen[$__Data_JSON_sp_child]=1
+      __Data_JSON_sp_children+=("$__Data_JSON_sp_child")
+    fi
+  done
+
+  (( ${#__Data_JSON_sp_children[@]} )) || { printf '{}'; return; }
+
+  # Determine if this is an array (all numeric children) or object
+  local __Data_JSON_sp_is_array=1
+  for __Data_JSON_sp_child in "${__Data_JSON_sp_children[@]}"; do
+    [[ "$__Data_JSON_sp_child" =~ ^[0-9]+$ ]] || { __Data_JSON_sp_is_array=0; break; }
+  done
+
+  if (( __Data_JSON_sp_is_array )); then
+    # Sort numerically
+    IFS=$'\n' read -d '' -ra __Data_JSON_sp_children < <(printf '%s\n' "${__Data_JSON_sp_children[@]}" | sort -n; printf '\0') || true
+    printf '['
+  else
+    printf '{'
+  fi
+
+  local -i __Data_JSON_sp_first=1
+  for __Data_JSON_sp_child in "${__Data_JSON_sp_children[@]}"; do
+    (( __Data_JSON_sp_first )) || printf ','
+    __Data_JSON_sp_first=0
+
+    local __Data_JSON_sp_fullkey
+    if [[ -n "$__Data_JSON_sp_prefix" ]]; then
+      __Data_JSON_sp_fullkey="${__Data_JSON_sp_prefix}.${__Data_JSON_sp_child}"
+    else
+      __Data_JSON_sp_fullkey="$__Data_JSON_sp_child"
+    fi
+
+    if (( ! __Data_JSON_sp_is_array )); then
+      printf '"%s":' "$__Data_JSON_sp_child"
+    fi
+
+    # Is this a leaf or a branch?
+    if [[ -n "${__Data_JSON_sp_data[$__Data_JSON_sp_fullkey]+set}" ]]; then
+      # Leaf -- check if it also has children (shouldn't, but handle it)
+      local __Data_JSON_sp_val="${__Data_JSON_sp_data[$__Data_JSON_sp_fullkey]}"
+      # Emit as JSON value
+      case "$__Data_JSON_sp_val" in
+        true|false) printf '%s' "$__Data_JSON_sp_val" ;;
+        '')         printf 'null' ;;
+        *)
+          # Number or string?
+          if [[ "$__Data_JSON_sp_val" =~ ^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$ ]]; then
+            printf '%s' "$__Data_JSON_sp_val"
+          else
+            # String -- escape quotes and backslashes
+            local __Data_JSON_sp_escaped="${__Data_JSON_sp_val//\\/\\\\}"
+            __Data_JSON_sp_escaped="${__Data_JSON_sp_escaped//\"/\\\"}"
+            __Data_JSON_sp_escaped="${__Data_JSON_sp_escaped//$'\n'/\\n}"
+            __Data_JSON_sp_escaped="${__Data_JSON_sp_escaped//$'\t'/\\t}"
+            printf '"%s"' "$__Data_JSON_sp_escaped"
+          fi
+          ;;
+      esac
+    else
+      # Branch -- recurse
+      __Data_JSON_stringifyPrefix "$__Data_JSON_sp_fullkey" "$__Data_JSON_sp_doc"
+    fi
+  done
+
+  if (( __Data_JSON_sp_is_array )); then
+    printf ']'
+  else
+    printf '}'
+  fi
+}
+
+# ============================================================================
+# Registration
+# ============================================================================
+
+# Data.JSON is a static-only class (no instances, just class methods)
+Data.JSON.new() { _Crash "Data.JSON: not instantiable -- use Data.JSON.parse"; }
+
+boopClass Data.JSON 'public:new,parse,stringify'
+
