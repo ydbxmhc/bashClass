@@ -1358,6 +1358,7 @@ __boop.backfillMethods() {
   local __boop_backfillMethods_self="$1" __boop_backfillMethods_class="$2" __boop_backfillMethods_force="${3:-}"
   local __boop_backfillMethods_current="$__boop_backfillMethods_class" __boop_backfillMethods_method __boop_backfillMethods_tmp
   local __boop_backfillMethods_tmpfile="${TMPDIR:-/tmp}/__boop_bf_$$"
+  local -A __boop_backfillMethods_written=()
   : > "$__boop_backfillMethods_tmpfile"
 
   # Walk inheritance chain, create direct wrappers for all methods
@@ -1367,11 +1368,13 @@ __boop.backfillMethods() {
     for __boop_backfillMethods_method in "${__boop_backfillMethods_methodList[@]}"; do
       [[ -n "$__boop_backfillMethods_method" ]] || continue
       [[ "$__boop_backfillMethods_force" != "force" ]] && declare -f "$__boop_backfillMethods_self.$__boop_backfillMethods_method" >/dev/null && continue
+      [[ -n "${__boop_backfillMethods_written[$__boop_backfillMethods_method]+set}" ]] && continue
       printf '%s.%s() { _Self=%q _Class=%q %s.%s "$@"; }\n' \
         "$__boop_backfillMethods_self" "$__boop_backfillMethods_method" \
         "$__boop_backfillMethods_self" "$__boop_backfillMethods_class" \
         "$__boop_backfillMethods_class" "$__boop_backfillMethods_method" \
         >> "$__boop_backfillMethods_tmpfile"
+      __boop_backfillMethods_written[$__boop_backfillMethods_method]=1
     done
     __boop.parse "$__boop_backfillMethods_current" "parent" __boop_backfillMethods_current
   done
@@ -1432,6 +1435,7 @@ __boop.registerClass() {
   local __boop_registerClass_current="$__boop_registerClass_class"
   local __boop_registerClass_method __boop_registerClass_methods __boop_registerClass_impl
   local __boop_registerClass_tmpfile="${TMPDIR:-/tmp}/__boop_rc_$$"
+  local -A __boop_registerClass_written=()
   : > "$__boop_registerClass_tmpfile"
 
   # Walk inheritance chain, create direct class-level wrappers
@@ -1442,6 +1446,8 @@ __boop.registerClass() {
       [[ -n "$__boop_registerClass_method" ]] || continue
       # Don't overwrite -- class author's definitions take priority
       declare -f "$__boop_registerClass_class.$__boop_registerClass_method" >/dev/null && continue
+      # Don't overwrite -- closer ancestor already written to temp file
+      [[ -n "${__boop_registerClass_written[$__boop_registerClass_method]+set}" ]] && continue
       # Resolve the impl via MRO
       __boop_registerClass_impl="${__boop_methodRegistry[$__boop_registerClass_current.$__boop_registerClass_method]:-}"
       if [[ -z "$__boop_registerClass_impl" ]]; then
@@ -1457,6 +1463,7 @@ __boop.registerClass() {
         "$__boop_registerClass_class" "$__boop_registerClass_method" \
         "$__boop_registerClass_class" "$__boop_registerClass_impl" \
         >> "$__boop_registerClass_tmpfile"
+      __boop_registerClass_written[$__boop_registerClass_method]=1
     done
     __boop.parse "$__boop_registerClass_current" "parent" __boop_registerClass_current
   done
