@@ -613,40 +613,35 @@ __boop.createAlias() {
   __boop_ca_desc="${__boop_ca_desc/"|class=$__boop_ca_fqn"/"|class=$__boop_ca_alias"}"
   __boop_registry["$__boop_ca_alias"]="$__boop_ca_desc"
 
-  # Clone method registry entries from FQN to alias
-  local __boop_ca_key __boop_ca_method __boop_ca_impl
-  for __boop_ca_key in "${!__boop_methodRegistry[@]}"; do
-    [[ "$__boop_ca_key" == "$__boop_ca_fqn."* ]] || continue
-    __boop_ca_method="${__boop_ca_key#"$__boop_ca_fqn".}"
-    __boop_ca_impl="${__boop_methodRegistry[$__boop_ca_key]}"
-    __boop_methodRegistry["$__boop_ca_alias.$__boop_ca_method"]="$__boop_ca_impl"
-    # Create wrapper function
-    eval "$__boop_ca_alias.$__boop_ca_method() { _Self=\"\$_Self\" _Class='$__boop_ca_alias' $__boop_ca_impl \"\$@\"; }"
-  done
-
-  # Also create wrappers for inherited methods (walk parent chain)
-  local __boop_ca_parent
-  __boop.parse "$__boop_ca_fqn" "parent" __boop_ca_parent
-  while [[ -n "$__boop_ca_parent" ]]; do
-    for __boop_ca_key in "${!__boop_methodRegistry[@]}"; do
-      [[ "$__boop_ca_key" == "$__boop_ca_parent."* ]] || continue
-      __boop_ca_method="${__boop_ca_key#"$__boop_ca_parent".}"
-      # Skip if already defined (own methods take priority)
+  # Walk the inheritance chain and clone method entries + create wrappers.
+  # Uses the methods= field from each class descriptor (O(1) per method)
+  # instead of scanning the entire method registry.
+  # All wrapper functions are collected into one string and eval'd once.
+  local __boop_ca_current="$__boop_ca_fqn"
+  local __boop_ca_methods __boop_ca_method __boop_ca_impl
+  local __boop_ca_bulk=""
+  while [[ -n "$__boop_ca_current" ]]; do
+    __boop.parse "$__boop_ca_current" "methods" __boop_ca_methods
+    IFS=',' read -ra __boop_ca_methodList <<< "${__boop_ca_methods:-}"
+    for __boop_ca_method in "${__boop_ca_methodList[@]}"; do
+      [[ -n "$__boop_ca_method" ]] || continue
       [[ -n "${__boop_methodRegistry[$__boop_ca_alias.$__boop_ca_method]+set}" ]] && continue
-      __boop_ca_impl="${__boop_methodRegistry[$__boop_ca_key]}"
+      __boop_ca_impl="${__boop_methodRegistry[$__boop_ca_current.$__boop_ca_method]:-}"
+      [[ -n "$__boop_ca_impl" ]] || continue
       __boop_methodRegistry["$__boop_ca_alias.$__boop_ca_method"]="$__boop_ca_impl"
-      declare -f "$__boop_ca_alias.$__boop_ca_method" >/dev/null && continue
-      eval "$__boop_ca_alias.$__boop_ca_method() { _Self=\"\$_Self\" _Class='$__boop_ca_alias' $__boop_ca_impl \"\$@\"; }"
+      __boop_ca_bulk+="$__boop_ca_alias.$__boop_ca_method() { _Self=\"\$_Self\" _Class='$__boop_ca_alias' $__boop_ca_impl \"\$@\"; }; "
     done
-    __boop.parse "$__boop_ca_parent" "parent" __boop_ca_parent
+    __boop.parse "$__boop_ca_current" "parent" __boop_ca_current
   done
 
   # Constructor shorthand
   if declare -f "${__boop_ca_fqn}.new" >/dev/null; then
-    eval "$__boop_ca_alias() { _Class='$__boop_ca_alias' ${__boop_ca_fqn}.new \"\$@\"; }"
+    __boop_ca_bulk+="$__boop_ca_alias() { _Class='$__boop_ca_alias' ${__boop_ca_fqn}.new \"\$@\"; }"
   else
-    eval "$__boop_ca_alias() { _Class='$__boop_ca_alias' __boop.new \"\$@\"; }"
+    __boop_ca_bulk+="$__boop_ca_alias() { _Class='$__boop_ca_alias' __boop.new \"\$@\"; }"
   fi
+
+  eval "$__boop_ca_bulk"
 }
 
 # _Import -- load a class and create an alias.
@@ -1350,8 +1345,9 @@ __boop.new() {
   # Register object
   __boop_registry[$_Self]="$__boop_new_descriptor"
 
-  # Generate direct wrappers for all methods (walk inheritance chain)
-  __boop.backfillMethods "$_Self" "$_Class"
+  # Generate direct wrappers using the trueClass (FQN) so wrappers
+  # always call the real implementing functions, not alias stubs
+  __boop.backfillMethods "$_Self" "$__boop_new_trueClass"
 
   boop.pass "$_Self" ${into:-}
 }
