@@ -1385,6 +1385,8 @@ __boop.backfillMethods() {
   IFS=',' read -ra __boop_backfillMethods_propList <<< "$__boop_backfillMethods_props"
   for __boop_backfillMethods_prop in "${__boop_backfillMethods_propList[@]}"; do
     [[ -n "$__boop_backfillMethods_prop" ]] || continue
+    # Skip if a method wrapper was already written for this name
+    [[ -n "${__boop_backfillMethods_written[$__boop_backfillMethods_prop]+set}" ]] && continue
     [[ "$__boop_backfillMethods_force" != "force" ]] && declare -f "$__boop_backfillMethods_self.$__boop_backfillMethods_prop" >/dev/null && continue
     printf '%s.%s() { if (($#)); then _Self=%q _Class=%q __boop.set %q "$1"; else _Self=%q _Class=%q __boop.get %q; fi; }\n' \
       "$__boop_backfillMethods_self" "$__boop_backfillMethods_prop" \
