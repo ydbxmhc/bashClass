@@ -44,6 +44,7 @@ BlackjackHand.new() {
     esac
   done
   into=__BH_new_self List.new faceUp="$__BH_new_faceUp" deck="$__BH_new_deck"
+  _Bless "$__BH_new_self" BlackjackHand
   boop.pass "$__BH_new_self" ${into:-}
 }
 
