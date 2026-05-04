@@ -242,24 +242,33 @@ Data.JSON.parse() {
 #
 # Reconstructs JSON from compound keys. Objects and arrays are inferred
 # from key structure (numeric keys = array, string keys = object).
+# Uses shared result string with recursion (no subshells).
+# Depth guard: spawns subshell at depth > 50 to reset stack.
 #
 # Usage:
 #   into=json Data.JSON.stringify "$doc"
 Data.JSON.stringify() {
   local __Data_JSON_stringify_doc="$1"
-  local -n __Data_JSON_stringify_data="__boop_data_${__Data_JSON_stringify_doc}"
-
-  # Collect all top-level keys and build the JSON
-  local __Data_JSON_stringify_result
-  __Data_JSON_stringify_result=$(__Data_JSON_stringifyPrefix "" "$__Data_JSON_stringify_doc")
-  boop.pass "$__Data_JSON_stringify_result" "${into:-}"
+  __Data_JSON_result=""
+  __Data_JSON_stringifyPrefix "" "$__Data_JSON_stringify_doc" 0
+  boop.pass "$__Data_JSON_result" "${into:-}"
 }
 
-# Internal: stringify all keys under a prefix
+# Internal: stringify all keys under a prefix, appending to __Data_JSON_result
 __Data_JSON_stringifyPrefix() {
   local __Data_JSON_sp_prefix="$1" __Data_JSON_sp_doc="$2"
+  local -i __Data_JSON_sp_depth="${3:-0}"
   local -n __Data_JSON_sp_data="__boop_data_${__Data_JSON_sp_doc}"
-  local __Data_JSON_sp_sep="."
+
+  # Depth guard -- subshell fallback for pathological nesting
+  if (( __Data_JSON_sp_depth > 50 )); then
+    __Data_JSON_result+="$(
+      __Data_JSON_result=""
+      __Data_JSON_stringifyPrefix "$__Data_JSON_sp_prefix" "$__Data_JSON_sp_doc" 0
+      printf '%s' "$__Data_JSON_result"
+    )"
+    return
+  fi
 
   # Collect direct children of this prefix
   local -a __Data_JSON_sp_children=()
@@ -268,10 +277,8 @@ __Data_JSON_stringifyPrefix() {
 
   for __Data_JSON_sp_k in "${!__Data_JSON_sp_data[@]}"; do
     if [[ -z "$__Data_JSON_sp_prefix" ]]; then
-      # Top level: child is everything before first dot
       __Data_JSON_sp_child="${__Data_JSON_sp_k%%.*}"
     elif [[ "$__Data_JSON_sp_k" == "${__Data_JSON_sp_prefix}."* ]]; then
-      # Under prefix: child is next segment
       local __Data_JSON_sp_rest="${__Data_JSON_sp_k#"${__Data_JSON_sp_prefix}".}"
       __Data_JSON_sp_child="${__Data_JSON_sp_rest%%.*}"
     else
@@ -283,25 +290,24 @@ __Data_JSON_stringifyPrefix() {
     fi
   done
 
-  (( ${#__Data_JSON_sp_children[@]} )) || { printf '{}'; return; }
+  (( ${#__Data_JSON_sp_children[@]} )) || { __Data_JSON_result+='{}'; return; }
 
   # Determine if this is an array (all numeric children) or object
-  local __Data_JSON_sp_is_array=1
+  local -i __Data_JSON_sp_is_array=1
   for __Data_JSON_sp_child in "${__Data_JSON_sp_children[@]}"; do
     [[ "$__Data_JSON_sp_child" =~ ^[0-9]+$ ]] || { __Data_JSON_sp_is_array=0; break; }
   done
 
   if (( __Data_JSON_sp_is_array )); then
-    # Sort numerically
     IFS=$'\n' read -d '' -ra __Data_JSON_sp_children < <(printf '%s\n' "${__Data_JSON_sp_children[@]}" | sort -n; printf '\0') || true
-    printf '['
+    __Data_JSON_result+='['
   else
-    printf '{'
+    __Data_JSON_result+='{'
   fi
 
   local -i __Data_JSON_sp_first=1
   for __Data_JSON_sp_child in "${__Data_JSON_sp_children[@]}"; do
-    (( __Data_JSON_sp_first )) || printf ','
+    (( __Data_JSON_sp_first )) || __Data_JSON_result+=','
     __Data_JSON_sp_first=0
 
     local __Data_JSON_sp_fullkey
@@ -311,43 +317,33 @@ __Data_JSON_stringifyPrefix() {
       __Data_JSON_sp_fullkey="$__Data_JSON_sp_child"
     fi
 
-    if (( ! __Data_JSON_sp_is_array )); then
-      printf '"%s":' "$__Data_JSON_sp_child"
-    fi
+    (( __Data_JSON_sp_is_array )) || __Data_JSON_result+="\"${__Data_JSON_sp_child}\":"
 
-    # Is this a leaf or a branch?
+    # Leaf or branch?
     if [[ -n "${__Data_JSON_sp_data[$__Data_JSON_sp_fullkey]+set}" ]]; then
-      # Leaf -- check if it also has children (shouldn't, but handle it)
       local __Data_JSON_sp_val="${__Data_JSON_sp_data[$__Data_JSON_sp_fullkey]}"
-      # Emit as JSON value
       case "$__Data_JSON_sp_val" in
-        true|false) printf '%s' "$__Data_JSON_sp_val" ;;
-        '')         printf 'null' ;;
+        true|false) __Data_JSON_result+="$__Data_JSON_sp_val" ;;
+        '')         __Data_JSON_result+='null' ;;
         *)
-          # Number or string?
           if [[ "$__Data_JSON_sp_val" =~ ^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$ ]]; then
-            printf '%s' "$__Data_JSON_sp_val"
+            __Data_JSON_result+="$__Data_JSON_sp_val"
           else
-            # String -- escape quotes and backslashes
             local __Data_JSON_sp_escaped="${__Data_JSON_sp_val//\\/\\\\}"
             __Data_JSON_sp_escaped="${__Data_JSON_sp_escaped//\"/\\\"}"
             __Data_JSON_sp_escaped="${__Data_JSON_sp_escaped//$'\n'/\\n}"
             __Data_JSON_sp_escaped="${__Data_JSON_sp_escaped//$'\t'/\\t}"
-            printf '"%s"' "$__Data_JSON_sp_escaped"
+            __Data_JSON_result+="\"${__Data_JSON_sp_escaped}\""
           fi
           ;;
       esac
     else
       # Branch -- recurse
-      __Data_JSON_stringifyPrefix "$__Data_JSON_sp_fullkey" "$__Data_JSON_sp_doc"
+      __Data_JSON_stringifyPrefix "$__Data_JSON_sp_fullkey" "$__Data_JSON_sp_doc" $(( __Data_JSON_sp_depth + 1 ))
     fi
   done
 
-  if (( __Data_JSON_sp_is_array )); then
-    printf ']'
-  else
-    printf '}'
-  fi
+  (( __Data_JSON_sp_is_array )) && __Data_JSON_result+=']' || __Data_JSON_result+='}'
 }
 
 # ============================================================================
