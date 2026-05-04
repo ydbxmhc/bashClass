@@ -1,0 +1,193 @@
+#!/bin/bash
+set -uo pipefail
+
+# Data.JSON tests -- parse and stringify
+#
+# Tests: basic types, nested objects, arrays, escapes, round-trips,
+# edge cases, error handling.
+
+. boop TestSuite Data::JSON
+
+into=t TestSuite name="JSON Tests"
+
+# ============================================================================
+# Parse: basic types
+# ============================================================================
+
+$t.section "Parse: basic types"
+
+into=d Data.JSON.parse '{"str":"hello","num":42,"neg":-3.14,"bool_t":true,"bool_f":false,"nil":null}'
+into=v $d.get "str";    $t.assert_eq "string" "$v" "hello"
+into=v $d.get "num";    $t.assert_eq "integer" "$v" "42"
+into=v $d.get "neg";    $t.assert_eq "negative float" "$v" "-3.14"
+into=v $d.get "bool_t"; $t.assert_eq "true" "$v" "true"
+into=v $d.get "bool_f"; $t.assert_eq "false" "$v" "false"
+into=v $d.get "nil";    $t.assert_eq "null" "$v" ""
+
+# ============================================================================
+# Parse: nested objects
+# ============================================================================
+
+$t.section "Parse: nested objects"
+
+into=d Data.JSON.parse '{"user":{"name":"Alice","address":{"city":"Portland","zip":"97201"}}}'
+into=v $d.get "user.name";         $t.assert_eq "nested name" "$v" "Alice"
+into=v $d.get "user.address.city"; $t.assert_eq "deep nested city" "$v" "Portland"
+into=v $d.get "user.address.zip";  $t.assert_eq "deep nested zip" "$v" "97201"
+
+# ============================================================================
+# Parse: arrays
+# ============================================================================
+
+$t.section "Parse: arrays"
+
+into=d Data.JSON.parse '{"items":["apple","banana","cherry"]}'
+into=v $d.get "items.0"; $t.assert_eq "array[0]" "$v" "apple"
+into=v $d.get "items.1"; $t.assert_eq "array[1]" "$v" "banana"
+into=v $d.get "items.2"; $t.assert_eq "array[2]" "$v" "cherry"
+
+# Nested arrays
+into=d Data.JSON.parse '{"matrix":[[1,2],[3,4]]}'
+into=v $d.get "matrix.0.0"; $t.assert_eq "matrix[0][0]" "$v" "1"
+into=v $d.get "matrix.0.1"; $t.assert_eq "matrix[0][1]" "$v" "2"
+into=v $d.get "matrix.1.0"; $t.assert_eq "matrix[1][0]" "$v" "3"
+into=v $d.get "matrix.1.1"; $t.assert_eq "matrix[1][1]" "$v" "4"
+
+# Array of objects
+into=d Data.JSON.parse '{"users":[{"name":"Alice","age":30},{"name":"Bob","age":25}]}'
+into=v $d.get "users.0.name"; $t.assert_eq "users[0].name" "$v" "Alice"
+into=v $d.get "users.0.age";  $t.assert_eq "users[0].age" "$v" "30"
+into=v $d.get "users.1.name"; $t.assert_eq "users[1].name" "$v" "Bob"
+into=v $d.get "users.1.age";  $t.assert_eq "users[1].age" "$v" "25"
+
+
+# ============================================================================
+# Parse: string escapes
+# ============================================================================
+
+$t.section "Parse: string escapes"
+
+into=d Data.JSON.parse '{"esc":"line1\nline2","tab":"a\tb"}'
+into=v $d.get "esc";   $t.assert_eq "newline escape" "$v" "line1
+line2"
+into=v $d.get "tab";   $t.assert_eq "tab escape" "$v" "a	b"
+
+# Backslash
+into=d Data.JSON.parse '{"bs":"back\\slash"}'
+into=v $d.get "bs"; $t.assert_eq "backslash escape" "$v" 'back\slash'
+
+# ============================================================================
+# Parse: empty structures
+# ============================================================================
+
+$t.section "Parse: empty structures"
+
+into=d Data.JSON.parse '{"empty_obj":{},"empty_arr":[]}'
+# Empty object/array produce no keys -- get returns empty
+into=v $d.get "empty_obj"; $t.assert_eq "empty object" "$v" ""
+into=v $d.get "empty_arr"; $t.assert_eq "empty array" "$v" ""
+
+# Top-level empty object
+into=d Data.JSON.parse '{}'
+into=n $d.length
+$t.assert_eq "empty top-level object" "$n" "0"
+
+# ============================================================================
+# Parse: whitespace handling
+# ============================================================================
+
+$t.section "Parse: whitespace"
+
+into=d Data.JSON.parse '  {  "key"  :  "value"  ,  "n"  :  42  }  '
+into=v $d.get "key"; $t.assert_eq "whitespace around tokens" "$v" "value"
+into=v $d.get "n";   $t.assert_eq "whitespace around number" "$v" "42"
+
+# ============================================================================
+# Parse: error handling
+# ============================================================================
+
+$t.section "Parse: errors"
+
+$t.assert_fail "empty input crashes" bash << 'EOF'
+. boop Data::JSON
+Data.JSON.parse ""
+EOF
+
+$t.assert_fail "unterminated string crashes" bash << 'EOF'
+. boop Data::JSON
+Data.JSON.parse '{"key":"unterminated'
+EOF
+
+$t.assert_fail "missing colon crashes" bash << 'EOF'
+. boop Data::JSON
+Data.JSON.parse '{"key" "value"}'
+EOF
+
+$t.assert_fail "invalid token crashes" bash << 'EOF'
+. boop Data::JSON
+Data.JSON.parse '{"key":undefined}'
+EOF
+
+# ============================================================================
+# Stringify: basic round-trip
+# ============================================================================
+
+$t.section "Stringify: round-trip"
+
+into=d Data.JSON.parse '{"name":"Alice","age":30}'
+into=j Data.JSON.stringify "$d"
+# Parse the result back and verify
+into=d2 Data.JSON.parse "$j"
+into=v $d2.get "name"; $t.assert_eq "round-trip name" "$v" "Alice"
+into=v $d2.get "age";  $t.assert_eq "round-trip age" "$v" "30"
+
+# Nested round-trip
+into=d Data.JSON.parse '{"a":{"b":{"c":"deep"}}}'
+into=j Data.JSON.stringify "$d"
+into=d2 Data.JSON.parse "$j"
+into=v $d2.get "a.b.c"; $t.assert_eq "nested round-trip" "$v" "deep"
+
+# Array round-trip
+into=d Data.JSON.parse '{"items":[1,2,3]}'
+into=j Data.JSON.stringify "$d"
+into=d2 Data.JSON.parse "$j"
+into=v $d2.get "items.0"; $t.assert_eq "array round-trip[0]" "$v" "1"
+into=v $d2.get "items.2"; $t.assert_eq "array round-trip[2]" "$v" "3"
+
+# ============================================================================
+# Stringify: type preservation
+# ============================================================================
+
+$t.section "Stringify: types"
+
+into=d Data.JSON.parse '{"n":42,"f":3.14,"t":true,"f2":false,"nil":null}'
+into=j Data.JSON.stringify "$d"
+$t.assert_contains "number unquoted" "$j" ":42"
+$t.assert_contains "float unquoted" "$j" ":3.14"
+$t.assert_contains "true unquoted" "$j" ":true"
+$t.assert_contains "false unquoted" "$j" ":false"
+$t.assert_contains "null present" "$j" ":null"
+
+# Strings get quoted
+into=d Data.JSON.parse '{"s":"hello"}'
+into=j Data.JSON.stringify "$d"
+$t.assert_contains "string quoted" "$j" '"hello"'
+
+# ============================================================================
+# Stringify: escape handling
+# ============================================================================
+
+$t.section "Stringify: escapes"
+
+into=d Collection.Map.Fast.new
+$d.set "nl" "line1
+line2"
+$d.set "tab" "a	b"
+into=j Data.JSON.stringify "$d"
+# Verify the JSON contains escaped sequences
+__json_has_nl=0; [[ "$j" == *'line1\nline2'* ]] && __json_has_nl=1
+$t.assert_eq "newline escaped in output" "$__json_has_nl" "1"
+__json_has_tab=0; [[ "$j" == *'a\tb'* ]] && __json_has_tab=1
+$t.assert_eq "tab escaped in output" "$__json_has_tab" "1"
+
+$t.summary

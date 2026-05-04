@@ -93,7 +93,11 @@ Collection.Map.Fast.delete() {
 Collection.Map.Fast.length() {
   local -I _Self _Class
   local -n __Collection_Map_Fast_length_data="__boop_data_${_Self}"
-  boop.pass "${#__Collection_Map_Fast_length_data[@]}" "${into:-}"
+  if [[ -n "${!__Collection_Map_Fast_length_data[@]+set}" ]]; then
+    boop.pass "${#__Collection_Map_Fast_length_data[@]}" "${into:-}"
+  else
+    boop.pass "0" "${into:-}"
+  fi
 }
 
 # Clear all keys.
