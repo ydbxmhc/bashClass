@@ -486,6 +486,55 @@ _LogLevel() { __boop.setLogLevel "$@"; }
 # _FatalLevel: convenience wrapper for __boop.setFatalLevel
 _FatalLevel() { __boop.setFatalLevel "$@"; }
 
+# ---------------------------------------------------------------------------
+# Identity and Static Storage — Tier 2 helpers
+# ---------------------------------------------------------------------------
+
+# _Me — returns the current identity: object ID if in an object context,
+# class name otherwise, defaulting to "boop" if neither is set.
+_Me() { boop.pass "${_Self:-${_Class:-boop}}" ${into:-}; }
+
+# _Static — per-method persistent storage in __boop_static.
+#
+# Key is automatically prefixed with identity + calling function name,
+# so two methods on the same object can each have their own "x" without
+# collision.
+#
+# Usage:
+#   _Static x=1              # set: key = "_abc123.Math.arctan.x"
+#   into=val _Static x       # get: returns value or empty
+#   _Static count=0          # initialize a counter
+#   _Static "count=$(( $(_Static count) + 1 ))"  # increment (subshell for read)
+_Static() {
+  local __Static_me="${_Self:-${_Class:-boop}}"
+  local __Static_key="${__Static_me}.${FUNCNAME[1]}.${1%%=*}"
+  if [[ "$1" == *=* ]]; then
+    __boop_static["$__Static_key"]="${1#*=}"
+  else
+    boop.pass "${__boop_static[$__Static_key]:-}" ${into:-}
+  fi
+}
+
+# _Property — per-object/class persistent storage in __boop_static.
+#
+# Same as _Static but WITHOUT the function name in the key. Shared
+# across all methods on the same object/class. Use for object-level
+# state that isn't in the descriptor (lightweight alternative to
+# $obj.set / $obj.get).
+#
+# Usage:
+#   _Property initialized=1   # set: key = "_abc123.initialized"
+#   into=val _Property initialized  # get
+_Property() {
+  local __Property_me="${_Self:-${_Class:-boop}}"
+  local __Property_key="${__Property_me}.${1%%=*}"
+  if [[ "$1" == *=* ]]; then
+    __boop_static["$__Property_key"]="${1#*=}"
+  else
+    boop.pass "${__boop_static[$__Property_key]:-}" ${into:-}
+  fi
+}
+
 # ============================================================================
 # ALIAS RESOLUTION
 # ============================================================================
