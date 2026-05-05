@@ -1059,30 +1059,16 @@ Both deferred until JSON is proven and Map::Fast is stable.
 
 ---
 
-## _Static Helper
+## _Static Helper ✓ DONE
 
-Tier 2 convenience wrapper for `__boop_static`. Auto-generates
-compound keys from the calling context (`_Class`, `_Self`, function
-name) so callers don't have to build key strings manually.
+Implemented as three Tier 2 helpers:
 
-```bash
-# Current (manual):
-__boop_static["Math.arctan.cache_$n"]="$result"
-local cached="${__boop_static[Math.arctan.cache_$n]:-}"
+- `_Me` -- returns object ID (`_Self`) or class name, defaulting to `boop`
+- `_Static k=v` / `_Static k` -- per-method storage, key includes function name
+- `_Property k=v` / `_Property k` -- per-object/class storage, no function name
 
-# Proposed:
-_Static "cache_$n" "$result"           # set
-_Static "cache_$n"                     # get (into _Out or via into=)
-```
-
-`_Static k=v` sets, `_Static k` gets. Key is automatically prefixed
-with `_Class.FUNCNAME` (or `_Self.FUNCNAME` for per-object statics).
-
-Could also support `_Static --clear` to wipe all keys for the
-current function, and `_Static --list` to enumerate them.
-
-Low effort, high convenience. Eliminates the manual compound key
-construction that's currently scattered through Math and other classes.
+All use `__boop_static` as the backing store. Keys are auto-generated
+compound paths ensuring isolation between methods and objects.
 
 ---
 
