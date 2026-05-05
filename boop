@@ -608,7 +608,7 @@ __boop.createAlias() {
   done
 
   # Constructor shorthand
-  if declare -f "${__boop_ca_fqn}.new" >/dev/null; then
+  if declare -F "${__boop_ca_fqn}.new" >/dev/null; then
     printf '%s() { _Class=%q %s.new "$@"; }\n' \
       "$__boop_ca_alias" "$__boop_ca_alias" "$__boop_ca_fqn" \
       >> "$__boop_ca_tmpfile"
@@ -908,7 +908,7 @@ __boop.registerMethod() {
   __boop.validate "$__boop_registerMethod_method"
   type=function __boop.validate "$__boop_registerMethod_impl"
 
-  declare -f "$__boop_registerMethod_impl" >/dev/null || _Crash "Function '$__boop_registerMethod_impl' does not exist"
+  declare -F "$__boop_registerMethod_impl" >/dev/null || _Crash "Function '$__boop_registerMethod_impl' does not exist"
 
   __boop_methodRegistry["$__boop_registerMethod_class.$__boop_registerMethod_method"]="$__boop_registerMethod_impl"
 }
@@ -1367,7 +1367,7 @@ __boop.backfillMethods() {
     IFS=',' read -ra __boop_backfillMethods_methodList <<< "$__boop_backfillMethods_tmp"
     for __boop_backfillMethods_method in "${__boop_backfillMethods_methodList[@]}"; do
       [[ -n "$__boop_backfillMethods_method" ]] || continue
-      [[ "$__boop_backfillMethods_force" != "force" ]] && declare -f "$__boop_backfillMethods_self.$__boop_backfillMethods_method" >/dev/null && continue
+      [[ "$__boop_backfillMethods_force" != "force" ]] && declare -F "$__boop_backfillMethods_self.$__boop_backfillMethods_method" >/dev/null && continue
       [[ -n "${__boop_backfillMethods_written[$__boop_backfillMethods_method]+set}" ]] && continue
       printf '%s.%s() { _Self=%q _Class=%q %s.%s "$@"; }\n' \
         "$__boop_backfillMethods_self" "$__boop_backfillMethods_method" \
@@ -1387,7 +1387,7 @@ __boop.backfillMethods() {
     [[ -n "$__boop_backfillMethods_prop" ]] || continue
     # Skip if a method wrapper was already written for this name
     [[ -n "${__boop_backfillMethods_written[$__boop_backfillMethods_prop]+set}" ]] && continue
-    [[ "$__boop_backfillMethods_force" != "force" ]] && declare -f "$__boop_backfillMethods_self.$__boop_backfillMethods_prop" >/dev/null && continue
+    [[ "$__boop_backfillMethods_force" != "force" ]] && declare -F "$__boop_backfillMethods_self.$__boop_backfillMethods_prop" >/dev/null && continue
     printf '%s.%s() { if (($#)); then _Self=%q _Class=%q __boop.set %q "$1"; else _Self=%q _Class=%q __boop.get %q; fi; }\n' \
       "$__boop_backfillMethods_self" "$__boop_backfillMethods_prop" \
       "$__boop_backfillMethods_self" "$__boop_backfillMethods_class" "$__boop_backfillMethods_prop" \
@@ -1447,7 +1447,7 @@ __boop.registerClass() {
     for __boop_registerClass_method in "${__boop_registerClass_methodList[@]}"; do
       [[ -n "$__boop_registerClass_method" ]] || continue
       # Don't overwrite -- class author's definitions take priority
-      declare -f "$__boop_registerClass_class.$__boop_registerClass_method" >/dev/null && continue
+      declare -F "$__boop_registerClass_class.$__boop_registerClass_method" >/dev/null && continue
       # Don't overwrite -- closer ancestor already written to temp file
       [[ -n "${__boop_registerClass_written[$__boop_registerClass_method]+set}" ]] && continue
       # Resolve the impl via MRO
@@ -1471,7 +1471,7 @@ __boop.registerClass() {
   done
 
   # Constructor shorthand
-  if declare -f "${__boop_registerClass_class}.new" >/dev/null; then
+  if declare -F "${__boop_registerClass_class}.new" >/dev/null; then
     printf '%s() { _Class=%q %s.new "$@"; }\n' \
       "$__boop_registerClass_class" "$__boop_registerClass_class" "$__boop_registerClass_class" \
       >> "$__boop_registerClass_tmpfile"
