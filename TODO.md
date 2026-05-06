@@ -1597,3 +1597,17 @@ Specific points to address in the next README edit pass:
    property access. JSON stringify uses `sort -n` (subshell) for array
    key ordering. Note this or fix it.
 
+9. **"Properties are typed as strings"** -- meaningless in bash where
+   everything is a string. The sentence adds nothing and confuses
+   readers from typed languages who might think there's a type system.
+   Either remove it or replace with something useful like "All values
+   are stored as strings in the descriptor. Numeric operations require
+   explicit arithmetic context." Needs a reference to the descriptor
+   storage docs in docs/boop.md.
+
+10. **General: every non-obvious claim needs a reference** -- statements
+    about behavior, limitations, or design choices should link to the
+    relevant section in docs/ where the full explanation lives. If no
+    such section exists, that's a flag to write one. The README is a
+    tour guide, not the encyclopedia.
+
