@@ -34,7 +34,7 @@
 # ============================================================================
 
 Collection.Map.Fast.new() {
-  local -I _Class; : "${_Class:=Collection.Map.Fast}"
+  local _Class="${_Class:-Collection.Map.Fast}"
   local __Collection_Map_Fast_new_self __Collection_Map_Fast_new_sep="."
   local __Collection_Map_Fast_new_arg
   for __Collection_Map_Fast_new_arg in "$@"; do
@@ -55,7 +55,7 @@ Collection.Map.Fast.new() {
 #
 # Usage: into=val $doc.get "users.0.name"
 Collection.Map.Fast.get() {
-  local -I _Self _Class
+  local _Self="${_Self:-}" _Class="${_Class:-Collection.Map.Fast}"
   local -n __Collection_Map_Fast_get_data="__boop_data_${_Self}"
   boop.pass "${__Collection_Map_Fast_get_data[${1:-}]:-}" "${into:-}"
 }
@@ -64,7 +64,7 @@ Collection.Map.Fast.get() {
 #
 # Usage: $doc.set "users.0.name" "Alice"
 Collection.Map.Fast.set() {
-  local -I _Self _Class
+  local _Self="${_Self:-}" _Class="${_Class:-Collection.Map.Fast}"
   local -n __Collection_Map_Fast_set_data="__boop_data_${_Self}"
   __Collection_Map_Fast_set_data["${1:-}"]="${2:-}"
 }
@@ -73,7 +73,7 @@ Collection.Map.Fast.set() {
 #
 # Usage: $doc.has "server.port" && echo "yes"
 Collection.Map.Fast.has() {
-  local -I _Self _Class
+  local _Self="${_Self:-}" _Class="${_Class:-Collection.Map.Fast}"
   local -n __Collection_Map_Fast_has_data="__boop_data_${_Self}"
   [[ -n "${__Collection_Map_Fast_has_data[${1:-}]+set}" ]]
 }
@@ -82,7 +82,7 @@ Collection.Map.Fast.has() {
 #
 # Usage: $doc.delete "users.0.name"
 Collection.Map.Fast.delete() {
-  local -I _Self _Class
+  local _Self="${_Self:-}" _Class="${_Class:-Collection.Map.Fast}"
   local -n __Collection_Map_Fast_delete_data="__boop_data_${_Self}"
   unset "__Collection_Map_Fast_delete_data[${1:-}]"
 }
@@ -91,7 +91,7 @@ Collection.Map.Fast.delete() {
 #
 # Usage: into=n $doc.length
 Collection.Map.Fast.length() {
-  local -I _Self _Class
+  local _Self="${_Self:-}" _Class="${_Class:-Collection.Map.Fast}"
   local -n __Collection_Map_Fast_length_data="__boop_data_${_Self}"
   if [[ -n "${!__Collection_Map_Fast_length_data[@]+set}" ]]; then
     boop.pass "${#__Collection_Map_Fast_length_data[@]}" "${into:-}"
@@ -104,7 +104,7 @@ Collection.Map.Fast.length() {
 #
 # Usage: $doc.clear
 Collection.Map.Fast.clear() {
-  local -I _Self _Class
+  local _Self="${_Self:-}" _Class="${_Class:-Collection.Map.Fast}"
   local -n __Collection_Map_Fast_clear_data="__boop_data_${_Self}"
   __Collection_Map_Fast_clear_data=()
 }
@@ -113,7 +113,7 @@ Collection.Map.Fast.clear() {
 #
 # Usage: into=k $doc.keys
 Collection.Map.Fast.keys() {
-  local -I _Self _Class
+  local _Self="${_Self:-}" _Class="${_Class:-Collection.Map.Fast}"
   local -n __Collection_Map_Fast_keys_data="__boop_data_${_Self}"
   local __Collection_Map_Fast_keys_out=""
   local __Collection_Map_Fast_keys_k
@@ -129,7 +129,7 @@ Collection.Map.Fast.keys() {
 #
 # Usage: into=k $doc.keysUnder "users"
 Collection.Map.Fast.keysUnder() {
-  local -I _Self _Class
+  local _Self="${_Self:-}" _Class="${_Class:-Collection.Map.Fast}"
   local -n __Collection_Map_Fast_ku_data="__boop_data_${_Self}"
   local __Collection_Map_Fast_ku_prefix="${1:-}"
   local __Collection_Map_Fast_ku_sep=""
@@ -147,7 +147,7 @@ Collection.Map.Fast.keysUnder() {
 #
 # Usage: $doc.deleteUnder "users.0"
 Collection.Map.Fast.deleteUnder() {
-  local -I _Self _Class
+  local _Self="${_Self:-}" _Class="${_Class:-Collection.Map.Fast}"
   local -n __Collection_Map_Fast_du_data="__boop_data_${_Self}"
   local __Collection_Map_Fast_du_prefix="${1:-}"
   local __Collection_Map_Fast_du_sep=""
@@ -163,7 +163,7 @@ Collection.Map.Fast.deleteUnder() {
 #
 # Usage: into=dump $doc.toString
 Collection.Map.Fast.toString() {
-  local -I _Self _Class
+  local _Self="${_Self:-}" _Class="${_Class:-Collection.Map.Fast}"
   local -n __Collection_Map_Fast_ts_data="__boop_data_${_Self}"
   local __Collection_Map_Fast_ts_out="" __Collection_Map_Fast_ts_k
   for __Collection_Map_Fast_ts_k in "${!__Collection_Map_Fast_ts_data[@]}"; do

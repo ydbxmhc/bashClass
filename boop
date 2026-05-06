@@ -232,7 +232,7 @@ declare -gi __boop_loaded=0
 # `printf '%s'` with `$@` means each argument is concatenated literally —
 # add $'\n' between arguments if you want line breaks.
 #
-# Inherited variables (Tier 2, via `local -I`):
+# Inherited variables (Tier 2, set as env-var prefixes by callers):
 #   _Err        — exit code (default: 1)
 #   _StackTrace — number of stack frames to show (default: 1)
 #                  0 = no trace, negative = show all frames
@@ -243,7 +243,7 @@ declare -gi __boop_loaded=0
 #   _StackTrace=-1 _Crash "full trace"
 #   _Crash "line one" $'\n' "line two" $'\n'
 _Crash() {
-  local -I _Err _StackTrace
+  local _Err="${_Err:-1}" _StackTrace="${_StackTrace:-1}"
   printf '%s' '[CRASH] ' "$@" $'\n'
   (( _StackTrace = ${_StackTrace:- 1} ))
   (( _StackTrace < 0 )) && _StackTrace=${#FUNCNAME[@]}
@@ -1108,7 +1108,7 @@ __boop.deserialize() {
 # The ${into:-} passes through the caller's nameref target (if any)
 # so the value lands directly in their variable without touching the global.
 __boop.get() {
-  local -I _Self; local _Class="${_Class:-boop}"
+  local _Self="${_Self:-}"; local _Class="${_Class:-boop}"
   __boop.parse "$_Self" "$1" ${into:-}
 }
 
@@ -1121,7 +1121,7 @@ __boop.get() {
 # exist, it's appended to the end. This means property order in the
 # descriptor reflects insertion order, with mutations preserving position.
 __boop.set() {
-  local -I _Self; local _Class="${_Class:-boop}"
+  local _Self="${_Self:-}"; local _Class="${_Class:-boop}"
   local __boop_set_prop="$1" __boop_set_encoded
   __boop.encode "$2" __boop_set_encoded
 
@@ -1146,7 +1146,7 @@ __boop.set() {
 # communicates via exit code only (0/1), which is the bash convention
 # for boolean checks: `$obj.isa Box && printf "it's a box"`
 __boop.isa() {
-  local -I _Self; local _Class="${_Class:-boop}"
+  local _Self="${_Self:-}"; local _Class="${_Class:-boop}"
   local __boop_isa_query="${1:-}"
 
   if [[ -z "$__boop_isa_query" ]]; then
@@ -1193,7 +1193,7 @@ __boop.isa() {
 #        $obj.toString pretty             # columnar with newlines
 #        prettyPrint=true $obj.toString    # same, via environment
 __boop.toString() {
-  local -I _Self; local _Class="${_Class:-boop}"
+  local _Self="${_Self:-}"; local _Class="${_Class:-boop}"
   local -l prettyPrint; : "${prettyPrint:=false}"
   [[ "${1:-}" == "pretty" ]] && prettyPrint=true
   local __boop_toString_descriptor="${__boop_registry[$_Self]:-}"
@@ -1271,7 +1271,7 @@ __boop.toString() {
 #     width  = 3
 #     methods: new, volume, area, top, side, front, get, set, isa, toString
 __boop.inspect() {
-  local -I _Self; local _Class="${_Class:-boop}"
+  local _Self="${_Self:-}"; local _Class="${_Class:-boop}"
 
   : "build inheritance chain label"
   local __boop_inspect_chain="$_Class"
