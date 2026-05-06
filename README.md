@@ -1,146 +1,303 @@
 # boop
 
-An OOP dispatch framework for bash 5+. Classes, objects, inheritance,
-method resolution, property accessors, type checking — built on
-associative arrays and naming conventions. No external dependencies.
-No subshells in the hot path.
+**Object-oriented programming for bash 5+.** Real classes, real objects, single
+inheritance, a namespace system, and a collection library — all in pure bash,
+with no external dependencies and no subshells in the hot path.
 
-The framework file is called `boop` because fun is a feature. The
-internal namespace is `__boop_*` — the filename is the personality,
-the internals are the plumbing.
+The framework file is called `boop` because fun is a feature.
 
-## Quick Start
+---
 
-```bash
-# Load the framework and import a class
-. boop Cube
+## Why This Exists
 
-# Create an object
-into=c Cube size=4 unit=cm
+Bash is a glue language. It excels at wiring programs together, not at
+organizing large amounts of logic. When a script grows past a few hundred
+lines, the usual tools — functions, global variables, naming conventions —
+start to fight each other. You end up with prefixed globals and parallel
+arrays and no way to pass structured data between functions without either
+forking a subshell or leaking state everywhere.
 
-# Call methods
-into=vol $c.volume
-printf "%s\n" "$vol"                 # 64
+boop is an answer to that problem. It gives bash the vocabulary it's missing:
+objects with encapsulated state, classes with typed constructors and inherited
+methods, a return system that avoids subshells, and a namespace-aware class
+loader that scales from a single script to a library of dozens of classes.
 
-# Type checking walks the inheritance chain
-$c.isa Cube && printf "it's a cube\n"    # it's a cube
-$c.isa Box  && printf "it's a box\n"     # it's a box
+It is not a toy. The framework itself is ~2,200 lines of bash. The included
+classes — List, Map, Config, JSON, Args, Math — are production-quality
+implementations. The test suite runs 1,400+ assertions across unit,
+integration, and property-based tests.
 
-# Display
-$c.toString pretty
-# Cube(_a1b2c3) {
-#   size   = 4
-#   unit   = cm
-#   length = 4
-#   width  = 4
-#   height = 4
-# }
-```
+---
 
 ## Requirements
 
-- bash 5.0+ (associative arrays, `local -I`, `EPOCHREALTIME`, namerefs)
-- That's it
+- bash 5.0+ (for associative arrays, `local -I`, `EPOCHREALTIME`, namerefs)
+- That's it.
 
-macOS ships bash 3.2 (GPL2). `brew install bash` fixes that. If your
-users might be on macOS, tell them up front.
+macOS ships bash 3.2 for GPL reasons. `brew install bash` fixes that. Make
+sure `/usr/local/bin/bash` (or wherever Homebrew installs it) is what your
+scripts use.
+
+---
 
 ## Install
 
 ```bash
-git clone <repo-url>
-# Ensure the directory is in your PATH, or source with full path:
-. /path/to/boop Cube
+git clone <repo-url> /usr/local/lib/boop
+# Add to PATH so `. boop` works from anywhere:
+export PATH="/usr/local/lib/boop:$PATH"
 ```
 
-No build step. No package manager. Just files and a shell.
+No build step. No package manager. Just source the framework file and start.
+
+---
+
+## Five-Minute Tour
+
+```bash
+. boop List Map Config
+```
+
+That one line loads the framework and three classes. Now:
+
+```bash
+# Create a list and push some values
+into=colors List
+$colors.push red green blue
+
+# Get elements by index (negative indices count from the end)
+into=first $colors.get 0     # "red"
+into=last  $colors.get -1    # "blue"
+
+# Create a map (insertion-ordered associative array)
+into=cfg Map
+$cfg.set host localhost
+$cfg.set port 8080
+
+# Retrieve values
+into=h $cfg.get host          # "localhost"
+
+# Type-check any object — walks the full inheritance chain
+$colors.isa List  && echo "yes"   # yes
+$colors.isa boop  && echo "yes"   # yes (everything inherits from boop)
+$colors.isa Map   && echo "no"    # (no output — wrong type)
+```
+
+The `into=varname command` syntax is how boop returns values. It is the central
+pattern of the framework and the first thing worth understanding properly.
+
+---
 
 ## The Return System
 
-Every value-producing function routes through a universal return handler.
-The recommended way to capture values:
+Standard bash has two ways to get a value out of a function: print to stdout
+and capture with `$()`, or write to a global variable. The first spawns a
+subshell — slow, and it breaks assignments made inside the function. The second
+pollutes global scope and is easily clobbered.
+
+boop uses a third way: **namerefs**.
 
 ```bash
-# into= — direct nameref, no subshell, no global side-channel
-into=vol $cube.volume               # vol="64"
-into=name $map.get "host"           # name="localhost"
-
-# Subshell capture works too (but forks)
-vol=$( $cube.volume )               # vol="64"
-
-# Global side-channel (overwritten by next call)
-$cube.volume
-printf "%s\n" "$_Out"  # 64
+into=result $obj.someMethod
 ```
 
-`into=` is the fast path. Use it.
-
-## Import System
+`into=result` passes the variable name `result` as an environment variable.
+The method receives it and writes the return value directly into the caller's
+`result` variable via a nameref — no subshell, no global side-channel, no copy.
+The value is available immediately in the caller's scope.
 
 ```bash
-# Load framework + classes in one line
-. boop Box Cube Math
-
-# Classes resolve their own dependencies
-. boop Cube                          # loads Box automatically
+# These are all equivalent, but into= is the recommended path:
+into=vol $box.volume         # fast: nameref write, no fork
+vol=$( $box.volume )         # works, but spawns a subshell
+$box.volume; vol="$_Out"     # global side-channel (_Out is overwritten by the next call)
 ```
 
-Class files use load guards to prevent double-loading. The framework
-uses a loading flag to prevent circular recursion during import chains.
+**The rule:** use `into=` everywhere. The only exception is contexts where
+you're already inside a subshell and don't care about the cost.
 
-Resolution order: `__boop_classPath` overrides -> `.boopIndex` short-name
-index -> dynamic discovery across `.` + `BOOPPATH` + `PATH`.
+One important gotcha: `into=` inside a subshell writes to the subshell's copy
+of the variable, not the parent's. The value disappears when the subshell
+exits. boop detects this and emits a warning.
+
+---
+
+## Objects and Classes
+
+### Creating Objects
+
+All objects are created with the same syntax:
+
+```bash
+into=obj ClassName [property=value ...]
+```
+
+The constructor sets named properties from the arguments and returns the new
+object ID. That ID — something like `_a1b2c3` — is what gets stored in your
+variable, and it is also a callable command for method dispatch.
+
+```bash
+. boop Cube
+
+into=c Cube size=5 unit=cm
+into=vol $c.volume          # 125
+$c.toString pretty
+# Cube(_a1b2c3) {
+#   size   = 5
+#   unit   = cm
+#   length = 5
+#   width  = 5
+#   height = 5
+# }
+```
+
+### Properties
+
+```bash
+into=v $c.get size           # "5"
+$c.set size 10               # mutate in place
+into=v $c.get size           # "10"
+```
+
+Properties are typed as strings. All values are strings. If you need to treat
+a value as a number, use it in arithmetic context: `$(( v + 1 ))`.
+
+### Type Checking
+
+`isa` walks the full inheritance chain:
+
+```bash
+$c.isa Cube      # exit 0 — yes
+$c.isa Box       # exit 0 — Cube extends Box
+$c.isa boop      # exit 0 — everything extends boop
+$c.isa List      # exit 1 — no
+
+# Without an argument, isa returns the runtime class name:
+into=cls $c.isa
+echo "$cls"    # "Cube"
+```
+
+---
 
 ## Collections
 
-```bash
-. boop List Map
+### List
 
-# Indexed list
-into=colors List
-$colors.push "red" "green" "blue"
-into=first $colors.get 0             # "red"
-into=last  $colors.get -1            # "blue" (negative indices)
-
-# Insertion-ordered associative map
-into=config Map
-$config.set "host" "localhost"
-$config.set "port" "8080"
-into=h $config.get "host"            # "localhost"
-$config.has "port" && printf "yes\n"     # yes
-
-# Keys come back in insertion order
-into=k $config.keys                  # "host\nport" (not random hash order)
-```
-
-### Iteration
-
-Two styles: callback-based (`each`) and cursor-based (Iterator).
+An indexed array with O(1) access by position. Supports negative indices,
+slicing, sorting, and cursor-based iteration.
 
 ```bash
-# Callback — function called for each element
-show() { printf "  %s = %s\n" "$1" "$2"; }
-$config.each show
-#   host = localhost
-#   port = 8080
+. boop List
 
-# Iterator — lazy, auto-created on first use
-$colors.push "red" "green" "blue"
-while $colors.hasNext; do
-  into=val $colors.next
-  printf "%s\n" "$val"
+into=fruits List
+$fruits.push apple banana cherry
+
+into=n $fruits.length          # "3"
+into=v $fruits.get 1           # "banana"
+into=v $fruits.get -1          # "cherry"
+
+$fruits.set 1 mango            # replace index 1
+$fruits.remove 0               # remove first element (shifts remaining left)
+
+# Callback iteration
+print_item() { printf "  [%s] %s\n" "$1" "$2"; }   # index, value
+$fruits.each print_item
+#   [0] mango
+#   [1] cherry
+
+# Cursor iteration
+$fruits.reset
+while $fruits.hasNext; do
+  into=item $fruits.next
+  printf "%s\n" "$item"
 done
-# red
-# green
-# blue
+
+# Slice a range (inclusive)
+into=sub $fruits.slice 0 1     # "mango\ncherry"
 ```
+
+### Map
+
+An insertion-ordered associative array. Keys come back in the order they
+were added — not in hash order, always insertion order.
+
+```bash
+. boop Map
+
+into=m Map
+$m.set host localhost
+$m.set port  5432
+$m.set user  admin
+
+into=h $m.get host             # "localhost"
+$m.has port && echo "found"    # found
+
+# Keys in insertion order
+into=k $m.keys                 # "host\nport\nuser"
+
+# Callback iteration — receives key, then value
+show() { printf "  %s = %s\n" "$1" "$2"; }
+$m.each show
+#   host = localhost
+#   port = 5432
+#   user = admin
+```
+
+### Map.Fast
+
+When you need O(1) point lookups and don't need insertion order or full
+iteration, use Map.Fast. It's designed for config, parsed documents, and
+lookup tables where the key is known ahead of time.
+
+```bash
+. boop 'Collection::Map::Fast'
+
+into=cache 'Collection::Map::Fast'
+$cache.set users.0.name  Alice
+$cache.set users.0.email alice@example.com
+$cache.set users.1.name  Bob
+
+into=v $cache.get users.0.name    # "Alice" — one hash lookup
+into=v $cache.get users.1.name    # "Bob"
+$cache.has users.2.name || echo "not found"
+
+# Enumerate all keys (O(n) scan — use sparingly)
+into=keys $cache.keys
+
+# Keys under a prefix
+into=sub $cache.keysUnder users.0
+```
+
+The dotted key path is just a string key — there's no tree traversal, no
+nesting. This is what makes lookups fast.
+
+**When to choose which:**
+- **Map** when you need insertion order, full `each`/cursor iteration, or
+  want to build the structure incrementally and traverse it later.
+- **Map.Fast** when you have a flat or compound-key data set and your access
+  pattern is mostly reads by known key.
 
 ### Nested Structures
 
-List elements and Map values can be object IDs, creating nested
-structures — multidimensional arrays, dictionaries of lists, whatever:
+Object IDs are strings. Store them as List or Map values to build nested
+structures — no special syntax required.
 
 ```bash
+# A list of maps — like a table of records
+into=table List
+
+for name in Alice Bob Charlie; do
+  into=row Map
+  $row.set name   "$name"
+  $row.set active 1
+  $table.push "$row"
+done
+
+# Access a cell
+into=row_id $table.get 1
+into=v $row_id.get name   # "Bob"
+
+# Multidimensional list
 into=matrix List
 for (( r=0; r < 3; r++ )); do
   into=row List
@@ -148,123 +305,540 @@ for (( r=0; r < 3; r++ )); do
   $matrix.push "$row"
 done
 
-into=val $matrix.itemAt 1 2          # "6"
-$matrix.setAt "99" 1 2               # matrix[1][2] = "99"
+into=v $matrix.itemAt 1 2    # "6"   (row 1, col 2)
+$matrix.setAt "99" 1 2       # mutate that cell
 ```
+
+---
+
+## Config
+
+Read and write structured configuration files. Two formats, one interface.
+
+```bash
+. boop Config
+```
+
+### Flat Key=Value
+
+```ini
+# ~/.myapp.cfg
+theme=dark
+host=localhost
+port=8080
+url=http://host:8080/path?foo=bar
+```
+
+```bash
+into=cfg Config.load ~/.myapp.cfg
+
+into=v $cfg.get theme           # "dark"
+into=v $cfg.get url             # "http://host:8080/path?foo=bar" — = in value preserved
+
+$cfg.set theme light
+$cfg.save                       # writes back to ~/.myapp.cfg
+
+# Or write to a different file
+$cfg.save /tmp/myapp.cfg
+```
+
+### INI
+
+```ini
+# /etc/myapp.ini
+app=myapp
+
+[database]
+host=localhost
+port=5432
+user=admin
+
+[server]
+port=8080
+workers=4
+```
+
+```bash
+into=cfg Config.loadINI /etc/myapp.ini
+
+into=v $cfg.get app               # "myapp" (top-level key)
+into=v $cfg.get database.host     # "localhost"
+into=v $cfg.get server.workers    # "4"
+
+into=keys $cfg.keys database      # "host\nport\nuser"
+into=secs $cfg.sections           # "database\nserver"
+
+$cfg.set database.host db.prod.example.com
+$cfg.save
+```
+
+### From a String
+
+Useful for parsing schema strings, embedded config, or unit tests:
+
+```bash
+into=cfg Config.fromString '
+[server]
+host=localhost
+port=8080
+'
+into=v $cfg.get server.host   # "localhost"
+```
+
+### Round-Trip
+
+`toFlat` and `toINI` serialize to a file or return the content as a string:
+
+```bash
+into=cfg Config.new
+$cfg.set x 1
+$cfg.set y 2
+
+into=text $cfg.toFlat          # "x=1\ny=2"
+$cfg.toFlat /tmp/out.cfg       # write to file
+$cfg.toINI  /tmp/out.ini       # write as INI
+```
+
+---
+
+## JSON
+
+Parse JSON into a Map.Fast object for O(1) access. Serialize back when done.
+No `jq`, no Python, no subshells in the parser.
+
+```bash
+. boop 'Data::JSON'
+
+json='{"user":{"name":"Alice","scores":[10,20,30]}}'
+into=doc Data.JSON.parse "$json"
+
+into=v $doc.get user.name         # "Alice"
+into=v $doc.get user.scores.0     # "10"
+into=v $doc.get user.scores.2     # "30"
+
+# Mutate and serialize
+$doc.set user.name Bob
+into=out Data.JSON.stringify "$doc"
+printf "%s\n" "$out"
+# {"user":{"name":"Bob","scores":[10,20,30]}}
+```
+
+Keys are dot-separated paths: `user.scores.1` means `document["user"]["scores"][1]`.
+Arrays are distinguished from objects by whether their keys are numeric strings.
+Nested depth is handled recursively with no practical limit for normal documents.
+
+---
+
+## Args
+
+Parse command-line arguments. Two entry points: a `getopts` wrapper for simple
+scripts, and a full GNU long-option + subcommand parser for complex ones.
+
+```bash
+. boop Args
+```
+
+### Simple: getOpts
+
+```bash
+Args.getOpts ":vf:" "$@"
+shift $((OPTIND-1))
+# $v is "1" if -v was passed
+# $f has the value of -f <value>
+# Remaining positionals are in $@
+```
+
+The optstring follows standard `getopts` convention: a leading `:` enables
+silent error mode, and a trailing `:` after a letter means that option takes a value.
+
+### Full: parse
+
+The schema is an INI-style string where the documentation *is* the schema.
+You write it once; humans and the parser read the same source.
+
+```bash
+Args.parse '
+[Use]
+  deploy [options] ACTION [args...]
+
+[Options]
+  verbose | v                          # enable verbose output
+  output  | o = /tmp/out.txt           # output file (default shown)
+  : token | t =                        # required — auth token
+
+[Subcommands]
+  run   | r                            # run a job
+  check | c                            # check status
+
+[run]
+  workers | w = 4                      # number of workers
+
+[check]
+  : target | T =                       # required for check subcommand
+' "$@"
+
+# After parsing, variables are set in current scope:
+[[ -n "$verbose" ]] && set -x
+echo "token:   $token"
+echo "action:  $_Action"      # "run", "check", or ""
+echo "workers: $workers"      # "4" if not provided
+
+# Remaining positionals after options and subcommand:
+set -- "${_ArgsRemaining[@]}"
+```
+
+**Schema syntax:**
+
+| Line form | Meaning |
+|-----------|---------|
+| `name \| alias \| v` | Variable name is first; remaining entries are CLI aliases |
+| `name \| v =` | Takes a value: `--name val` or `--name=val` or `-v val` |
+| `name \| v = default` | Takes a value; uses `default` if not provided |
+| `: name \| v =` | Required — crashes with an error if not provided |
+| `name \| v` | Boolean flag — absent is `""`, present is `"1"` |
+
+Single-character aliases map to `-x`. Multi-character aliases map to `--name`.
+Hyphens are allowed in aliases but not in the variable name (which becomes a bash
+identifier).
+
+**After parsing:**
+- Each option variable is set (to its value, default, or `""`)
+- `$_Action` — the matched subcommand's canonical name, or `""`
+- `$__Args_orig` — the original argument array before parsing
+- `$_ArgsRemaining` — positionals that weren't consumed as options or subcommand
+
+**Object mode** returns a Config object instead of scope variables:
+
+```bash
+into=parsed Args.parse "$schema" "$@"
+into=v $parsed.get token
+into=v $parsed.get _action
+```
+
+---
 
 ## Math
 
-Arbitrary precision arithmetic. Numbers stored as digit strings with
-tracked sign and decimal position. All arithmetic is digit-by-digit
-using bash's native `$(( ))` on small chunks. No forks, no subshells.
+Arbitrary-precision arithmetic in pure bash. Numbers are stored as digit strings
+with tracked sign and decimal position. All arithmetic runs on 9-digit integer
+chunks in base 10⁹ using bash's built-in `$(( ))`. No subshells, no forks, no
+external tools.
 
 ```bash
 . boop Math
 
-# Static API — quick math, plain value strings
-into=v Math.add 1.5 2.3              # "3.8"
-into=v Math.multiply 2.5 4           # "10"
-into=v Math.DO "( 10 + 5 ) / 3"     # "5"
+# Static methods for quick operations
+into=v Math.add      1.5 2.3            # "3.8"
+into=v Math.subtract 10  3.7            # "6.3"
+into=v Math.multiply 123456789 987654321
+# "121932631112635269"
 
-# Pi to arbitrary precision
+# Expression evaluator — handles precedence and parentheses
+into=v Math.DO "( 10 + 5 ) / 3"        # "5"
+into=v Math.DO "2 ^ 64"                 # "18446744073709551616"
+
+# Object API for multi-step work or high-precision results
+into=a Math 355
+into=b Math 113
+into=r $a.divide $b                     # ratio of 355/113 ≈ pi
+into=v $r.val
+printf "%.10f\n" ... # result is a string, format as needed
+
+# Pi to arbitrary precision (Machin's formula)
 into=pi Math.pi 50
 into=v $pi.val
-printf "%s\n" "$v"
 # 3.14159265358979323846264338327950288419716939937510
 ```
 
+---
+
 ## Writing a Class
+
+Here's a minimal working class:
 
 ```bash
 #!/bin/bash
-[[ -n "${__boop_registry[MyClass]+set}" ]] && return 2>/dev/null
+
+# Load guard — prevents double-sourcing and double-registration
+[[ -n "${__boop_registry[Greeter]+set}" ]] && return 2>/dev/null
 . boop
 
-MyClass.new() {
-  local -I _Class; : "${_Class:=MyClass}"
-  local __MyClass_new_self
-  into=__MyClass_new_self __boop.new "$@"
-  boop.pass "$__MyClass_new_self" ${into:-}
+Greeter.new() {
+  local -I _Class; : "${_Class:=Greeter}"
+  local __Greeter_new_self
+  into=__Greeter_new_self __boop.new "$@"
+  boop.pass "$__Greeter_new_self" ${into:-}
 }
 
-MyClass.greet() {
+Greeter.greet() {
   local -I _Self _Class
-  local __MyClass_greet_name
-  __boop.parse "$_Self" "name" __MyClass_greet_name
-  boop.pass "Hello, $__MyClass_greet_name" ${into:-}
+  local __Greeter_greet_name
+  into=__Greeter_greet_name __boop.get name
+  boop.pass "Hello, ${__Greeter_greet_name}!" ${into:-}
 }
 
-boopClass MyClass 'has:name public:new,greet'
+boopClass Greeter 'has:name public:new,greet'
 ```
+
+Use it:
 
 ```bash
-. boop MyClass
-into=obj MyClass name=World
-into=msg $obj.greet
-printf "%s\n" "$msg"                 # Hello, World
+. boop Greeter
+into=g Greeter name=World
+into=msg $g.greet
+printf "%s\n" "$msg"   # Hello, World!
 ```
 
-See [docs/boop.md](docs/boop.md) for the full framework reference,
-including inheritance, typecasting, the return system, naming conventions,
-and all the gotchas.
+### What Each Piece Does
 
-## Conventions
+**The load guard** prevents the class from being registered twice if the file
+is sourced more than once. The pattern checks the `__boop_registry` associative
+array and returns immediately if the class is already there.
 
-- Local variables: `__ClassName_methodName_varname` (prevents nameref collisions)
-- Value return: `boop.pass "$val" ${into:-}`
-- Output: `printf` everywhere, never `echo`
-- Framework internals: `__boop_*` prefix (hands off)
+**`local -I _Class`** marks `_Class` as an *inherited* local — bash 5 propagates
+its current value from the calling scope. This is how the constructor knows which
+class it's building. The `: "${_Class:=Greeter}"` line sets it to `Greeter` if it
+wasn't already set, which is the normal case. Subclasses set it to their own name
+before calling up the chain.
+
+**`local -I _Self _Class`** in instance methods inherits both the object ID
+(`_Self`) and its class (`_Class`) from the dispatch chain. You don't pass these
+explicitly — they flow automatically through `local -I`.
+
+**`__boop.new "$@"`** creates the object in the registry, parses constructor
+arguments (`name=World`) into properties, and returns the object ID.
+
+**`__boop.get name`** reads the property named `name` from the current object.
+It uses `_Self` from the inherited scope.
+
+**`boop.pass value ${into:-}`** is the standard return. If the caller used
+`into=varname`, it writes there. Otherwise it falls through to stdout or `_Out`.
+
+**`boopClass`** registers the class. `has:` names the properties that the
+constructor will populate from `key=value` constructor arguments. `public:` lists
+the methods to expose (method dispatch uses this).
+
+### Local Variable Naming
+
+All locals in class methods must follow `__ClassName_methodName_varname`. This
+isn't an aesthetic preference — it prevents nameref collisions when method calls
+nest. If two levels of the call stack both have a local named `name`, a nameref
+at the inner level will silently shadow the outer one. The `__ClassName_` prefix
+makes collisions essentially impossible.
+
+The naming convention check in `tests/test_all` enforces this across all
+framework files.
+
+### Subclassing
+
+```bash
+FancyGreeter.new() {
+  local -I _Class; : "${_Class:=FancyGreeter}"
+  local __FancyGreeter_new_self
+  into=__FancyGreeter_new_self __boop.new "$@"
+  boop.pass "$__FancyGreeter_new_self" ${into:-}
+}
+
+FancyGreeter.greet() {
+  local -I _Self _Class
+  local __FancyGreeter_greet_base
+  into=__FancyGreeter_greet_base _Super.greet   # call parent implementation
+  boop.pass "✨ ${__FancyGreeter_greet_base} ✨" ${into:-}
+}
+
+boopClass FancyGreeter isa:Greeter 'public:new,greet'
+```
+
+`_Super.greet` dispatches to the nearest ancestor that implements `greet`.
+`_Self` remains bound to the original object throughout, so the parent method
+still operates on the right data. The method resolution order (MRO) cache means
+the lookup cost is paid once per class/method pair and then zero thereafter.
+
+You can also use `_Cast` to dispatch as a specific class, and `_Delegate` to
+redirect method calls to another object entirely.
+
+---
+
+## The Import System
+
+### Loading Classes
+
+```bash
+# Load framework + classes in one line
+. boop List Map Config
+
+# Classes load their own dependencies
+. boop Cube                    # automatically loads Box (Cube extends Box)
+
+# Load explicitly, crash if not found
+_Require Config
+
+# Load optionally — check the return code
+_Load 'Data::JSON' && _json_available=1
+```
+
+### Namespace Syntax
+
+Classes live in namespace directories. The directory path maps directly to the
+fully-qualified class name:
+
+```
+Collection/List/List           →  Collection::List   (short name: List)
+Collection/Map/Map             →  Collection::Map    (short name: Map)
+Collection/Map/Fast/Fast       →  Collection::Map::Fast
+Data/JSON/JSON                 →  Data::JSON
+```
+
+Use `::` or `/` interchangeably:
+
+```bash
+. boop 'Collection::Map::Fast'
+. boop 'Collection/Map/Fast'    # identical
+```
+
+### Short Names and Aliasing
+
+When a short name is unambiguous across the loaded library, it resolves
+automatically. `List` works because only one class is named `List`. When a name
+would be ambiguous, use the qualified form.
+
+Create explicit aliases with `_Import`:
+
+```bash
+_Import 'Collection::Map::Fast'            # auto-alias: Fast, Map.Fast, Collection.Map.Fast
+_Import 'Collection::Map::Fast' as FastMap # custom alias
+
+into=cache FastMap
+```
+
+The `_AutoAlias` variable controls automatic aliasing behavior: `full` (default),
+`best` (shortest unambiguous name plus FQN), `short` (short name plus FQN only),
+or `none` (explicit only).
+
+### Search Path
+
+For each root in `[ . : BOOPPATH entries : PATH ]`, resolution runs:
+
+1. Explicit `__boop_classPath` override for this name
+2. `.boopIndex` short-name lookup → full namespace → filesystem path
+3. `ClassName/ClassName` directory convention
+4. `ClassName` bare file
+
+```bash
+export BOOPPATH="/opt/shared-libs:/home/user/mylib"
+
+# Register a specific file directly
+boop.classPath set MyClass /path/to/MyClass
+
+# Inspect effective root list
+into=dirs boop.classPath dirs
+
+# Rebuild the short-name index after adding classes
+boop.classPath rebuild
+```
+
+---
+
+## Logging
+
+Six levels. The default fatality threshold is `error` — only `_Crash` exits the
+process unless you change it.
+
+```bash
+_Crash "unrecoverable: $reason"    # always exits with stack trace
+_Error "something failed"          # logged; fatal if threshold ≤ error
+_Warn  "something looks wrong"
+_Info  "starting subsystem X"
+_Debug "loop iteration: i=$i"
+_Trace "inside dispatch: class=$_Class method=$method"
+```
+
+Control level globally or per class:
+
+```bash
+_LogLevel debug              # global: show debug and above
+_LogLevel warn  Math         # Math only shows warnings and above
+_FatalLevel warn             # treat warnings as fatal (useful in CI)
+```
+
+---
+
+## Testing
+
+All tests use the `TestSuite` class. Default output is quiet — failures and a
+final summary only. Set `TESTSUITE_VERBOSE=1` for the full pass/fail log.
+
+```bash
+bash tests/test_all                  # full suite: unit + integration + naming check
+bash tests/test_all smoke            # 11 smoke tests (framework alive?)
+bash tests/test_all unit             # all unit tests
+bash tests/test_all integration      # integration tests only
+```
+
+Individual suites:
+
+```bash
+bash tests/smoke/test_smoke
+bash tests/unit/test_testsuite_ts    # TestSuite self-test
+bash tests/unit/test_box_cube_ts
+bash tests/unit/test_containers_ts
+bash tests/unit/test_map_fast_ts
+bash tests/unit/test_config_ts
+bash tests/unit/test_args_ts
+bash tests/unit/test_json_ts
+bash tests/unit/test_math_ts
+bash tests/unit/test_logging_ts
+bash tests/unit/test_classpath_ts
+bash tests/integration/test_blackjack
+bash tests/integration/test_stress_ts
+```
+
+---
 
 ## Class Hierarchy
 
 ```
-boop                          (root -- get, set, isa, toString, new)
-  ├── Box                          (3D geometry)
-  │     └── Cube                   (equal-sided Box)
-  ├── Container                    (virtual base for collections)
-  │     ├── List                   (indexed array)
-  │     └── Map                    (insertion-ordered associative array)
-  ├── Iterator                     (stateful cursor -- companion to Container)
-  ├── Card                         (generic card base)
-  │     └── PlayingCard            (suit/rank/faceUp, 52-card standard)
-  ├── Deck                         (extends List -- shuffle, draw)
-  ├── Math                         (arbitrary precision arithmetic)
-  └── TestSuite                    (structured test harness)
+boop                                    root — new, get, set, isa, toString
+  ├── Geometry
+  │     ├── Box                         3D rectangle — volume, face areas
+  │     └── Cube                        equal-sided Box
+  ├── Collection
+  │     ├── Container                   abstract base for indexed collections
+  │     │     ├── List                  ordered array — push/pop/slice/sort/each
+  │     │     └── Map                   insertion-ordered key/value store
+  │     ├── Map.Fast                    flat compound-key store — O(1) access
+  │     └── Iterator                    stateful cursor for Container subclasses
+  ├── Data
+  │     └── JSON                        JSON ↔ Map.Fast parser/serializer
+  ├── Config                            flat + INI config file reader/writer
+  ├── Args                              CLI argument parser (getOpts + parse)
+  ├── Math                              arbitrary-precision arithmetic
+  ├── Games
+  │     ├── Card                        generic card base
+  │     │     └── PlayingCard           standard 52-card deck (suit/rank/faceUp)
+  │     └── Deck                        extends List — shuffle, draw
+  └── Testing
+        └── TestSuite                   structured test harness
 ```
 
-Classes live in namespace directories (`Collection/List/List`,
-`Geometry/Box/Box`, etc.). Short names resolve via `.boopIndex`.
+---
 
-## Tests
+## Further Reading
 
-All tests use the TestSuite class. Default output is quiet (failures +
-summary only). Set `TESTSUITE_VERBOSE=1` for full output.
+| Document | Contents |
+|----------|----------|
+| [docs/boop.md](docs/boop.md) | Full framework reference — return system internals, dispatch mechanics, naming rules, every public function, known gotchas |
+| [docs/comparison.md](docs/comparison.md) | boop idioms side-by-side with Python, Ruby, and Go equivalents |
+| [docs/JSON.md](docs/JSON.md) | JSON class: supported types, key conventions, edge cases |
+| [docs/List.md](docs/List.md) | Complete List API reference |
+| [docs/Map.md](docs/Map.md) | Complete Map API reference |
+| [docs/Math.md](docs/Math.md) | Arithmetic internals, precision, and the chunk algorithm |
+| [docs/Container.md](docs/Container.md) | Container and Iterator API |
+| [TODO.md](TODO.md) | Roadmap and open design questions |
 
-```bash
-bash tests/test_smoke                # 11 tests (framework alive?)
-bash tests/test_testsuite_ts         # 51 tests (TestSuite self-test)
-bash tests/test_box_cube_ts          # 91 tests
-bash tests/test_containers_ts        # 174 tests (List, Map, Iterator, delegation)
-bash tests/test_math_ts              # 149 tests (includes pi verification)
-bash tests/test_logging_ts           # 73 tests (logging + fatality threshold)
-bash tests/test_classpath_ts         # 43 tests (namespace resolution, classPath API)
-bash tests/test_classpath_pbt        # 13 property-based tests (correctness properties)
-bash tests/test_stress_ts            # adversarial framework tests
-bash tests/test_blackjack            # 92 tests (blackjack game + PlayingCard/Deck)
-bash tests/test_all                  # runs everything + naming convention check
-```
+---
 
-## Documentation
-
-Detailed docs for each class live in `docs/`:
-
-- [boop (framework)](docs/boop.md) — the full reference
-- [Box](docs/Box.md) / [Cube](docs/Cube.md) — geometry examples
-- [Container](docs/Container.md) — virtual base + Iterator companion class
-- [List](docs/List.md) / [Map](docs/Map.md) — collections
-- [Math](docs/Math.md) — arbitrary precision arithmetic
-
-## Status
-
-Active development. See [TODO.md](TODO.md) for the roadmap and
-[docs/PLAN.md](docs/PLAN.md) for the original phased plan.
+*Active development. Core framework and included classes are stable. The
+namespace aliasing system (`_Import`, FQN resolution, auto-aliasing) is newly
+implemented and may have rough edges — file issues if something unexpected
+happens.*
