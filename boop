@@ -1177,6 +1177,16 @@ __boop.isa() {
   return 1
 }
 
+# Return the object's Fully Qualified class Name (FQN).
+# Unlike isa (no arg), this is explicit and unambiguous.
+# Usage: into=fqn $obj.trueClass
+__boop.trueClass() {
+  local _Self="${_Self:-}"
+  local __boop_trueClass_val
+  __boop.parse "$_Self" "trueClass" __boop_trueClass_val
+  boop.pass "${__boop_trueClass_val:-${_Class:-}}" ${into:-}
+}
+
 # Format an object's descriptor for human-readable display.
 # Skips internal metadata fields (class, parent, methods, properties)
 # and shows only user-defined properties.
@@ -2462,7 +2472,7 @@ _Bless() {
 # from it (parent chain terminates at boop's empty parent field).
 # The standard methods registered here (get, set, isa, toString, new, super)
 # are available to all objects unless overridden by a subclass.
-__boop_registry["boop"]="|class=boop|trueClass=boop|parent=|methods=new,get,set,isa,toString,inspect,super|properties="
+__boop_registry["boop"]="|class=boop|trueClass=boop|parent=|methods=new,get,set,isa,trueClass,toString,inspect,super|properties="
 
 #boopClass boop '
 #  custom:new=__boop.new,get=__boop.get,set=__boop.set,isa=__boop.isa,toString=__boop.toString
@@ -2471,6 +2481,7 @@ __boop_registry["boop"]="|class=boop|trueClass=boop|parent=|methods=new,get,set,
 __boop.registerMethod boop get __boop.get
 __boop.registerMethod boop set __boop.set
 __boop.registerMethod boop isa __boop.isa
+__boop.registerMethod boop trueClass __boop.trueClass
 __boop.registerMethod boop toString __boop.toString
 __boop.registerMethod boop inspect __boop.inspect
 __boop.registerMethod boop new __boop.new

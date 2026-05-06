@@ -282,22 +282,31 @@ into=n $b.get "notes"           # n="width=3|height=7" (clean)
 
 ---
 
-## Type Checking: `isa`
+## Type Checking: `isa` and `trueClass`
 
 ```bash
 $cube.isa Cube      && printf "yes\n"   # 0 (true)
 $cube.isa Box       && printf "yes\n"   # 0 (true — inherits)
 $cube.isa boop      && printf "yes\n"   # 0 (true — everything does)
 $cube.isa Map       || printf "nope\n"  # 1 (false)
-
-# No argument = return the class name
-into=cls $cube.isa              # cls="Cube"
 ```
 
 `isa` with an argument walks the inheritance chain and returns an exit
 code (0=true, 1=false). It handles aliases correctly: `$obj.isa Fast`
 passes if the object is an instance of `Collection.Map.Fast`, even if
-you loaded it under an alias.
+you loaded it under a short alias.
+
+```bash
+# trueClass — returns the FQN of the object's class
+into=fqn $cube.trueClass        # fqn="Geometry.Cube"
+
+into=fm Fast
+into=fqn $fm.trueClass          # fqn="Collection.Map.Fast"
+```
+
+`trueClass` is the unambiguous version. `isa` with no argument also
+returns the FQN (they're equivalent), but `$obj.trueClass` reads more
+clearly when that's your intent.
 
 ---
 
@@ -1148,6 +1157,7 @@ Where `caller` is the function name from the call stack.
 | `__boop.get` | Read a property from an object's descriptor. |
 | `__boop.set` | Write a property to an object's descriptor. |
 | `__boop.isa` | Type check with inheritance walk. Resolves aliases via trueClass. |
+| `__boop.trueClass` | Return the object's Fully Qualified class Name (FQN). |
 | `__boop.toString` | Human-readable object display (compact or pretty). |
 | `__boop.inspect` | Full debug view: class chain, all properties decoded, all methods. |
 | `__boop.super` | Dispatch a method against the parent class. |
