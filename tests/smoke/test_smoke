@@ -31,7 +31,7 @@ $t.assert_ok "Cube class registered" test -n "${__boop_registry[Geometry.Cube]+s
 
 $t.section "Object lifecycle"
 into=c Cube size=3
-$t.assert_match "object has valid ID" "$c" "_[0-9a-f]*"
+$t.assert_match "object has valid ID" "$c" "__obj_*"
 $t.assert_ok    "object in registry"  test -n "${__boop_registry[$c]+set}"
 
 into=v $c.volume

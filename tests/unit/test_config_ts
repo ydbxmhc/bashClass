@@ -27,7 +27,7 @@ trap 'rm -f "${__test_config_tmpfiles[@]+"${__test_config_tmpfiles[@]}"}"' EXIT
 $t.section "Config.new: empty object"
 
 into=cfg Config.new
-$t.assert_match "valid ID"       "$cfg" "_[0-9a-f]*"
+$t.assert_match "valid ID"       "$cfg" "__obj_*"
 $t.assert_ok    "isa Config"     $cfg.isa Config
 $t.assert_ok    "isa boop"       $cfg.isa boop
 
@@ -134,7 +134,7 @@ printf '%s\n' \
   > "$flat_file"
 
 into=cfg Config.load "$flat_file"
-$t.assert_match "loaded object valid ID" "$cfg" "_[0-9a-f]*"
+$t.assert_match "loaded object valid ID" "$cfg" "__obj_*"
 $t.assert_ok    "isa Config"             $cfg.isa Config
 
 into=v $cfg.get theme;         $t.assert_eq "load: theme"              "$v" "dark"

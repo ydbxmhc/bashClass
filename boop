@@ -220,6 +220,9 @@ declare -g  _Out="" # no dedicated method for this; no need
 # all definitions and jumps straight to the import-arguments section at the end.
 declare -gi __boop_loaded=0
 
+# Global object counter for unique ID generation. Incremented by __boop.new.
+declare -gi __boop_id=0
+
 # ============================================================================
 # UTILITY
 # ============================================================================
@@ -1332,7 +1335,7 @@ __boop.inspect() {
 
 # Object constructor. This is the beating heart of object creation.
 #
-# 1. Generates a unique object ID from EPOCHREALTIME (hex-encoded
+# 1. Generates a unique object ID from a global counter (hex-encoded
 #    microseconds — fast, no subshell, monotonically increasing).
 # 2. Builds a pipe-delimited descriptor from the class name and any
 #    key=value arguments, encoding values for safe storage.
@@ -1348,7 +1351,7 @@ __boop.new() {
   local _Class="${_Class:-boop}"
 
   # Generate unique object ID
-  local _Self; printf -v _Self "_%x" "${EPOCHREALTIME//.}"
+  local _Self; printf -v _Self "__obj_%02x" $(( ++__boop_id ))
 
   # Build descriptor -- trueClass comes from the class's trueClass
   local __boop_new_trueClass

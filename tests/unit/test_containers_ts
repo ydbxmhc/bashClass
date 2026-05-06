@@ -21,7 +21,7 @@ into=t TestSuite name="Container Tests"
 
 $t.section "List: creation"
 into=list List
-$t.assert_match "valid ID"       "$list" "_[0-9a-f]*"
+$t.assert_match "valid ID"       "$list" "__obj_*"
 $t.assert_ok    "isa List"       $list.isa List
 $t.assert_ok    "isa Container"  $list.isa Container
 $t.assert_ok    "isa boop"       $list.isa boop

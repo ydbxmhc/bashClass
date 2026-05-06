@@ -617,7 +617,7 @@ into=__rt_bottom $__rt_cube.bottom
 $t.assert_eq "into through Cube.bottom → side = 16" "$__rt_bottom" "16"
 
 into=__rt_newobj new Box length=1 width=1 height=1
-$t.assert_match "into on new returns valid object ID" "$__rt_newobj" "_[0-9a-f]*"
+$t.assert_match "into on new returns valid object ID" "$__rt_newobj" "__obj_*"
 
 # into does NOT pollute _Out when used
 _Out="sentinel"
