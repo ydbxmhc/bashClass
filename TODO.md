@@ -1562,3 +1562,38 @@ threshold (`_FatalLevel`) already provides escalation control.
 
 Revisit if a compelling use case emerges that can't be solved with
 explicit error handling.
+
+---
+
+## README Accuracy Audit
+
+Specific points to address in the next README edit pass:
+
+1. **"objects with encapsulated state"** -- state is convention-private
+   (`__` prefix), not mechanism-private. No access control. Suggest
+   "objects with managed state" or "objects with structured state."
+
+2. **"The default fatality threshold is `error`"** -- WRONG. Default is
+   `crash` (only explicit `_Crash` is fatal). Fix to match actual behavior.
+
+3. **"1,400+ assertions"** -- needs verification. Actual count is likely
+   lower (~800-900 across all suites). Count properly and update.
+
+4. **"~2,200 lines of bash"** -- actual is ~2,500. Update.
+
+5. **"production-quality implementations"** -- JSON doesn't handle unicode
+   escapes, Math has untested methods. Soften to "well-tested" or
+   "substantial."
+
+6. **`_Super.greet` in subclassing example** -- WRONG. Actual syntax is
+   `_Super greet` (space, not dot). `_Super` is a function that takes
+   the method name as `$1`. Fix the example.
+
+7. **Helper documentation** -- `_Super`, `_Cast`, `_Delegate`, `_Bless`
+   need careful documentation with correct syntax and examples. These
+   are easy to get wrong and the README is the first place people look.
+
+8. **"No subshells in the hot path"** -- accurate for dispatch and
+   property access. JSON stringify uses `sort -n` (subshell) for array
+   key ordering. Note this or fix it.
+
