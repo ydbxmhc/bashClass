@@ -1611,3 +1611,13 @@ Specific points to address in the next README edit pass:
     such section exists, that's a flag to write one. The README is a
     tour guide, not the encyclopedia.
 
+11. **`local -I` usage is inconsistent** -- README explains and uses
+    `local -I _Self _Class` in the class authoring example. But actual
+    class files (Box, List, etc.) use `local _Self="${_Self:-...}"
+    _Class="${_Class:-...}"` instead. Framework internals (isa, get,
+    set) use `local -I _Self` but NOT `local -I _Class`. The README
+    needs to document the CURRENT convention, explain why it changed
+    (if it did), and the example must match what real classes do.
+    Also: if `local -I` was removed for a reason, that reason should
+    be documented in STANDARDS.md or docs/boop.md.
+
