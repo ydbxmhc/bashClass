@@ -31,7 +31,8 @@ integration, and property-based tests.
 
 ## Requirements
 
-- bash 5.0+ (for associative arrays, `local -I`, `EPOCHREALTIME`, namerefs)
+- bash 4.3+ (for associative arrays and namerefs)
+- bash 5.0+ recommended (for `EPOCHREALTIME` timing in TestSuite)
 - That's it.
 
 macOS ships bash 3.2 for GPL reasons. `brew install bash` fixes that. Make
@@ -564,14 +565,14 @@ Here's a minimal working class:
 . boop
 
 Greeter.new() {
-  local -I _Class; : "${_Class:=Greeter}"
+  local _Class="${_Class:-Greeter}"
   local __Greeter_new_self
   into=__Greeter_new_self __boop.new "$@"
   boop.pass "$__Greeter_new_self" ${into:-}
 }
 
 Greeter.greet() {
-  local -I _Self _Class
+  local _Self="${_Self:-}" _Class="${_Class:-Greeter}"
   local __Greeter_greet_name
   into=__Greeter_greet_name __boop.get name
   boop.pass "Hello, ${__Greeter_greet_name}!" ${into:-}
@@ -595,15 +596,15 @@ printf "%s\n" "$msg"   # Hello, World!
 is sourced more than once. The pattern checks the `__boop_registry` associative
 array and returns immediately if the class is already there.
 
-**`local -I _Class`** marks `_Class` as an *inherited* local — bash 5 propagates
-its current value from the calling scope. This is how the constructor knows which
-class it's building. The `: "${_Class:=Greeter}"` line sets it to `Greeter` if it
-wasn't already set, which is the normal case. Subclasses set it to their own name
-before calling up the chain.
+**`local _Class="${_Class:-Greeter}"`** reads `_Class` from the calling scope
+(set by the baked wrapper) and defaults to `Greeter` if not set. This is how
+the constructor knows which class it's building. Subclasses set it to their
+own name before calling up the chain.
 
-**`local -I _Self _Class`** in instance methods inherits both the object ID
-(`_Self`) and its class (`_Class`) from the dispatch chain. You don't pass these
-explicitly — they flow automatically through `local -I`.
+**`local _Self="${_Self:-}" _Class="${_Class:-Greeter}"`** in instance methods
+reads both the object ID (`_Self`) and its class (`_Class`) from the dispatch
+wrapper. The wrapper sets these explicitly as environment variable prefixes on
+the function call -- they don't flow through dynamic scope inheritance.
 
 **`__boop.new "$@"`** creates the object in the registry, parses constructor
 arguments (`name=World`) into properties, and returns the object ID.
@@ -633,23 +634,23 @@ framework files.
 
 ```bash
 FancyGreeter.new() {
-  local -I _Class; : "${_Class:=FancyGreeter}"
+  local _Class="${_Class:-FancyGreeter}"
   local __FancyGreeter_new_self
   into=__FancyGreeter_new_self __boop.new "$@"
   boop.pass "$__FancyGreeter_new_self" ${into:-}
 }
 
 FancyGreeter.greet() {
-  local -I _Self _Class
+  local _Self="${_Self:-}" _Class="${_Class:-FancyGreeter}"
   local __FancyGreeter_greet_base
-  into=__FancyGreeter_greet_base _Super.greet   # call parent implementation
+  into=__FancyGreeter_greet_base _Super greet   # call parent implementation
   boop.pass "✨ ${__FancyGreeter_greet_base} ✨" ${into:-}
 }
 
 boopClass FancyGreeter isa:Greeter 'public:new,greet'
 ```
 
-`_Super.greet` dispatches to the nearest ancestor that implements `greet`.
+`_Super greet` dispatches to the nearest ancestor that implements `greet`.
 `_Self` remains bound to the original object throughout, so the parent method
 still operates on the right data. The method resolution order (MRO) cache means
 the lookup cost is paid once per class/method pair and then zero thereafter.
