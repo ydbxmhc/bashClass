@@ -564,88 +564,23 @@ Source: `boop`, all class files.
 
 ---
 
-## Args — CLI Argument Parser ★ IN PROGRESS
+## Args -- CLI Argument Parser ✓ (core done)
 
 Two entry points, one class. Implementation at `Args/Args`.
+57 tests in `tests/unit/test_args_ts`. Docs at `docs/Args.md`.
 
-### `Args.getOpts` — POSIX short options (thin getopts wrapper)
-```bash
-Args.getOpts ":vf:" "$@"
-shift $((OPTIND-1))
-# Sets: $v=1 (boolean), $f=<value> (value-taking)
-# $__Args_orig holds original args array
-```
-Leading `:` in optstr = silent error mode. Value-taking options (letter`:`) get
-the value; booleans get `"1"`. Unknown option or missing value → `_Crash`.
-Caller must `shift $((OPTIND-1))` after to consume processed args.
+### Done
+- `Args.getOpts` -- POSIX short options wrapper
+- `Args.parse` -- GNU long + subcommand parser with schema
+- `--help` / `-h` prints schema verbatim
+- Object mode (`into=`) returns Config object
+- Error handling: unknown options, missing values, bad varnames
 
-### `Args.parse` — GNU long + subcommand parser
+### Pending
+- Cross-subcommand option isolation (deferred)
+- Schema validation warnings for common mistakes
 
-Schema is an INI-style string passed as the first argument.
-
-```bash
-Args.parse '
-[Use]
-  ${0##*/} [options] ACTION [args]
-
-[Options]
-  verbose | v                       # boolean flag → $verbose
-  output | o = /tmp/out.txt         # value-taking, with default → $output
-  : required | r =                  # required, value-taking → $required
-
-[Subcommands]
-  deploy | d                        # canonical name is "deploy"
-  rollback | rb
-
-[deploy]
-  env | e =                         # deploy-specific option → $env
-
-[rollback]
-  : version | ver =                 # required for rollback → $version
-' "$@"
-```
-
-**Option line syntax** (left of `#` is parsed, right is help text):
-- `[: ] varName [| alias...] [= [default] | :]`
-- Leading `:` → required
-- Trailing `=` → takes a value; `= default` sets the default
-- Trailing `:` → takes a value (no default form)
-- No sigil → boolean (absent=`""`, present=`"1"`)
-- First entry = variable name (must be valid bash identifier, no hyphens)
-- Additional entries = CLI aliases (may contain hyphens)
-- Single-char entries map to `-x`; multi-char entries map to `--name`
-
-**After parse (scope-write mode — no `into=`):**
-- `$varName` set for each option (value or default or empty)
-- `$_Action` = canonical subcommand name (or empty)
-- `$_ArgsRemaining` = array of remaining positionals
-- `$__Args_orig` = array of original args
-- To restore `$@`: `set -- "${_ArgsRemaining[@]}"`
-
-**Object mode (`into=args Args.parse schema "$@"`):**
-- Returns a Config object. `_Require Config` called internally.
-- Access: `$args.get varName`, `$args.get _action`, `$args.get _remaining`
-- Scope vars are NOT set in object mode.
-
-**Behavior:**
-- `--` terminates option processing; remainder → `_ArgsRemaining`
-- Short clustering: `-abc` = `-a -b -c`
-- `-xVALUE` attaches value to short option within cluster
-- Unknown option → `_Crash`
-- Missing required value → `_Crash`
-- Missing required option → `_Crash` (checked after full parse)
-- All option sections (`[Options]`, `[subcommandName]`) contribute to the
-  same alias pool. Subcommand-specific options are globally available
-  (cross-subcommand validation is a future enhancement).
-
-### What's done
-- `Args/Args` -- full implementation of both entry points
-- `Config.fromString` -- added to `Config/Config`
-- `tests/unit/test_args_ts` -- test file written and wired into test_all
-
-### What's pending
-- `--help` auto-generation from schema (deferred -- needs description storage)
-- Cross-subcommand option isolation (deferred -- currently all options share alias pool)
+Full API reference: `docs/Args.md`
 
 ---
 
@@ -1468,9 +1403,8 @@ Specific points to address in the next README edit pass:
    escapes, Math has untested methods. Soften to "well-tested" or
    "substantial."
 
-6. **`_Super.greet` in subclassing example** -- WRONG. Actual syntax is
-   `_Super greet` (space, not dot). `_Super` is a function that takes
-   the method name as `$1`. Fix the example.
+6. **`_Super.greet` in subclassing example** -- ✓ FIXED. Changed to
+   `_Super greet` (space, not dot).
 
 7. **Helper documentation** -- `_Super`, `_Cast`, `_Delegate`, `_Bless`
    need careful documentation with correct syntax and examples. These
@@ -1494,13 +1428,8 @@ Specific points to address in the next README edit pass:
     such section exists, that's a flag to write one. The README is a
     tour guide, not the encyclopedia.
 
-11. **`local -I` usage is inconsistent** -- README explains and uses
-    `local -I _Self _Class` in the class authoring example. But actual
-    class files (Box, List, etc.) use `local _Self="${_Self:-...}"
-    _Class="${_Class:-...}"` instead. Framework internals (isa, get,
-    set) use `local -I _Self` but NOT `local -I _Class`. The README
-    needs to document the CURRENT convention, explain why it changed
-    (if it did), and the example must match what real classes do.
-    Also: if `local -I` was removed for a reason, that reason should
-    be documented in STANDARDS.md or docs/boop.md.
+11. **`local -I` usage** -- ✓ FIXED. All `local -I` removed from codebase.
+    README examples updated to use explicit `local _Self="${_Self:-}"`.
+    Documented in docs/boop.md. Still needs a "why we don't use local -I"
+    section in STANDARDS.md.
 
