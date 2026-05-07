@@ -87,8 +87,8 @@ Config.fromFlatString() {
   local __Config_ffs_str="${1:-}"
   local __Config_ffs_self
   into=__Config_ffs_self __boop.new format=flat
-  declare -gA "__boop_config_${__Config_ffs_self}"
-  declare -ga "__boop_config_keys_${__Config_ffs_self}"
+  declare -gA "__boop_config_${__Config_ffs_self}=()"
+  declare -ga "__boop_config_keys_${__Config_ffs_self}=()"
   __Config.parseFlat "$__Config_ffs_self" <<< "$__Config_ffs_str"
   boop.pass "$__Config_ffs_self" ${into:-}
 }
@@ -340,8 +340,8 @@ Config.fromString() {
   local __Config_fs_str="${1:-}"
   local __Config_fs_self
   into=__Config_fs_self __boop.new format=ini
-  declare -gA "__boop_config_${__Config_fs_self}"
-  declare -ga "__boop_config_keys_${__Config_fs_self}"
+  declare -gA "__boop_config_${__Config_fs_self}=()"
+  declare -ga "__boop_config_keys_${__Config_fs_self}=()"
   __Config.parseINI "$__Config_fs_self" <<< "$__Config_fs_str"
   boop.pass "$__Config_fs_self" ${into:-}
 }

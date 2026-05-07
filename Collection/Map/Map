@@ -41,10 +41,8 @@ Collection.Map.new() {
   local _Class="${_Class:-Collection.Map}"
   local __Collection_Map_new_self
   into=__Collection_Map_new_self __boop.new type=associative "$@"
-  declare -gA "__boop_data_${__Collection_Map_new_self}"
-  declare -ga "__boop_keys_${__Collection_Map_new_self}"
-  eval "__boop_data_${__Collection_Map_new_self}+=()"
-  eval "__boop_keys_${__Collection_Map_new_self}+=()"
+  declare -gA "__boop_data_${__Collection_Map_new_self}=()"
+  declare -ga "__boop_keys_${__Collection_Map_new_self}=()"
   _Info "new: created $__Collection_Map_new_self"
   boop.pass "$__Collection_Map_new_self" ${into:-}
 }
