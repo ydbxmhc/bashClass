@@ -238,4 +238,118 @@ into=v $cfg.get _remaining; $t.assert_eq "obj: _remaining" "$v" "rest1 rest2"
 $t.assert_eq "scope name unset in obj mode" "${name:-UNSET}" "UNSET"
 $t.assert_eq "scope _Action unset in obj mode" "${_Action:-UNSET}" "UNSET"
 
+# ============================================================================
+# --help output
+# ============================================================================
+
+$t.section "Args.parse: --help"
+
+__args_help_out=$(bash << 'HELPEOF'
+. boop Args
+Args.parse '
+[Use]
+  testapp [options]
+
+[Options]
+  verbose | v    # be loud
+' --help
+HELPEOF
+)
+$t.assert_contains "help includes [Use]" "$__args_help_out" "[Use]"
+$t.assert_contains "help includes option line" "$__args_help_out" "verbose | v"
+$t.assert_contains "help includes comment" "$__args_help_out" "be loud"
+
+# -h also triggers help
+__args_help_h=$(bash << 'HELPEOF2'
+. boop Args
+Args.parse '
+[Use]
+  testapp
+[Options]
+  x | X
+' -h
+HELPEOF2
+)
+$t.assert_contains "-h triggers help" "$__args_help_h" "[Use]"
+
+# ============================================================================
+# Error cases and edge cases
+# ============================================================================
+
+$t.section "Args.parse: error cases"
+
+# Empty schema crashes
+$t.assert_fail "empty schema crashes" bash << 'ERREOF'
+. boop Args
+Args.parse '' --verbose
+ERREOF
+
+# Unknown long option crashes
+$t.assert_fail "unknown long option crashes" bash << 'ERREOF2'
+. boop Args
+Args.parse '
+[Options]
+  verbose | v
+' --badopt
+ERREOF2
+
+# Unknown short option crashes
+$t.assert_fail "unknown short option crashes" bash << 'ERREOF3'
+. boop Args
+Args.parse '
+[Options]
+  verbose | v
+' -z
+ERREOF3
+
+# Boolean with =value crashes
+$t.assert_fail "boolean with =value crashes" bash << 'ERREOF4'
+. boop Args
+Args.parse '
+[Options]
+  verbose | v
+' --verbose=yes
+ERREOF4
+
+# Value option missing value crashes
+$t.assert_fail "missing value crashes" bash << 'ERREOF5'
+. boop Args
+Args.parse '
+[Options]
+  output | o =
+' --output
+ERREOF5
+
+# Bad variable name in schema crashes
+$t.assert_fail "bad varname in schema crashes" bash << 'ERREOF6'
+. boop Args
+Args.parse '
+[Options]
+  bad-name | b
+' --bad-name
+ERREOF6
+
+# No args with no required options -- should succeed
+__args_noargs_rc=0
+bash << 'NOARGSEOF' || __args_noargs_rc=$?
+. boop Args
+Args.parse '
+[Options]
+  verbose | v
+'
+NOARGSEOF
+$t.assert_eq "no args with no required opts succeeds" "$__args_noargs_rc" "0"
+
+# getOpts: unknown option crashes
+$t.assert_fail "getOpts unknown option crashes" bash << 'GETEOF'
+. boop Args
+Args.getOpts ":vf:" -z
+GETEOF
+
+# getOpts: missing value crashes
+$t.assert_fail "getOpts missing value crashes" bash << 'GETEOF2'
+. boop Args
+Args.getOpts ":vf:" -f
+GETEOF2
+
 $t.summary
