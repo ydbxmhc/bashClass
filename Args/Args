@@ -172,59 +172,7 @@ __Args.parseOptLine() {
 
 # Print formatted help from parsed schema tables, then exit 0.
 __Args.printHelp() {
-  # Usage line
-  if [[ -n "$__Args_usage" ]]; then
-    printf "Usage: %s" "$__Args_usage"
-  fi
-  printf "\n"
-
-  # Options
-  if [[ ${#__Args_varlist[@]} -gt 0 ]]; then
-    printf "Options:\n"
-    local __Args_ph_var __Args_ph_flags __Args_ph_desc __Args_ph_key
-    for __Args_ph_var in "${__Args_varlist[@]}"; do
-      # Build flag string from alias map
-      __Args_ph_flags=""
-      for __Args_ph_key in "${!__Args_alias_map[@]}"; do
-        [[ "${__Args_alias_map[$__Args_ph_key]}" == "$__Args_ph_var" ]] || continue
-        [[ -n "$__Args_ph_flags" ]] && __Args_ph_flags+=", "
-        __Args_ph_flags+="$__Args_ph_key"
-      done
-      # Add value placeholder
-      if [[ "${__Args_takes_val[$__Args_ph_var]}" == 1 ]]; then
-        __Args_ph_flags+=" VALUE"
-      fi
-      # Required marker
-      [[ "${__Args_required[$__Args_ph_var]}" == 1 ]] && __Args_ph_flags+=" (required)"
-      # Default
-      [[ -n "${__Args_defaults[$__Args_ph_var]:-}" ]] && \
-        __Args_ph_flags+=" [default: ${__Args_defaults[$__Args_ph_var]}]"
-      # Description
-      __Args_ph_desc="${__Args_descriptions[$__Args_ph_var]:-}"
-      if [[ -n "$__Args_ph_desc" ]]; then
-        printf "  %-30s %s\n" "$__Args_ph_flags" "$__Args_ph_desc"
-      else
-        printf "  %s\n" "$__Args_ph_flags"
-      fi
-    done
-    printf "\n"
-  fi
-
-  # Subcommands
-  if [[ ${#__Args_subcmd_desc[@]} -gt 0 ]]; then
-    printf "Commands:\n"
-    local __Args_ph_cmd __Args_ph_aliases __Args_ph_key
-    for __Args_ph_cmd in "${!__Args_subcmd_desc[@]}"; do
-      # Collect aliases for this canonical name
-      __Args_ph_aliases="$__Args_ph_cmd"
-      for __Args_ph_key in "${!__Args_subcmd_map[@]}"; do
-        [[ "${__Args_subcmd_map[$__Args_ph_key]}" == "$__Args_ph_cmd" && "$__Args_ph_key" != "$__Args_ph_cmd" ]] || continue
-        __Args_ph_aliases+=", $__Args_ph_key"
-      done
-      printf "  %-30s %s\n" "$__Args_ph_aliases" "${__Args_subcmd_desc[$__Args_ph_cmd]}"
-    done
-    printf "\n"
-  fi
+  printf '%s\n' "$__Args_parse_schema"
 }
 
 # ============================================================================
