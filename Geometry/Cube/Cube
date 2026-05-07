@@ -23,8 +23,10 @@ Geometry.Cube.new() {
   done
   [[ -n "$__Geometry_Cube_new_size" ]] || _Crash "Cube: size is required"
 
+  _Debug "new: size=$__Geometry_Cube_new_size"
   into=__Geometry_Cube_new_self _Super new "$@" length="$__Geometry_Cube_new_size" width="$__Geometry_Cube_new_size" height="$__Geometry_Cube_new_size"
   _Bless "$__Geometry_Cube_new_self" Geometry.Cube
+  _Info "new: created $__Geometry_Cube_new_self (size=$__Geometry_Cube_new_size)"
   boop.pass "$__Geometry_Cube_new_self" ${into:-}
 }
 
@@ -34,6 +36,7 @@ Geometry.Cube.side() {
   local __Geometry_Cube_side_size __Geometry_Cube_side_val
   into=__Geometry_Cube_side_size $_Self.size
   into=__Geometry_Cube_side_val $_Self.area "$__Geometry_Cube_side_size" "$__Geometry_Cube_side_size"
+  _Trace "side: size=$__Geometry_Cube_side_size => $__Geometry_Cube_side_val"
   boop.pass "$__Geometry_Cube_side_val" ${into:-}
 }
 
@@ -48,6 +51,7 @@ Geometry.Cube.volume() {
   local __Geometry_Cube_volume_size __Geometry_Cube_volume_vol
   into=__Geometry_Cube_volume_size $_Self.size
   into=__Geometry_Cube_volume_vol required=3 $_Self.calc "$__Geometry_Cube_volume_size" "$__Geometry_Cube_volume_size" "$__Geometry_Cube_volume_size"
+  _Debug "volume: $__Geometry_Cube_volume_size^3 = $__Geometry_Cube_volume_vol"
   boop.pass "$__Geometry_Cube_volume_vol" ${into:-}
 }
 

@@ -49,6 +49,7 @@ Collection.List.new() {
   into=__Collection_List_new_self __boop.new type=indexed "$@"
   declare -ga "__boop_data_${__Collection_List_new_self}"
   eval "__boop_data_${__Collection_List_new_self}+=()"
+  _Info "new: created $__Collection_List_new_self"
   boop.pass "$__Collection_List_new_self" ${into:-}
 }
 
@@ -78,9 +79,11 @@ Collection.List.getAt() {
   local -i __Collection_List_getAt_len=0; (( ${#__Collection_List_getAt_arr[@]} )) && __Collection_List_getAt_len=${#__Collection_List_getAt_arr[@]}
   (( __Collection_List_getAt_idx < 0 )) && (( __Collection_List_getAt_idx += __Collection_List_getAt_len ))
   if (( __Collection_List_getAt_idx < 0 || __Collection_List_getAt_idx >= __Collection_List_getAt_len )); then
+    _Trace "getAt: [$1] out of range (length: $__Collection_List_getAt_len) -> ''"
     boop.pass "" ${into:-}
     return
   fi
+  _Trace "getAt: [$__Collection_List_getAt_idx] -> '${__Collection_List_getAt_arr[$__Collection_List_getAt_idx]}'"
   boop.pass "${__Collection_List_getAt_arr[$__Collection_List_getAt_idx]}" ${into:-}
 }
 
@@ -109,6 +112,7 @@ Collection.List.setAt() {
   (( __Collection_List_setAt_idx < 0 )) && (( __Collection_List_setAt_idx += __Collection_List_setAt_len ))
   (( __Collection_List_setAt_idx < 0 || __Collection_List_setAt_idx > __Collection_List_setAt_len )) && \
     _Crash "List index out of range: $1 (length: $__Collection_List_setAt_len)"
+  _Trace "setAt: [$__Collection_List_setAt_idx] = '$__Collection_List_setAt_val'"
   __Collection_List_setAt_arr[$__Collection_List_setAt_idx]="$__Collection_List_setAt_val"
 }
 
@@ -136,6 +140,7 @@ Collection.List.delete() {
   (( __Collection_List_del_idx < 0 )) && (( __Collection_List_del_idx += __Collection_List_del_len ))
   (( __Collection_List_del_idx < 0 || __Collection_List_del_idx >= __Collection_List_del_len )) && \
     _Crash "List index out of range: $1 (length: $__Collection_List_del_len)"
+  _Debug "delete: [$__Collection_List_del_idx], length now $(( __Collection_List_del_len - 1 ))"
   unset '__Collection_List_del_arr[$__Collection_List_del_idx]'
   __Collection_List_del_arr=("${__Collection_List_del_arr[@]+"${__Collection_List_del_arr[@]}"}")
 }
@@ -163,6 +168,8 @@ Collection.List.length() {
 Collection.List.clear() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_clear_arr="__boop_data_${_Self}"
+  local -i __Collection_List_clear_len=0; [[ -n "${!__Collection_List_clear_arr[@]}" ]] && __Collection_List_clear_len=${#__Collection_List_clear_arr[@]}
+  _Debug "clear: $__Collection_List_clear_len element(s) removed"
   __Collection_List_clear_arr=()
 }
 
@@ -200,6 +207,7 @@ Collection.List.push() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_push_arr="__boop_data_${_Self}"
   __Collection_List_push_arr+=("$@")
+  _Debug "push: +$# element(s), length now ${#__Collection_List_push_arr[@]}"
 }
 
 # Remove and return the last element (stack-style LIFO).
@@ -220,6 +228,7 @@ Collection.List.pop() {
   (( __Collection_List_pop_len == 0 )) && _Crash "pop from empty List"
   local __Collection_List_pop_val="${__Collection_List_pop_arr[-1]}"
   unset '__Collection_List_pop_arr[-1]'
+  _Debug "pop: -> '$__Collection_List_pop_val', length now $(( __Collection_List_pop_len - 1 ))"
   boop.pass "$__Collection_List_pop_val" ${into:-}
 }
 
@@ -239,6 +248,7 @@ Collection.List.shift() {
   (( __Collection_List_shift_len == 0 )) && _Crash "shift from empty List"
   local __Collection_List_shift_val="${__Collection_List_shift_arr[0]}"
   __Collection_List_shift_arr=("${__Collection_List_shift_arr[@]:1}")
+  _Debug "shift: -> '$__Collection_List_shift_val', length now $(( __Collection_List_shift_len - 1 ))"
   boop.pass "$__Collection_List_shift_val" ${into:-}
 }
 
@@ -254,6 +264,7 @@ Collection.List.unshift() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_unshift_arr="__boop_data_${_Self}"
   __Collection_List_unshift_arr=("$@" "${__Collection_List_unshift_arr[@]+"${__Collection_List_unshift_arr[@]}"}")
+  _Debug "unshift: +$# element(s), length now ${#__Collection_List_unshift_arr[@]}"
 }
 
 # Extract a sub-range of elements as a newline-delimited string.
@@ -280,6 +291,7 @@ Collection.List.slice() {
   (( __Collection_List_slice_end < 0 )) && (( __Collection_List_slice_end += __Collection_List_slice_len ))
   local -i __Collection_List_slice_count=$(( __Collection_List_slice_end - __Collection_List_slice_start ))
   (( __Collection_List_slice_count <= 0 )) && { boop.pass "" ${into:-}; return; }
+  _Debug "slice: [$__Collection_List_slice_start:$__Collection_List_slice_end] -> $__Collection_List_slice_count element(s)"
   local __Collection_List_slice_d="${_Delimiter:-$_EOL}"
   local __Collection_List_slice_out
   printf -v __Collection_List_slice_out "%s${__Collection_List_slice_d}" "${__Collection_List_slice_arr[@]:$__Collection_List_slice_start:$__Collection_List_slice_count}"
@@ -360,6 +372,7 @@ Collection.List.each() {
   local -n __Collection_List_each_arr="__boop_data_${_Self}"
   [[ -n "${__Collection_List_each_arr[@]:-}" ]] || return 0
   local -i __Collection_List_each_len=${#__Collection_List_each_arr[@]} __Collection_List_each_i
+  _Debug "each: iterating $__Collection_List_each_len element(s) via '$__Collection_List_each_fn'"
   for (( __Collection_List_each_i=0; __Collection_List_each_i < __Collection_List_each_len; __Collection_List_each_i++ )); do
     "$__Collection_List_each_fn" "$__Collection_List_each_i" "${__Collection_List_each_arr[$__Collection_List_each_i]}" || return
   done
