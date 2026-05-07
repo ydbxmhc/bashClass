@@ -31,10 +31,8 @@ Config.new() {
   local _Class="${_Class:-Config}"
   local __Config_new_self
   into=__Config_new_self __boop.new "$@"
-  declare -gA "__boop_config_${__Config_new_self}"
-  declare -ga "__boop_config_keys_${__Config_new_self}"
-  eval "__boop_config_${__Config_new_self}+=()"
-  eval "__boop_config_keys_${__Config_new_self}+=()"
+  declare -gA "__boop_config_${__Config_new_self}=()"
+  declare -ga "__boop_config_keys_${__Config_new_self}=()"
   boop.pass "$__Config_new_self" ${into:-}
 }
 
@@ -49,10 +47,8 @@ Config.load() {
 
   local __Config_load_self
   into=__Config_load_self __boop.new format=flat "file=$__Config_load_file"
-  declare -gA "__boop_config_${__Config_load_self}"
-  declare -ga "__boop_config_keys_${__Config_load_self}"
-  eval "__boop_config_${__Config_load_self}+=()"
-  eval "__boop_config_keys_${__Config_load_self}+=()"
+  declare -gA "__boop_config_${__Config_load_self}=()"
+  declare -ga "__boop_config_keys_${__Config_load_self}=()"
 
   local -n __Config_load_data="__boop_config_${__Config_load_self}"
   local -n __Config_load_keys_arr="__boop_config_keys_${__Config_load_self}"
@@ -88,10 +84,8 @@ Config.loadINI() {
 
   local __Config_ini_self
   into=__Config_ini_self __boop.new format=ini "file=$__Config_ini_file"
-  declare -gA "__boop_config_${__Config_ini_self}"
-  declare -ga "__boop_config_keys_${__Config_ini_self}"
-  eval "__boop_config_${__Config_ini_self}+=()"
-  eval "__boop_config_keys_${__Config_ini_self}+=()"
+  declare -gA "__boop_config_${__Config_ini_self}=()"
+  declare -ga "__boop_config_keys_${__Config_ini_self}=()"
 
   local -n __Config_ini_data="__boop_config_${__Config_ini_self}"
   local -n __Config_ini_keys_arr="__boop_config_keys_${__Config_ini_self}"

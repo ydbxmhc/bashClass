@@ -47,8 +47,7 @@ Collection.List.new() {
   local _Class="${_Class:-Collection.List}"
   local __Collection_List_new_self
   into=__Collection_List_new_self __boop.new type=indexed "$@"
-  declare -ga "__boop_data_${__Collection_List_new_self}"
-  eval "__boop_data_${__Collection_List_new_self}+=()"
+  declare -ga "__boop_data_${__Collection_List_new_self}=()"
   _Info "new: created $__Collection_List_new_self"
   boop.pass "$__Collection_List_new_self" ${into:-}
 }
