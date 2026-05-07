@@ -70,6 +70,13 @@ Args.getOpts() {
 
 # Parse one subcommand definition line into __Args_subcmd_map.
 __Args.parseSubcmdLine() {
+  # Capture description from # comment
+  local __Args_psl_desc=""
+  if [[ "$1" == *"#"* ]]; then
+    __Args_psl_desc="${1#*#}"
+    __Args_psl_desc="${__Args_psl_desc#"${__Args_psl_desc%%[![:space:]]*}"}"
+    __Args_psl_desc="${__Args_psl_desc%"${__Args_psl_desc##*[![:space:]]}"}"
+  fi
   local __Args_psl_line="${1%%#*}"
   __Args_psl_line="${__Args_psl_line%"${__Args_psl_line##*[![:space:]]}"}"
   [[ -z "$__Args_psl_line" ]] && return 0
@@ -88,11 +95,20 @@ __Args.parseSubcmdLine() {
     [[ -z "$__Args_psl_canonical" ]] && __Args_psl_canonical="$__Args_psl_part"
     __Args_subcmd_map[$__Args_psl_part]="$__Args_psl_canonical"
   done
+  [[ -n "$__Args_psl_canonical" && -n "$__Args_psl_desc" ]] && \
+    __Args_subcmd_desc[$__Args_psl_canonical]="$__Args_psl_desc"
 }
 
 # Parse one option definition line. Populates __Args_alias_map, __Args_takes_val,
 # __Args_required, __Args_defaults, __Args_varlist.
 __Args.parseOptLine() {
+  # Capture description from # comment before stripping
+  local __Args_pol_desc=""
+  if [[ "$1" == *"#"* ]]; then
+    __Args_pol_desc="${1#*#}"
+    __Args_pol_desc="${__Args_pol_desc#"${__Args_pol_desc%%[![:space:]]*}"}"
+    __Args_pol_desc="${__Args_pol_desc%"${__Args_pol_desc##*[![:space:]]}"}"
+  fi
   local __Args_pol_line="${1%%#*}"
   __Args_pol_line="${__Args_pol_line%"${__Args_pol_line##*[![:space:]]}"}"
   [[ -z "$__Args_pol_line" ]] && return 0
@@ -138,6 +154,7 @@ __Args.parseOptLine() {
       __Args_takes_val[$__Args_pol_varName]=$__Args_pol_takesVal
       __Args_required[$__Args_pol_varName]=$__Args_pol_required
       __Args_defaults[$__Args_pol_varName]="$__Args_pol_default"
+      __Args_descriptions[$__Args_pol_varName]="$__Args_pol_desc"
     fi
 
     # Single-char → -x, multi-char → --name
@@ -150,20 +167,84 @@ __Args.parseOptLine() {
 }
 
 # ============================================================================
-# Args.parse — GNU long + subcommand parser
+# Help generation
+# ============================================================================
+
+# Print formatted help from parsed schema tables, then exit 0.
+__Args.printHelp() {
+  # Usage line
+  if [[ -n "$__Args_usage" ]]; then
+    printf "Usage: %s" "$__Args_usage"
+  fi
+  printf "\n"
+
+  # Options
+  if [[ ${#__Args_varlist[@]} -gt 0 ]]; then
+    printf "Options:\n"
+    local __Args_ph_var __Args_ph_flags __Args_ph_desc __Args_ph_key
+    for __Args_ph_var in "${__Args_varlist[@]}"; do
+      # Build flag string from alias map
+      __Args_ph_flags=""
+      for __Args_ph_key in "${!__Args_alias_map[@]}"; do
+        [[ "${__Args_alias_map[$__Args_ph_key]}" == "$__Args_ph_var" ]] || continue
+        [[ -n "$__Args_ph_flags" ]] && __Args_ph_flags+=", "
+        __Args_ph_flags+="$__Args_ph_key"
+      done
+      # Add value placeholder
+      if [[ "${__Args_takes_val[$__Args_ph_var]}" == 1 ]]; then
+        __Args_ph_flags+=" VALUE"
+      fi
+      # Required marker
+      [[ "${__Args_required[$__Args_ph_var]}" == 1 ]] && __Args_ph_flags+=" (required)"
+      # Default
+      [[ -n "${__Args_defaults[$__Args_ph_var]:-}" ]] && \
+        __Args_ph_flags+=" [default: ${__Args_defaults[$__Args_ph_var]}]"
+      # Description
+      __Args_ph_desc="${__Args_descriptions[$__Args_ph_var]:-}"
+      if [[ -n "$__Args_ph_desc" ]]; then
+        printf "  %-30s %s\n" "$__Args_ph_flags" "$__Args_ph_desc"
+      else
+        printf "  %s\n" "$__Args_ph_flags"
+      fi
+    done
+    printf "\n"
+  fi
+
+  # Subcommands
+  if [[ ${#__Args_subcmd_desc[@]} -gt 0 ]]; then
+    printf "Commands:\n"
+    local __Args_ph_cmd __Args_ph_aliases __Args_ph_key
+    for __Args_ph_cmd in "${!__Args_subcmd_desc[@]}"; do
+      # Collect aliases for this canonical name
+      __Args_ph_aliases="$__Args_ph_cmd"
+      for __Args_ph_key in "${!__Args_subcmd_map[@]}"; do
+        [[ "${__Args_subcmd_map[$__Args_ph_key]}" == "$__Args_ph_cmd" && "$__Args_ph_key" != "$__Args_ph_cmd" ]] || continue
+        __Args_ph_aliases+=", $__Args_ph_key"
+      done
+      printf "  %-30s %s\n" "$__Args_ph_aliases" "${__Args_subcmd_desc[$__Args_ph_cmd]}"
+    done
+    printf "\n"
+  fi
+}
+
+# ============================================================================
+# Args.parse -- GNU long + subcommand parser
 # ============================================================================
 
 Args.parse() {
   local __Args_parse_schema="${1:-}"; shift
   [[ -n "$__Args_parse_schema" ]] || _Crash "Args.parse: schema required"
 
-  # Working tables — global for duration of parse, cleaned up before return
+  # Working tables -- global for duration of parse, cleaned up before return
   declare -gA __Args_alias_map=()
   declare -gA __Args_takes_val=()
   declare -gA __Args_required=()
   declare -gA __Args_defaults=()
   declare -gA __Args_subcmd_map=()
   declare -ga __Args_varlist=()
+  declare -gA __Args_descriptions=()
+  declare -gA __Args_subcmd_desc=()
+  declare -g  __Args_usage=""
 
   # --- Phase 1: Parse schema ---
   local __Args_parse_section="" __Args_parse_ln
@@ -174,7 +255,7 @@ Args.parse() {
       __Args_parse_section="${BASH_REMATCH[1]}"; continue
     fi
     case "$__Args_parse_section" in
-      Use|'') : ;;
+      Use|'') __Args_usage+="${__Args_parse_ln}"$'\n' ;;
       Subcommands) __Args.parseSubcmdLine "$__Args_parse_ln" ;;
       *)           __Args.parseOptLine    "$__Args_parse_ln" ;;
     esac
@@ -204,6 +285,12 @@ Args.parse() {
 
     if [[ $__Args_parse_endopts -eq 1 ]]; then
       _ArgsRemaining+=("$__Args_parse_arg"); continue
+    fi
+
+    # Help: --help or -h prints formatted help and exits
+    if [[ "$__Args_parse_arg" == "--help" || "$__Args_parse_arg" == "-h" ]]; then
+      __Args.printHelp
+      exit 0
     fi
 
     # Long option: --name or --name=value
@@ -278,7 +365,8 @@ Args.parse() {
 
   # Cleanup working tables
   unset __Args_alias_map __Args_takes_val __Args_required __Args_defaults \
-        __Args_subcmd_map __Args_varlist
+        __Args_subcmd_map __Args_varlist __Args_descriptions __Args_subcmd_desc \
+        __Args_usage
 
   # --- Phase 5: Object mode ---
   if [[ -n "${into:-}" ]]; then
