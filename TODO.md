@@ -639,14 +639,13 @@ Args.parse '
   (cross-subcommand validation is a future enhancement).
 
 ### What's done
-- `Args/Args` — full implementation of both entry points
-- `Config.fromString` — added to `Config/Config` (used by future tooling)
+- `Args/Args` -- full implementation of both entry points
+- `Config.fromString` -- added to `Config/Config`
+- `tests/unit/test_args_ts` -- test file written and wired into test_all
 
 ### What's pending
-- `tests/unit/test_args_ts` — test file not yet written
-- `tests/test_all` — needs `test_args_ts` in unit loop and `Args/Args` in naming check
-- `--help` auto-generation from schema (deferred — needs description storage)
-- Cross-subcommand option isolation (deferred — currently all options share alias pool)
+- `--help` auto-generation from schema (deferred -- needs description storage)
+- Cross-subcommand option isolation (deferred -- currently all options share alias pool)
 
 ---
 
@@ -868,52 +867,11 @@ Source: PLAN.md Phase 2.
 
 ---
 
-## Map::Fast -- Flat Compound-Key Store
+## Map::Fast -- Flat Compound-Key Store ✓ DONE
 
-A purpose-built flat associative array with compound keys for O(1)
-point lookups. Tuned for config data, parsed documents, lookup
-tables, and caches. Explicitly not good at enumeration, subtree
-deletion, or length queries -- use Map for those.
-
-### Design
-
-Internally a single bash associative array. Keys are dot-delimited
-compound paths: `users.0.name`, `server.port`, `db.host`. Values
-are always strings (which can be object references if needed).
-
-```bash
-into=doc Map::Fast
-$doc.set "server.host" "localhost"
-$doc.set "server.port" "8080"
-into=h $doc.get "server.host"       # "localhost" -- one hash lookup
-```
-
-### Key Separator
-
-Use a separator that can't appear in natural keys. Default `.`,
-overridable per-instance. Consider `\x1F` (unit separator) for
-data where dots are legitimate key content.
-
-### Optional Prefix Indexing
-
-A toggle that maintains a prefix index for `keys("users.*")`
-style queries. Off by default -- pay for what you use. When on,
-set/delete operations update the index automatically.
-
-### Tradeoffs (document explicitly)
-
-- O(1) get/set by full path
-- Enumeration requires scanning all keys (slow for large stores)
-- Subtree deletion requires prefix scan
-- No pass-by-reference for subtrees (pass doc + prefix path)
-- No insertion order guarantee
-
-### Status
-
-✓ Initial implementation complete (`Collection/Map/Fast/Fast`).
-Loadable via `Fast` (short name, index) or `Collection::Map::Fast`
-(full namespace). `Map::Fast` (partial namespace) does NOT resolve --
-see Namespace Resolution below.
+Implemented at `Collection/Map/Fast/Fast`. 40 tests in
+`tests/unit/test_map_fast_ts`. O(1) get/set, optional prefix
+indexing via `keysUnder`/`deleteUnder`. Custom separator support.
 
 ---
 
@@ -940,109 +898,34 @@ three-level partials?).
 
 ---
 
-## ★ Fully Qualified Class Names and Import Aliasing
+## ★ Fully Qualified Class Names and Import Aliasing ✓ DONE
 
-**Priority item.** The class system currently uses short names
-everywhere: registry keys, method names, baked wrappers, constructor
-shorthands. `Box.volume`, `Math.add`, `List.push`. This works only
-because every class has a unique short name today.
+Implemented. Classes register with FQN internally (`Geometry.Box`,
+`Collection.Map.Fast`). Aliases are real registry entries with
+`trueClass` pointing to the FQN. Auto-aliasing creates short names
+when unambiguous. `_Import` with `as` clause for explicit aliases.
+`_AutoAlias` modes: full/best/short/none.
 
-As soon as two namespaces define a class with the same short name
-(`Geometry::Box` and `Sport::Box`, or `Map::Fast` and `JSON::Fast`),
-everything collides: registry entries, method function names, baked
-wrappers, constructor shorthands.
-
-### The Java Import Model
-
-Classes should register with their full qualified name internally:
-`Geometry.Box`, `Collection.Map.Fast`. Method functions use the
-full name: `Geometry.Box.volume`, `Collection.Map.Fast.get`.
-
-But casual use should still allow short names when unambiguous.
-`_Import Geometry::Box` (or a similar mechanism) creates a local
-alias so the user can write `Box.new` and it resolves to
-`Geometry.Box.new`. If both `Geometry::Box` and `Sport::Box` are
-loaded, the user must use the full name for at least one.
-
-### What Needs to Change
-
-- `boopClass` registers with full qualified name
-- Method functions use full qualified name
-- Baked wrappers map short name -> full name (the alias layer)
-- Constructor shorthands use the alias
-- `_Import` (new Tier 2 function) creates short-name aliases
-  after loading, similar to Java's `import` statement
-- The index maps short names to full names (already does this)
-- Conflict detection removes ambiguous short aliases (already does)
-- `boop.classPath set` provides manual alias overrides (already does)
-
-### Backward Compatibility
-
-Existing classes with unique short names (`Box`, `Math`, `List`)
-continue to work as-is -- their full name happens to equal their
-short name (or the alias is unambiguous). The refactor is additive
-for existing code.
-
-### Open Questions
-
-- Does `_Import` create aliases in the current shell scope, or
-  globally? Global is simpler but means one script's imports
-  affect another's.
-- Should `_Import` support `_Import Geometry::Box as GBox`?
-- How do per-class method names interact with inheritance?
-  If `Geometry.Box` inherits from `boop`, is the parent method
-  `boop.get` or `Geometry.Box.get`?
-- Internal variable naming: `__Geometry_Box_volume_result` or
-  `__GeometryBox_volume_result`?
-
-Needs a full spec pass. This is the biggest remaining architectural
-decision in the framework.
+See `.kiro/specs/namespace-aliasing/` for the full design spec.
 
 ---
 
-## JSON Parser
+## JSON Parser ✓ (parse + stringify done)
 
-Two-stage pipeline: fast flat parse, optional deep conversion.
+Implemented at `Data/JSON/JSON`. 45 tests in `tests/unit/test_json_ts`.
 
-### `JSON.parse` (default -- flat)
+### Done
+- `Data.JSON.parse` -- parses JSON into `Collection.Map.Fast`
+- `Data.JSON.stringify` -- serializes back to JSON (no subshells,
+  shared result string with depth-50 subshell guard)
+- Handles: objects, arrays, strings (with escapes), numbers, booleans, null
+- Pure bash, no external dependencies
+- Docs at `docs/JSON.md`
 
-Parses JSON into a `Map::Fast` with compound keys. One hash
-lookup per value access. No object-per-node overhead.
-
-```bash
-into=doc JSON.parse '{"users":[{"name":"Alice"},{"name":"Bob"}]}'
-into=name $doc.get "users.0.name"    # "Alice"
-into=port $doc.get "server.port"     # "8080"
-```
-
-This is the 90% use case: grab values by path from parsed data.
-
-### `JSON.parseDeep` (full object tree)
-
-Takes a `Map::Fast` (or raw JSON) and inflates it into real
-Map/List objects. Each node is a proper boop object you can
-pass around, iterate, hand to functions.
-
-```bash
-into=tree JSON.parseDeep "$doc"      # or JSON.parseDeep '{"..."}'
-into=users $tree.get "users"         # a real List object
-$users.each show_user               # iterate with callbacks
-```
-
-Two-stage: parse flat first, deep-convert only if needed.
-
-### `JSON.stringify`
-
-Serializes a Map::Fast or Map/List tree back to JSON string.
-
-### Implementation Notes
-
-- Pure bash string walking with parameter expansion for tokenization
-- No external dependencies (no jq, no python)
-- Handles: objects, arrays, strings, numbers, booleans, null
-- Nested structures map to compound keys with `.` separator
-- Array indices are numeric: `users.0`, `users.1`
-- Would benefit from String class but not blocked on it
+### Pending
+- `JSON.parseDeep` -- inflate flat store into real Map/List objects
+- Unicode escape handling (`\uXXXX` currently skipped)
+- Key order preservation in stringify (hash iteration order)
 
 ---
 
