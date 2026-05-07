@@ -252,7 +252,7 @@ Collection.Map.each() {
   local __Collection_Map_each_fn="$1"
   local -n __Collection_Map_each_arr="__boop_data_${_Self}"
   local -n __Collection_Map_each_keys="__boop_keys_${_Self}"
-  [[ -n "${__Collection_Map_each_keys[@]:-}" ]] || return 0
+  [[ -n "${!__Collection_Map_each_keys[@]}" ]] || return 0
   _Debug "each: iterating ${#__Collection_Map_each_keys[@]} entry/entries via '$__Collection_Map_each_fn'"
   local __Collection_Map_each_key
   for __Collection_Map_each_key in "${__Collection_Map_each_keys[@]}"; do
