@@ -33,6 +33,8 @@ Config.new() {
   into=__Config_new_self __boop.new "$@"
   declare -gA "__boop_config_${__Config_new_self}"
   declare -ga "__boop_config_keys_${__Config_new_self}"
+  eval "__boop_config_${__Config_new_self}+=()"
+  eval "__boop_config_keys_${__Config_new_self}+=()"
   boop.pass "$__Config_new_self" ${into:-}
 }
 
@@ -49,23 +51,28 @@ Config.load() {
   into=__Config_load_self __boop.new format=flat "file=$__Config_load_file"
   declare -gA "__boop_config_${__Config_load_self}"
   declare -ga "__boop_config_keys_${__Config_load_self}"
+  eval "__boop_config_${__Config_load_self}+=()"
+  eval "__boop_config_keys_${__Config_load_self}+=()"
 
   local -n __Config_load_data="__boop_config_${__Config_load_self}"
   local -n __Config_load_keys_arr="__boop_config_keys_${__Config_load_self}"
   local __Config_load_line __Config_load_key __Config_load_val
 
+  _Debug "load: reading '$__Config_load_file'"
   while IFS= read -r __Config_load_line; do
     [[ -z "$__Config_load_line" || "$__Config_load_line" == '#'* ]] && continue
     [[ "$__Config_load_line" != *'='* ]] && continue
     __Config_load_key="${__Config_load_line%%=*}"
     __Config_load_val="${__Config_load_line#*=}"
     [[ -z "$__Config_load_key" ]] && continue
+    _Trace "load: '$__Config_load_key' = '$__Config_load_val'"
     if [[ -z "${__Config_load_data[$__Config_load_key]+set}" ]]; then
       __Config_load_keys_arr+=("$__Config_load_key")
     fi
     __Config_load_data[$__Config_load_key]="$__Config_load_val"
   done < "$__Config_load_file"
 
+  _Info "load: loaded '$__Config_load_file' (${#__Config_load_data[@]} keys) -> $__Config_load_self"
   boop.pass "$__Config_load_self" ${into:-}
 }
 
@@ -83,15 +90,19 @@ Config.loadINI() {
   into=__Config_ini_self __boop.new format=ini "file=$__Config_ini_file"
   declare -gA "__boop_config_${__Config_ini_self}"
   declare -ga "__boop_config_keys_${__Config_ini_self}"
+  eval "__boop_config_${__Config_ini_self}+=()"
+  eval "__boop_config_keys_${__Config_ini_self}+=()"
 
   local -n __Config_ini_data="__boop_config_${__Config_ini_self}"
   local -n __Config_ini_keys_arr="__boop_config_keys_${__Config_ini_self}"
   local __Config_ini_line __Config_ini_section="" __Config_ini_key __Config_ini_val
 
+  _Debug "loadINI: reading '$__Config_ini_file'"
   while IFS= read -r __Config_ini_line; do
     [[ -z "$__Config_ini_line" || "$__Config_ini_line" == '#'* ]] && continue
     if [[ "$__Config_ini_line" =~ ^\[([^]]+)\]$ ]]; then
       __Config_ini_section="${BASH_REMATCH[1]}"
+      _Trace "loadINI: section [$__Config_ini_section]"
       continue
     fi
     [[ "$__Config_ini_line" != *'='* ]] && continue
@@ -99,12 +110,14 @@ Config.loadINI() {
     __Config_ini_val="${__Config_ini_line#*=}"
     [[ -z "$__Config_ini_key" ]] && continue
     [[ -n "$__Config_ini_section" ]] && __Config_ini_key="${__Config_ini_section}.${__Config_ini_key}"
+    _Trace "loadINI: '$__Config_ini_key' = '$__Config_ini_val'"
     if [[ -z "${__Config_ini_data[$__Config_ini_key]+set}" ]]; then
       __Config_ini_keys_arr+=("$__Config_ini_key")
     fi
     __Config_ini_data[$__Config_ini_key]="$__Config_ini_val"
   done < "$__Config_ini_file"
 
+  _Info "loadINI: loaded '$__Config_ini_file' (${#__Config_ini_data[@]} keys) -> $__Config_ini_self"
   boop.pass "$__Config_ini_self" ${into:-}
 }
 
@@ -115,6 +128,7 @@ Config.get() {
   local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
   local __Config_get_key="$1"
   local -n __Config_get_data="__boop_config_${_Self}"
+  _Trace "get: '$__Config_get_key' -> '${__Config_get_data[$__Config_get_key]:-}'"
   boop.pass "${__Config_get_data[$__Config_get_key]:-}" ${into:-}
 }
 
@@ -128,7 +142,10 @@ Config.set() {
   local -n __Config_set_data="__boop_config_${_Self}"
   local -n __Config_set_keys="__boop_config_keys_${_Self}"
   if [[ -z "${__Config_set_data[$__Config_set_key]+set}" ]]; then
+    _Debug "set: '$__Config_set_key' = '$__Config_set_val' (new key)"
     __Config_set_keys+=("$__Config_set_key")
+  else
+    _Debug "set: '$__Config_set_key' = '$__Config_set_val' (update)"
   fi
   __Config_set_data[$__Config_set_key]="$__Config_set_val"
 }
@@ -138,7 +155,12 @@ Config.set() {
 Config.has() {
   local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
   local -n __Config_has_data="__boop_config_${_Self}"
-  [[ -n "${__Config_has_data[$1]+set}" ]] && return 0 || return 1
+  if [[ -n "${__Config_has_data[$1]+set}" ]]; then
+    _Trace "has: '$1' -> true"
+    return 0
+  fi
+  _Trace "has: '$1' -> false"
+  return 1
 }
 
 # Return keys as a newline-delimited string in insertion order.
@@ -202,6 +224,7 @@ Config.save() {
 
   local __Config_save_format
   into=__Config_save_format __boop.get format
+  _Debug "save: -> '$__Config_save_target' (format=${__Config_save_format:-flat})"
   case "${__Config_save_format:-flat}" in
     ini) Config.toINI  "$__Config_save_target" ;;
     *)   Config.toFlat "$__Config_save_target" ;;
@@ -226,8 +249,10 @@ Config.toFlat() {
   done
 
   if [[ -n "$__Config_toFlat_file" ]]; then
+    _Debug "toFlat: writing ${#__Config_toFlat_keys[@]} key(s) to '$__Config_toFlat_file'"
     printf "%s\n" "$__Config_toFlat_out" > "$__Config_toFlat_file"
   else
+    _Trace "toFlat: serializing ${#__Config_toFlat_keys[@]} key(s) to string"
     boop.pass "$__Config_toFlat_out" ${into:-}
   fi
 }

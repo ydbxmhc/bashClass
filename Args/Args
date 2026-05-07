@@ -166,12 +166,15 @@ Args.parse() {
   declare -ga __Args_varlist=()
 
   # --- Phase 1: Parse schema ---
+  _Debug "parse: parsing schema"
   local __Args_parse_section="" __Args_parse_ln
   while IFS= read -r __Args_parse_ln; do
     __Args_parse_ln="${__Args_parse_ln#"${__Args_parse_ln%%[![:space:]]*}"}"
     [[ -z "$__Args_parse_ln" ]] && continue
     if [[ "$__Args_parse_ln" =~ ^\[([^]]+)\]$ ]]; then
-      __Args_parse_section="${BASH_REMATCH[1]}"; continue
+      __Args_parse_section="${BASH_REMATCH[1]}"
+      _Trace "parse: schema section [$__Args_parse_section]"
+      continue
     fi
     case "$__Args_parse_section" in
       Use|'') : ;;
@@ -182,6 +185,7 @@ Args.parse() {
 
   # Snapshot varlist before cleanup (needed for object-mode pass)
   local -a __Args_parse_vars=("${__Args_varlist[@]+"${__Args_varlist[@]}"}")
+  _Info "parse: schema has ${#__Args_parse_vars[@]} option(s), ${#__Args_subcmd_map[@]} subcommand(s)"
 
   # --- Phase 2: Initialize result variables ---
   declare -ga __Args_orig=("$@")
@@ -223,10 +227,12 @@ Args.parse() {
           [[ $# -gt 0 ]] || _Crash "Args.parse: $__Args_parse_key requires a value"
           __Args_parse_val="$1"; shift
         fi
+        _Debug "parse: $__Args_parse_key ($__Args_parse_vn) = '$__Args_parse_val'"
         declare -g "${__Args_parse_vn}=${__Args_parse_val}"
       else
         [[ $__Args_parse_hasval -eq 0 ]] || \
           _Crash "Args.parse: $__Args_parse_key is a boolean flag, does not take a value"
+        _Debug "parse: $__Args_parse_key ($__Args_parse_vn) = true"
         declare -g "${__Args_parse_vn}=1"
       fi
       continue
@@ -248,8 +254,10 @@ Args.parse() {
             [[ $# -gt 0 ]] || _Crash "Args.parse: -${__Args_parse_c} requires a value"
             __Args_parse_sv="$1"; shift
           fi
+          _Debug "parse: -$__Args_parse_c ($__Args_parse_cvn) = '$__Args_parse_sv'"
           declare -g "${__Args_parse_cvn}=${__Args_parse_sv}"
         else
+          _Debug "parse: -$__Args_parse_c ($__Args_parse_cvn) = true"
           declare -g "${__Args_parse_cvn}=1"
         fi
       done
@@ -260,12 +268,16 @@ Args.parse() {
     if [[ -z "$_Action" && ${#__Args_subcmd_map[@]} -gt 0 ]]; then
       local __Args_parse_canon="${__Args_subcmd_map[$__Args_parse_arg]:-}"
       if [[ -n "$__Args_parse_canon" ]]; then
+        _Debug "parse: subcommand '$__Args_parse_arg' -> '$__Args_parse_canon'"
         declare -g "_Action=$__Args_parse_canon"; continue
       fi
     fi
 
+    _Trace "parse: positional '$__Args_parse_arg'"
     _ArgsRemaining+=("$__Args_parse_arg")
   done
+
+  _Info "parse: done — action='$_Action', ${#_ArgsRemaining[@]} remaining"
 
   # --- Phase 4: Validate required ---
   local __Args_parse_missing=""
