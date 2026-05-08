@@ -77,6 +77,42 @@ into=d Data.JSON.parse '{"bs":"back\\slash"}'
 into=v $d.get "bs"; $t.assert_eq "backslash escape" "$v" 'back\slash'
 
 # ============================================================================
+# Parse: Unicode escapes
+# ============================================================================
+
+$t.section "Parse: unicode escapes"
+
+# Basic BMP characters: copyright, euro, em-dash
+into=d Data.JSON.parse '{"c":"\u00A9","e":"\u20AC","d":"\u2014"}'
+into=v $d.get "c"; $t.assert_eq "copyright \\u00A9" "$v" "©"
+into=v $d.get "e"; $t.assert_eq "euro \\u20AC"      "$v" "€"
+into=v $d.get "d"; $t.assert_eq "em-dash \\u2014"   "$v" "—"
+
+# ASCII via \u (should work — \u0041 = 'A')
+into=d Data.JSON.parse '{"a":"\u0041BC"}'
+into=v $d.get "a"; $t.assert_eq "ASCII via \\u" "$v" "ABC"
+
+# Mixed: escapes and literals
+into=d Data.JSON.parse '{"mix":"hello \u00A9 world"}'
+into=v $d.get "mix"; $t.assert_eq "mixed escape and literal" "$v" "hello © world"
+
+# Surrogate pair — 🎉 (U+1F389) = \uD83C\uDF89
+into=d Data.JSON.parse '{"emoji":"\uD83C\uDF89"}'
+into=v $d.get "emoji"; $t.assert_eq "surrogate pair emoji" "$v" "🎉"
+
+# Lowercase hex digits
+into=d Data.JSON.parse '{"low":"\u00e9"}'
+into=v $d.get "low"; $t.assert_eq "lowercase hex" "$v" "é"
+
+# Unpaired high surrogate crashes
+$t.assert_fail "unpaired high surrogate crashes" \
+  bash -c '. ./boop Data::JSON; Data.JSON.parse '\''{"bad":"\uD83C only"}'\'''
+
+# Invalid hex crashes
+$t.assert_fail "invalid hex in \\u crashes" \
+  bash -c '. ./boop Data::JSON; Data.JSON.parse '\''{"bad":"\uGHIJ"}'\'''
+
+# ============================================================================
 # Parse: empty structures
 # ============================================================================
 

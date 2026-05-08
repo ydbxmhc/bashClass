@@ -49,6 +49,41 @@ __Data_JSON_skipWS() {
 }
 
 
+# Parse a \uXXXX escape sequence (after the 'u' consumed by parseString).
+# Reads 4 hex digits. Handles UTF-16 surrogate pairs for characters beyond
+# the Basic Multilingual Plane (\uD800-\uDBFF high + \uDC00-\uDFFF low →
+# single codepoint in U+10000 to U+10FFFF range).
+# Appends the decoded UTF-8 bytes to __Data_JSON_strResult.
+__Data_JSON_parseUnicode() {
+  local __Data_JSON_pu_hex="${__Data_JSON_src:__Data_JSON_pos:4}"
+  [[ "$__Data_JSON_pu_hex" =~ ^[0-9A-Fa-f]{4}$ ]] || _Crash "Data.JSON: invalid \\u escape: '$__Data_JSON_pu_hex'"
+  (( __Data_JSON_pos += 4 ))
+  local -i __Data_JSON_pu_code=$((16#$__Data_JSON_pu_hex))
+
+  # High surrogate: expect a low surrogate to follow as \uXXXX
+  if (( __Data_JSON_pu_code >= 0xD800 && __Data_JSON_pu_code <= 0xDBFF )); then
+    [[ "${__Data_JSON_src:__Data_JSON_pos:2}" == '\u' ]] || \
+      _Crash "Data.JSON: unpaired high surrogate \\u$__Data_JSON_pu_hex"
+    (( __Data_JSON_pos += 2 ))
+    local __Data_JSON_pu_lowHex="${__Data_JSON_src:__Data_JSON_pos:4}"
+    [[ "$__Data_JSON_pu_lowHex" =~ ^[0-9A-Fa-f]{4}$ ]] || \
+      _Crash "Data.JSON: invalid \\u escape in surrogate pair: '$__Data_JSON_pu_lowHex'"
+    (( __Data_JSON_pos += 4 ))
+    local -i __Data_JSON_pu_low=$((16#$__Data_JSON_pu_lowHex))
+    (( __Data_JSON_pu_low >= 0xDC00 && __Data_JSON_pu_low <= 0xDFFF )) || \
+      _Crash "Data.JSON: invalid low surrogate \\u$__Data_JSON_pu_lowHex"
+    __Data_JSON_pu_code=$(( 0x10000 + ((__Data_JSON_pu_code - 0xD800) << 10) + (__Data_JSON_pu_low - 0xDC00) ))
+  elif (( __Data_JSON_pu_code >= 0xDC00 && __Data_JSON_pu_code <= 0xDFFF )); then
+    _Crash "Data.JSON: unexpected low surrogate \\u$__Data_JSON_pu_hex"
+  fi
+
+  # Emit as UTF-8 via printf's \U escape (bash 5+)
+  local __Data_JSON_pu_hexPad __Data_JSON_pu_utf8
+  printf -v __Data_JSON_pu_hexPad '%08X' "$__Data_JSON_pu_code"
+  printf -v __Data_JSON_pu_utf8 '%b' "\U$__Data_JSON_pu_hexPad"
+  __Data_JSON_strResult+="$__Data_JSON_pu_utf8"
+}
+
 # Parse a JSON string value (after opening quote consumed)
 # Sets __Data_JSON_strResult (no subshell)
 __Data_JSON_parseString() {
@@ -69,7 +104,7 @@ __Data_JSON_parseString() {
         'r') __Data_JSON_strResult+=$'\r' ;;
         'b') __Data_JSON_strResult+=$'\b' ;;
         'f') __Data_JSON_strResult+=$'\f' ;;
-        'u') (( __Data_JSON_pos += 4 )) ;;
+        'u') __Data_JSON_parseUnicode ;;
         *) __Data_JSON_strResult+="$__Data_JSON_parseString_c" ;;
       esac
     else
