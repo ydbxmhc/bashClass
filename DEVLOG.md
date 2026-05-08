@@ -27,6 +27,44 @@ no cryptic `10#` bash errors leak through.
 
 ---
 
+## Args Subcommand Scoping
+
+**Completed:** 2026-05-08
+
+Subcommand-scoped options (`[SubcmdName]` sections in the schema)
+are now truly scoped. Using a scoped option before the subcommand
+or under the wrong subcommand is a hard error. Object mode omits
+out-of-scope variables entirely. Required validation skips
+out-of-scope options. 6 new tests (63 total in Args suite).
+
+Also: `_remaining` in object mode uses the delimiter instead of
+IFS join (preserves word boundaries for args with spaces). `getOpts`
+parses the optstring into a lookup set at start instead of fragile
+`*opt:*` glob matching.
+
+---
+
+## Logging Hooks Throughout Codebase
+
+**Completed:** 2026-05-08
+
+`_Trace`/`_Debug`/`_Info` calls added throughout class method
+implementations:
+
+- `_Info` — object lifecycle (new, load, fromString)
+- `_Debug` — mutations (set, delete, clear, push, pop, shift, unshift)
+- `_Trace` — reads (getAt, has, keys, values, toArray, toString, calc)
+
+Setting `_LogLevel debug` or `_LogLevel trace` now produces
+meaningful diagnostic output. Also refactored `eval "name+=()"` to
+`declare -gA "name=()"` — simpler, same effect.
+
+Not yet covered: `__boop.import`, `__boop.loader`, `boop.classPath`,
+object dispatch, property access, `boop.pass`. See "Extensive Logging
+Hooks" in TODO for remaining scope.
+
+---
+
 ## JSON Unicode Escape Handling
 
 **Completed:** 2026-05-08

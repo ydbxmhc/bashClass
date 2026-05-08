@@ -157,15 +157,10 @@ Source: `boop`, all class files.
 
 ## Args -- Pending Items
 
-Core done. Implementation at `Args/Args`. 57 tests in
+Core done. Implementation at `Args/Args`. 63 tests in
 `tests/unit/test_args_ts`. Docs at `docs/Args.md`.
 
 ### Pending
-- **Subcommand scoping refactor** — options defined under a subcommand
-  section currently leak into the global namespace. `__Args.parseOptLine`
-  needs a scope parameter. Medium-sized refactor. Prototype exists on
-  a deleted branch (`claude/pull-and-evaluate`) with 60 new tests —
-  needs clean reimplementation against current codebase.
 - Schema validation warnings for common mistakes (typos, duplicate
   option names, missing `=` on value-taking options)
 
@@ -448,11 +443,9 @@ Revisit if a compelling use case emerges.
 
 ## Extensive Logging Hooks Throughout Codebase
 
-The logging system exists but most of the codebase doesn't use it.
-The framework needs comprehensive logging instrumentation so that
-turning up the log level actually reveals what's happening.
+Class method implementations now have `_Info`/`_Debug`/`_Trace`
+hooks (see DEVLOG). Remaining areas lack coverage:
 
-Priority areas:
 - `__boop.import` — log every resolution step at `_Debug`/`_Trace`
 - `__boop.loader` — log each rc/cfg file sourced or skipped at `_Info`
 - `boop.classPath` — log set/remove/rebuild at `_Info`
