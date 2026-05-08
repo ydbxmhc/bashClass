@@ -78,7 +78,6 @@ Config.load() {
 
   __Config.parseFlat "$__Config_load_self" < "$__Config_load_file"
 
-  _Info "load: loaded '$__Config_load_file' (${#__Config_load_data[@]} keys) -> $__Config_load_self"
   boop.pass "$__Config_load_self" ${into:-}
 }
 
@@ -141,7 +140,6 @@ Config.loadINI() {
 
   __Config.parseINI "$__Config_ini_self" < "$__Config_ini_file"
 
-  _Info "loadINI: loaded '$__Config_ini_file' (${#__Config_ini_data[@]} keys) -> $__Config_ini_self"
   boop.pass "$__Config_ini_self" ${into:-}
 }
 
