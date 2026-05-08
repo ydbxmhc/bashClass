@@ -232,7 +232,7 @@ $t.assert_ok    "returned a Config object"   $cfg.isa Config
 into=v $cfg.get name;     $t.assert_eq "obj: name"      "$v" "alice"
 into=v $cfg.get verbose;  $t.assert_eq "obj: verbose"   "$v" "1"
 into=v $cfg.get _action;  $t.assert_eq "obj: _action"   "$v" "build"
-into=v $cfg.get _remaining; $t.assert_eq "obj: _remaining" "$v" "rest1 rest2"
+into=v $cfg.get _remaining; $t.assert_eq "obj: _remaining" "$v" $'rest1\nrest2'
 
 # Scope vars must NOT be set in object mode
 $t.assert_eq "scope name unset in obj mode" "${name:-UNSET}" "UNSET"
@@ -351,5 +351,63 @@ $t.assert_fail "getOpts missing value crashes" bash << 'GETEOF2'
 . boop Args
 Args.getOpts ":vf:" -f
 GETEOF2
+
+# ============================================================================
+# Args.parse — subcommand-scoped options
+# ============================================================================
+
+$t.section "Args.parse: subcommand-scoped options"
+
+unset force verbose
+Args.parse '
+[Subcommands]
+push | p
+pull
+
+[Options]
+verbose | v
+
+[push]
+force | f
+' push --force -v
+$t.assert_eq "scoped --force accepted under push"  "$force"   "1"
+$t.assert_eq "global -v accepted under push"       "$verbose" "1"
+
+$t.assert_fail "scoped option before subcommand crashes" \
+  bash -c '. boop Args; Args.parse "
+[Subcommands]
+push
+[push]
+force =" --force push'
+
+$t.assert_fail "scoped option under wrong subcommand crashes" \
+  bash -c '. boop Args; Args.parse "
+[Subcommands]
+push
+pull
+[push]
+force =" pull --force'
+
+unset force verbose
+Args.parse '
+[Subcommands]
+push
+pull
+
+[Options]
+verbose | v
+
+[push]
+: force | f =
+' push --force myref
+$t.assert_eq "scoped required option satisfied"  "$force" "myref"
+
+$t.assert_ok "scoped required option not validated for other subcommand" \
+  bash -c '. boop Args; Args.parse "
+[Subcommands]
+push
+pull
+[push]
+: force =" pull'
 
 $t.summary
