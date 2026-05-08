@@ -43,7 +43,7 @@ Collection.Map.Fast.new() {
     esac
   done
   into=__Collection_Map_Fast_new_self __boop.new sep="$__Collection_Map_Fast_new_sep"
-  declare -gA "__boop_data_${__Collection_Map_Fast_new_self}"
+  declare -gA "__boop_data_${__Collection_Map_Fast_new_self}=()"
   boop.pass "$__Collection_Map_Fast_new_self" "${into:-}"
 }
 
@@ -93,11 +93,7 @@ Collection.Map.Fast.delete() {
 Collection.Map.Fast.length() {
   local _Self="${_Self:-}" _Class="${_Class:-Collection.Map.Fast}"
   local -n __Collection_Map_Fast_length_data="__boop_data_${_Self}"
-  if [[ -n "${!__Collection_Map_Fast_length_data[@]+set}" ]]; then
-    boop.pass "${#__Collection_Map_Fast_length_data[@]}" "${into:-}"
-  else
-    boop.pass "0" "${into:-}"
-  fi
+  boop.pass "${#__Collection_Map_Fast_length_data[@]}" "${into:-}"
 }
 
 # Clear all keys.
