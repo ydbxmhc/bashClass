@@ -171,6 +171,7 @@ Config.keys() {
   local __Config_keys_prefix="${__Config_keys_section:+${__Config_keys_section}.}"
 
   local __Config_keys_d="${_Delimiter:-$_EOL}"
+  _Trace "keys: ${#__Config_keys_list[@]} key(s)${__Config_keys_section:+ in section '$__Config_keys_section'}"
   for __Config_keys_k in "${__Config_keys_list[@]+"${__Config_keys_list[@]}"}"; do
     if [[ -n "$__Config_keys_section" ]]; then
       [[ "$__Config_keys_k" == "$__Config_keys_prefix"* ]] || continue
@@ -192,7 +193,7 @@ Config.sections() {
   local __Config_sections_out="" __Config_sections_sep=""
   local -A __Config_sections_seen=()
   local __Config_sections_k __Config_sections_s
-
+  _Trace "sections: scanning ${#__Config_sections_keys[@]} key(s)"
   for __Config_sections_k in "${__Config_sections_keys[@]+"${__Config_sections_keys[@]}"}"; do
     [[ "$__Config_sections_k" == *'.'* ]] || continue
     __Config_sections_s="${__Config_sections_k%%.*}"
@@ -295,8 +296,10 @@ Config.toINI() {
   __Config_toINI_out="${__Config_toINI_out%"${__Config_toINI_d}"}"
 
   if [[ -n "$__Config_toINI_file" ]]; then
+    _Debug "toINI: writing ${#__Config_toINI_keys[@]} key(s) to '$__Config_toINI_file'"
     printf "%s\n" "$__Config_toINI_out" > "$__Config_toINI_file"
   else
+    _Trace "toINI: serializing ${#__Config_toINI_keys[@]} key(s) to string"
     boop.pass "$__Config_toINI_out" ${into:-}
   fi
 }

@@ -159,6 +159,7 @@ Collection.Map.keys() {
   local -n __Collection_Map_keys_keys="__boop_keys_${_Self}"
   local __Collection_Map_keys_d="${_Delimiter:-$_EOL}"
   local __Collection_Map_keys_out
+  _Trace "keys: ${#__Collection_Map_keys_keys[@]} key(s)"
   if ! [[ -n "${!__Collection_Map_keys_keys[@]}" ]] || (( ${#__Collection_Map_keys_keys[@]} == 0 )); then
     boop.pass "" ${into:-}
     return
@@ -179,6 +180,7 @@ Collection.Map.values() {
   local -n __Collection_Map_values_arr="__boop_data_${_Self}"
   local -n __Collection_Map_values_keys="__boop_keys_${_Self}"
   local __Collection_Map_values_out=""
+  _Trace "values: ${#__Collection_Map_values_keys[@]} value(s)"
   if ! [[ -n "${!__Collection_Map_values_keys[@]}" ]] || (( ${#__Collection_Map_values_keys[@]} == 0 )); then
     boop.pass "" ${into:-}
     return
@@ -202,6 +204,7 @@ Collection.Map.toArray() {
   local -n __Collection_Map_toArray_keys="__boop_keys_${_Self}"
   local __Collection_Map_toArray_d="${_Delimiter:-$_EOL}"
   local __Collection_Map_toArray_out="" __Collection_Map_toArray_key __Collection_Map_toArray_first=1
+  _Trace "toArray: ${#__Collection_Map_toArray_keys[@]} entry/entries"
   if [[ -n "${!__Collection_Map_toArray_keys[@]}" ]]; then
     for __Collection_Map_toArray_key in "${__Collection_Map_toArray_keys[@]}"; do
       (( __Collection_Map_toArray_first )) || __Collection_Map_toArray_out="${__Collection_Map_toArray_out}${__Collection_Map_toArray_d}"
@@ -222,6 +225,7 @@ Collection.Map.toString() {
   local -n __Collection_Map_ts_arr="__boop_data_${_Self}"
   local -n __Collection_Map_ts_keys="__boop_keys_${_Self}"
   local __Collection_Map_ts_out="Map($_Self){ " __Collection_Map_ts_key __Collection_Map_ts_first=1
+  _Trace "toString: ${#__Collection_Map_ts_keys[@]} entry/entries"
   if [[ -n "${!__Collection_Map_ts_keys[@]}" ]]; then
     for __Collection_Map_ts_key in "${__Collection_Map_ts_keys[@]}"; do
       (( __Collection_Map_ts_first )) || __Collection_Map_ts_out="$__Collection_Map_ts_out, "

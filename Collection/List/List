@@ -315,6 +315,7 @@ Collection.List.toArray() {
   local -n __Collection_List_toArray_arr="__boop_data_${_Self}"
   local __Collection_List_toArray_d="${_Delimiter:-$_EOL}"
   local __Collection_List_toArray_out
+  _Trace "toArray: ${#__Collection_List_toArray_arr[@]} element(s)"
   if ! [[ -n "${!__Collection_List_toArray_arr[@]}" ]] || (( ${#__Collection_List_toArray_arr[@]} == 0 )); then
     boop.pass "" ${into:-}
     return
@@ -343,6 +344,7 @@ Collection.List.toString() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_ts_arr="__boop_data_${_Self}"
   local -i __Collection_List_ts_len=0; [[ -n "${!__Collection_List_ts_arr[@]}" ]] && __Collection_List_ts_len=${#__Collection_List_ts_arr[@]}
+  _Trace "toString: $__Collection_List_ts_len element(s)"
   local __Collection_List_ts_out="List($_Self)[ "
   local -i __Collection_List_ts_i
   for (( __Collection_List_ts_i=0; __Collection_List_ts_i < __Collection_List_ts_len; __Collection_List_ts_i++ )); do
