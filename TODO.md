@@ -163,6 +163,11 @@ Core done. Implementation at `Args/Args`. 57 tests in
 ### Pending
 - Cross-subcommand option isolation (deferred)
 - Schema validation warnings for common mistakes
+- Subcommand scoping refactor: `__Args.parseOptLine` needs a scope
+  parameter so options defined under a subcommand section don't leak
+  into the global namespace. Prototype exists on a deleted branch
+  (`claude/pull-and-evaluate`) with 60 new tests — needs clean
+  reimplementation against current codebase.
 
 ---
 

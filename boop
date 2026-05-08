@@ -983,51 +983,18 @@ __boop.registerMethod() {
 # on cache miss. Caches the result so the walk never repeats for that
 # class+method pair.
 #
-# After resolution, calls the impl directly. No baking, no stubs, no
-# tiers — wrappers are written at creation time by registerClass (for
-# class-level functions) and wrapperAll (for object instances).
+# There is no runtime dispatcher function. Method calls go directly
+# to the resolved implementation via wrappers written at creation time:
 #
-# Dispatch is still called by:
-#   - Constructor shorthands (Box() → dispatch new)
-#   - Property accessors (get/set routing)
-#   - __boop.super (parent method resolution)
-#   - Any explicit MRO lookup
+#   - Class-level methods: registerClass writes Box.toString as a wrapper
+#     that calls _Self=$_Self _Class='Box' __boop.toString "$@".
+#   - Instance methods: wrapperAll writes per-instance wrappers (e.g.
+#     _abc123.length) at object creation that delegate the same way.
+#   - Constructor shorthand: Box() { _Class='Box' Box.new "$@"; }
 #
-# It is NOT called by normal method invocations — those go through
-# the direct wrappers written at creation time.
-#__boop.dispatch() {
-#  local __boop_dispatch_class="${_Class:-boop}"
-#  local _Self="${_Self:-${__boop_dispatch_class}}"
-#  local __boop_dispatch_method="$1"; shift
-#
-#  __boop.validate "$_Self"
-#  __boop.validate "$__boop_dispatch_class"
-#  __boop.validate "$__boop_dispatch_method"
-#
-#  # Check cache first (direct lookup — O(1) in the common case)
-#  local __boop_dispatch_cachekey="$__boop_dispatch_class.$__boop_dispatch_method"
-#  local __boop_dispatch_impl="${__boop_methodRegistry[$__boop_dispatch_cachekey]:-}"
-#
-#  # Cache miss: walk the inheritance chain (parent → grandparent → ...).
-#  # When found in an ancestor, cache it under the calling class so this
-#  # walk only happens once per class+method combination.
-#  if [[ -z "$__boop_dispatch_impl" ]]; then
-#    local __boop_dispatch_current="$__boop_dispatch_class"
-#    while [[ -n "$__boop_dispatch_current" ]]; do
-#      __boop_dispatch_impl="${__boop_methodRegistry[$__boop_dispatch_current.$__boop_dispatch_method]:-}"
-#      if [[ -n "$__boop_dispatch_impl" ]]; then
-#        [[ "$__boop_dispatch_current" != "$__boop_dispatch_class" ]] && __boop_methodRegistry[$__boop_dispatch_cachekey]="$__boop_dispatch_impl"
-#        break
-#      fi
-#      __boop.parse "$__boop_dispatch_current" "parent" __boop_dispatch_current
-#    done
-#  fi
-#
-#  [[ -n "$__boop_dispatch_impl" ]] || _Crash "Method not found: $__boop_dispatch_class.$__boop_dispatch_method"
-#
-#  # Call the resolved implementation directly
-#  _Self="$_Self" _Class="$__boop_dispatch_class" $__boop_dispatch_impl "$@"
-#}
+# MRO walks are explicit (see __boop.methodResolve below) and used only by
+# registerClass / refresh / backfill at class-construction time. Once the
+# wrappers are baked, normal method invocation has zero dispatch overhead.
 
 # __boop.methodResolve — MRO lookup for a class+method pair.
 #
