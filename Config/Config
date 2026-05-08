@@ -122,8 +122,9 @@ Config.get() {
   local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
   local __Config_get_key="$1"
   local -n __Config_get_data="__boop_config_${_Self}"
-  _Trace "get: '$__Config_get_key' -> '${__Config_get_data[$__Config_get_key]:-}'"
-  boop.pass "${__Config_get_data[$__Config_get_key]:-}" ${into:-}
+  local __Config_get_val="${__Config_get_data[$__Config_get_key]:-}"
+  _Trace "get: '$__Config_get_key' -> '$__Config_get_val'"
+  boop.pass "$__Config_get_val" ${into:-}
 }
 
 # Set a key to a value. Adds the key at the end if new; preserves position

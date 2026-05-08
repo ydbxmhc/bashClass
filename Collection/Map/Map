@@ -56,8 +56,9 @@ Collection.Map.getAt() {
   local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
   local __Collection_Map_getAt_key="$1"
   local -n __Collection_Map_getAt_arr="__boop_data_${_Self}"
-  _Trace "get: '$__Collection_Map_getAt_key' -> '${__Collection_Map_getAt_arr[$__Collection_Map_getAt_key]:-}'"
-  boop.pass "${__Collection_Map_getAt_arr[$__Collection_Map_getAt_key]:-}" ${into:-}
+  local __Collection_Map_getAt_val="${__Collection_Map_getAt_arr[$__Collection_Map_getAt_key]:-}"
+  _Trace "get: '$__Collection_Map_getAt_key' -> '$__Collection_Map_getAt_val'"
+  boop.pass "$__Collection_Map_getAt_val" ${into:-}
 }
 
 # Store a key-value pair in the map.
