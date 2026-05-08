@@ -23,6 +23,10 @@
 # Remaining entries are CLI aliases (may contain hyphens).
 # Single-char entries map to -x; multi-char entries map to --name.
 #
+# Subcommand-scoped options (defined under [SubcmdName]) are only accepted
+# after their subcommand is identified on the command line. Using a scoped
+# option before the subcommand or under the wrong subcommand is a hard error.
+#
 # Scope-write mode (no into=):
 #   Sets $varName for each option, $_Action (subcommand if any),
 #   $__Args_orig (original args array), $_ArgsRemaining (remaining positionals array).
@@ -31,6 +35,7 @@
 # Object mode (into=):
 #   Returns a Config object. Requires Config installed. Scope vars not set.
 #   Access: $obj.get varName  /  $obj.get _action  /  $obj.get _remaining
+#   _remaining is delimiter-separated (default: newline).
 
 [[ -n "${__boop_registry[Args]+set}" ]] && return 2>/dev/null
 
@@ -46,17 +51,31 @@
 # Usage: Args.getOpts ":vf:" "$@"
 Args.getOpts() {
   local __Args_getOpts_optstr="${1:-}"; shift
-  local __Args_getOpts_opt
   declare -ga __Args_orig=("$@")
+
+  # Build a value-flag set by scanning the optstr once
+  local -A __Args_getOpts_takes=()
+  local __Args_getOpts_i __Args_getOpts_ch
+  for (( __Args_getOpts_i = 0; __Args_getOpts_i < ${#__Args_getOpts_optstr}; __Args_getOpts_i++ )); do
+    __Args_getOpts_ch="${__Args_getOpts_optstr:$__Args_getOpts_i:1}"
+    [[ "$__Args_getOpts_ch" == ":" ]] && continue
+    [[ "${__Args_getOpts_optstr:$(( __Args_getOpts_i + 1 )):1}" == ":" ]] && \
+      __Args_getOpts_takes[$__Args_getOpts_ch]=1
+  done
+
+  _Debug "getOpts: optstr='$__Args_getOpts_optstr'"
+  local __Args_getOpts_opt
   OPTIND=1
   while getopts "$__Args_getOpts_optstr" __Args_getOpts_opt "$@"; do
     case "$__Args_getOpts_opt" in
       '?') _Crash "Args.getOpts: unknown option: -$OPTARG" ;;
       ':') _Crash "Args.getOpts: -$OPTARG requires a value" ;;
       *)
-        if [[ "$__Args_getOpts_optstr" == *"${__Args_getOpts_opt}:"* ]]; then
+        if [[ -n "${__Args_getOpts_takes[$__Args_getOpts_opt]:-}" ]]; then
+          _Debug "getOpts: -$__Args_getOpts_opt = '$OPTARG'"
           declare -g "${__Args_getOpts_opt}=${OPTARG}"
         else
+          _Debug "getOpts: -$__Args_getOpts_opt = true"
           declare -g "${__Args_getOpts_opt}=1"
         fi
         ;;
@@ -91,9 +110,11 @@ __Args.parseSubcmdLine() {
 }
 
 # Parse one option definition line. Populates __Args_alias_map, __Args_takes_val,
-# __Args_required, __Args_defaults, __Args_varlist.
+# __Args_required, __Args_defaults, __Args_varlist, __Args_var_scope.
+# $1 = scope (subcommand name for scoped options, "" for global)
+# $2 = raw line
 __Args.parseOptLine() {
-  local __Args_pol_line="${1%%#*}"
+  local __Args_pol_scope="${1:-}" __Args_pol_line="${2%%#*}"
   __Args_pol_line="${__Args_pol_line%"${__Args_pol_line##*[![:space:]]}"}"
   [[ -z "$__Args_pol_line" ]] && return 0
 
@@ -138,6 +159,7 @@ __Args.parseOptLine() {
       __Args_takes_val[$__Args_pol_varName]=$__Args_pol_takesVal
       __Args_required[$__Args_pol_varName]=$__Args_pol_required
       __Args_defaults[$__Args_pol_varName]="$__Args_pol_default"
+      __Args_var_scope[$__Args_pol_varName]="$__Args_pol_scope"
     fi
 
     # Single-char → -x, multi-char → --name
@@ -157,12 +179,13 @@ Args.parse() {
   local __Args_parse_schema="${1:-}"; shift
   [[ -n "$__Args_parse_schema" ]] || _Crash "Args.parse: schema required"
 
-  # Working tables — global for duration of parse, cleaned up before return
+  # Working tables — global for duration of parse, cleaned up after phase 5
   declare -gA __Args_alias_map=()
   declare -gA __Args_takes_val=()
   declare -gA __Args_required=()
   declare -gA __Args_defaults=()
   declare -gA __Args_subcmd_map=()
+  declare -gA __Args_var_scope=()
   declare -ga __Args_varlist=()
 
   # --- Phase 1: Parse schema ---
@@ -177,9 +200,10 @@ Args.parse() {
       continue
     fi
     case "$__Args_parse_section" in
-      Use|'') : ;;
+      Use|'')      : ;;
       Subcommands) __Args.parseSubcmdLine "$__Args_parse_ln" ;;
-      *)           __Args.parseOptLine    "$__Args_parse_ln" ;;
+      Options)     __Args.parseOptLine "" "$__Args_parse_ln" ;;
+      *)           __Args.parseOptLine "$__Args_parse_section" "$__Args_parse_ln" ;;
     esac
   done <<< "$__Args_parse_schema"
 
@@ -199,8 +223,13 @@ Args.parse() {
 
   # --- Phase 3: Walk args ---
   local __Args_parse_endopts=0
+  local __Args_parse_arg __Args_parse_key __Args_parse_val __Args_parse_hasval
+  local __Args_parse_vn __Args_parse_scope
+  local __Args_parse_cluster __Args_parse_c __Args_parse_cvn __Args_parse_sv
+  local __Args_parse_canon
+
   while [[ $# -gt 0 ]]; do
-    local __Args_parse_arg="$1"; shift
+    __Args_parse_arg="$1"; shift
 
     if [[ "$__Args_parse_arg" == "--" && $__Args_parse_endopts -eq 0 ]]; then
       __Args_parse_endopts=1; continue
@@ -212,7 +241,7 @@ Args.parse() {
 
     # Long option: --name or --name=value
     if [[ "$__Args_parse_arg" == --?* ]]; then
-      local __Args_parse_key __Args_parse_val="" __Args_parse_hasval=0
+      __Args_parse_hasval=0; __Args_parse_val=""
       if [[ "$__Args_parse_arg" == *=* ]]; then
         __Args_parse_key="${__Args_parse_arg%%=*}"
         __Args_parse_val="${__Args_parse_arg#*=}"
@@ -220,8 +249,16 @@ Args.parse() {
       else
         __Args_parse_key="$__Args_parse_arg"
       fi
-      local __Args_parse_vn="${__Args_alias_map[$__Args_parse_key]:-}"
+      __Args_parse_vn="${__Args_alias_map[$__Args_parse_key]:-}"
       [[ -n "$__Args_parse_vn" ]] || _Crash "Args.parse: unknown option: $__Args_parse_key"
+      __Args_parse_scope="${__Args_var_scope[$__Args_parse_vn]:-}"
+      if [[ -n "$__Args_parse_scope" ]]; then
+        if [[ -z "$_Action" ]]; then
+          _Crash "Args.parse: $__Args_parse_key is only valid after subcommand '$__Args_parse_scope'"
+        elif [[ "$__Args_parse_scope" != "$_Action" ]]; then
+          _Crash "Args.parse: $__Args_parse_key is not valid for subcommand '$_Action'"
+        fi
+      fi
       if [[ "${__Args_takes_val[$__Args_parse_vn]}" == 1 ]]; then
         if [[ $__Args_parse_hasval -eq 0 ]]; then
           [[ $# -gt 0 ]] || _Crash "Args.parse: $__Args_parse_key requires a value"
@@ -240,14 +277,21 @@ Args.parse() {
 
     # Short option(s): -x, -xVALUE, or cluster -abc
     if [[ "$__Args_parse_arg" == -?* ]]; then
-      local __Args_parse_cluster="${__Args_parse_arg#-}"
+      __Args_parse_cluster="${__Args_parse_arg#-}"
       while [[ -n "$__Args_parse_cluster" ]]; do
-        local __Args_parse_c="${__Args_parse_cluster:0:1}"
+        __Args_parse_c="${__Args_parse_cluster:0:1}"
         __Args_parse_cluster="${__Args_parse_cluster:1}"
-        local __Args_parse_cvn="${__Args_alias_map["-${__Args_parse_c}"]:-}"
+        __Args_parse_cvn="${__Args_alias_map["-${__Args_parse_c}"]:-}"
         [[ -n "$__Args_parse_cvn" ]] || _Crash "Args.parse: unknown option: -${__Args_parse_c}"
+        __Args_parse_scope="${__Args_var_scope[$__Args_parse_cvn]:-}"
+        if [[ -n "$__Args_parse_scope" ]]; then
+          if [[ -z "$_Action" ]]; then
+            _Crash "Args.parse: -$__Args_parse_c is only valid after subcommand '$__Args_parse_scope'"
+          elif [[ "$__Args_parse_scope" != "$_Action" ]]; then
+            _Crash "Args.parse: -$__Args_parse_c is not valid for subcommand '$_Action'"
+          fi
+        fi
         if [[ "${__Args_takes_val[$__Args_parse_cvn]}" == 1 ]]; then
-          local __Args_parse_sv
           if [[ -n "$__Args_parse_cluster" ]]; then
             __Args_parse_sv="$__Args_parse_cluster"; __Args_parse_cluster=""
           else
@@ -266,7 +310,7 @@ Args.parse() {
 
     # Positional: check for subcommand match (first positional only)
     if [[ -z "$_Action" && ${#__Args_subcmd_map[@]} -gt 0 ]]; then
-      local __Args_parse_canon="${__Args_subcmd_map[$__Args_parse_arg]:-}"
+      __Args_parse_canon="${__Args_subcmd_map[$__Args_parse_arg]:-}"
       if [[ -n "$__Args_parse_canon" ]]; then
         _Debug "parse: subcommand '$__Args_parse_arg' -> '$__Args_parse_canon'"
         declare -g "_Action=$__Args_parse_canon"; continue
@@ -282,30 +326,40 @@ Args.parse() {
   # --- Phase 4: Validate required ---
   local __Args_parse_missing=""
   for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
+    __Args_parse_scope="${__Args_var_scope[$__Args_parse_v]:-}"
+    [[ -n "$__Args_parse_scope" && "$__Args_parse_scope" != "$_Action" ]] && continue
     if [[ "${__Args_required[$__Args_parse_v]:-0}" == 1 && -z "${!__Args_parse_v}" ]]; then
       __Args_parse_missing="${__Args_parse_missing:+$__Args_parse_missing, }$__Args_parse_v"
     fi
   done
   [[ -z "$__Args_parse_missing" ]] || _Crash "Args.parse: required options not provided: $__Args_parse_missing"
 
-  # Cleanup working tables
-  unset __Args_alias_map __Args_takes_val __Args_required __Args_defaults \
-        __Args_subcmd_map __Args_varlist
-
   # --- Phase 5: Object mode ---
   if [[ -n "${into:-}" ]]; then
     _Require Config
-    local __Args_parse_obj
+    local __Args_parse_obj __Args_parse_rem="" __Args_parse_d="${_Delimiter:-$_EOL}"
+    local __Args_parse_v_scope
     into=__Args_parse_obj Config.new
     for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
-      $__Args_parse_obj.set "$__Args_parse_v" "${!__Args_parse_v}"
+      __Args_parse_v_scope="${__Args_var_scope[$__Args_parse_v]:-}"
+      if [[ -z "$__Args_parse_v_scope" || "$__Args_parse_v_scope" == "$_Action" ]]; then
+        $__Args_parse_obj.set "$__Args_parse_v" "${!__Args_parse_v}"
+      fi
       unset "$__Args_parse_v"
     done
+    if (( ${#_ArgsRemaining[@]} > 0 )); then
+      printf -v __Args_parse_rem "%s${__Args_parse_d}" "${_ArgsRemaining[@]}"
+      __Args_parse_rem="${__Args_parse_rem%"${__Args_parse_d}"}"
+    fi
     $__Args_parse_obj.set _action    "$_Action"
-    $__Args_parse_obj.set _remaining "${_ArgsRemaining[*]}"
+    $__Args_parse_obj.set _remaining "$__Args_parse_rem"
     unset _Action _ArgsRemaining
     boop.pass "$__Args_parse_obj" ${into:-}
   fi
+
+  # Cleanup working tables (kept until here so phase 5 can read __Args_var_scope)
+  unset __Args_alias_map __Args_takes_val __Args_required __Args_defaults \
+        __Args_subcmd_map __Args_varlist __Args_var_scope
 }
 
 # ============================================================================
