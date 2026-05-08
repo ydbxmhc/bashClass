@@ -159,6 +159,7 @@ Collection.Map.keys() {
   local -n __Collection_Map_keys_keys="__boop_keys_${_Self}"
   local __Collection_Map_keys_d="${_Delimiter:-$_EOL}"
   local __Collection_Map_keys_out
+  _Trace "keys: ${#__Collection_Map_keys_keys[@]} key(s)"
   if ! [[ -n "${__Collection_Map_keys_keys[@]:-}" ]]; then
     boop.pass "" ${into:-}
     return
@@ -178,6 +179,7 @@ Collection.Map.values() {
   local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
   local -n __Collection_Map_values_arr="__boop_data_${_Self}"
   local -n __Collection_Map_values_keys="__boop_keys_${_Self}"
+  _Trace "values: ${#__Collection_Map_values_keys[@]} value(s)"
   if ! [[ -n "${__Collection_Map_values_keys[@]:-}" ]]; then
     boop.pass "" ${into:-}
     return
@@ -201,6 +203,7 @@ Collection.Map.toArray() {
   local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
   local -n __Collection_Map_toArray_arr="__boop_data_${_Self}"
   local -n __Collection_Map_toArray_keys="__boop_keys_${_Self}"
+  _Trace "toArray: ${#__Collection_Map_toArray_keys[@]} entry/entries"
   if ! [[ -n "${__Collection_Map_toArray_keys[@]:-}" ]]; then
     boop.pass "" ${into:-}
     return
@@ -226,6 +229,7 @@ Collection.Map.toString() {
   local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
   local -n __Collection_Map_ts_arr="__boop_data_${_Self}"
   local -n __Collection_Map_ts_keys="__boop_keys_${_Self}"
+  _Trace "toString: ${#__Collection_Map_ts_keys[@]} entry/entries"
   if ! [[ -n "${__Collection_Map_ts_keys[@]:-}" ]]; then
     boop.pass "Map($_Self){ }" ${into:-}
     return
