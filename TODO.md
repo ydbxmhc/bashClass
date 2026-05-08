@@ -161,13 +161,13 @@ Core done. Implementation at `Args/Args`. 57 tests in
 `tests/unit/test_args_ts`. Docs at `docs/Args.md`.
 
 ### Pending
-- Cross-subcommand option isolation (deferred)
-- Schema validation warnings for common mistakes
-- Subcommand scoping refactor: `__Args.parseOptLine` needs a scope
-  parameter so options defined under a subcommand section don't leak
-  into the global namespace. Prototype exists on a deleted branch
-  (`claude/pull-and-evaluate`) with 60 new tests — needs clean
-  reimplementation against current codebase.
+- **Subcommand scoping refactor** — options defined under a subcommand
+  section currently leak into the global namespace. `__Args.parseOptLine`
+  needs a scope parameter. Medium-sized refactor. Prototype exists on
+  a deleted branch (`claude/pull-and-evaluate`) with 60 new tests —
+  needs clean reimplementation against current codebase.
+- Schema validation warnings for common mistakes (typos, duplicate
+  option names, missing `=` on value-taking options)
 
 ---
 
@@ -293,13 +293,17 @@ the framework is mature enough to worry about hostile environments.
 
 ## JSON -- Pending Items
 
-Core done. Implementation at `Data/JSON/JSON`. 45 tests in
+Core done. Implementation at `Data/JSON/JSON`. 54 tests in
 `tests/unit/test_json_ts`. Docs at `docs/JSON.md`.
 
 ### Pending
-- `JSON.parseDeep` -- inflate flat store into real Map/List objects
-- Unicode escape handling (`\uXXXX` currently skipped)
-- Key order preservation in stringify (hash iteration order)
+- **`JSON.parseDeep`** — inflate flat store into real nested Map/List
+  objects. Design work needed for type inference (numeric string vs
+  array index). Medium-sized.
+- **Key order preservation in stringify** — currently relies on hash
+  iteration order (undefined in bash). To produce reproducible JSON
+  output, track an ordered key list alongside the hash, like Map does.
+  Medium-sized.
 
 ---
 

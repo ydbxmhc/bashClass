@@ -27,6 +27,23 @@ no cryptic `10#` bash errors leak through.
 
 ---
 
+## JSON Unicode Escape Handling
+
+**Completed:** 2026-05-08
+
+`\uXXXX` escapes now decode properly instead of being skipped.
+Handles basic BMP characters and UTF-16 surrogate pairs for
+characters beyond the BMP (emoji, CJK extensions). Rejects
+unpaired surrogates and invalid hex with clear error messages.
+
+Implementation uses `printf %b` with a dynamically-built `\U`
+escape (bash 5+). Two-step format: `%08X` pads the codepoint,
+then `%b` interprets the resulting `\U` sequence. 9 new tests
+covering BMP chars, surrogate pairs, lowercase hex, mixed
+literal/escape text, and error cases.
+
+---
+
 ## Fully Qualified Class Names and Import Aliasing
 
 **Completed:** 2026-05
