@@ -519,4 +519,46 @@ $t.assert_ok "_Load with :: resolves classPath :: entry" \
 # Clean up
 _CfgFile="$__ct_tmp/.boop_norm.cfg" boop.classPath remove "Ns/Fake"
 
+# ============================================================================
+# Partial namespace resolution via index prefix
+# ============================================================================
+
+$t.section "Partial namespace resolution"
+
+# Setup: create a namespace tree where the first segment is indexed
+mkdir -p "$__ct_tmp/partial/Animals/Dog"
+mkdir -p "$__ct_tmp/partial/Animals/Cat"
+printf '# Dog\n' > "$__ct_tmp/partial/Animals/Dog/Dog"
+printf '# Cat\n' > "$__ct_tmp/partial/Animals/Cat/Cat"
+
+# Add "Animals" to the live index (don't source a file that replaces it)
+__boop_Index["Animals"]="Animals"
+
+# "Animals::Dog" should resolve via partial: index[Animals]=Animals → Animals/Dog R1
+into=__ct_path BOOPPATH="$__ct_tmp/partial" boop.resolve "Animals::Dog"
+$t.assert_eq "partial namespace Animals::Dog resolves" "$__ct_path" "$__ct_tmp/partial/Animals/Dog/Dog"
+
+# "Animals::Cat" same pattern
+into=__ct_path BOOPPATH="$__ct_tmp/partial" boop.resolve "Animals::Cat"
+$t.assert_eq "partial namespace Animals::Cat resolves" "$__ct_path" "$__ct_tmp/partial/Animals/Cat/Cat"
+
+# Partial that doesn't exist returns failure
+__ct_rc=0
+BOOPPATH="$__ct_tmp/partial" boop.resolve "Animals::Fish" || __ct_rc=$?
+$t.assert_eq "partial namespace miss returns 1" "$__ct_rc" "1"
+
+# Real-world case: Map::Fast should resolve via the live index
+into=__ct_path boop.resolve "Map::Fast"
+$t.assert_contains "Map::Fast resolves to Collection/Map/Fast" "$__ct_path" "Collection/Map/Fast/Fast"
+
+# Exact index match still takes priority over partial
+# (if "Map/Fast" were in the index directly, it would win at Priority 2)
+__boop_Index["Map/Fast"]="Collection/Map/Fast"
+into=__ct_path boop.resolve "Map::Fast"
+$t.assert_contains "exact index wins over partial" "$__ct_path" "Collection/Map/Fast/Fast"
+unset '__boop_Index[Map/Fast]'
+
+# Clean up test index entries
+unset '__boop_Index[Animals]'
+
 $t.summary

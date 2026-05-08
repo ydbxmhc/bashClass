@@ -22,9 +22,9 @@ objects with encapsulated state, classes with typed constructors and inherited
 methods, a return system that avoids subshells, and a namespace-aware class
 loader that scales from a single script to a library of dozens of classes.
 
-It is not a toy. The framework itself is ~2,200 lines of bash. The included
-classes — List, Map, Config, JSON, Args, Math — are production-quality
-implementations. The test suite runs 1,400+ assertions across unit,
+It is not a toy. The framework itself is ~2,500 lines of bash. The included
+classes — List, Map, Config, JSON, Args, Math — are well-tested
+implementations. The test suite runs 1,100+ assertions across unit,
 integration, and property-based tests.
 
 ---
@@ -742,8 +742,8 @@ boop.classPath rebuild
 
 ## Logging
 
-Six levels. The default fatality threshold is `error` — only `_Crash` exits the
-process unless you change it.
+Six levels. The default fatality threshold is `crash` — only explicit `_Crash`
+exits the process unless you change it.
 
 ```bash
 _Crash "unrecoverable: $reason"    # always exits with stack trace

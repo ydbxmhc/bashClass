@@ -1857,6 +1857,34 @@ __boop.classResolve() {
     done
   fi
 
+  # --- Priority 2b: Partial namespace via index prefix ---
+  # If the name contains a /, check whether the first segment is in the
+  # index. If so, expand it and resolve the full path. This allows
+  # "Map::Fast" to resolve via index["Map"]="Collection/Map" → try
+  # "Collection/Map/Fast" through R1.
+  if [[ "$__boop_classResolve_class" == */* ]]; then
+    local __boop_classResolve_head="${__boop_classResolve_class%%/*}"
+    local __boop_classResolve_tail="${__boop_classResolve_class#*/}"
+    if [[ -n "${__boop_Index[$__boop_classResolve_head]:-}" ]]; then
+      local __boop_classResolve_expanded="${__boop_Index[$__boop_classResolve_head]}"
+      __boop_classResolve_expanded="${__boop_classResolve_expanded//::/"/"}"
+      __boop_classResolve_expanded="$__boop_classResolve_expanded/$__boop_classResolve_tail"
+      _Debug "classResolve: partial namespace '$__boop_classResolve_class' → expanded '$__boop_classResolve_expanded'"
+
+      for __boop_classResolve_root in "${__boop_classResolve_roots[@]}"; do
+        if __boop_classResolve_r1 "$__boop_classResolve_root" "$__boop_classResolve_expanded"; then
+          _Trace "classResolve: resolved '$__boop_classResolve_class' via partial namespace at $__boop_classResolve_r1_result"
+          unset -f __boop_classResolve_r1
+          [[ -n "$__boop_classResolve_target" ]] && {
+            local -n __boop_classResolve_ref="$__boop_classResolve_target"
+            __boop_classResolve_ref="$__boop_classResolve_r1_result"
+          }
+          return 0
+        fi
+      done
+    fi
+  fi
+
   # --- Priority 3: Dynamic discovery ---
   _Debug "classResolve: dynamic discovery for '$__boop_classResolve_class'"
   for __boop_classResolve_root in "${__boop_classResolve_roots[@]}"; do
@@ -2154,11 +2182,15 @@ __boop.import() {
     # Raw source fallback -- let bash try PATH directly
     _Debug "import: '$__boop_import_class' not resolved, trying raw source fallback"
     set --
-    if . "$__boop_import_class" 2>/dev/null; then
+    local __boop_import_stderr; __boop_import_stderr=$(mktemp)
+    if . "$__boop_import_class" 2>"$__boop_import_stderr"; then
+      rm -f "$__boop_import_stderr"
       unset '__boop_loading[$__boop_import_class]'
       _Info "import: '$__boop_import_class' loaded via raw source fallback"
       continue
     fi
+    [[ -s "$__boop_import_stderr" ]] && _Debug "import fallback stderr: $(<"$__boop_import_stderr")"
+    rm -f "$__boop_import_stderr"
 
     # Complete resolution failure — non-fatal, return 1
     unset '__boop_loading[$__boop_import_class]'

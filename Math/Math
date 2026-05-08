@@ -1404,6 +1404,38 @@ __Math.formatVal() {
   boop.pass "$__Math_formatVal_result" "${4:-}"
 }
 
+# Internal: static variadic op. Folds left over 1+ arguments.
+# Single arg returns identity. Two args delegates to staticBinOp.
+# Three+ args folds: result = op(op(a,b), c) ...
+__Math.staticVariadicOp() {
+  local __Math_staticVariadicOp_op="$1"; shift
+  (( $# >= 1 )) || _Crash "Math.${__Math_staticVariadicOp_op}: requires at least 1 argument"
+
+  # Single argument: return the value itself (identity)
+  if (( $# == 1 )); then
+    local __Math_staticVariadicOp_d; local -i __Math_staticVariadicOp_s __Math_staticVariadicOp_n
+    __Math.resolve "$1" __Math_staticVariadicOp_d __Math_staticVariadicOp_s __Math_staticVariadicOp_n
+    __Math.formatVal "$__Math_staticVariadicOp_d" $__Math_staticVariadicOp_s $__Math_staticVariadicOp_n ${into:-}
+    return
+  fi
+
+  # Two arguments: direct delegation (common case, no overhead)
+  if (( $# == 2 )); then
+    __Math.staticBinOp "$__Math_staticVariadicOp_op" "$1" "$2"
+    return
+  fi
+
+  # Three+ arguments: fold left
+  local __Math_staticVariadicOp_acc
+  into=__Math_staticVariadicOp_acc __Math.staticBinOp "$__Math_staticVariadicOp_op" "$1" "$2"
+  shift 2
+  while (( $# > 0 )); do
+    into=__Math_staticVariadicOp_acc __Math.staticBinOp "$__Math_staticVariadicOp_op" "$__Math_staticVariadicOp_acc" "$1"
+    shift
+  done
+  boop.pass "$__Math_staticVariadicOp_acc" ${into:-}
+}
+
 # Internal: static binary op. Returns plain value string via boop.pass.
 # Uses native $(( )) fast path when operands fit in 64-bit.
 __Math.staticBinOp() {
@@ -1490,9 +1522,9 @@ __Math.staticUnaryOp() {
 # Dual-mode wrappers: static (no self) returns value string,
 # instance (self set) delegates to __Math.i_* which returns object.
 
-Math.add()      { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_add    "$@"; else __Math.staticBinOp add      "$@"; fi; }
+Math.add()      { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_add    "$@"; else __Math.staticVariadicOp add      "$@"; fi; }
 Math.subtract() { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_sub    "$@"; else __Math.staticBinOp sub      "$@"; fi; }
-Math.multiply() { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_mul    "$@"; else __Math.staticBinOp mul      "$@"; fi; }
+Math.multiply() { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_mul    "$@"; else __Math.staticVariadicOp mul      "$@"; fi; }
 Math.divide()   { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_div    "$@"; else __Math.staticBinOp div      "$@"; fi; }
 Math.mod()      { if [[ -n "${_Self:-}" ]]; then local  _Class="${_Class:-Math}"; __Math.i_mod    "$@"; else __Math.staticBinOp mod      "$@"; fi; }
 

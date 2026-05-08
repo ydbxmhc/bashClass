@@ -4,6 +4,137 @@ Completed work items, extracted from TODO.md. Most recent first.
 
 ---
 
+## Partial Namespace Resolution
+
+**Completed:** 2026-05
+
+`Map::Fast` now resolves via index prefix expansion. The resolver
+splits on `/`, checks the index for the first segment, expands it,
+and resolves the remainder via R1. Priority 2b — fires between
+exact index match and dynamic discovery. 5 tests in
+`test_classpath_ts`.
+
+---
+
+## Math Input Validation
+
+**Completed:** 2026-05
+
+`__Math.resolve` now validates input before arithmetic. Garbage
+strings get a clear crash: `"Math: invalid number 'garbage' —
+expected a numeric value like '3.14' or '-42'"`. Single chokepoint,
+no cryptic `10#` bash errors leak through.
+
+---
+
+## Fully Qualified Class Names and Import Aliasing
+
+**Completed:** 2026-05
+
+Classes register with FQN internally (`Geometry.Box`,
+`Collection.Map.Fast`). Aliases are real registry entries with
+`trueClass` pointing to the FQN. Auto-aliasing creates short names
+when unambiguous. `_Import` with `as` clause for explicit aliases.
+`_AutoAlias` modes: full/best/short/none. 50+ tests in
+`tests/unit/test_alias_ts`. Full spec at
+`.kiro/specs/namespace-aliasing/`.
+
+---
+
+## _Static Helper
+
+**Completed:** 2026-05
+
+Three Tier 2 helpers: `_Me` (returns object ID or class name),
+`_Static k=v`/`_Static k` (per-method storage), `_Property k=v`/
+`_Property k` (per-object/class storage). All use `__boop_static`
+as backing store with auto-generated compound key paths.
+
+---
+
+## JSON Parser (core)
+
+**Completed:** 2026-05
+
+`Data.JSON.parse` into `Collection.Map.Fast`, `Data.JSON.stringify`
+back to JSON. Handles objects, arrays, strings (with escapes),
+numbers, booleans, null. Pure bash, no external dependencies.
+45 tests in `tests/unit/test_json_ts`. Docs at `docs/JSON.md`.
+
+---
+
+## Config Class
+
+**Completed:** 2026-05
+
+Reads/writes flat key=value and INI files. `Config.load`,
+`Config.loadINI`, `Config.new`, `Config.fromString`. Full get/set/
+has/keys/sections/save/toINI/toFlat interface. Pure bash parsing,
+no `source`. 71 tests in `tests/unit/test_config_ts`.
+
+---
+
+## Map::Fast — Flat Compound-Key Store
+
+**Completed:** 2026-05
+
+`Collection/Map/Fast/Fast`. O(1) get/set, optional prefix indexing
+via `keysUnder`/`deleteUnder`. Custom separator support. 40 tests
+in `tests/unit/test_map_fast_ts`.
+
+---
+
+## Args — CLI Argument Parser (core)
+
+**Completed:** 2026-05
+
+Two entry points: `Args.getOpts` (POSIX short options) and
+`Args.parse` (GNU long + subcommand with schema). `--help`/`-h`
+prints schema verbatim. Object mode returns Config. 57 tests in
+`tests/unit/test_args_ts`. Docs at `docs/Args.md`.
+
+---
+
+## Inline Class Definitions in Executable Scripts
+
+**Completed:** 2026-04
+
+`BASH_SOURCE[0]` vs `$0` guard pattern. `blackjack` demonstrates:
+sourcing loads `BlackjackHand` for tests; executing runs the game.
+
+---
+
+## Return System: Default to stdout + Newline Control
+
+**Completed:** 2026-04
+
+`auto` mode always outputs to stdout. `_Out` global still available
+via explicit `_OutMode=global`. `_Delegate`/`_Super`/`_Cast` forward
+`into="${into:-}"` to inner calls. Subshell footgun documented (not
+warned — false-positive risk too high).
+
+---
+
+## Namespace Remaining Work — All Complete
+
+**Completed:** 2026-05 (verified)
+
+All four remaining items from the Namespace/ClassPath/Index section
+are done:
+
+- **`test_classpath_ts`** — 60+ assertions covering namespace resolution,
+  index lookup, classPath overrides, rebuild, CFG round-trip, RC chain
+  sourcing, BOOPPATH construction, deduplication, conflict exclusion,
+  `_Load`/`_Require`, and `::` normalization.
+- **Namespace directory migration** — all classes live in namespace
+  directories (`Collection/List/List`, `Geometry/Box/Box`, etc.).
+  `.boopIndex` generated with all 13 classes mapped.
+- **`__boop_dir` removal** — previously completed.
+- **Property-based tests** — `test_classpath_pbt` implements spec
+  properties.
+
+---
+
 ## Return System: stdout Default + Dispatcher Forwarding
 
 **Completed:** 2026-04-25 (commit `9e3afe0`)

@@ -75,7 +75,7 @@ Collection.List.getAt() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -i __Collection_List_getAt_idx="$1"
   local -n __Collection_List_getAt_arr="__boop_data_${_Self}"
-  local -i __Collection_List_getAt_len=0; [[ -n "${!__Collection_List_getAt_arr[@]}" ]] && __Collection_List_getAt_len=${#__Collection_List_getAt_arr[@]}
+  local -i __Collection_List_getAt_len=0; (( ${#__Collection_List_getAt_arr[@]} )) && __Collection_List_getAt_len=${#__Collection_List_getAt_arr[@]}
   (( __Collection_List_getAt_idx < 0 )) && (( __Collection_List_getAt_idx += __Collection_List_getAt_len ))
   if (( __Collection_List_getAt_idx < 0 || __Collection_List_getAt_idx >= __Collection_List_getAt_len )); then
     boop.pass "" ${into:-}
@@ -105,7 +105,7 @@ Collection.List.setAt() {
   local -i __Collection_List_setAt_idx="$1"
   local __Collection_List_setAt_val="$2"
   local -n __Collection_List_setAt_arr="__boop_data_${_Self}"
-  local -i __Collection_List_setAt_len=0; [[ -n "${!__Collection_List_setAt_arr[@]}" ]] && __Collection_List_setAt_len=${#__Collection_List_setAt_arr[@]}
+  local -i __Collection_List_setAt_len=0; (( ${#__Collection_List_setAt_arr[@]} )) && __Collection_List_setAt_len=${#__Collection_List_setAt_arr[@]}
   (( __Collection_List_setAt_idx < 0 )) && (( __Collection_List_setAt_idx += __Collection_List_setAt_len ))
   (( __Collection_List_setAt_idx < 0 || __Collection_List_setAt_idx > __Collection_List_setAt_len )) && \
     _Crash "List index out of range: $1 (length: $__Collection_List_setAt_len)"
@@ -132,7 +132,7 @@ Collection.List.delete() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -i __Collection_List_del_idx="$1"
   local -n __Collection_List_del_arr="__boop_data_${_Self}"
-  local -i __Collection_List_del_len=0; [[ -n "${!__Collection_List_del_arr[@]}" ]] && __Collection_List_del_len=${#__Collection_List_del_arr[@]}
+  local -i __Collection_List_del_len=0; (( ${#__Collection_List_del_arr[@]} )) && __Collection_List_del_len=${#__Collection_List_del_arr[@]}
   (( __Collection_List_del_idx < 0 )) && (( __Collection_List_del_idx += __Collection_List_del_len ))
   (( __Collection_List_del_idx < 0 || __Collection_List_del_idx >= __Collection_List_del_len )) && \
     _Crash "List index out of range: $1 (length: $__Collection_List_del_len)"
@@ -150,7 +150,7 @@ Collection.List.delete() {
 Collection.List.length() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_length_arr="__boop_data_${_Self}"
-  local -i __Collection_List_length_len=0; [[ -n "${!__Collection_List_length_arr[@]}" ]] && __Collection_List_length_len=${#__Collection_List_length_arr[@]}
+  local -i __Collection_List_length_len=0; (( ${#__Collection_List_length_arr[@]} )) && __Collection_List_length_len=${#__Collection_List_length_arr[@]}
   boop.pass "$__Collection_List_length_len" ${into:-}
 }
 
@@ -180,7 +180,7 @@ Collection.List.has() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -i __Collection_List_has_idx="$1"
   local -n __Collection_List_has_arr="__boop_data_${_Self}"
-  local -i __Collection_List_has_len=0; [[ -n "${!__Collection_List_has_arr[@]}" ]] && __Collection_List_has_len=${#__Collection_List_has_arr[@]}
+  local -i __Collection_List_has_len=0; (( ${#__Collection_List_has_arr[@]} )) && __Collection_List_has_len=${#__Collection_List_has_arr[@]}
   (( __Collection_List_has_idx < 0 )) && (( __Collection_List_has_idx += __Collection_List_has_len ))
   (( __Collection_List_has_idx >= 0 && __Collection_List_has_idx < __Collection_List_has_len )) && return 0 || return 1
 }
@@ -216,7 +216,7 @@ Collection.List.push() {
 Collection.List.pop() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_pop_arr="__boop_data_${_Self}"
-  local -i __Collection_List_pop_len=0; [[ -n "${!__Collection_List_pop_arr[@]}" ]] && __Collection_List_pop_len=${#__Collection_List_pop_arr[@]}
+  local -i __Collection_List_pop_len=0; (( ${#__Collection_List_pop_arr[@]} )) && __Collection_List_pop_len=${#__Collection_List_pop_arr[@]}
   (( __Collection_List_pop_len == 0 )) && _Crash "pop from empty List"
   local __Collection_List_pop_val="${__Collection_List_pop_arr[-1]}"
   unset '__Collection_List_pop_arr[-1]'
@@ -235,7 +235,7 @@ Collection.List.pop() {
 Collection.List.shift() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_shift_arr="__boop_data_${_Self}"
-  local -i __Collection_List_shift_len=0; [[ -n "${!__Collection_List_shift_arr[@]}" ]] && __Collection_List_shift_len=${#__Collection_List_shift_arr[@]}
+  local -i __Collection_List_shift_len=0; (( ${#__Collection_List_shift_arr[@]} )) && __Collection_List_shift_len=${#__Collection_List_shift_arr[@]}
   (( __Collection_List_shift_len == 0 )) && _Crash "shift from empty List"
   local __Collection_List_shift_val="${__Collection_List_shift_arr[0]}"
   __Collection_List_shift_arr=("${__Collection_List_shift_arr[@]:1}")
@@ -274,7 +274,7 @@ Collection.List.slice() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -i __Collection_List_slice_start="${1:-0}" __Collection_List_slice_end
   local -n __Collection_List_slice_arr="__boop_data_${_Self}"
-  local -i __Collection_List_slice_len=0; [[ -n "${!__Collection_List_slice_arr[@]}" ]] && __Collection_List_slice_len=${#__Collection_List_slice_arr[@]}
+  local -i __Collection_List_slice_len=0; (( ${#__Collection_List_slice_arr[@]} )) && __Collection_List_slice_len=${#__Collection_List_slice_arr[@]}
   __Collection_List_slice_end="${2:-$__Collection_List_slice_len}"
   (( __Collection_List_slice_start < 0 )) && (( __Collection_List_slice_start += __Collection_List_slice_len ))
   (( __Collection_List_slice_end < 0 )) && (( __Collection_List_slice_end += __Collection_List_slice_len ))
@@ -304,7 +304,7 @@ Collection.List.toArray() {
   local -n __Collection_List_toArray_arr="__boop_data_${_Self}"
   local __Collection_List_toArray_d="${_Delimiter:-$_EOL}"
   local __Collection_List_toArray_out
-  if ! [[ -n "${!__Collection_List_toArray_arr[@]}" ]] || (( ${#__Collection_List_toArray_arr[@]} == 0 )); then
+  if ! [[ -n "${__Collection_List_toArray_arr[@]:-}" ]]; then
     boop.pass "" ${into:-}
     return
   fi
@@ -331,7 +331,7 @@ Collection.List.toArray() {
 Collection.List.toString() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_ts_arr="__boop_data_${_Self}"
-  local -i __Collection_List_ts_len=0; [[ -n "${!__Collection_List_ts_arr[@]}" ]] && __Collection_List_ts_len=${#__Collection_List_ts_arr[@]}
+  local -i __Collection_List_ts_len=0; (( ${#__Collection_List_ts_arr[@]} )) && __Collection_List_ts_len=${#__Collection_List_ts_arr[@]}
   local __Collection_List_ts_out="List($_Self)[ "
   local -i __Collection_List_ts_i
   for (( __Collection_List_ts_i=0; __Collection_List_ts_i < __Collection_List_ts_len; __Collection_List_ts_i++ )); do
@@ -358,7 +358,7 @@ Collection.List.each() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local __Collection_List_each_fn="$1"
   local -n __Collection_List_each_arr="__boop_data_${_Self}"
-  [[ -n "${!__Collection_List_each_arr[@]}" ]] || return 0
+  [[ -n "${__Collection_List_each_arr[@]:-}" ]] || return 0
   local -i __Collection_List_each_len=${#__Collection_List_each_arr[@]} __Collection_List_each_i
   for (( __Collection_List_each_i=0; __Collection_List_each_i < __Collection_List_each_len; __Collection_List_each_i++ )); do
     "$__Collection_List_each_fn" "$__Collection_List_each_i" "${__Collection_List_each_arr[$__Collection_List_each_i]}" || return

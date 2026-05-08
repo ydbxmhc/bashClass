@@ -5,399 +5,6 @@ Inline TODOs in source files should reference entries here by section name.
 
 ---
 
-## ★ Namespace, ClassPath, Index, and Configuration System
-
-**Priority item.** ✓ Core implementation complete. The framework now has:
-- `__boop.classResolve` — namespace-aware resolution (classPath → index → dynamic discovery)
-- `__boop.loader` — RC chain sourcing, BOOPPATH parsing, .boopIndex sourcing, version mismatch detection
-- `__boop.import` — rewritten to use classResolve with raw source fallback
-- `boop.resolve` — public non-fatal resolution wrapper
-- `boop.classPath` — full subcommand API (set/get/list/remove/has/dirs/rebuild)
-- CFG serialization helper
-- Filesystem fallback diagnostic
-
-### Remaining Work
-
-- **Test suite (`test_classpath_ts`)**: Dedicated test file exercising
-  the classpath/namespace system end-to-end. Should cover: namespace
-  resolution, index lookup, classPath overrides, rebuild, CFG round-trip,
-  RC chain sourcing, BOOPPATH construction, deduplication, error cases.
-  Add to `test_all` in the unit tests section.
-- **Namespace directory migration**: Move existing flat class files into
-  the namespace directory layout described below. Generate `.boopIndex`.
-- **Remove `__boop_dir`**: ✓ Done. Declaration removed from `boop`.
-- **Property-based tests**: Optional tasks from the spec (Properties 1-13).
-
-### Design Reference
-
-Core implementation complete. See DEVLOG.md for implementation notes
-and prior art survey. The following sections document the design for
-ongoing and future work.
-
-### Prior Art (Cross-Language Survey)
-
-| Language | Directory model | Env var | Key insight |
-|----------|----------------|---------|-------------|
-| Java | Package hierarchy: `com/example/geometry/Box.java` | `CLASSPATH` | Dirs = domain namespaces, never inheritance |
-| Python | Package dirs with `__init__.py`: `geometry/box.py` | `PYTHONPATH` | Dirs = functional areas |
-| Perl | `::` maps to dirs: `Geometry/Box.pm` = `Geometry::Box` | `PERL5LIB` | `@INC` searched per-root, depth-first |
-| Ruby | Flat under `lib/`, namespace subdirs: `my_gem/widget.rb` | `RUBYLIB` | One class per file, module = folder |
-| Lua | Template paths with `?`: `./?.lua` | `LUA_PATH` | String-based, no directory convention |
-
-**Universal rule:** directories represent functional domains or
-namespaces, never inheritance hierarchies. `Cube extends Box` —
-they're siblings in the same namespace, not parent/child folders.
-
-### Namespace Directory Convention
-
-Follow the Perl model: `::` maps to directory separators. Every
-class lives inside its namespace folder. The class file shares the
-name of its innermost directory.
-
-```
-lib/
-  Collection/
-    Container/
-      Container         # ← Collection::Container class
-    List/
-      List              # ← Collection::List class
-    Map/
-      Map               # ← Collection::Map class
-    Set/
-      Set               # ← Collection::Set (future)
-  Math/
-    Math                # ← Math class (namespace = class)
-    Trig/
-      Trig              # ← Math::Trig class
-    Stats/
-      Stats             # ← Math::Stats class
-  Cards/
-    Card/
-      Card              # ← Cards::Card class
-    Deck/
-      Deck              # ← Cards::Deck class
-    Hand/
-      Hand              # ← Cards::Hand class
-  IO/
-    ...                 # ← future
-```
-
-**Rule:** when a namespace folder has a class with the same name
-(e.g., `Math`), the class file lives *inside* the folder as
-`Math/Math` — not outside it. The user still says `. boop Math`,
-not `. boop Math::Math`. The import system handles this (see
-resolution below).
-
-### Short-Name Index — `.boopIndex`
-
-A persisted file at each library root containing a `__boop_Index`
-associative array mapping short class names to their full namespace
-paths.
-
-```bash
-# .boopIndex — auto-generated, do not edit unless resolving conflicts
-declare -gA __boop_Index=(
-  [Container]="Collection::Container"
-  [List]="Collection::List"
-  [Map]="Collection::Map"
-  [Math]="Math"
-  [Trig]="Math::Trig"
-  [Card]="Cards::Card"
-  [Deck]="Cards::Deck"
-  [Hand]="Cards::Hand"
-)
-```
-
-**Auto-generation:** whenever a class is registered (via
-`registerClass` or equivalent), the index is rebuilt. This can be
-suppressed via configuration if the user wants manual control.
-
-**Conflict handling:** if two namespaces both define a class with
-the same short name (e.g., `Util` exists in both `IO::Util` and
-`Math::Util`), that short name is *removed* from the index. Both
-classes remain accessible by full namespace name. The conflict can
-be explicitly resolved by manually adding the preferred mapping
-back to `.boopIndex`.
-
-**The index is a declaration, not a cache.** Filesystem fallback
-hits do NOT auto-update the index. Only deliberate registration
-events modify it. A successful fallback should emit `_Info`:
-"List resolved via filesystem fallback — consider registering it."
-
-### Multi-Root Resolution — Depth-First Per Root
-
-`BOOPPATH` is a colon-delimited list of library roots (same format
-as `PATH`, same naming convention as `GOPATH`/`MANPATH`). Each
-root is a complete boop library with its own `.boopIndex`, its own
-namespace tree, its own `.booprc`/`.boop.cfg`. Resolution is
-**depth-first by default** — exhaust all resolution strategies
-within one root before moving to the next.
-
-**Root list construction** (in order):
-1. `__boop_dir` — where `boop` itself lives (always first)
-2. `BOOPPATH` entries — left to right
-
-**Per-root resolution** (for each root, in order):
-1. `__boop_classPath["ClassName"]` — explicit per-class override
-   (nuclear option, always wins within this root)
-2. `.boopIndex` lookup — short name → full namespace → filesystem
-   path via namespace convention (`Collection::List` → 
-   `root/Collection/List/List`)
-3. `Name/Name` — filesystem convention fallback (directory + 
-   same-named file inside it)
-4. `Name` — bare file fallback (legacy/flat layout)
-
-**Cross-root behavior:**
-```
-for each root in [__boop_dir, BOOPPATH...]:
-  try per-root resolution (steps 1–4)
-  found? → stop, use it
-  not found? → next root
-
-all roots exhausted → PATH fallback (bash native source)
-still not found → _Crash
-```
-
-This enables **version layering**: `BOOPPATH="/opt/boop/v2:
-/opt/boop/v1"` means v2 is checked first. If v2 has `Math` but
-not `Math::Stats`, v1's `Math::Stats` fills the gap. Multiple
-complete installs at different versions, searched in priority order.
-
-**Customizable search strategy:** depth-first (exhaust one root
-before trying the next) is the default. The search strategy is
-configurable for future needs (e.g., breadth-first: check all
-indexes first across all roots, then all filesystem conventions,
-etc.). Default is depth-first because it gives the most predictable
-"this root wins" behavior.
-
-### Two-File Convention — `.booprc` + `.boop.cfg`
-
-Separation of concerns: human-editable config vs machine-managed
-structured data.
-
-**`.booprc`** — user-editable bash script (like `.bashrc`). Can
-contain arbitrary bash: log level overrides, custom hooks, env
-setup, whatever the user wants. Its job is to source `.boop.cfg`
-and add any hand-written customizations on top.
-
-**`.boop.cfg`** — machine-managed, never hand-edited. Contains
-structured declarations serialized by `boop.classPath` and future
-config methods. Pure data — hash assignments, array entries, no
-procedural logic. Always a complete serialization of current state,
-not an append log. Rewritten in full on every mutation.
-
-Three tiers, sourced in order of increasing precedence (later
-values override earlier ones):
-
-1. `/etc/booprc` (+ `/etc/boop.cfg`) — system-wide defaults
-2. `~/.booprc` (+ `~/.boop.cfg`) — user-global preferences
-3. `./.booprc` (+ `./.boop.cfg`) — project-local overrides
-
-Files that don't exist are silently skipped. Same precedence model
-as `.gitconfig` (system → global → local).
-
-A typical `~/.booprc`:
-```bash
-# Source machine-managed config (classPath registrations, etc.)
-[[ -f ~/.boop.cfg ]] && . ~/.boop.cfg
-
-# User customizations
-_LogLevel debug Math    # verbose logging for Math during dev
-_OutMode stdout         # prefer stdout for CLI scripts
-```
-
-A typical `~/.boop.cfg` (written by `boop.classPath`, not by hand):
-```bash
-# Auto-generated by boop.classPath — do not edit manually
-__boop_classPath["MyUtils"]="/home/user/lib/MyUtils"
-__boop_classPath["GameEngine"]="/opt/boop-libs/GameEngine"
-```
-
-### `__boop.loader` — RC Discovery and Sourcing
-
-Internal method responsible for the rc file bootstrap sequence.
-Called once during `boop` initialization, after globals are declared
-but before import arguments are processed.
-
-Responsibilities:
-- Source `/etc/booprc`, `~/.booprc`, `./.booprc` in order
-- Each rc file is responsible for sourcing its own `.boop.cfg`
-- Skip missing files silently
-- Errors in rc files crash with a clear message pointing at the
-  offending file and line
-- Parse `BOOPPATH` env var — split on colons, validate
-  directories exist, build the root list
-- Source `.boopIndex` from each root in the root list
-- Emit `_Info` diagnostics for each file sourced
-
-Open question: should `.booprc` files be allowed to import classes
-(`. boop SomeClass`)? Probably yes — a project rc might want to
-pre-register and pre-load utility classes. Circular risk is low
-(rc files aren't class files) but worth noting.
-
-### `boop.classPath` — Public API and Configuration Serializer
-
-Tier 3 public method. Two roles: runtime manipulation of the class
-path registry, and serialization of state back to `.boop.cfg`.
-
-Subcommand pattern:
-
-```bash
-boop.classPath set  ClassName /path/to/file  # register + persist
-boop.classPath get  ClassName                # query → path or empty
-boop.classPath list                          # dump all registrations
-boop.classPath remove ClassName              # unregister + rewrite
-boop.classPath has  ClassName                # test → exit code 0/1
-boop.classPath dirs                          # list roots in order
-boop.classPath rebuild                       # regenerate .boopIndex
-```
-
-**Serialization behavior** (`set`, `remove`, `rebuild`):
-- Updates the live `__boop_classPath` hash immediately
-- Rewrites `~/.boop.cfg` (default) as a complete serialization
-- Target cfg file overridable: `_CfgFile=./.boop.cfg` for
-  project-local persistence
-- `rebuild` scans the namespace tree and regenerates `.boopIndex`,
-  detecting and removing conflicting short names
-
-**Validation on `set`**:
-- Class name must pass `__boop.validate` (identifier rules)
-- Path must exist and be a readable file (`[[ -f && -r ]]`)
-- Overwriting an existing registration emits `_Info`, not an error
-
-Returns via `boop.pass` so `into=` works naturally.
-
-### Namespace-to-Filesystem Mapping
-
-The `::` separator maps to `/` on disk. The class file shares the
-name of its innermost namespace segment and lives inside a directory
-of the same name.
-
-| User says | Namespace | Filesystem path |
-|-----------|-----------|----------------|
-| `Math` | `Math` | `root/Math/Math` |
-| `Math::Trig` | `Math::Trig` | `root/Math/Trig/Trig` |
-| `List` | `Collection::List` | `root/Collection/List/List` (via index) |
-| `Collection::List` | `Collection::List` | `root/Collection/List/List` (direct) |
-
-**Import resolution for a bare name like `List`:**
-1. Check `__boop_classPath["List"]` — explicit override
-2. Check `__boop_Index["List"]` — finds `Collection::List` →
-   resolve to `root/Collection/List/List`
-3. Check `root/List/List` — filesystem convention
-4. Check `root/List` — bare file fallback
-5. Next root (repeat 1–4)
-6. `PATH` fallback
-7. `_Crash`
-
-### Implementation Notes
-
-- `__boop.loader` runs inside the `(( ! __boop_loaded ))` guard —
-  fires once per process
-- RC files are sourced (not executed) — they share the shell context
-- Public API methods registered via `__boop.registerMethod` on the
-  root `boop` class
-- `boop.classPath set` does NOT trigger an immediate import —
-  registration and loading are separate concerns
-- The `::` separator is already reserved in the TODO for mixins/
-  classlets/multiple-inheritance. Namespace usage here is compatible:
-  `::` in import context means namespace, `::` in dispatch context
-  means mixin provenance. No collision — they operate in different
-  phases (load time vs call time).
-- `.boopIndex` should be `.gitignore`-able for projects that prefer
-  explicit full-namespace imports only
-
-### Canonical Directory Layout
-
-The repo *is* the library — no `lib/` wrapper. The install target
-is a single directory containing `boop` and all namespace folders.
-Tests and docs live alongside but are not part of the runtime
-library.
-
-```
-<install_root>/                # e.g., /usr/local/lib/boop/
-  boop                         # framework entry point
-  .boopIndex                   # auto-generated short-name index
-  .booprc                      # optional project-level rc
-  .boop.cfg                    # optional project-level cfg
-  Collection/
-    Container/
-      Container                # Collection::Container
-    List/
-      List                     # Collection::List
-    Map/
-      Map                      # Collection::Map
-    Iterator/
-      Iterator                 # Collection::Iterator
-  Geometry/
-    Box/
-      Box                      # Geometry::Box
-    Cube/
-      Cube                     # Geometry::Cube
-  Math/
-    Math                       # Math (namespace = class)
-  Games/
-    Card/
-      Card                     # Games::Card
-    PlayingCard/
-      PlayingCard              # Games::PlayingCard
-    Deck/
-      Deck                     # Games::Deck
-    Blackjack/
-      Blackjack                # Games::Blackjack (executable)
-      BlackjackHand/
-        BlackjackHand          # Games::Blackjack::BlackjackHand
-  Testing/
-    TestSuite/
-      TestSuite                # Testing::TestSuite
-  bin/                         # internal utilities (not library classes)
-    test_all
-    test_blackjack
-    test_box_cube_ts
-    test_containers_ts
-    test_logging_ts
-    test_math_ts
-    test_matrix
-    test_pi_growth
-    test_smoke
-    test_stress_ts
-    test_testsuite_ts
-    boop_install               # bootstrap installer
-  docs/                        # not part of the library
-    ...
-```
-
-### `boop_install` — Bootstrap Script
-
-A standalone install script that sets up boop on a fresh system.
-
-Responsibilities:
-- Copy (or symlink) the library tree to the install target
-  (default: `/usr/local/lib/boop/` or user-specified location)
-- Create a symlink in a PATH directory (default:
-  `/usr/local/bin/boop` → `<install_root>/boop`) so that
-  `. boop` works from anywhere
-- Generate the initial `.boopIndex` by scanning the namespace tree
-- Create a starter `~/.booprc` if one doesn't exist (with the
-  `.boop.cfg` source line and commented-out examples)
-- Verify bash version (5.0+ required)
-- Detect existing installations and offer upgrade/overwrite
-- Support `--prefix`, `--symlink`, `--no-rc` flags for
-  customization
-- Emit clear success/failure messages
-
-The symlink is the bootstrap: it puts `boop` on PATH, and `boop`
-resolves `__boop_dir` via `realpath` on `BASH_SOURCE[0]`, which
-follows the symlink back to the real install root. From there,
-everything else is discoverable.
-
-Uninstall: remove the symlink and the install directory. The rc
-files in `~/` and `/etc/` are left alone (user data).
-
-Source: `boop` (import section, initialization), all class files.
-
----
-
 ## ★ Meta-Components and Graceful Degradation
 
 **Priority item.** The core (`boop`) should define well-known
@@ -548,39 +155,14 @@ Source: `boop`, all class files.
 
 ---
 
-## Reserved Variable Names & Inheritance Hygiene ✓ → DEVLOG
+## Args -- Pending Items
 
----
-
-## Configurable Baked-Wrapper Typecast Behavior ✓ → DEVLOG
-
----
-
-## Framework-Wide LOGLEVEL System ✓ → DEVLOG
-
----
-
-## Fatality Threshold ✓ → DEVLOG
-
----
-
-## Args -- CLI Argument Parser ✓ (core done)
-
-Two entry points, one class. Implementation at `Args/Args`.
-57 tests in `tests/unit/test_args_ts`. Docs at `docs/Args.md`.
-
-### Done
-- `Args.getOpts` -- POSIX short options wrapper
-- `Args.parse` -- GNU long + subcommand parser with schema
-- `--help` / `-h` prints schema verbatim
-- Object mode (`into=`) returns Config object
-- Error handling: unknown options, missing values, bad varnames
+Core done. Implementation at `Args/Args`. 57 tests in
+`tests/unit/test_args_ts`. Docs at `docs/Args.md`.
 
 ### Pending
 - Cross-subcommand option isolation (deferred)
 - Schema validation warnings for common mistakes
-
-Full API reference: `docs/Args.md`
 
 ---
 
@@ -590,16 +172,6 @@ Now part of the ★ Meta-Components system. ArgParser becomes an
 optional meta-component that the core can leverage for key=value
 parsing in constructors, `loadClass`, and `require`. See that
 section for the full design.
-
-Original sketch:
-```bash
-into=args ArgParser "suit= rank= faceUp=0" "$@"
-$args.get suit   # -> "spades"
-$args.get faceUp # -> "0" (default)
-```
-
-Needs to handle: required vs optional, defaults, type validation,
-positional fallback, unknown-key rejection.
 
 ---
 
@@ -671,20 +243,15 @@ This could be:
 ## Stderr Redirection Audit
 
 Several places in the codebase use `2>/dev/null` to suppress errors.
-Each should be reviewed:
 
-- **Class file load guards** (`&& return 2>/dev/null`): Currently
-  suppresses "return outside function" error. Should be replaced with
-  `BASH_SOURCE` vs `$0` check to only return when sourced. See
-  "Class File Execution Guard" above.
+- **Class file load guards** (`&& return 2>/dev/null`): Deferred to
+  the Load Guard & Class Init Refactor (all 12 instances).
 
-- **TestSuite assert_ok/assert_fail**: Suppresses stderr from the
-  command being tested. This hides real errors — should probably let
-  stderr through and capture it for the failure message.
+- **TestSuite assert_ok/assert_fail**: ✓ Already fixed — stderr is
+  captured to a temp file and emitted via `_Debug`.
 
-- **boop import fallback** (`. "$__import_class" 2>/dev/null`):
-  Suppresses "file not found" before the crash message. Borderline —
-  crash message is more informative, but original error has path info.
+- **boop import fallback**: ✓ Fixed — stderr captured and emitted
+  via `_Debug` instead of discarded.
 
 Principle: Only suppress stderr when you know exactly what the error
 will be, you're expecting it, and the content has no debugging value.
@@ -704,11 +271,6 @@ parsed data files. Read them line by line, extract key=value pairs
 via parameter expansion, populate the arrays manually. No `eval`,
 no `source`, no code execution.
 
-`.booprc` remains a sourced bash script by design — it's explicitly
-user code. The hardening applies only to machine-managed files
-(`.boopIndex`, `.boop.cfg`) where the content is structured and
-predictable.
-
 Implementation:
 - Write a `__boop.parseConfig` function that reads a file and
   populates a named associative array from `key=value` lines
@@ -724,138 +286,10 @@ the framework is mature enough to worry about hostile environments.
 
 ---
 
-## Inline Class Definitions in Executable Scripts ✓
+## JSON -- Pending Items
 
-The `BASH_SOURCE[0]` vs `$0` guard is the pattern. After `boopClass`
-registration, add:
-
-```bash
-[[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0
-# main logic here — only runs when executed directly, not sourced
-```
-
-`blackjack` demonstrates this: sourcing it loads `BlackjackHand` for
-tests; executing it runs the game. No separate class file needed.
-
-See also: "Class File Execution Guard" section above for the remaining
-work (auto-help when sourced-as-executed without this guard).
-
----
-
-## Generalize Card/Deck/Hand Classes ✓ → DEVLOG
-
----
-
-## Signal Handler Class
-
-A class for registering at-exit and on-error callbacks into a managed
-stack. Bash's `trap` only allows one handler per signal — this class
-would layer a callback stack on top of it, so multiple components can
-register cleanup/error behaviors without stomping each other.
-
-Core interface:
-- `onExit callback` — push a function onto the EXIT handler stack
-- `onError callback` — push a function onto the ERR handler stack
-- `remove callback` — pull a specific callback off the stack
-- Stack executes LIFO on signal (last registered runs first)
-
-Natural consumer of the Stack class (Phase 2). Could also support
-arbitrary signals beyond EXIT/ERR if the design generalizes cleanly.
-
----
-
-## Stack Class (Phase 2)
-
-Classic LIFO collection. Constrain List: expose `push`, `pop`, `peek`,
-`isEmpty`. Hide `shift`, `unshift`, `get`-by-index.
-
-Source: PLAN.md Phase 2.
-
----
-
-## Queue Class (Phase 2)
-
-Classic FIFO collection. Expose `enqueue` (push), `dequeue` (shift),
-`peek`, `isEmpty`. Possibly `size`.
-
-Source: PLAN.md Phase 2.
-
----
-
-## LinkedList Class (Phase 2)
-
-Each node is itself an object (or a Map entry). Requires `insertAt`,
-`removeAt`, `next`/`prev` traversal. Decide whether doubly-linked is
-worth the complexity at this stage. @@
-
-Source: PLAN.md Phase 2.
-
----
-
-## Set Class (Phase 2)
-
-Unique unordered collection. Implement on top of Map keys — values are
-irrelevant, keys are the members. Expose `add`, `has`, `remove`,
-`toArray`, `union`, `intersect`. Arguably simpler than LinkedList.
-
-Source: PLAN.md Phase 2.
-
----
-
-## Map::Fast -- Flat Compound-Key Store ✓ DONE
-
-Implemented at `Collection/Map/Fast/Fast`. 40 tests in
-`tests/unit/test_map_fast_ts`. O(1) get/set, optional prefix
-indexing via `keysUnder`/`deleteUnder`. Custom separator support.
-
----
-
-## Partial Namespace Resolution
-
-`Map::Fast` normalizes to `Map/Fast` but the resolver doesn't
-check the index for the first segment and append the rest. Today
-the index maps whole short names (`Fast` -> `Collection/Map/Fast`),
-not namespace prefixes.
-
-Options:
-1. Teach the resolver to split on `/`, check the index for the
-   first segment, and resolve the remainder against that root.
-   `Map::Fast` -> index says `Map` is `Collection/Map` -> try
-   `Collection/Map/Fast/Fast` (R1) then `Collection/Map/Fast` (bare).
-2. Allow the index to contain compound entries:
-   `[Map::Fast]="Collection/Map/Fast"`
-3. Standardize that partial namespaces are not supported -- always
-   use the full path or the short name.
-
-Option 1 is the most natural. Needs a spec pass to handle edge
-cases (what if the first segment isn't in the index? what about
-three-level partials?).
-
----
-
-## ★ Fully Qualified Class Names and Import Aliasing ✓ DONE
-
-Implemented. Classes register with FQN internally (`Geometry.Box`,
-`Collection.Map.Fast`). Aliases are real registry entries with
-`trueClass` pointing to the FQN. Auto-aliasing creates short names
-when unambiguous. `_Import` with `as` clause for explicit aliases.
-`_AutoAlias` modes: full/best/short/none.
-
-See `.kiro/specs/namespace-aliasing/` for the full design spec.
-
----
-
-## JSON Parser ✓ (parse + stringify done)
-
-Implemented at `Data/JSON/JSON`. 45 tests in `tests/unit/test_json_ts`.
-
-### Done
-- `Data.JSON.parse` -- parses JSON into `Collection.Map.Fast`
-- `Data.JSON.stringify` -- serializes back to JSON (no subshells,
-  shared result string with depth-50 subshell guard)
-- Handles: objects, arrays, strings (with escapes), numbers, booleans, null
-- Pure bash, no external dependencies
-- Docs at `docs/JSON.md`
+Core done. Implementation at `Data/JSON/JSON`. 45 tests in
+`tests/unit/test_json_ts`. Docs at `docs/JSON.md`.
 
 ### Pending
 - `JSON.parseDeep` -- inflate flat store into real Map/List objects
@@ -877,359 +311,47 @@ Both deferred until JSON is proven and Map::Fast is stable.
 
 ---
 
-## _Static Helper ✓ DONE
+## Signal Handler Class
 
-Implemented as three Tier 2 helpers:
+A class for registering at-exit and on-error callbacks into a managed
+stack. Bash's `trap` only allows one handler per signal — this class
+would layer a callback stack on top of it, so multiple components can
+register cleanup/error behaviors without stomping each other.
 
-- `_Me` -- returns object ID (`_Self`) or class name, defaulting to `boop`
-- `_Static k=v` / `_Static k` -- per-method storage, key includes function name
-- `_Property k=v` / `_Property k` -- per-object/class storage, no function name
+Core interface:
+- `onExit callback` — push a function onto the EXIT handler stack
+- `onError callback` — push a function onto the ERR handler stack
+- `remove callback` — pull a specific callback off the stack
+- Stack executes LIFO on signal (last registered runs first)
 
-All use `__boop_static` as the backing store. Keys are auto-generated
-compound paths ensuring isolation between methods and objects.
+Natural consumer of the Stack class (Phase 2). Could also support
+arbitrary signals beyond EXIT/ERR if the design generalizes cleanly.
+
+---
+
+## Phase 2 Collections
+
+### Stack
+Classic LIFO. Constrain List: expose `push`, `pop`, `peek`,
+`isEmpty`. Hide `shift`, `unshift`, `get`-by-index.
+
+### Queue
+Classic FIFO. Expose `enqueue` (push), `dequeue` (shift),
+`peek`, `isEmpty`. Possibly `size`.
+
+### LinkedList
+Each node is itself an object (or a Map entry). Requires `insertAt`,
+`removeAt`, `next`/`prev` traversal. Decide whether doubly-linked is
+worth the complexity at this stage.
+
+### Set
+Unique unordered collection. Implement on top of Map keys — values are
+irrelevant, keys are the members. Expose `add`, `has`, `remove`,
+`toArray`, `union`, `intersect`. Arguably simpler than LinkedList.
 
 ---
 
 ## String Class (Phase 3)
-
-Heavy string work is happening natively everywhere. A proper wrapper
-would clean up downstream code and give callers a consistent interface.
-
-Minimum useful interface: `trim`, `split`, `join`, `contains`,
-`startsWith`, `endsWith`, `replace`, `length`, `toUpper`, `toLower`,
-`substring`.
-
-All implementable in pure bash parameter expansion — no forks, no
-subshells. Fits the no-external-dependencies philosophy.
-
-Source: PLAN.md Phase 3.
-
----
-
-## BOOPPATH ✓ → DEVLOG (subsumed by Classpath/Namespace system)
-
-## Version Declaration → See Meta-Components (SemVer component)
-
----
-
-## I/O Classes (Phase 5)
-
-All implementable in pure bash using persistent file descriptors —
-no forks, no subshells, no external tools. Fits the zero-fork philosophy.
-
-### File
-
-Wraps a persistent file descriptor opened with `exec {fd}<>file`.
-Avoids the open/close overhead of re-reading files per call.
-
-```bash
-into=f File.open "/var/log/app.log" mode=append
-$f.write "event: $data"
-$f.readLine   # reads next line via read -r -u $fd
-$f.close
-```
-
-Interface: `open`, `close`, `read`, `readLine`, `readAll`
-(`mapfile -t arr -u $fd`), `write`, `seek`, `tell`, `eof`.
-
-### Buffer
-
-Accumulates writes in a string variable, flushes on demand or at
-a size threshold. Zero I/O cost for buffered writes; one write
-per flush.
-
-```bash
-into=buf Buffer.new
-$buf.append "line one\n"
-$buf.append "line two\n"
-$buf.flush   # one write to FD/file
-$buf.toString
-```
-
-### Pipe
-
-Bidirectional in-memory channel using bash's `exec {rfd}<> <(...)` or
-a named FIFO. Useful for producer/consumer patterns within a script
-without spawning subprocesses.
-
-Needs design work — bash FD plumbing for in-process pipes is finicky.
-Start with named FIFOs (`mkfifo`) as the backing store; revisit for
-anonymous pipe options.
-
-### Read utilities
-
-`mapfile`/`readarray` for bulk line-array reads. `read -t 0` for
-non-blocking poll. `read -N n` for exact byte counts. Wrap these
-as static methods on a `IO` namespace class so callers don't need
-to remember the flags.
-
-Source: PLAN.md Phase 5.
-
----
-
-## Config Class ✓
-
-A Config object that reads and writes structured config files in pure
-bash. Two formats, one interface.
-
-### Property file (flat key=value)
-
-Same format as `.boop.cfg` — one `key=value` per line, `#` comments,
-blank lines ignored. Keys are top-level; no sections.
-
-```bash
-into=cfg Config.load ~/.myapp.cfg
-$cfg.get theme          # → "dark"
-$cfg.set theme light
-$cfg.save ~/.myapp.cfg  # rewrite in place
-```
-
-### INI file
-
-`[section]` headers divide key=value groups. Keys are stored
-internally as `section.key` so the same get/set/has interface works
-for both formats. Section name `""` (empty) is the implicit top-level
-for keys before the first header.
-
-```bash
-into=cfg Config.loadINI /etc/myapp.ini
-$cfg.get database.host  # → "localhost"
-$cfg.get database.port  # → "5432"
-$cfg.keys database      # → "host port user password"
-$cfg.sections           # → "database server logging"
-```
-
-### Interface
-
-```
-Config.load file        → new Config object backed by property file
-Config.loadINI file     → new Config object backed by INI file
-Config.new              → empty Config object (no file)
-$cfg.get key            → value or empty string
-$cfg.set key val        → update in memory
-$cfg.has key            → exit code 0/1
-$cfg.keys [section]     → space-separated key list
-$cfg.sections           → section list (INI only)
-$cfg.save [file]        → write current state back
-$cfg.toINI [file]       → write as INI format
-$cfg.toFlat [file]      → write as flat key=value
-```
-
-### Implementation notes
-
-- Backed by a per-object associative array `__boop_config_${_Self}`
-  (same pattern as Map's companion storage).
-- `Config.load` / `Config.loadINI` parse with a `while IFS= read -r`
-  loop — pure bash, zero forks. Regex matching for `[section]` headers
-  and `key=value` lines via `[[ =~ ]]`.
-- Keys in flat files stored as-is. Keys in INI files stored as
-  `section.key`; the section prefix is stripped by `$cfg.get` when
-  a bare key is given and it matches exactly one section.
-- `$cfg.save` rewrites the file entirely (not append). Preserves
-  comments from the original file if they were captured during load.
-  (Comment preservation is optional / Phase 2.)
-- Deliberately does NOT `source` the file — pure data parsing, no
-  code execution. See "Security: Parse Config Files as Data" section.
-
-Implementation complete: `Config/Config`, 71 tests in `tests/unit/test_config_ts`.
-
-Source: discussed as extension of .boop.cfg concept.
-
----
-
-## Return System Filesystem Mode
-
-`boop.passPath` — use call stack introspection to determine a
-filesystem-backed return path. Would allow returning data via temp files
-instead of variables, useful for large payloads.
-
-Consider: `_File` as a Tier 2 inherited var on `boop.pass` for explicit
-file output. Would unify the filesystem mode with a user-friendly
-inline pattern (`_File="/var/log/app.log" _Warn "something"`). Open
-questions around precedence (`into=` vs `_File` vs mode), whether it
-replaces the current filesystem mode or layers on top, and how much
-the framework should manage output streams vs leaving that to the user.
-Don't overthink it — users can always manage their own redirects.
-
-Source: PLAN.md Running Notes.
-
----
-
-## Housekeeping ✓ → DEVLOG
-
----
-
-## Extensive Logging Hooks Throughout Codebase
-
-The logging system exists (`_Error`, `_Warn`, `_Info`, `_Debug`,
-`_Trace`) but most of the codebase doesn't use it. The framework
-needs comprehensive logging instrumentation so that turning up the
-log level actually reveals what's happening.
-
-Priority areas:
-
-- **`__boop.import`** — log every resolution step: which root is
-  being searched, which strategy matched (classPath, index,
-  filesystem, bare file), what file was sourced. At `_Debug` level.
-  At `_Trace`, log the full root list and index contents.
-
-- **`__boop.loader`** — log each rc/cfg file sourced or skipped,
-  `BOOPPATH` parsing results, index loading. `_Info` level.
-
-- **`boop.classPath`** — log every `set`, `remove`, `rebuild`
-  operation including what was written and where. `_Info` level.
-
-- **Object lifecycle** — `__boop.new` and `destroy` should log
-  object creation/destruction at `_Debug`. Constructor arguments
-  at `_Trace`.
-
-- **Method dispatch** — `registerClass` wrapper generation,
-  MRO cache hits/misses, inherited method resolution. `_Debug`
-  for cache misses, `_Trace` for every dispatch.
-
-- **Property access** — `__boop.get`/`__boop.set` at `_Trace`
-  level. Too noisy for anything less.
-
-- **`boop.pass`** — log mode selection and target variable at `_Trace`.
-  Subshell footgun `_Debug` already added (into= in subshell emits advisory).
-
-- **Class files** — each class's `.new()` should log construction
-  at `_Debug`. Complex methods (Container iteration, Math
-  arithmetic) should log entry/exit at `_Trace`.
-
-Principle: `_Info` shows lifecycle events (loaded X, sourced Y).
-`_Debug` shows decisions (chose this path because...). `_Trace`
-shows everything (every get/set, every dispatch, every argument).
-A user debugging a resolution issue should be able to set
-`_LogLevel trace` and see the complete story.
-
-Source: `boop`, all class files.
-
-### Log-Level Bypass via Function Replacement (Performance)
-
-When `_LogLevel` is set high (e.g. `ERROR`), every `_Warn`, `_Info`,
-`_Debug`, and `_Trace` call still pays the cost of a function invocation
-that immediately returns. At high call volume this adds up.
-
-**Mechanism: function replacement, not aliases.** Aliases don't expand
-inside function bodies in non-interactive shells. The correct approach
-is to overwrite the silenced functions with no-op bodies at `_LogLevel`
-change time:
-
-```bash
-# Inside __boop.setLogLevel, after updating __boop_logLevel:
-_Trace() { :; }
-(( __boop_logLevel >= __boop_LOG_DEBUG )) || _Debug() { :; }
-(( __boop_logLevel >= __boop_LOG_INFO  )) || _Info()  { :; }
-(( __boop_logLevel >= __boop_LOG_WARN  )) || _Warn()  { :; }
-# Restore real implementations for active levels (re-source or eval)
-```
-
-`:` is a bash builtin — the cheapest possible no-op. Plain string args
-still get evaluated before the call (bash evaluates args before dispatch),
-but that's only significant if the message involves a subshell — which
-it shouldn't, per our no-subshell policy.
-
-For expensive message construction in hot paths, use an inline guard
-at the call site to skip arg evaluation entirely:
-
-```bash
-(( __boop_logLevel >= __boop_LOG_DEBUG )) && _Debug "hot-path detail: $val"
-```
-
-Caveats:
-- Must restore real implementations when `_LogLevel` rises again
-- Benchmark: re-defining N functions per level change should be
-  negligible vs the per-call savings on stable long-running scripts
-- Per-class log levels complicate this — function replacement is global,
-  but per-class checks happen inside `__boop.log`. Consider whether
-  the bypass applies only when the GLOBAL level silences a tier (per-class
-  overrides can still route through the real function).
-
----
-
-## Per-Class Work
-
----
-
-### boop (root class)
-
-- **`setOn` coverage**: method exists, test coverage unclear
-- **`boop_install` bootstrap script**: puts boop on PATH, generates
-  initial `.boopIndex`, creates starter `~/.booprc`. See Classpath
-  section for full spec.
-- **`boop.inspect`**: pretty-print an object's full state for debugging.
-  Should show class, inheritance chain, all properties with current
-  values, and method list. Registered on root `boop` class so every
-  object inherits it. Tier 3 public, output to stdout by default.
-  ```
-  [Box _abc123]
-    class:  Box (extends boop)
-    length: 5
-    width:  3
-    height: 7
-    methods: new, volume, area, top, side, front, toString
-  ```
-- **Scaffolding (`boop new MyClass`)**: generate a class file skeleton
-  from a template. Could live as a subcommand on the `boop` root class
-  or as a standalone `boop_new` script. Output is a ready-to-edit file
-  with load guard, boopClass declaration, and stub `.new()`. High
-  friction reducer for new users.
-
----
-
-### Math
-
-Math uses chunked arbitrary-precision arithmetic entirely in bash —
-no forks, no subshells, no external tools. 9 digits per chunk, base
-10^9, fits in int64. `printf -v` for all string formatting.
-All returns via nameref. See `Math/Math` header for algorithm notes.
-
-- **Input validation on public API**: `Math.add`, `Math.subtract`,
-  etc. accept garbage strings without complaint — error surfaces deep
-  in `__Math.toInt64` as a cryptic `10#` bash arithmetic error.
-  Validation belongs in `__Math.resolve` (single chokepoint). After
-  parsing, verify digits are all-digit; crash with helpful message.
-
-- **Variadic public methods**: `Math.add 1 2 3 4` should sum all
-  args. `Math.add 5` (single arg) should return identity. Same for
-  `mul`. Currently requires exactly two operands.
-
-- **Output format modes**: scientific notation (`3.14e10`), engineering
-  notation, fixed decimal places. Currently outputs raw digit string
-  with implicit decimal position. Needs a `Math.format` or `format=`
-  typecast option on results.
-
-- **`Math::Trig` submodule**: `sin`, `cos`, `tan`, `asin`, `acos`,
-  `atan`, `atan2`. Already have `arctan` series internally (used for
-  pi). Expose as a loadable submodule. No forks — same digit-math
-  approach as `pi`.
-
-- **`Math::Stats` submodule**: `mean`, `median`, `stddev`, `variance`,
-  `min`, `max`, `sum`. Operates on List or array of Math objects.
-
----
-
-### Collection (Container, List, Map, Iterator)
-
-- **Iterator stability after mutation**: behavior when the underlying
-  container is modified during iteration is undefined. Document the
-  contract or enforce it (crash on structural modification).
-
-- **Container test coverage audit**: 23 methods — valid usage,
-  expected failures, garbage inputs. See Test Coverage Audit section.
-
-- **List**: 15 methods — coverage audit. `insertAt`/`removeAt`
-  needed for LinkedList compatibility.
-
-- **Map**: 12 methods — coverage audit. Insertion-order guarantee
-  should be documented explicitly (currently relies on bash 4.0+
-  associative array ordering, which is NOT insertion-ordered —
-  verify this is handled correctly).
-
----
-
-### String (Phase 3)
 
 Minimum useful interface, all in pure bash parameter expansion —
 no forks, no subshells:
@@ -1244,108 +366,54 @@ pipelines readable.
 
 ---
 
-### Games (Card, PlayingCard, Deck, Blackjack)
+## I/O Classes (Phase 5)
 
-- **`test_blackjack` coverage**: test file exists but coverage depth
-  unknown. Audit against all public methods.
-- **Blackjack**: lives in `Games/Blackjack/` namespace. Hand scoring,
-  soft/hard ace logic, split/double-down, dealer AI — currently
-  all in the script. Consider whether any logic belongs in
-  `BlackjackHand` class.
+All implementable in pure bash using persistent file descriptors —
+no forks, no subshells, no external tools.
 
----
+### File
+Wraps a persistent file descriptor opened with `exec {fd}<>file`.
+Interface: `open`, `close`, `read`, `readLine`, `readAll`, `write`,
+`seek`, `tell`, `eof`.
 
-### Geometry (Box, Cube)
+### Buffer
+Accumulates writes in a string variable, flushes on demand or at
+a size threshold. Zero I/O cost for buffered writes; one write
+per flush.
 
-- **Box/Cube**: 91 tests passing, coverage looks solid. No known
-  gaps. Revisit when new geometry classes are added.
+### Pipe
+Bidirectional in-memory channel using bash's `exec {rfd}<> <(...)` or
+a named FIFO. Needs design work — bash FD plumbing for in-process
+pipes is finicky.
 
----
-
-## Test Coverage Audit
-
-Every declared method in every class should have test coverage:
-
-- Valid usage (expected inputs produce expected outputs)
-- Expected failures (bad inputs crash with clear messages)
-- Unexpected/garbage inputs (fails gracefully, not dramatically)
-
-Classes with the most surface area to audit:
-- Container (23 methods), Math (26 methods + static wrappers),
-  List (15 methods), Map (12 methods), Iterator (8 methods)
-- Card/Deck/Hand — `test_blackjack` exists but coverage is unknown
-- boop root methods — `setOn` coverage unclear
-
-Also: CLI-level testing for Tier 3 public methods. These need
-creative adversarial input from a human who enjoys breaking things.
+### Read utilities
+`mapfile`/`readarray` for bulk line-array reads. `read -t 0` for
+non-blocking poll. `read -N n` for exact byte counts. Wrap as static
+methods on an `IO` namespace class.
 
 ---
 
+## Return System Filesystem Mode
 
-## Return System: Default to stdout + Newline Control ✓
+`boop.passPath` — use call stack introspection to determine a
+filesystem-backed return path. Would allow returning data via temp files
+instead of variables, useful for large payloads.
 
-✓ `auto` mode now always outputs to stdout. `_Out` global still
-available via explicit `_OutMode=global`. All `test_stress_ts` call
-sites updated to use `into=varname` or `$()` capture.
-
-`into=` always wins regardless of mode. The mode only matters when
-no explicit target is given.
-
-### `into=` in Subshells — Known Silent Footgun
-
-`into=varname $obj.method` inside a subshell silently loses the
-value: the nameref write succeeds into the subshell's scope, stdout
-is suppressed (nameref path returns early), and the value evaporates
-when the subshell exits. No crash, no warning.
-
-A blanket `_Warn` for "into= in subshell" would false-positive on
-legitimate patterns (e.g., using `into=` inside a subshell to chain
-intermediate calls before `printf`-ing the result out). Left as a
-documentation note. The safe idioms are:
-
-```bash
-# Option 1: into= for intermediate work, printf the final result
-result=$( into=tmp $obj.compute; printf "%s" "$tmp" )
-
-# Option 2: subshell capture of stdout directly
-result=$( $obj.compute )
-```
-
-### Per-Class / Per-Namespace Output Mode
-
-Consider per-class output mode overrides, same pattern as the log
-level system: global default, per-class overrides via an associative
-array, inheritance through the class chain, cached resolution.
-
-Use case: a CLI utility class might want stdout by default, while
-a library class wants global. The class author sets the default,
-the user can override per-class or globally.
-
-### `into=` Forwarding Through Dispatchers ✓
-
-✓ `_Delegate`, `_Super`, and `_Cast` now explicitly forward
-`into="${into:-}"` to inner calls. Three new tests in
-`test_stress_ts` cover the indirect forwarding case (outer caller
-sets `into=`, inner method dispatches without its own `into=`).
+Consider: `_File` as a Tier 2 inherited var on `boop.pass` for explicit
+file output. Open questions around precedence (`into=` vs `_File` vs
+mode). Don't overthink it — users can always manage their own redirects.
 
 ---
 
 ## Implicit Object Declaration on Return (`_AS=`)
 
 Explore whether `boop.pass` could auto-wrap a return value as an
-object of a specified class. The caller would declare the desired
-type inline:
+object of a specified class:
 
 ```bash
 into=o _AS=List boop.classPath list
 $o.length    # → number of entries
-$o.each ...  # iterate as a List
 ```
-
-This would let any method that returns a multi-value string
-(newline-delimited, etc.) hand back a typed object instead of a
-raw string — without the callee knowing or caring about the
-wrapping.
 
 Open questions:
 - Does `boop.pass` handle the wrapping, or does the caller's
@@ -1360,76 +428,105 @@ Might not be worth the complexity. Investigate and decide.
 
 ## Try/Catch Mechanism -- Low Priority
 
-Bash has no native try/catch. Every approach has serious tradeoffs:
-
-- **Subshell**: clean isolation, but loses all side effects (variable
-  mutations, registry changes, object creation). Dealbreaker for a
-  framework built on global state.
-- **eval + trap ERR**: side effects survive, but the try block is
-  either a string (eval, gross) or a function name. `_Crash` would
-  need to know it's inside a try context and `return` instead of
-  `exit`. Unwinding the call stack requires either `set -e` behavior
-  or every function checking a try-depth flag. Fragile.
-- **Signal-based**: `_Crash` sends USR1, try wrapper traps it. But
-  bash signal delivery is unpredictable -- only between commands,
-  not mid-builtin.
-
+Bash has no native try/catch. Every approach has serious tradeoffs.
 Conclusion: the cure is worse than the disease. Developers should
 handle errors explicitly with exit codes and `_Crash`. The fatality
 threshold (`_FatalLevel`) already provides escalation control.
 
-Revisit if a compelling use case emerges that can't be solved with
-explicit error handling.
+Revisit if a compelling use case emerges.
+
+---
+
+## Extensive Logging Hooks Throughout Codebase
+
+The logging system exists but most of the codebase doesn't use it.
+The framework needs comprehensive logging instrumentation so that
+turning up the log level actually reveals what's happening.
+
+Priority areas:
+- `__boop.import` — log every resolution step at `_Debug`/`_Trace`
+- `__boop.loader` — log each rc/cfg file sourced or skipped at `_Info`
+- `boop.classPath` — log set/remove/rebuild at `_Info`
+- Object lifecycle — creation/destruction at `_Debug`
+- Method dispatch — MRO cache misses at `_Debug`, every dispatch at `_Trace`
+- Property access — `__boop.get`/`__boop.set` at `_Trace`
+- `boop.pass` — mode selection at `_Trace`
+
+Principle: `_Info` = lifecycle events. `_Debug` = decisions.
+`_Trace` = everything.
+
+### Log-Level Bypass via Function Replacement
+
+When `_LogLevel` is high, silenced functions still pay invocation
+cost. Replace with no-op bodies (`() { :; }`) at level-change time.
+Restore real implementations when level rises. Per-class overrides
+complicate this — function replacement is global but per-class checks
+are inside `__boop.log`.
+
+---
+
+## Per-Class Work
+
+### boop (root class)
+- `setOn` coverage: method exists, test coverage unclear
+- `boop_install` bootstrap script (see Namespace design in DEVLOG)
+- Scaffolding (`boop new MyClass`): generate class file skeleton
+
+### Math
+- Output format modes (scientific, engineering, fixed decimal)
+- `Math::Trig` submodule (sin, cos, tan, etc.)
+- `Math::Stats` submodule (mean, median, stddev, etc.)
+
+### Collection (Container, List, Map, Iterator)
+- Iterator stability after mutation: document or enforce
+- Container test coverage audit (23 methods)
+- List: `insertAt`/`removeAt` for LinkedList compatibility
+- Map: verify insertion-order guarantee is correctly handled
+- **Defensive array access policy**: when a method accesses its
+  backing array (`__boop_data_*`, `__boop_keys_*`) and the array
+  is uninitialized or missing (corrupted/destroyed object), what
+  should happen? Options: (a) `_Error` — fatal under strict
+  `_FatalLevel`, survivable under loose; (b) `_Warn` + return
+  empty/zero; (c) silent empty (current `:-` behavior). The right
+  answer probably depends on the user's session posture — `set -u`
+  users want a crash, cowboy coders want resilience. We have the
+  machinery (`_FatalLevel`, `_LogLevel`) to make this configurable.
+  Design pass needed to pick a consistent policy across all
+  collection classes.
+
+### Games (Card, PlayingCard, Deck, Blackjack)
+- `test_blackjack` coverage audit
+- Consider whether Blackjack logic belongs in `BlackjackHand` class
+
+### Geometry (Box, Cube)
+- 91 tests passing, no known gaps. Revisit when new classes added.
+
+---
+
+## Test Coverage Audit
+
+Every declared method in every class should have test coverage:
+- Valid usage (expected inputs → expected outputs)
+- Expected failures (bad inputs → clear crash messages)
+- Unexpected/garbage inputs (fails gracefully)
+
+Priority: Container (23 methods), Math (26 methods), List (15),
+Map (12), Iterator (8). Also CLI-level testing for Tier 3 public
+methods.
 
 ---
 
 ## README Accuracy Audit
 
-Specific points to address in the next README edit pass:
+Points to address in the next README edit pass:
 
-1. **"objects with encapsulated state"** -- state is convention-private
-   (`__` prefix), not mechanism-private. No access control. Suggest
-   "objects with managed state" or "objects with structured state."
-
-2. **"The default fatality threshold is `error`"** -- WRONG. Default is
-   `crash` (only explicit `_Crash` is fatal). Fix to match actual behavior.
-
-3. **"1,400+ assertions"** -- needs verification. Actual count is likely
-   lower (~800-900 across all suites). Count properly and update.
-
-4. **"~2,200 lines of bash"** -- actual is ~2,500. Update.
-
-5. **"production-quality implementations"** -- JSON doesn't handle unicode
-   escapes, Math has untested methods. Soften to "well-tested" or
-   "substantial."
-
-6. **`_Super.greet` in subclassing example** -- ✓ FIXED. Changed to
-   `_Super greet` (space, not dot).
-
-7. **Helper documentation** -- `_Super`, `_Cast`, `_Delegate`, `_Bless`
-   need careful documentation with correct syntax and examples. These
-   are easy to get wrong and the README is the first place people look.
-
-8. **"No subshells in the hot path"** -- accurate for dispatch and
-   property access. JSON stringify uses `sort -n` (subshell) for array
-   key ordering. Note this or fix it.
-
-9. **"Properties are typed as strings"** -- meaningless in bash where
-   everything is a string. The sentence adds nothing and confuses
-   readers from typed languages who might think there's a type system.
-   Either remove it or replace with something useful like "All values
-   are stored as strings in the descriptor. Numeric operations require
-   explicit arithmetic context." Needs a reference to the descriptor
-   storage docs in docs/boop.md.
-
-10. **General: every non-obvious claim needs a reference** -- statements
-    about behavior, limitations, or design choices should link to the
-    relevant section in docs/ where the full explanation lives. If no
-    such section exists, that's a flag to write one. The README is a
-    tour guide, not the encyclopedia.
-
-11. **`local -I` usage** -- ✓ FIXED. All `local -I` removed from codebase.
-    README examples updated to use explicit `local _Self="${_Self:-}"`.
-    Documented in docs/boop.md. Still needs a "why we don't use local -I"
-    section in STANDARDS.md.
-
+1. "objects with encapsulated state" → state is convention-private, not mechanism-private
+2. "The default fatality threshold is `error`" → WRONG, default is `crash`
+3. "1,400+ assertions" → verify actual count
+4. "~2,200 lines of bash" → actual is ~2,500
+5. "production-quality implementations" → soften (JSON lacks unicode, Math has gaps)
+6. Helper documentation (`_Super`, `_Cast`, `_Delegate`, `_Bless`) needs examples
+7. "No subshells in the hot path" → JSON stringify uses `sort -n`
+8. "Properties are typed as strings" → meaningless in bash, rewrite
+9. Every non-obvious claim needs a reference to docs/
+10. Needs "why we don't use local -I" section in STANDARDS.md

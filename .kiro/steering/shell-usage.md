@@ -26,6 +26,12 @@ grep -r "pattern" .
 
 This is not negotiable. The shell is bash. Use it as bash.
 
+## Timing
+
+Run `date` before and after each command execution. This provides:
+- A reference for how long tasks take
+- Awareness of actual passage of time during the session
+
 ## Running test_all
 
 Always run `test_all` in verbose mode with output teed to a log:

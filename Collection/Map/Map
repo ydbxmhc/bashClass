@@ -98,7 +98,7 @@ Collection.Map.delete() {
   # Remove from ordered key list and compact
   local -a __Collection_Map_del_new=()
   local __Collection_Map_del_k
-  if [[ -n "${!__Collection_Map_del_keys[@]}" ]]; then
+  if (( ${#__Collection_Map_del_keys[@]} )); then
     for __Collection_Map_del_k in "${__Collection_Map_del_keys[@]}"; do
       [[ "$__Collection_Map_del_k" != "$__Collection_Map_del_key" ]] && __Collection_Map_del_new+=("$__Collection_Map_del_k")
     done
@@ -112,7 +112,7 @@ Collection.Map.delete() {
 Collection.Map.length() {
   local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
   local -n __Collection_Map_length_arr="__boop_data_${_Self}"
-  local -i __Collection_Map_length_len=0; [[ -n "${!__Collection_Map_length_arr[@]}" ]] && __Collection_Map_length_len=${#__Collection_Map_length_arr[@]}
+  local -i __Collection_Map_length_len=0; (( ${#__Collection_Map_length_arr[@]} )) && __Collection_Map_length_len=${#__Collection_Map_length_arr[@]}
   boop.pass "$__Collection_Map_length_len" ${into:-}
 }
 
@@ -145,7 +145,7 @@ Collection.Map.keys() {
   local -n __Collection_Map_keys_keys="__boop_keys_${_Self}"
   local __Collection_Map_keys_d="${_Delimiter:-$_EOL}"
   local __Collection_Map_keys_out
-  if ! [[ -n "${!__Collection_Map_keys_keys[@]}" ]] || (( ${#__Collection_Map_keys_keys[@]} == 0 )); then
+  if ! [[ -n "${__Collection_Map_keys_keys[@]:-}" ]]; then
     boop.pass "" ${into:-}
     return
   fi
@@ -237,7 +237,7 @@ Collection.Map.each() {
   local __Collection_Map_each_fn="$1"
   local -n __Collection_Map_each_arr="__boop_data_${_Self}"
   local -n __Collection_Map_each_keys="__boop_keys_${_Self}"
-  [[ -n "${!__Collection_Map_each_keys[@]}" ]] || return 0
+  [[ -n "${__Collection_Map_each_keys[@]:-}" ]] || return 0
   local __Collection_Map_each_key
   for __Collection_Map_each_key in "${__Collection_Map_each_keys[@]}"; do
     "$__Collection_Map_each_fn" "$__Collection_Map_each_key" "${__Collection_Map_each_arr[$__Collection_Map_each_key]}" || return
