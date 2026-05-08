@@ -214,7 +214,7 @@ Args.parse() {
 
   # Snapshot varlist before cleanup (needed for object-mode pass)
   local -a __Args_parse_vars=("${__Args_varlist[@]+"${__Args_varlist[@]}"}")
-  _Info "parse: schema has ${#__Args_parse_vars[@]} option(s), ${#__Args_subcmd_map[@]} subcommand(s)"
+  _Debug "parse: schema has ${#__Args_parse_vars[@]} option(s), ${#__Args_subcmd_map[@]} subcommand(s)"
 
   # --- Phase 2: Initialize result variables ---
   declare -ga __Args_orig=("$@")
@@ -312,7 +312,7 @@ Args.parse() {
     _ArgsRemaining+=("$__Args_parse_arg")
   done
 
-  _Info "parse: done — action='$_Action', ${#_ArgsRemaining[@]} remaining"
+  _Debug "parse: done — action='$_Action', ${#_ArgsRemaining[@]} remaining"
 
   # --- Phase 4: Validate required ---
   local __Args_parse_missing=""
