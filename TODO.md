@@ -526,10 +526,10 @@ methods.
 Points to address in the next README edit pass:
 
 1. "objects with encapsulated state" → state is convention-private, not mechanism-private
-2. "The default fatality threshold is `error`" → WRONG, default is `crash`
-3. "1,400+ assertions" → verify actual count
-4. "~2,200 lines of bash" → actual is ~2,500
-5. "production-quality implementations" → soften (JSON lacks unicode, Math has gaps)
+2. ✓ ~~"The default fatality threshold is `error`"~~ — fixed to `crash`
+3. ✓ ~~"1,400+ assertions"~~ — corrected to 1,200+
+4. ✓ ~~"~2,200 lines of bash"~~ — corrected to 2,500
+5. ✓ ~~"production-quality implementations"~~ — softened to "well-tested"
 6. Helper documentation (`_Super`, `_Cast`, `_Delegate`, `_Bless`) needs examples
 7. "No subshells in the hot path" → JSON stringify uses `sort -n`
 8. "Properties are typed as strings" → meaningless in bash, rewrite
