@@ -93,16 +93,19 @@ Collection.Map.delete() {
   local -n __Collection_Map_del_arr="__boop_data_${_Self}"
   local -n __Collection_Map_del_keys="__boop_keys_${_Self}"
 
+  if [[ -z "${__Collection_Map_del_arr[$__Collection_Map_del_key]+set}" ]]; then
+    _Trace "delete: '$__Collection_Map_del_key' (not present, no-op)"
+    return 0
+  fi
+  _Debug "delete: '$__Collection_Map_del_key'"
   unset "__Collection_Map_del_arr[$__Collection_Map_del_key]"
 
   # Remove from ordered key list and compact
   local -a __Collection_Map_del_new=()
   local __Collection_Map_del_k
-  if (( ${#__Collection_Map_del_keys[@]} )); then
-    for __Collection_Map_del_k in "${__Collection_Map_del_keys[@]}"; do
-      [[ "$__Collection_Map_del_k" != "$__Collection_Map_del_key" ]] && __Collection_Map_del_new+=("$__Collection_Map_del_k")
-    done
-  fi
+  for __Collection_Map_del_k in "${__Collection_Map_del_keys[@]}"; do
+    [[ "$__Collection_Map_del_k" != "$__Collection_Map_del_key" ]] && __Collection_Map_del_new+=("$__Collection_Map_del_k")
+  done
   __Collection_Map_del_keys=("${__Collection_Map_del_new[@]+"${__Collection_Map_del_new[@]}"}")
 }
 
