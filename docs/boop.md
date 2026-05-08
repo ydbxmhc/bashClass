@@ -13,7 +13,7 @@ the plumbing.
 
 ## Requirements
 
-- bash 5.0+ (associative arrays, `local -I`, `EPOCHREALTIME`, namerefs)
+- bash 5.0+ (associative arrays, namerefs)
 - That's it. Seriously.
 
 macOS ships bash 3.2 (thanks, GPL3). `brew install bash` fixes that.
@@ -392,7 +392,7 @@ use is in overridden methods that need to extend (not replace) the base:
 
 ```bash
 Cube.new() {
-  local -I _Self _Class; : "${_Class:=Cube}"
+  local _Class="${_Class:-Cube}"
   local __Cube_new_self
   # Set up cube-specific defaults, then hand off to parent
   into=__Cube_new_self _Super new size="$size" length="$size" "$@"
@@ -467,7 +467,7 @@ The baked wrapper handles three cases:
 1. Exact match (or no ambient class) — fast path, direct call.
 2. Family member (ambient class is an ancestor) — legitimate typecast,
    falls back to full dispatch for correct MRO resolution.
-3. Unrelated class (leakage from `local -I`) — emits a `_Warn`
+3. Unrelated class (mismatched ambient `_Class`) — emits a `_Warn`
    diagnostic and uses the baked class.
 
 ---
@@ -728,7 +728,7 @@ Point.new() {
 }
 
 Point.distanceTo() {
-  local -I _Self _Class
+  local _Self="${_Self:-${_Class:-Point}}" _Class="${_Class:-Point}"
   local __Point_dt_x1 __Point_dt_y1 __Point_dt_x2 __Point_dt_y2 __Point_dt_other="$1"
   __boop.parse "$_Self"            "x" __Point_dt_x1
   __boop.parse "$_Self"            "y" __Point_dt_y1
@@ -753,8 +753,8 @@ boopClass Point has:x,y public:new,distanceTo
 
 3. **Method functions**: Named `ClassName.methodName`. Start value-
    producing methods with `boop.pass "$val" ${into:-}` at the end.
-   For methods that need `_Self` and `_Class`, use `local -I _Self _Class`
-   (inherited from caller) or set them explicitly via boopClass defaults.
+   Methods that need object identity open with:
+   `local _Self="${_Self:-${_Class:-ClassName}}" _Class="${_Class:-ClassName}"`
 
 4. **`boopClass` declaration**: One line at the bottom. All registration,
    finalization, and auto-aliasing happens here.
@@ -802,7 +802,7 @@ Cube.new() {
 }
 
 Cube.volume() {
-  local -I _Self _Class
+  local _Self="${_Self:-${_Class:-Cube}}" _Class="${_Class:-Cube}"
   local __Cube_volume_size
   __boop.parse "$_Self" "size" __Cube_volume_size
   local __Cube_volume_vol
@@ -832,23 +832,19 @@ These aren't suggestions — they prevent real bugs.
 | Framework internals | `__boop_*` or `__boop.*` | Leading double underscore = hands off. |
 | Semi-private helpers | `__ClassName.*` | Double underscore prefix signals internal use. Not enforced, just convention. |
 
-### The `local -I` Pattern
+### The `_Self` and `_Class` Pattern
 
 Most methods that need object identity start with:
 
 ```bash
-local -I _Self _Class
+local _Self="${_Self:-${_Class:-ClassName}}" _Class="${_Class:-ClassName}"
 ```
 
-`local -I` (bash 5.1+) creates inherited locals — the variable is local
-to this function but initialized from the calling scope. This is how
-`_Self` and `_Class` flow through the dispatch chain without explicit
-argument passing.
-
-One gotcha: `local -I` variables are writable by callees in the same
-scope chain. Deep traversal methods (like `itemAt`) that dispatch to
-multiple different objects in sequence use explicit `_Self=` and
-`_Class=` environment prefixes on each call to prevent leakage.
+The dispatcher sets `_Self` and `_Class` as environment variables
+before calling the method function. The method captures them into
+ordinary locals — which are visible to any function called from within
+that scope via bash's dynamic scoping, but never leak back to the
+caller once the function returns.
 
 ---
 
@@ -1100,8 +1096,9 @@ _LogLevel trace             # everything at trace
 
 ### How It Works
 
-Log calls inherit `_Class` via `local -I`, so the framework knows which
-class context the call is in. The resolved level for each class is
+Log calls read `_Class` from the current scope — each method sets it
+as a local at the top, so it's visible to `_Debug`/`_Trace`/etc. via
+bash's dynamic scoping. The resolved level for each class is
 cached after the first lookup — subsequent calls are one hash lookup
 plus one integer compare. The inheritance walk only happens once per
 class (until invalidated by `_LogLevel`).
@@ -1336,15 +1333,16 @@ allowed — both end up in the descriptor, but `get`/`parse` match the
 first one. This is documented behavior, not a bug, but probably not
 what you want. Don't pass the same key twice.
 
-### Container `local -I` Leak
+### Deep Traversal and Object Identity
 
 In deep traversal methods (`itemAt`, `setAt`, `itemFrom`, `setOn`),
-the cursor changes identity and class on every step. Because `local -I`
-creates shared bindings up the call stack, dispatching to one object
-can leak its `_Class` value into the next iteration. These methods use
-explicit `_Self=`/`_Class=` environment prefixes on every dispatch call
-to prevent this. If you write your own traversal code that dispatches
-to multiple different objects in sequence, you'll need the same pattern.
+the cursor changes identity and class on every step. These methods
+copy the initial `_Self` and `_Class` into explicit cursor variables
+and use `_Self=`/`_Class=` environment prefixes on every dispatch call
+to ensure each step operates on the right object. If you write your
+own traversal code that dispatches to multiple different objects in
+sequence, follow the same pattern — don't assume ambient `_Self` is
+still correct after dispatching to another object.
 The Container source has a detailed block comment explaining this.
 
 ---
