@@ -4,6 +4,56 @@ Completed work items, extracted from TODO.md. Most recent first.
 
 ---
 
+## Phase 2 Collections — Stack, Queue, Set
+
+**Completed:** 2026-05
+
+All three use composition, not inheritance. Each holds its backing
+store internally and exposes only its own interface.
+
+**Stack** (`Collection/Stack`) — LIFO. Composes a List; delegates
+`push`/`pop`/`getAt(-1)` through it with `_Self` swapped to the
+internal list ID. `push`, `pop`, `peek`, `size`, `isEmpty`. Crashes
+on underflow. 19 tests.
+
+**Queue** (`Collection/Queue`) — FIFO. Same composition pattern over
+List; `enqueue` → List.push, `dequeue` → List.shift. `enqueue`,
+`dequeue`, `peek`, `size`, `isEmpty`. Crashes on underflow. 19 tests.
+
+**Set** (`Collection/Set`) — Unordered unique members. Backed by a
+raw bash associative array (keys = members, O(1) ops). No intermediate
+object needed. `add`, `has`, `remove`, `size`, `isEmpty`, `toArray`,
+`union`, `intersect`, `difference`. Set operations return new Set
+objects and leave operands unchanged. 38 tests.
+
+LinkedList deferred — see TODO.
+
+---
+
+## Load Guard Refactor — `boop.init`
+
+**Completed:** 2026-05
+
+Replaced the `[[ -n "${__boop_registry[...]+set}" ]] && return 2>/dev/null`
+pattern across all 15 class files. New pattern:
+
+```bash
+. boop
+boop.init ClassName || return 0
+```
+
+`boop.init` (public, in boop core) handles three cases: already loaded
+(returns 1, `|| return 0` exits cleanly), executed directly (`bash Box`
+→ prints "Box is a boop class file. Load it with: . boop Box", exits 1),
+first load (returns 0, loading continues). `__boop.guard` (internal)
+is the pure registry-presence check that `boop.init` delegates to.
+
+The `|| return 0` is intentional: `__boop.import` checks source exit
+code, and the class alias (`Container`) can differ from the registry key
+(`Collection.Container`), making a post-source registry check unreliable.
+
+---
+
 ## Meta-Components Phase 1 — Version Guards and SemVer
 
 **Completed:** 2026-05

@@ -70,29 +70,7 @@ This is a design exploration — no implementation yet.
 
 ## Load Guard & Class Init Refactor
 
-The current load guard pattern in every class file:
-
-```bash
-[[ -n "${__boop_registry[ClassName]+set}" ]] && return 2>/dev/null
-```
-
-Has two problems:
-
-1. The `return` silently fails when the file is executed directly
-   (not sourced), and `2>/dev/null` hides the error. Under `set -e`
-   this is a silent fatal exit with no explanation.
-
-2. There's no help output — running `bash Box` does nothing useful.
-
-Planned replacement: a `boop.init` method on the root class that
-handles the load guard, detects direct execution, and prints help text.
-Design includes per-class help via `__boop_help["ClassName"]`,
-inheritable defaults, and a single-statement call pattern in class
-files. Details still under discussion.
-
-See also: "Class File Execution Guard & Help System" (below).
-
-Source: `boop`, all class files.
+Done -- see DEVLOG. All 15 class files now use `boop.init ClassName || return 0`.
 
 ---
 
@@ -276,23 +254,15 @@ arbitrary signals beyond EXIT/ERR if the design generalizes cleanly.
 
 ## Phase 2 Collections
 
-### Stack
-Classic LIFO. Constrain List: expose `push`, `pop`, `peek`,
-`isEmpty`. Hide `shift`, `unshift`, `get`-by-index.
+Stack, Queue, Set done -- see DEVLOG.
 
-### Queue
-Classic FIFO. Expose `enqueue` (push), `dequeue` (shift),
-`peek`, `isEmpty`. Possibly `size`.
+### LinkedList (deferred)
 
-### LinkedList
-Each node is itself an object (or a Map entry). Requires `insertAt`,
-`removeAt`, `next`/`prev` traversal. Decide whether doubly-linked is
-worth the complexity at this stage.
-
-### Set
-Unique unordered collection. Implement on top of Map keys — values are
-irrelevant, keys are the members. Expose `add`, `has`, `remove`,
-`toArray`, `union`, `intersect`. Arguably simpler than LinkedList.
+Each node would be a full boop object. In practice: O(n) traversal to
+any insertion point, heavy per-element overhead, and the O(1)
+insert/delete advantage (given a node reference) is hard to express
+cleanly in the boop object model. Revisit if a concrete use case
+emerges that List can't serve.
 
 ---
 
