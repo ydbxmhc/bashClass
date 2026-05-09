@@ -1,0 +1,140 @@
+#!/bin/bash
+
+# Collection.Set -- unordered collection of unique values.
+#
+# Backed by a bash associative array (keys are members, values unused).
+# Membership tests, add, and remove are O(1). Iteration order is
+# hash-defined (undefined). Set operations return new Set objects.
+#
+# Public interface:
+#   $s.add     val ...   -- add one or more members
+#   $s.has     val       -- exits 0 if member, 1 if not
+#   $s.remove  val ...   -- remove one or more members (no-op if absent)
+#   $s.size              -- number of members
+#   $s.isEmpty           -- exits 0 if empty, 1 if not
+#   $s.toArray           -- members as _Delimiter-joined string (order undefined)
+#   $s.union      other  -- new Set: members of self or other
+#   $s.intersect  other  -- new Set: members of self and other
+#   $s.difference other  -- new Set: members of self not in other
+
+. boop
+boop.init Collection.Set || return 0
+
+Collection.Set.new() {
+  local _Class="${_Class:-Collection.Set}"
+  local __Collection_Set_new_self
+  into=__Collection_Set_new_self __boop.new "$@"
+  declare -gA "__Collection_Set_data_${__Collection_Set_new_self}=()"
+  _Info "new: $__Collection_Set_new_self"
+  boop.pass "$__Collection_Set_new_self" ${into:-}
+}
+
+Collection.Set.add() {
+  local _Self="${_Self:-Collection.Set}" _Class="${_Class:-Collection.Set}"
+  local -n __Collection_Set_add_d="__Collection_Set_data_${_Self}"
+  local __Collection_Set_add_v
+  for __Collection_Set_add_v in "$@"; do
+    __Collection_Set_add_d["$__Collection_Set_add_v"]=1
+  done
+  _Trace "add: +$# member(s), size now ${#__Collection_Set_add_d[@]}"
+}
+
+Collection.Set.has() {
+  local _Self="${_Self:-Collection.Set}" _Class="${_Class:-Collection.Set}"
+  local -n __Collection_Set_has_d="__Collection_Set_data_${_Self}"
+  [[ -n "${__Collection_Set_has_d[$1]+set}" ]]
+}
+
+Collection.Set.remove() {
+  local _Self="${_Self:-Collection.Set}" _Class="${_Class:-Collection.Set}"
+  local -n __Collection_Set_remove_d="__Collection_Set_data_${_Self}"
+  local __Collection_Set_remove_v
+  for __Collection_Set_remove_v in "$@"; do
+    unset "__Collection_Set_remove_d[${__Collection_Set_remove_v}]"
+  done
+  _Trace "remove: -$# member(s), size now ${#__Collection_Set_remove_d[@]}"
+}
+
+Collection.Set.size() {
+  local _Self="${_Self:-Collection.Set}" _Class="${_Class:-Collection.Set}"
+  local -n __Collection_Set_size_d="__Collection_Set_data_${_Self}"
+  boop.pass "${#__Collection_Set_size_d[@]}" ${into:-}
+}
+
+Collection.Set.isEmpty() {
+  local _Self="${_Self:-Collection.Set}" _Class="${_Class:-Collection.Set}"
+  local -n __Collection_Set_isEmpty_d="__Collection_Set_data_${_Self}"
+  (( ${#__Collection_Set_isEmpty_d[@]} == 0 ))
+}
+
+Collection.Set.toArray() {
+  local _Self="${_Self:-Collection.Set}" _Class="${_Class:-Collection.Set}"
+  local -n __Collection_Set_toArray_d="__Collection_Set_data_${_Self}"
+  local __Collection_Set_toArray_delim="${_Delimiter:-$_EOL}"
+  _Trace "toArray: ${#__Collection_Set_toArray_d[@]} member(s)"
+  if (( ${#__Collection_Set_toArray_d[@]} == 0 )); then
+    boop.pass "" ${into:-}
+    return
+  fi
+  local __Collection_Set_toArray_out
+  printf -v __Collection_Set_toArray_out "%s${__Collection_Set_toArray_delim}" "${!__Collection_Set_toArray_d[@]}"
+  __Collection_Set_toArray_out="${__Collection_Set_toArray_out%"${__Collection_Set_toArray_delim}"}"
+  boop.pass "$__Collection_Set_toArray_out" ${into:-}
+}
+
+# Return a new Set containing all members from self and other.
+Collection.Set.union() {
+  local _Self="${_Self:-Collection.Set}" _Class="${_Class:-Collection.Set}"
+  local -n __Collection_Set_union_a="__Collection_Set_data_${_Self}"
+  local -n __Collection_Set_union_b="__Collection_Set_data_${1}"
+  local __Collection_Set_union_result
+  into=__Collection_Set_union_result Collection.Set.new
+  local -n __Collection_Set_union_r="__Collection_Set_data_${__Collection_Set_union_result}"
+  local __Collection_Set_union_k
+  for __Collection_Set_union_k in "${!__Collection_Set_union_a[@]}"; do
+    __Collection_Set_union_r["$__Collection_Set_union_k"]=1
+  done
+  for __Collection_Set_union_k in "${!__Collection_Set_union_b[@]}"; do
+    __Collection_Set_union_r["$__Collection_Set_union_k"]=1
+  done
+  _Trace "union: ${#__Collection_Set_union_r[@]} member(s)"
+  boop.pass "$__Collection_Set_union_result" ${into:-}
+}
+
+# Return a new Set containing only members present in both self and other.
+Collection.Set.intersect() {
+  local _Self="${_Self:-Collection.Set}" _Class="${_Class:-Collection.Set}"
+  local -n __Collection_Set_intersect_a="__Collection_Set_data_${_Self}"
+  local -n __Collection_Set_intersect_b="__Collection_Set_data_${1}"
+  local __Collection_Set_intersect_result
+  into=__Collection_Set_intersect_result Collection.Set.new
+  local -n __Collection_Set_intersect_r="__Collection_Set_data_${__Collection_Set_intersect_result}"
+  local __Collection_Set_intersect_k
+  for __Collection_Set_intersect_k in "${!__Collection_Set_intersect_a[@]}"; do
+    [[ -n "${__Collection_Set_intersect_b[$__Collection_Set_intersect_k]+set}" ]] &&
+      __Collection_Set_intersect_r["$__Collection_Set_intersect_k"]=1
+  done
+  _Trace "intersect: ${#__Collection_Set_intersect_r[@]} member(s)"
+  boop.pass "$__Collection_Set_intersect_result" ${into:-}
+}
+
+# Return a new Set containing members of self not present in other.
+Collection.Set.difference() {
+  local _Self="${_Self:-Collection.Set}" _Class="${_Class:-Collection.Set}"
+  local -n __Collection_Set_difference_a="__Collection_Set_data_${_Self}"
+  local -n __Collection_Set_difference_b="__Collection_Set_data_${1}"
+  local __Collection_Set_difference_result
+  into=__Collection_Set_difference_result Collection.Set.new
+  local -n __Collection_Set_difference_r="__Collection_Set_data_${__Collection_Set_difference_result}"
+  local __Collection_Set_difference_k
+  for __Collection_Set_difference_k in "${!__Collection_Set_difference_a[@]}"; do
+    [[ -z "${__Collection_Set_difference_b[$__Collection_Set_difference_k]+set}" ]] &&
+      __Collection_Set_difference_r["$__Collection_Set_difference_k"]=1
+  done
+  _Trace "difference: ${#__Collection_Set_difference_r[@]} member(s)"
+  boop.pass "$__Collection_Set_difference_result" ${into:-}
+}
+
+boopClass Collection.Set version:1.0.0 '
+  public:new,add,has,remove,size,isEmpty,toArray,union,intersect,difference
+'

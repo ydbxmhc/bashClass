@@ -16,4 +16,5 @@ declare -gA __boop_Index=(
   [SemVer]="SemVer"
   [Stack]="Collection/Stack"
   [Queue]="Collection/Queue"
+  [Set]="Collection/Set"
 )
