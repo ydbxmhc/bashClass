@@ -25,10 +25,9 @@
 # Override per-instance: into=doc Collection.Map.Fast sep="/"
 
 # Load guard
-[[ "${BASH_SOURCE[0]}" != "$0" ]] || { printf '%s is a boop class file. Load it with: . boop %s\n' "${BASH_SOURCE[0]##*/}" "${BASH_SOURCE[0]##*/}" >&2; exit 1; }
-__boop.guard Collection.Map.Fast && return
-
 . boop
+
+__boop.guard Collection.Map.Fast && return
 
 # ============================================================================
 # Constructor

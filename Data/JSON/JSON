@@ -19,10 +19,9 @@
 #   printf "%s\n" "$json"         # {"name":"Alice","age":"30"}
 
 # Load guard
-[[ "${BASH_SOURCE[0]}" != "$0" ]] || { printf '%s is a boop class file. Load it with: . boop %s\n' "${BASH_SOURCE[0]##*/}" "${BASH_SOURCE[0]##*/}" >&2; exit 1; }
-__boop.guard Data.JSON && return
-
 . boop Collection::Map::Fast
+
+__boop.guard Data.JSON && return
 
 # ============================================================================
 # JSON Tokenizer

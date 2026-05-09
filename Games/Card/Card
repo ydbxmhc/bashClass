@@ -5,10 +5,9 @@
 # A card is just a bag of properties. No game logic, no assumptions
 # about what a card contains. Subclasses add domain-specific behavior.
 
-[[ "${BASH_SOURCE[0]}" != "$0" ]] || { printf '%s is a boop class file. Load it with: . boop %s\n' "${BASH_SOURCE[0]##*/}" "${BASH_SOURCE[0]##*/}" >&2; exit 1; }
-__boop.guard Games.Card && return
-
 . boop
+
+__boop.guard Games.Card && return
 
 Games.Card.new() {
   local _Class="${_Class:-Games.Card}"

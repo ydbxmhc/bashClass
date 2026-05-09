@@ -2170,20 +2170,23 @@ __boop.import() {
 # CLASS LOADING — PUBLIC API
 # ============================================================================
 
-# __boop.guard — already-loaded check for class files.
+# __boop.guard — load guard for class files.
 #
 # Returns 0 if the class is already in the registry (caller should `return`).
-# Returns 1 if loading should continue.
+# Exits 1 with a helpful message if the class file was executed directly.
+# Returns 1 if loading should continue normally.
 #
-# The direct-execution guard (bash ClassName) is handled by a BASH_SOURCE
-# check inlined at the top of each class file, before this call, so it
-# works even when boop is not yet loaded.
+# Class files source boop before calling this, so it is always available.
 #
-# Usage in class files:
-#   [[ "${BASH_SOURCE[0]}" != "$0" ]] || { printf '%s is a boop class file. Load it with: . boop %s\n' "${BASH_SOURCE[0]##*/}" "${BASH_SOURCE[0]##*/}" >&2; exit 1; }
+# Usage in class files (after `. boop`):
 #   __boop.guard ClassName && return
 __boop.guard() {
   [[ -n "${__boop_registry[$1]+set}" ]] && return 0
+  if [[ "${BASH_SOURCE[1]}" == "$0" ]]; then
+    printf '%s is a boop class file. Load it with: . boop %s\n' \
+      "${BASH_SOURCE[1]##*/}" "${BASH_SOURCE[1]##*/}" >&2
+    exit 1
+  fi
   return 1
 }
 
