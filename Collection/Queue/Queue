@@ -1,0 +1,68 @@
+#!/bin/bash
+
+# Collection.Queue -- FIFO queue built on Collection.List.
+#
+# Composition: holds a List internally, exposes only the queue surface.
+# enqueue adds to the back; dequeue removes from the front (O(n) shift).
+#
+# Public interface:
+#   $q.enqueue  val ...  -- add one or more values to the back
+#   $q.dequeue           -- remove and return front (crashes if empty)
+#   $q.peek              -- return front without removing (crashes if empty)
+#   $q.size              -- number of elements
+#   $q.isEmpty           -- exits 0 if empty, 1 if not
+
+. boop Collection::List
+boop.init Collection.Queue || return 0
+
+Collection.Queue.new() {
+  local _Class="${_Class:-Collection.Queue}"
+  local __Collection_Queue_new_self __Collection_Queue_new_list
+  into=__Collection_Queue_new_self __boop.new "$@"
+  into=__Collection_Queue_new_list Collection.List.new
+  declare -g "__Collection_Queue_list_${__Collection_Queue_new_self}=${__Collection_Queue_new_list}"
+  _Info "new: $__Collection_Queue_new_self"
+  boop.pass "$__Collection_Queue_new_self" ${into:-}
+}
+
+Collection.Queue.enqueue() {
+  local _Self="${_Self:-Collection.Queue}" _Class="${_Class:-Collection.Queue}"
+  local -n __Collection_Queue_enqueue_l="__Collection_Queue_list_${_Self}"
+  _Trace "enqueue: +$# element(s)"
+  _Self="$__Collection_Queue_enqueue_l" Collection.List.push "$@"
+}
+
+Collection.Queue.dequeue() {
+  local _Self="${_Self:-Collection.Queue}" _Class="${_Class:-Collection.Queue}"
+  local -n __Collection_Queue_dequeue_l="__Collection_Queue_list_${_Self}"
+  _Trace "dequeue"
+  _Self="$__Collection_Queue_dequeue_l" Collection.List.shift
+}
+
+Collection.Queue.peek() {
+  local _Self="${_Self:-Collection.Queue}" _Class="${_Class:-Collection.Queue}"
+  local -n __Collection_Queue_peek_l="__Collection_Queue_list_${_Self}"
+  local __Collection_Queue_peek_len
+  into=__Collection_Queue_peek_len _Self="$__Collection_Queue_peek_l" Collection.List.length
+  (( __Collection_Queue_peek_len > 0 )) || _Crash "peek on empty Queue"
+  _Trace "peek"
+  _Self="$__Collection_Queue_peek_l" Collection.List.getAt 0
+}
+
+Collection.Queue.size() {
+  local _Self="${_Self:-Collection.Queue}" _Class="${_Class:-Collection.Queue}"
+  local -n __Collection_Queue_size_l="__Collection_Queue_list_${_Self}"
+  _Self="$__Collection_Queue_size_l" Collection.List.length
+}
+
+Collection.Queue.isEmpty() {
+  local _Self="${_Self:-Collection.Queue}" _Class="${_Class:-Collection.Queue}"
+  local -n __Collection_Queue_isEmpty_l="__Collection_Queue_list_${_Self}"
+  local __Collection_Queue_isEmpty_len
+  into=__Collection_Queue_isEmpty_len _Self="$__Collection_Queue_isEmpty_l" Collection.List.length
+  (( __Collection_Queue_isEmpty_len == 0 ))
+}
+
+boopClass Collection.Queue version:1.0.0 '
+  public:new,enqueue,dequeue,peek,size,isEmpty
+'

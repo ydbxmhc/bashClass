@@ -1,0 +1,89 @@
+#!/bin/bash
+set -uo pipefail
+
+# Stack class tests
+#
+# Classification: UNIT (Collection.Stack)
+# Covers: push, pop, peek, size, isEmpty, underflow crashes
+
+. boop TestSuite Stack
+
+into=t TestSuite name="Stack Tests"
+
+# ============================================================================
+# Construction
+# ============================================================================
+
+$t.section "construction"
+
+into=s Collection.Stack.new
+$t.assert_ok   "Stack created"    test -n "$s"
+$t.assert_ok   "starts empty"     $s.isEmpty
+into=n $s.size; $t.assert_eq "size 0" "$n" "0"
+
+# ============================================================================
+# push / size / isEmpty
+# ============================================================================
+
+$t.section "push and size"
+
+$s.push "a"
+$t.assert_fail "not empty after push"  $s.isEmpty
+into=n $s.size; $t.assert_eq "size 1" "$n" "1"
+
+$s.push "b" "c"
+into=n $s.size; $t.assert_eq "size 3 after variadic push" "$n" "3"
+
+# ============================================================================
+# peek -- top without removal
+# ============================================================================
+
+$t.section "peek"
+
+into=v $s.peek; $t.assert_eq "peek returns top" "$v" "c"
+into=n $s.size;  $t.assert_eq "peek does not remove" "$n" "3"
+
+# ============================================================================
+# pop -- LIFO order
+# ============================================================================
+
+$t.section "pop (LIFO)"
+
+into=v $s.pop; $t.assert_eq "pop 1st" "$v" "c"
+into=v $s.pop; $t.assert_eq "pop 2nd" "$v" "b"
+into=v $s.pop; $t.assert_eq "pop 3rd" "$v" "a"
+$t.assert_ok   "empty after all pops" $s.isEmpty
+
+# ============================================================================
+# Underflow
+# ============================================================================
+
+$t.section "underflow crashes"
+
+$t.assert_fail "pop empty crashes"  bash -c '. boop Stack; into=s Collection.Stack.new; $s.pop'
+$t.assert_fail "peek empty crashes" bash -c '. boop Stack; into=s Collection.Stack.new; $s.peek'
+
+# ============================================================================
+# Multiple stacks are independent
+# ============================================================================
+
+$t.section "independence"
+
+into=s1 Collection.Stack.new
+into=s2 Collection.Stack.new
+$s1.push "x"
+$s2.push "y" "z"
+into=v $s1.peek; $t.assert_eq "s1 top" "$v" "x"
+into=v $s2.peek; $t.assert_eq "s2 top" "$v" "z"
+into=n $s1.size; $t.assert_eq "s1 size" "$n" "1"
+into=n $s2.size; $t.assert_eq "s2 size" "$n" "2"
+
+# ============================================================================
+# direct execution guard
+# ============================================================================
+
+$t.section "direct execution guard"
+
+$t.assert_fail "bash Stack exits 1" bash /home/user/bashClass/Collection/Stack/Stack
+
+$t.summary

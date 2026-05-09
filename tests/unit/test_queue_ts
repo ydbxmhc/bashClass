@@ -1,0 +1,89 @@
+#!/bin/bash
+set -uo pipefail
+
+# Queue class tests
+#
+# Classification: UNIT (Collection.Queue)
+# Covers: enqueue, dequeue, peek, size, isEmpty, underflow crashes
+
+. boop TestSuite Queue
+
+into=t TestSuite name="Queue Tests"
+
+# ============================================================================
+# Construction
+# ============================================================================
+
+$t.section "construction"
+
+into=q Collection.Queue.new
+$t.assert_ok   "Queue created"    test -n "$q"
+$t.assert_ok   "starts empty"     $q.isEmpty
+into=n $q.size; $t.assert_eq "size 0" "$n" "0"
+
+# ============================================================================
+# enqueue / size / isEmpty
+# ============================================================================
+
+$t.section "enqueue and size"
+
+$q.enqueue "a"
+$t.assert_fail "not empty after enqueue"  $q.isEmpty
+into=n $q.size; $t.assert_eq "size 1" "$n" "1"
+
+$q.enqueue "b" "c"
+into=n $q.size; $t.assert_eq "size 3 after variadic enqueue" "$n" "3"
+
+# ============================================================================
+# peek -- front without removal
+# ============================================================================
+
+$t.section "peek"
+
+into=v $q.peek; $t.assert_eq "peek returns front" "$v" "a"
+into=n $q.size;  $t.assert_eq "peek does not remove" "$n" "3"
+
+# ============================================================================
+# dequeue -- FIFO order
+# ============================================================================
+
+$t.section "dequeue (FIFO)"
+
+into=v $q.dequeue; $t.assert_eq "dequeue 1st" "$v" "a"
+into=v $q.dequeue; $t.assert_eq "dequeue 2nd" "$v" "b"
+into=v $q.dequeue; $t.assert_eq "dequeue 3rd" "$v" "c"
+$t.assert_ok   "empty after all dequeues" $q.isEmpty
+
+# ============================================================================
+# Underflow
+# ============================================================================
+
+$t.section "underflow crashes"
+
+$t.assert_fail "dequeue empty crashes" bash -c '. boop Queue; into=q Collection.Queue.new; $q.dequeue'
+$t.assert_fail "peek empty crashes"    bash -c '. boop Queue; into=q Collection.Queue.new; $q.peek'
+
+# ============================================================================
+# Multiple queues are independent
+# ============================================================================
+
+$t.section "independence"
+
+into=q1 Collection.Queue.new
+into=q2 Collection.Queue.new
+$q1.enqueue "x"
+$q2.enqueue "y" "z"
+into=v $q1.peek; $t.assert_eq "q1 front" "$v" "x"
+into=v $q2.peek; $t.assert_eq "q2 front" "$v" "y"
+into=n $q1.size; $t.assert_eq "q1 size" "$n" "1"
+into=n $q2.size; $t.assert_eq "q2 size" "$n" "2"
+
+# ============================================================================
+# direct execution guard
+# ============================================================================
+
+$t.section "direct execution guard"
+
+$t.assert_fail "bash Queue exits 1" bash /home/user/bashClass/Collection/Queue/Queue
+
+$t.summary

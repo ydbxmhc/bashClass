@@ -14,4 +14,6 @@ declare -gA __boop_Index=(
   [Deck]="Games/Deck"
   [Box]="Geometry/Box"
   [SemVer]="SemVer"
+  [Stack]="Collection/Stack"
+  [Queue]="Collection/Queue"
 )
