@@ -39,7 +39,7 @@
 
 . boop
 
-__boop.guard Args && return
+boop.init Args && return
 
 # ============================================================================
 # Args.getOpts -- thin getopts wrapper

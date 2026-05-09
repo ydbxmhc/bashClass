@@ -24,7 +24,7 @@
 
 . boop
 
-__boop.guard SemVer && return
+boop.init SemVer && return
 
 # ============================================================================
 # SemVer Implementation Functions

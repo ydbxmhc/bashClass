@@ -13,7 +13,7 @@
 
 . boop Games::Card Games::Deck
 
-__boop.guard Games.PlayingCard && return
+boop.init Games.PlayingCard && return
 
 # ═════════════════════════════════════════════════════════════════════
 # Games.PlayingCard — suit + rank, toString, newDeck

@@ -27,7 +27,7 @@
 
 . boop Collection::List Collection::Map
 
-__boop.guard Testing.TestSuite && return
+boop.init Testing.TestSuite && return
 
 # ============================================================================
 # Private helpers — _Self inherited from calling scope, not passed as $1

@@ -5,7 +5,7 @@
 # Load guard
 . boop Geometry::Box
 
-__boop.guard Geometry.Cube && return
+boop.init Geometry.Cube && return
 
 # ============================================================================
 # Geometry.Cube Implementation Functions

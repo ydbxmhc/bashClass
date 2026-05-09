@@ -29,7 +29,7 @@
 # Load guard
 . boop
 
-__boop.guard Math && return
+boop.init Math && return
 
 # ============================================================================
 # Global Precision Configuration

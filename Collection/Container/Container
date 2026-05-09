@@ -44,7 +44,7 @@
 # Load guard — if already registered, nothing to do
 . boop
 
-__boop.guard Collection.Container && return
+boop.init Collection.Container && return
 
 # ============================================================================
 # Virtual methods — child classes MUST override these.

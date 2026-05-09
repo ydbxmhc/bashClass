@@ -2170,18 +2170,29 @@ __boop.import() {
 # CLASS LOADING — PUBLIC API
 # ============================================================================
 
-# __boop.guard — load guard for class files.
+# __boop.guard — registry presence check.
 #
-# Returns 0 if the class is already in the registry (caller should `return`).
-# Exits 1 with a helpful message if the class file was executed directly.
-# Returns 1 if loading should continue normally.
-#
-# Class files source boop before calling this, so it is always available.
-#
-# Usage in class files (after `. boop`):
-#   __boop.guard ClassName && return
+# Returns 0 if the named class is already registered, 1 otherwise.
+# Used by boop.init and other framework internals.
 __boop.guard() {
-  [[ -n "${__boop_registry[$1]+set}" ]] && return 0
+  [[ -n "${__boop_registry[$1]+set}" ]]
+}
+
+# boop.init — standard class file initializer.
+#
+# Every class file calls this immediately after `. boop`:
+#   boop.init ClassName && return
+#
+# Handles three cases:
+#   Already loaded   -- returns 0, caller skips re-loading via `&& return`
+#   Executed directly -- prints a help message and exits 1
+#   First load       -- returns 1, loading proceeds normally
+#
+# BASH_SOURCE[1] is the class file itself (one frame up from boop.init),
+# so the direct-execution check is correct regardless of load depth.
+# Future hooks (logging, help registration, etc.) belong here.
+boop.init() {
+  __boop.guard "$1" && return 0
   if [[ "${BASH_SOURCE[1]}" == "$0" ]]; then
     printf '%s is a boop class file. Load it with: . boop %s\n' \
       "${BASH_SOURCE[1]##*/}" "${BASH_SOURCE[1]##*/}" >&2

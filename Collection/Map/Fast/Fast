@@ -27,7 +27,7 @@
 # Load guard
 . boop
 
-__boop.guard Collection.Map.Fast && return
+boop.init Collection.Map.Fast && return
 
 # ============================================================================
 # Constructor
