@@ -10,7 +10,7 @@
 
 . boop Collection::List
 
-boop.init Games.Deck && return
+boop.init Games.Deck || return 0
 
 # ═════════════════════════════════════════════════════════════════════
 # Games.Deck extends Collection.List — shuffle, draw

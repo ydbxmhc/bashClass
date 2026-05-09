@@ -21,7 +21,7 @@
 # Load guard
 . boop Collection::Map::Fast
 
-boop.init Data.JSON && return
+boop.init Data.JSON || return 0
 
 # ============================================================================
 # JSON Tokenizer

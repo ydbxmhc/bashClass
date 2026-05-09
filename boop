@@ -2181,24 +2181,24 @@ __boop.guard() {
 # boop.init — standard class file initializer.
 #
 # Every class file calls this immediately after `. boop`:
-#   boop.init ClassName && return
+#   boop.init ClassName || return
 #
 # Handles three cases:
-#   Already loaded   -- returns 0, caller skips re-loading via `&& return`
+#   Already loaded   -- returns 1, caller exits via `|| return`
 #   Executed directly -- prints a help message and exits 1
-#   First load       -- returns 1, loading proceeds normally
+#   First load       -- returns 0, loading proceeds normally
 #
 # BASH_SOURCE[1] is the class file itself (one frame up from boop.init),
 # so the direct-execution check is correct regardless of load depth.
 # Future hooks (logging, help registration, etc.) belong here.
 boop.init() {
-  __boop.guard "$1" && return 0
+  __boop.guard "$1" && return 1
   if [[ "${BASH_SOURCE[1]}" == "$0" ]]; then
     printf '%s is a boop class file. Load it with: . boop %s\n' \
       "${BASH_SOURCE[1]##*/}" "${BASH_SOURCE[1]##*/}" >&2
     exit 1
   fi
-  return 1
+  return 0
 }
 
 # _Load — non-fatal class loader.

@@ -7,7 +7,7 @@
 
 . boop
 
-boop.init Games.Card && return
+boop.init Games.Card || return 0
 
 Games.Card.new() {
   local _Class="${_Class:-Games.Card}"

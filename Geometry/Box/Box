@@ -5,7 +5,7 @@
 # Load guard
 . boop
 
-boop.init Geometry.Box && return
+boop.init Geometry.Box || return 0
 
 # ============================================================================
 # Geometry.Box Implementation Functions

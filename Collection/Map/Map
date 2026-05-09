@@ -27,7 +27,7 @@
 # Load guard — if already registered, nothing to do
 . boop Collection::Container
 
-boop.init Collection.Map && return
+boop.init Collection.Map || return 0
 
 # ============================================================================
 # Map Implementation Functions

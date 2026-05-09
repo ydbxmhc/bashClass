@@ -23,7 +23,7 @@
 # Load guard — if already registered, nothing to do
 . boop Collection::Container
 
-boop.init Collection.List && return
+boop.init Collection.List || return 0
 
 # ============================================================================
 # List Implementation Functions

@@ -19,7 +19,7 @@
 
 . boop
 
-boop.init Config && return
+boop.init Config || return 0
 
 # ============================================================================
 # Config Implementation
