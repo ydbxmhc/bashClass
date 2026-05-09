@@ -4,6 +4,59 @@ Completed work items, extracted from TODO.md. Most recent first.
 
 ---
 
+## Meta-Components Phase 1 — Version Guards and SemVer
+
+**Completed:** 2026-05
+
+Four interlocking pieces shipped together:
+
+**SemVer class** (`SemVer/SemVer`) — pure bash, no external tools.
+`SemVer.compare "1.2.3" "1.3.0"` → `-1`/`0`/`1` via `into=` or stdout.
+`SemVer.satisfies "1.3.0" "1.2+"` → exit 0/1. Delegates to comparison
+primitives inlined in boop core for the bootstrapping case. 38 tests.
+
+Constraint syntax: `1.2+` (≥1.2.0), `>=1.2.3`, `>1.2`, `<=2.0`,
+`<2.0`, `1.2.3` (exact). Pre-release suffixes ignored; missing
+minor/patch default to 0.
+
+**boop version guard** — `. boop require:1.2+` checks `__boop_version`
+at source time before any class loading. If unsatisfied, walks
+BOOPPATH/PATH for a candidate boop whose version satisfies the
+constraint (reads the file line-by-line, no sourcing). Reports the
+path if found; crashes either way. Re-loading a different boop core
+at runtime (bless-it-in) deferred as a future concern.
+
+**`boopClass version:` token** — `boopClass Math version:1.3.0 '...'`
+stores `version=1.3.0` in the registry descriptor. Parsed by
+`__boopClass.parseTokens`; harmlessly ignored by everything that
+doesn't look for it.
+
+**`_Require` class version checking** — `_Require Math 1.2+` loads
+Math then enforces the version floor. After loading, extracts
+`version=` from the registry descriptor. If SemVer is loaded, calls
+`SemVer.satisfies` and crashes on failure. If SemVer is absent, emits
+`_Warn` and continues (graceful degradation). Multiple classes in one
+call: `_Require SemVer Math 1.2+ Config`.
+
+Spec: `.kiro/specs/meta-components/design.md`
+
+---
+
+## JSON Unicode Escapes
+
+**Completed:** 2026-05
+
+`\uXXXX` escape sequences (BMP) and surrogate pairs (`🎉`
+→ 🎉, emoji and extended CJK) now decode to UTF-8. The original
+implementation used `printf '%b' "\U..."` which is locale-dependent
+and failed silently with `LC_CTYPE=POSIX`. Replaced with manual
+UTF-8 encoding: pure bash integer arithmetic computes the 1–4 byte
+sequence; `printf -v x '\\x%02X' byte` + `printf -v result "$fmt"`
+emits the bytes locale-independently. 54 tests, 6 previously failing
+unicode cases now pass.
+
+---
+
 ## Partial Namespace Resolution
 
 **Completed:** 2026-05

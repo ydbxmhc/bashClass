@@ -23,9 +23,9 @@ methods, a return system that avoids subshells, and a namespace-aware class
 loader that scales from a single script to a library of dozens of classes.
 
 It is not a toy. The framework itself is ~2,500 lines of bash. The included
-classes — List, Map, Config, JSON, Args, Math — are well-tested
-implementations. The test suite runs 1,200+ assertions across unit,
-integration, and property-based tests.
+classes — List, Map, Config, JSON, Args, Math, SemVer — are well-tested
+implementations. The test suite runs 960+ tests across unit, integration,
+and property-based suites.
 
 ---
 
