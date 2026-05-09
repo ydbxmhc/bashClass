@@ -17,7 +17,8 @@
 #   file   — path of the file loaded from (used by save with no arg)
 #   format — "flat" or "ini" (used by save to choose write format)
 
-[[ -n "${__boop_registry[Config]+set}" ]] && return 2>/dev/null
+[[ "${BASH_SOURCE[0]}" != "$0" ]] || { printf '%s is a boop class file. Load it with: . boop %s\n' "${BASH_SOURCE[0]##*/}" "${BASH_SOURCE[0]##*/}" >&2; exit 1; }
+__boop.guard Config && return
 
 . boop
 

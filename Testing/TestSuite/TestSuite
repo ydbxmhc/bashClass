@@ -25,7 +25,8 @@
 #   # Verbose: TESTSUITE_VERBOSE=1 bash my_test
 #   # Or:     into=t Testing.TestSuite name="My Tests" verbose=1
 
-[[ -n "${__boop_registry[Testing.TestSuite]+set}" ]] && return 2>/dev/null
+[[ "${BASH_SOURCE[0]}" != "$0" ]] || { printf '%s is a boop class file. Load it with: . boop %s\n' "${BASH_SOURCE[0]##*/}" "${BASH_SOURCE[0]##*/}" >&2; exit 1; }
+__boop.guard Testing.TestSuite && return
 
 . boop Collection::List Collection::Map
 

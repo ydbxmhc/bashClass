@@ -3,7 +3,8 @@
 # Geometry.Cube class
 
 # Load guard
-[[ -n "${__boop_registry[Geometry.Cube]+set}" ]] && return 2>/dev/null
+[[ "${BASH_SOURCE[0]}" != "$0" ]] || { printf '%s is a boop class file. Load it with: . boop %s\n' "${BASH_SOURCE[0]##*/}" "${BASH_SOURCE[0]##*/}" >&2; exit 1; }
+__boop.guard Geometry.Cube && return
 
 . boop Geometry::Box
 

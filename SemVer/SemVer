@@ -22,7 +22,8 @@
 # Pre-release suffixes (1.2.3-beta) are stored but ignored in comparisons.
 # Missing minor/patch components default to 0: "1" == "1.0.0".
 
-[[ -n "${__boop_registry[SemVer]+set}" ]] && return 2>/dev/null
+[[ "${BASH_SOURCE[0]}" != "$0" ]] || { printf '%s is a boop class file. Load it with: . boop %s\n' "${BASH_SOURCE[0]##*/}" "${BASH_SOURCE[0]##*/}" >&2; exit 1; }
+__boop.guard SemVer && return
 
 . boop
 

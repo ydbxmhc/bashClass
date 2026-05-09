@@ -42,7 +42,8 @@
 # Iterator delegation (lazy): next, prev, hasNext, hasPrev, current, iterIndex, iterReset
 
 # Load guard — if already registered, nothing to do
-[[ -n "${__boop_registry[Collection.Container]+set}" ]] && return 2>/dev/null
+[[ "${BASH_SOURCE[0]}" != "$0" ]] || { printf '%s is a boop class file. Load it with: . boop %s\n' "${BASH_SOURCE[0]##*/}" "${BASH_SOURCE[0]##*/}" >&2; exit 1; }
+__boop.guard Collection.Container && return
 
 . boop
 

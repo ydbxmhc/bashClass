@@ -21,7 +21,8 @@
 # doesn't care what's inside — it's turtles all the way down.
 
 # Load guard — if already registered, nothing to do
-[[ -n "${__boop_registry[Collection.List]+set}" ]] && return 2>/dev/null
+[[ "${BASH_SOURCE[0]}" != "$0" ]] || { printf '%s is a boop class file. Load it with: . boop %s\n' "${BASH_SOURCE[0]##*/}" "${BASH_SOURCE[0]##*/}" >&2; exit 1; }
+__boop.guard Collection.List && return
 
 . boop Collection::Container
 

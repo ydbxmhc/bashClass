@@ -37,7 +37,8 @@
 #   Access: $obj.get varName  /  $obj.get _action  /  $obj.get _remaining
 #   _remaining is delimiter-separated (default: newline).
 
-[[ -n "${__boop_registry[Args]+set}" ]] && return 2>/dev/null
+[[ "${BASH_SOURCE[0]}" != "$0" ]] || { printf '%s is a boop class file. Load it with: . boop %s\n' "${BASH_SOURCE[0]##*/}" "${BASH_SOURCE[0]##*/}" >&2; exit 1; }
+__boop.guard Args && return
 
 . boop
 
