@@ -1,0 +1,174 @@
+#!/bin/bash
+set -uo pipefail
+
+# Mixin system tests
+#
+# Classification: UNIT (boop core — mixins)
+# Covers: boopMixin, mixin: token in boopClass, method dispatch,
+#         conflict resolution (class wins, first mixin wins),
+#         :: explicit mixin dispatch, mixes predicate,
+#         inheritance of mixin methods, boop.initMixin guard
+
+. boop TestSuite Greetable Taggable
+
+into=t TestSuite name="Mixin Tests"
+
+# ============================================================================
+# boopMixin registration
+# ============================================================================
+
+$t.section "registration"
+
+$t.assert_ok "Greetable registered" test -n "${__boop_mixin_registry[Greetable]+set}"
+$t.assert_ok "Taggable registered"  test -n "${__boop_mixin_registry[Taggable]+set}"
+
+# ============================================================================
+# Single mixin — Greetable
+# ============================================================================
+
+$t.section "single mixin"
+
+# Define a minimal test class that mixes in Greetable
+Widget.new() {
+  local _Class="${_Class:-Widget}"
+  local __Widget_new_self
+  into=__Widget_new_self __boop.new "$@"
+  boop.pass "$__Widget_new_self" ${into:-}
+}
+boopClass Widget mixin:Greetable 'public:new'
+
+into=w Widget.new
+into=g $w.greet
+$t.assert_eq "greet returns class name" "$g" "Hello from Widget"
+
+$t.assert_ok  "mixes Greetable"     $w.mixes Greetable
+$t.assert_fail "not mixes Taggable" $w.mixes Taggable
+
+# ============================================================================
+# Two mixins — Greetable + Taggable
+# ============================================================================
+
+$t.section "two mixins"
+
+Gadget.new() {
+  local _Class="${_Class:-Gadget}"
+  local __Gadget_new_self
+  into=__Gadget_new_self __boop.new "$@"
+  boop.pass "$__Gadget_new_self" ${into:-}
+}
+boopClass Gadget mixin:Greetable mixin:Taggable 'public:new'
+
+into=gad Gadget.new
+
+$t.assert_ok "mixes Greetable" $gad.mixes Greetable
+$t.assert_ok "mixes Taggable"  $gad.mixes Taggable
+
+into=g $gad.greet
+$t.assert_eq "greet from Greetable" "$g" "Hello from Gadget"
+
+# ============================================================================
+# Taggable methods
+# ============================================================================
+
+$t.section "Taggable methods"
+
+$gad.addTag "alpha" "beta"
+$t.assert_ok   "has alpha"     $gad.hasTag "alpha"
+$t.assert_ok   "has beta"      $gad.hasTag "beta"
+$t.assert_fail "no gamma"      $gad.hasTag "gamma"
+into=n $gad.tagCount; $t.assert_eq "tagCount 2" "$n" "2"
+
+$gad.addTag "alpha"
+into=n $gad.tagCount; $t.assert_eq "duplicate add is no-op" "$n" "2"
+
+$gad.removeTag "beta"
+$t.assert_fail "beta gone"  $gad.hasTag "beta"
+into=n $gad.tagCount; $t.assert_eq "tagCount after remove" "$n" "1"
+
+$gad.removeTag "nonexistent"
+into=n $gad.tagCount; $t.assert_eq "remove absent is no-op" "$n" "1"
+
+into=tags $gad.getTags
+$t.assert_eq "getTags" "$tags" "alpha"
+
+# ============================================================================
+# Conflict resolution — first mixin wins, class wins over all
+# ============================================================================
+
+$t.section "conflict resolution"
+
+# Gadget mixes Greetable then Taggable — both provide identify.
+# First mixin (Greetable) wins.
+into=id $gad.identify
+$t.assert_eq "first mixin wins identify" "$id" "Greetable::identify"
+
+# Class-defined method wins over any mixin
+Appliance.new() {
+  local _Class="${_Class:-Appliance}"
+  local __Appliance_new_self
+  into=__Appliance_new_self __boop.new "$@"
+  boop.pass "$__Appliance_new_self" ${into:-}
+}
+Appliance.identify() {
+  boop.pass "Appliance::identify" ${into:-}
+}
+boopClass Appliance mixin:Greetable mixin:Taggable 'public:new,identify'
+
+into=app Appliance.new
+into=id $app.identify
+$t.assert_eq "class method wins" "$id" "Appliance::identify"
+
+# ============================================================================
+# Explicit :: dispatch
+# ============================================================================
+
+$t.section "explicit :: dispatch"
+
+into=id $gad.Greetable::identify
+$t.assert_eq "Greetable::identify explicit" "$id" "Greetable::identify"
+
+into=id $gad.Taggable::identify
+$t.assert_eq "Taggable::identify explicit" "$id" "Taggable::identify"
+
+# Class-defined identify; :: still routes to mixin versions
+into=id $app.Greetable::identify
+$t.assert_eq "Greetable::identify via Appliance obj" "$id" "Greetable::identify"
+
+into=id $app.Taggable::identify
+$t.assert_eq "Taggable::identify via Appliance obj" "$id" "Taggable::identify"
+
+# ============================================================================
+# Mixin inheritance — subclass gets parent's mixins
+# ============================================================================
+
+$t.section "mixin inheritance"
+
+SuperGadget.new() {
+  local _Class="${_Class:-SuperGadget}"
+  local __SuperGadget_new_self
+  into=__SuperGadget_new_self __boop.new "$@"
+  boop.pass "$__SuperGadget_new_self" ${into:-}
+}
+boopClass SuperGadget isa:Gadget 'public:new'
+
+into=sg SuperGadget.new
+into=g $sg.greet
+$t.assert_eq "inherited greet" "$g" "Hello from SuperGadget"
+
+$sg.addTag "x"
+$t.assert_ok "inherited addTag works" $sg.hasTag "x"
+
+# mixes walks the inheritance chain
+$t.assert_ok "mixes Greetable via parent" $sg.mixes Greetable
+$t.assert_ok "mixes Taggable via parent"  $sg.mixes Taggable
+
+# ============================================================================
+# direct execution guard
+# ============================================================================
+
+$t.section "direct execution guard"
+
+$t.assert_fail "bash Greetable exits 1" bash /home/user/bashClass/Mixins/Greetable/Greetable
+$t.assert_fail "bash Taggable exits 1"  bash /home/user/bashClass/Mixins/Taggable/Taggable
+
+$t.summary

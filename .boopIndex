@@ -17,4 +17,6 @@ declare -gA __boop_Index=(
   [Stack]="Collection/Stack"
   [Queue]="Collection/Queue"
   [Set]="Collection/Set"
+  [Greetable]="Mixins/Greetable"
+  [Taggable]="Mixins/Taggable"
 )

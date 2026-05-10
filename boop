@@ -44,6 +44,11 @@ declare -gA __boop_registry
 # class so the MRO walk only happens once per class+method pair.
 declare -gA __boop_methodRegistry
 
+# Mixin registry. Keys are mixin names; values are pipe-delimited descriptors
+# with the mixin's method list. Separate from __boop_registry (which holds
+# class and object descriptors) so mixin vs class lookups are unambiguous.
+declare -gA __boop_mixin_registry
+
 # Explicit path overrides for class file resolution. If a class is registered
 # here, __boop.import skips directory and PATH searches entirely.
 # Usage: __boop_classPath["MyClass"]="/opt/lib/MyClass"
@@ -1144,6 +1149,27 @@ __boop.isa() {
   return 1
 }
 
+# Check whether the object's class (or any ancestor class) mixes in a given
+# mixin. Exit 0 if yes, 1 if no. Analogous to isa but for the mixin dimension.
+# Usage: $obj.mixes Printable && echo "can print"
+__boop.mixes() {
+  local _Self="${_Self:-}" _Class="${_Class:-boop}"
+  local __boop_mixes_query="${1:-}"
+  [[ -n "$__boop_mixes_query" ]] || return 1
+  local __boop_mixes_current="$_Class" __boop_mixes_mixins __boop_mixes_m
+  while [[ -n "$__boop_mixes_current" ]]; do
+    __boop.parse "$__boop_mixes_current" "mixins" __boop_mixes_mixins
+    if [[ -n "$__boop_mixes_mixins" ]]; then
+      local __boop_mixes_list; IFS=',' read -ra __boop_mixes_list <<< "$__boop_mixes_mixins"
+      for __boop_mixes_m in "${__boop_mixes_list[@]}"; do
+        [[ "$__boop_mixes_m" == "$__boop_mixes_query" ]] && return 0
+      done
+    fi
+    __boop.parse "$__boop_mixes_current" "parent" __boop_mixes_current
+  done
+  return 1
+}
+
 # Return the object's Fully Qualified class Name (FQN).
 # Unlike isa (no arg), this is explicit and unambiguous.
 # Usage: into=fqn $obj.trueClass
@@ -1424,6 +1450,35 @@ __boop.backfillMethods() {
       >> "$__boop_backfillMethods_tmpfile"
   done
 
+  # Mixin provenance wrappers: objid.Mixin::method always routes to that
+  # mixin's implementation directly, regardless of which method won dispatch.
+  local __boop_backfillMethods_mixins __boop_backfillMethods_mixin __boop_backfillMethods_mmethods __boop_backfillMethods_mixinImpl
+  __boop.parse "$__boop_backfillMethods_class" "mixins" __boop_backfillMethods_mixins
+  if [[ -n "$__boop_backfillMethods_mixins" ]]; then
+    local __boop_backfillMethods_mArr; IFS=',' read -ra __boop_backfillMethods_mArr <<< "$__boop_backfillMethods_mixins"
+    for __boop_backfillMethods_mixin in "${__boop_backfillMethods_mArr[@]}"; do
+      [[ -n "$__boop_backfillMethods_mixin" ]] || continue
+      __boop_backfillMethods_mmethods=""
+      [[ "${__boop_mixin_registry[$__boop_backfillMethods_mixin]:-}" =~ \|methods=([^|]*)\| ]] && \
+        __boop_backfillMethods_mmethods="${BASH_REMATCH[1]}"
+      [[ -n "$__boop_backfillMethods_mmethods" ]] || continue
+      local __boop_backfillMethods_mMArr; IFS=',' read -ra __boop_backfillMethods_mMArr <<< "$__boop_backfillMethods_mmethods"
+      for __boop_backfillMethods_method in "${__boop_backfillMethods_mMArr[@]}"; do
+        [[ -n "$__boop_backfillMethods_method" ]] || continue
+        __boop_backfillMethods_mixinImpl="${__boop_methodRegistry[$__boop_backfillMethods_mixin.$__boop_backfillMethods_method]:-}"
+        [[ -n "$__boop_backfillMethods_mixinImpl" ]] || continue
+        printf '%s.%s::%s() { _Self=%q _Class=%q %s "$@"; }\n' \
+          "$__boop_backfillMethods_self" \
+          "$__boop_backfillMethods_mixin" \
+          "$__boop_backfillMethods_method" \
+          "$__boop_backfillMethods_self" \
+          "$__boop_backfillMethods_class" \
+          "$__boop_backfillMethods_mixinImpl" \
+          >> "$__boop_backfillMethods_tmpfile"
+      done
+    done
+  fi
+
   . "$__boop_backfillMethods_tmpfile"
   rm -f "$__boop_backfillMethods_tmpfile"
 }
@@ -1498,6 +1553,37 @@ __boop.registerClass() {
     done
     __boop.parse "$__boop_registerClass_current" "parent" __boop_registerClass_current
   done
+
+  # Mixin methods — bake class-level wrappers and register in methodRegistry
+  # so subclasses can inherit them via normal MRO walk.
+  local __boop_registerClass_mixins __boop_registerClass_mixin __boop_registerClass_mixinMethods __boop_registerClass_mixinImpl
+  __boop.parse "$__boop_registerClass_class" "mixins" __boop_registerClass_mixins
+  if [[ -n "$__boop_registerClass_mixins" ]]; then
+    local __boop_registerClass_mArr; IFS=',' read -ra __boop_registerClass_mArr <<< "$__boop_registerClass_mixins"
+    for __boop_registerClass_mixin in "${__boop_registerClass_mArr[@]}"; do
+      [[ -n "$__boop_registerClass_mixin" ]] || continue
+      __boop_registerClass_mixinMethods=""
+      [[ "${__boop_mixin_registry[$__boop_registerClass_mixin]:-}" =~ \|methods=([^|]*)\| ]] && \
+        __boop_registerClass_mixinMethods="${BASH_REMATCH[1]}"
+      [[ -n "$__boop_registerClass_mixinMethods" ]] || continue
+      local __boop_registerClass_mMethodArr; IFS=',' read -ra __boop_registerClass_mMethodArr <<< "$__boop_registerClass_mixinMethods"
+      for __boop_registerClass_method in "${__boop_registerClass_mMethodArr[@]}"; do
+        [[ -n "$__boop_registerClass_method" ]] || continue
+        # Class and higher-priority mixins win
+        [[ -n "${__boop_registerClass_written[$__boop_registerClass_method]+set}" ]] && continue
+        declare -F "$__boop_registerClass_class.$__boop_registerClass_method" >/dev/null && continue
+        __boop_registerClass_mixinImpl="${__boop_methodRegistry[$__boop_registerClass_mixin.$__boop_registerClass_method]:-}"
+        [[ -n "$__boop_registerClass_mixinImpl" ]] || continue
+        printf '%s.%s() { _Self="${_Self:-}" _Class=%q %s "$@"; }\n' \
+          "$__boop_registerClass_class" "$__boop_registerClass_method" \
+          "$__boop_registerClass_class" "$__boop_registerClass_mixinImpl" \
+          >> "$__boop_registerClass_tmpfile"
+        # Register so subclasses inherit via normal MRO walk
+        __boop_methodRegistry["$__boop_registerClass_class.$__boop_registerClass_method"]="$__boop_registerClass_mixinImpl"
+        __boop_registerClass_written[$__boop_registerClass_method]=1
+      done
+    done
+  fi
 
   # Constructor shorthand
   if declare -F "${__boop_registerClass_class}.new" >/dev/null; then
@@ -2201,6 +2287,23 @@ boop.init() {
   return 0
 }
 
+# boop.initMixin — standard mixin file initializer.
+#
+# Every mixin file calls this immediately after `. boop`:
+#   boop.initMixin MixinName || return 0
+#
+# Same three-case semantics as boop.init, but checks __boop_mixin_registry
+# instead of __boop_registry.
+boop.initMixin() {
+  [[ -n "${__boop_mixin_registry[$1]+set}" ]] && return 1
+  if [[ "${BASH_SOURCE[1]}" == "$0" ]]; then
+    printf '%s is a boop mixin file. Load it with: . boop %s\n' \
+      "${BASH_SOURCE[1]##*/}" "${BASH_SOURCE[1]##*/}" >&2
+    exit 1
+  fi
+  return 0
+}
+
 # _Load — non-fatal class loader.
 #
 # Loads each named class if not already in the registry. Returns 0 if all
@@ -2473,7 +2576,7 @@ __boopClass.parseTokens() {
   local __boopClass_pt_input="$*"
   __boopClass_class="" ; __boopClass_parent="boop"
   __boopClass_public=""; __boopClass_custom=""; __boopClass_has=""
-  __boopClass_version=""
+  __boopClass_version=""; __boopClass_mixins=""
   local __boopClass_pt_token __boopClass_pt_val
 
   for __boopClass_pt_token in $__boopClass_pt_input; do
@@ -2486,6 +2589,8 @@ __boopClass.parseTokens() {
       custom:*)  __boopClass_pt_val="${__boopClass_pt_token#custom:}"
                  __boopClass_custom="${__boopClass_custom:+$__boopClass_custom,}$__boopClass_pt_val" ;;
       version:*) __boopClass_version="${__boopClass_pt_token#version:}" ;;
+      mixin:*)   __boopClass_pt_val="${__boopClass_pt_token#mixin:}"
+                 __boopClass_mixins="${__boopClass_mixins:+$__boopClass_mixins,}$__boopClass_pt_val" ;;
       *)         if [[ -z "$__boopClass_class" ]]; then
                    __boopClass_class="$__boopClass_pt_token"
                  else
@@ -2510,6 +2615,51 @@ __boopClass.methodList() {
   fi
 }
 
+# boopMixin — declare a mixin (method bundle with no constructor or state).
+#
+# Syntax:
+#   boopMixin MixinName public:m1,m2 [custom:m3=impl]
+#
+# The mixin's methods must be defined as functions before calling boopMixin.
+# A class mixes in a mixin via the mixin: token in boopClass:
+#   boopClass MyClass mixin:Printable public:new,...
+#
+# Resolution order: class methods win, then mixins in declaration order.
+# Later mixins are shadowed but always reachable via $obj.Mixin::method.
+boopMixin() {
+  local __boopMixin_name="" __boopMixin_public="" __boopMixin_custom=""
+  local __boopMixin_token __boopMixin_val
+  for __boopMixin_token in "$@"; do
+    case "$__boopMixin_token" in
+      public:*) __boopMixin_val="${__boopMixin_token#public:}"
+                __boopMixin_public="${__boopMixin_public:+$__boopMixin_public,}$__boopMixin_val" ;;
+      custom:*) __boopMixin_val="${__boopMixin_token#custom:}"
+                __boopMixin_custom="${__boopMixin_custom:+$__boopMixin_custom,}$__boopMixin_val" ;;
+      *)        if [[ -z "$__boopMixin_name" ]]; then
+                  __boopMixin_name="$__boopMixin_token"
+                else
+                  _Crash "boopMixin: unexpected token '$__boopMixin_token'"
+                fi ;;
+    esac
+  done
+  [[ -n "$__boopMixin_name" ]] || _Crash "boopMixin: no mixin name given"
+  __boop.validate "$__boopMixin_name"
+
+  # Build full method list
+  local __boopMixin_allMethods="$__boopMixin_public"
+  if [[ -n "$__boopMixin_custom" ]]; then
+    local __boopMixin_entry __boopMixin_mname
+    local __boopMixin_cArr; IFS=',' read -ra __boopMixin_cArr <<< "$__boopMixin_custom"
+    for __boopMixin_entry in "${__boopMixin_cArr[@]}"; do
+      __boopMixin_mname="${__boopMixin_entry%%=*}"
+      __boopMixin_allMethods="${__boopMixin_allMethods:+$__boopMixin_allMethods,}$__boopMixin_mname"
+    done
+  fi
+
+  __boop_mixin_registry["$__boopMixin_name"]="|methods=$__boopMixin_allMethods|"
+  __boopClass.registerMethods "$__boopMixin_name" "$__boopMixin_public" "$__boopMixin_custom"
+}
+
 # boopClass — declare a new class in one statement.
 #
 # Writes a fresh descriptor, registers all methods, and builds
@@ -2523,14 +2673,30 @@ __boopClass.methodList() {
 #   boopClass Hand isa:List public:new,total,isBust,isBlackjack,show has:type
 #   boopClass Math public:new,val,toString custom:add=__Math.i_add has:digits,scale,neg
 boopClass() {
-  local __boopClass_class __boopClass_parent __boopClass_public __boopClass_custom __boopClass_has __boopClass_version
+  local __boopClass_class __boopClass_parent __boopClass_public __boopClass_custom __boopClass_has __boopClass_version __boopClass_mixins
   __boopClass.parseTokens "$@"
   [[ -n "$__boopClass_class" ]] || _Crash "boopClass: no class name given"
 
   local __boopClass_allMethods
   __boopClass.methodList __boopClass_allMethods
 
-  __boop_registry["$__boopClass_class"]="|class=$__boopClass_class|trueClass=$__boopClass_class|parent=$__boopClass_parent|methods=$__boopClass_allMethods|properties=$__boopClass_has|version=$__boopClass_version"
+  # Validate mixins and collect their method names so backfillMethods finds them
+  local __boopClass_mixin __boopClass_mixinMethods=""
+  if [[ -n "$__boopClass_mixins" ]]; then
+    local __boopClass_mArr; IFS=',' read -ra __boopClass_mArr <<< "$__boopClass_mixins"
+    for __boopClass_mixin in "${__boopClass_mArr[@]}"; do
+      [[ -n "$__boopClass_mixin" ]] || continue
+      [[ -n "${__boop_mixin_registry[$__boopClass_mixin]+set}" ]] || \
+        _Crash "boopClass: mixin '$__boopClass_mixin' not registered — load it before the class"
+      local __boopClass_mMethods=""
+      [[ "${__boop_mixin_registry[$__boopClass_mixin]}" =~ \|methods=([^|]*)\| ]] && \
+        __boopClass_mMethods="${BASH_REMATCH[1]}"
+      __boopClass_mixinMethods="${__boopClass_mixinMethods:+$__boopClass_mixinMethods,}$__boopClass_mMethods"
+    done
+  fi
+  local __boopClass_allWithMixins="${__boopClass_allMethods}${__boopClass_mixinMethods:+${__boopClass_allMethods:+,}$__boopClass_mixinMethods}"
+
+  __boop_registry["$__boopClass_class"]="|class=$__boopClass_class|trueClass=$__boopClass_class|parent=$__boopClass_parent|methods=$__boopClass_allWithMixins|properties=$__boopClass_has|version=$__boopClass_version|mixins=$__boopClass_mixins|"
   __boopClass.registerMethods "$__boopClass_class" "$__boopClass_public" "$__boopClass_custom"
   __boop.registerClass "$__boopClass_class"
   __boop.autoAlias "$__boopClass_class"
@@ -2664,7 +2830,7 @@ _Bless() {
 # from it (parent chain terminates at boop's empty parent field).
 # The standard methods registered here (get, set, isa, toString, new, super)
 # are available to all objects unless overridden by a subclass.
-__boop_registry["boop"]="|class=boop|trueClass=boop|parent=|methods=new,get,set,isa,trueClass,toString,inspect,super|properties="
+__boop_registry["boop"]="|class=boop|trueClass=boop|parent=|methods=new,get,set,isa,mixes,trueClass,toString,inspect,super|properties=|mixins=|"
 
 #boopClass boop '
 #  custom:new=__boop.new,get=__boop.get,set=__boop.set,isa=__boop.isa,toString=__boop.toString
@@ -2673,6 +2839,7 @@ __boop_registry["boop"]="|class=boop|trueClass=boop|parent=|methods=new,get,set,
 __boop.registerMethod boop get __boop.get
 __boop.registerMethod boop set __boop.set
 __boop.registerMethod boop isa __boop.isa
+__boop.registerMethod boop mixes __boop.mixes
 __boop.registerMethod boop trueClass __boop.trueClass
 __boop.registerMethod boop toString __boop.toString
 __boop.registerMethod boop inspect __boop.inspect

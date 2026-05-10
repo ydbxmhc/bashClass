@@ -1,0 +1,74 @@
+#!/bin/bash
+# Taggable mixin — tag/untag/hasTag methods backed by the host object's
+# descriptor. Tags are stored in the host object as a comma-separated
+# internal property (_tags). The host class need not declare it with has:.
+
+. boop
+boop.initMixin Taggable || return 0
+
+# Add one or more tags to the object. Duplicate tags are ignored.
+Taggable.addTag() {
+  local __Taggable_addTag_tag __Taggable_addTag_current __Taggable_addTag_item
+  local __Taggable_addTag_arr __Taggable_addTag_new
+  into=__Taggable_addTag_current __boop.get _tags
+  for __Taggable_addTag_tag in "$@"; do
+    [[ -n "$__Taggable_addTag_tag" ]] || continue
+    IFS=',' read -ra __Taggable_addTag_arr <<< "${__Taggable_addTag_current:-}"
+    local __Taggable_addTag_found=0
+    for __Taggable_addTag_item in "${__Taggable_addTag_arr[@]}"; do
+      [[ "$__Taggable_addTag_item" == "$__Taggable_addTag_tag" ]] && { __Taggable_addTag_found=1; break; }
+    done
+    if (( ! __Taggable_addTag_found )); then
+      __Taggable_addTag_current="${__Taggable_addTag_current:+$__Taggable_addTag_current,}$__Taggable_addTag_tag"
+      __boop.set _tags "$__Taggable_addTag_current"
+    fi
+  done
+}
+
+# Returns 0 if the object has the given tag, 1 otherwise.
+Taggable.hasTag() {
+  local __Taggable_hasTag_query="$1" __Taggable_hasTag_current __Taggable_hasTag_item
+  into=__Taggable_hasTag_current __boop.get _tags
+  local __Taggable_hasTag_arr; IFS=',' read -ra __Taggable_hasTag_arr <<< "${__Taggable_hasTag_current:-}"
+  for __Taggable_hasTag_item in "${__Taggable_hasTag_arr[@]}"; do
+    [[ "$__Taggable_hasTag_item" == "$__Taggable_hasTag_query" ]] && return 0
+  done
+  return 1
+}
+
+# Remove a tag. No-op if the tag is absent.
+Taggable.removeTag() {
+  local __Taggable_removeTag_query="$1" __Taggable_removeTag_current __Taggable_removeTag_item
+  local __Taggable_removeTag_new=""
+  into=__Taggable_removeTag_current __boop.get _tags
+  local __Taggable_removeTag_arr; IFS=',' read -ra __Taggable_removeTag_arr <<< "${__Taggable_removeTag_current:-}"
+  for __Taggable_removeTag_item in "${__Taggable_removeTag_arr[@]}"; do
+    [[ "$__Taggable_removeTag_item" == "$__Taggable_removeTag_query" ]] && continue
+    __Taggable_removeTag_new="${__Taggable_removeTag_new:+$__Taggable_removeTag_new,}$__Taggable_removeTag_item"
+  done
+  __boop.set _tags "$__Taggable_removeTag_new"
+}
+
+# Returns the tag list as a comma-separated string (or empty).
+Taggable.getTags() {
+  local __Taggable_getTags_val
+  into=__Taggable_getTags_val __boop.get _tags
+  boop.pass "${__Taggable_getTags_val:-}" ${into:-}
+}
+
+# Returns the number of tags.
+Taggable.tagCount() {
+  local __Taggable_tagCount_current __Taggable_tagCount_n=0
+  into=__Taggable_tagCount_current __boop.get _tags
+  [[ -z "$__Taggable_tagCount_current" ]] && { boop.pass 0 ${into:-}; return; }
+  local __Taggable_tagCount_arr; IFS=',' read -ra __Taggable_tagCount_arr <<< "$__Taggable_tagCount_current"
+  boop.pass "${#__Taggable_tagCount_arr[@]}" ${into:-}
+}
+
+# Returns an identification string — used to test conflict resolution
+# when multiple mixins provide the same method name.
+Taggable.identify() {
+  boop.pass "Taggable::identify" ${into:-}
+}
+
+boopMixin Taggable 'public:addTag,hasTag,removeTag,getTags,tagCount,identify'

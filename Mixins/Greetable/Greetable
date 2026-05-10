@@ -1,0 +1,19 @@
+#!/bin/bash
+# Greetable mixin — greeting and identification methods.
+# Used as a test/demo mixin for the mixin system.
+
+. boop
+boop.initMixin Greetable || return 0
+
+# Returns a greeting string identifying the object's class.
+Greetable.greet() {
+  boop.pass "Hello from ${_Class}" ${into:-}
+}
+
+# Returns an identification string — used to test conflict resolution
+# when multiple mixins provide the same method name.
+Greetable.identify() {
+  boop.pass "Greetable::identify" ${into:-}
+}
+
+boopMixin Greetable 'public:greet,identify'
