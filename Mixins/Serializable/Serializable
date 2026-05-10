@@ -67,12 +67,8 @@ Serializable.fromJSON() {
   # Lazy-load Data.JSON — only needed for deserialization
   [[ -n "${__boop_registry[Data.JSON]+set}" ]] || _Require Data::JSON
 
-  # _Class is visible to called functions via bash dynamic scoping; reset it
-  # so Collection.Map.Fast.new (inside Data.JSON.parse) uses its own class,
-  # not the caller's.
   local __Serializable_fromJSON_parsed
-  _Class="" into=__Serializable_fromJSON_parsed \
-    Data.JSON.parse "$__Serializable_fromJSON_str"
+  into=__Serializable_fromJSON_parsed _Delegate Data.JSON.parse "$__Serializable_fromJSON_str"
 
   [[ -n "$__Serializable_fromJSON_parsed" ]] || \
     _Crash "Serializable.fromJSON: parse returned empty result"
@@ -81,13 +77,13 @@ Serializable.fromJSON() {
   local __Serializable_fromJSON_keys __Serializable_fromJSON_key
   local __Serializable_fromJSON_val
   local _Delimiter=$'\n'
-  into=__Serializable_fromJSON_keys $__Serializable_fromJSON_parsed.keys
+  into=__Serializable_fromJSON_keys _Delegate $__Serializable_fromJSON_parsed.keys
 
   while IFS= read -r __Serializable_fromJSON_key; do
     [[ -z "$__Serializable_fromJSON_key" ]] && continue
     [[ "$__Serializable_fromJSON_key" == "_class" ]] && continue
     into=__Serializable_fromJSON_val \
-      $__Serializable_fromJSON_parsed.get "$__Serializable_fromJSON_key"
+      _Delegate $__Serializable_fromJSON_parsed.get "$__Serializable_fromJSON_key"
     __boop.set "$__Serializable_fromJSON_key" "$__Serializable_fromJSON_val"
   done <<< "$__Serializable_fromJSON_keys"
 }
