@@ -24,7 +24,7 @@ loader that scales from a single script to a library of dozens of classes.
 
 It is not a toy. The framework itself is ~2,500 lines of bash. The included
 classes — List, Map, Stack, Queue, Set, Config, JSON, Args, Math, SemVer —
-are well-tested implementations. The test suite runs 1,074+ tests across
+are well-tested implementations. The test suite runs 1,300+ tests across
 unit, integration, and property-based suites.
 
 ---
@@ -361,6 +361,61 @@ into=i $a.intersect  "$b"  # {banana, cherry}
 into=d $a.difference "$b"  # {apple}
 
 into=arr $a.toArray        # newline-separated members (order undefined)
+```
+
+---
+
+## Mixins
+
+Method bundles that compose into any class without inheritance. A mixin
+provides functions but owns no instance state — its methods operate on the
+host object's properties via `__boop.get`/`__boop.set`.
+
+```bash
+. boop Greetable Taggable
+```
+
+### Defining a mixin
+
+```bash
+# Mixins/Printable/Printable
+. boop
+boop.initMixin Printable || return 0
+
+Printable.print() {
+  local __Printable_print_s
+  into=__Printable_print_s __boop.toString
+  printf '%s\n' "$__Printable_print_s"
+}
+
+boopMixin Printable 'public:print'
+```
+
+### Using a mixin in a class
+
+```bash
+boopClass Widget mixin:Printable mixin:Taggable 'public:new,...'
+
+into=w Widget.new
+$w.print                # from Printable
+$w.addTag important     # from Taggable
+$w.hasTag important     # exits 0
+```
+
+### Resolution order
+
+Class-defined methods win. Among mixins, first listed takes priority.
+Later mixins are shadowed but always reachable explicitly:
+
+```bash
+$w.Taggable::identify   # always routes to Taggable's version
+```
+
+### Membership check
+
+```bash
+$w.mixes Printable   # exits 0 — has it (walks the inheritance chain)
+$w.mixes Comparable  # exits 1 — doesn't have it
 ```
 
 ---
@@ -865,6 +920,9 @@ boop                                    root — new, get, set, isa, toString
   │     ├── Stack                       LIFO — push/pop/peek
   │     ├── Queue                       FIFO — enqueue/dequeue/peek
   │     └── Set                         unique members — add/has/remove/union/intersect/difference
+  ├── Mixins
+  │     ├── Greetable                   demo mixin — greet, identify
+  │     └── Taggable                    demo mixin — addTag/hasTag/removeTag
   ├── Data
   │     └── JSON                        JSON ↔ Map.Fast parser/serializer
   ├── Config                            flat + INI config file reader/writer

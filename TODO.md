@@ -22,49 +22,26 @@ version checking) is done -- see DEVLOG.
 
 ---
 
-## `::` Syntax -- Mixins, Classlets, and Multiple Inheritance
-
-The `::` separator is conventional in bash for namespaced functions
-(`mylib::init`). boop doesn't use it — dots handle class.method
-dispatch. That frees `::` for a new role.
-
-Three potential applications, possibly overlapping:
+## `::` Syntax — Mixins and Future Uses
 
 ### Mixins / Traits ("Classlets")
 
-Bundles of methods without constructors or state — `Serializable`,
-`Comparable`, `Printable`. Not full classes, just method sets you
-mix into a real class on demand. The `::` identifies provenance:
-`Serializable::save` is the `save` method provided by the
-`Serializable` mixin, distinguishing it from any `save` the class
-defines itself.
+Done — see DEVLOG. `boopMixin`, `mixin:` token in `boopClass`, `mixes`
+predicate, and `$obj.Mixin::method` explicit dispatch are all implemented.
+Two demo mixins: `Greetable`, `Taggable`.
 
-### Lazy Sub-Modules
+### Lazy Sub-Modules (future)
 
-`Math::Trig` loads trig functions only when first touched. It
-doesn't inherit from Math — it extends Math's surface area on
-demand. The `::` signals "sub-module of" without implying an
-inheritance relationship. Could hook into the existing lazy
-stub/bake mechanism: first call to `Math::Trig.sin` triggers
-the load.
+`Math::Trig` loads trig functions only when first touched. Doesn't inherit
+from Math — extends its surface area on demand. Could hook into the existing
+lazy stub/bake mechanism. No implementation yet.
 
-### Multiple Inheritance Disambiguation
+### Multiple Inheritance Disambiguation (future)
 
-If A inherits from both B and C, and both provide `method`,
-`B::A.method` specifies which lineage to resolve through.
-Similar to C++'s `Base::method()` — explicit, no magic, the
-programmer picks the path. Avoids Python-style MRO linearization
-complexity.
-
-Open questions:
-- Does `::` participate in dispatch, or is it purely a source-time
-  resolution hint?
-- Can classlets have state (properties), or are they method-only?
-- How does `isa` work with mixins? `$obj.isa Serializable`?
-- Performance: does this add overhead to the hot path, or is it
-  resolved at bake time and free thereafter?
-
-This is a design exploration — no implementation yet.
+`B::A.method` to resolve through a specific lineage when two parents
+provide the same method. The mixin `::` syntax already handles the
+common case (method-only composition); true MI with stateful parents
+is deferred and may never be needed.
 
 ---
 

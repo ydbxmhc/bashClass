@@ -4,6 +4,40 @@ Completed work items, extracted from TODO.md. Most recent first.
 
 ---
 
+## Mixin System
+
+**Completed:** 2026-05
+
+Method-only mixins: bundles of functions with no constructor or state that
+can be composed into any class at bake time.
+
+**Core additions to `boop`:**
+
+- `boopMixin Name public:m1,m2` — declares a mixin; registers in
+  `__boop_mixin_registry` and `__boop_methodRegistry`
+- `mixin:Name` token in `boopClass` — wires a mixin into a class
+- `boop.initMixin` — load guard + direct-execution detection for mixin files
+- `__boop.mixes` / `$obj.mixes Name` — walks the inheritance chain checking
+  the `mixins=` field; analogous to `isa` but for the mixin dimension
+- `$obj.Mixin::method` — explicit provenance dispatch; always routes to that
+  mixin's implementation regardless of which method won the default slot
+
+**Resolution order:** class-defined methods win; then first mixin listed in
+`boopClass`; then subsequent mixins (shadowed but still reachable via `::`).
+
+**Inheritance:** `registerClass` registers each mixin method in
+`__boop_methodRegistry[ClassName.method]`, so subclasses pick it up
+automatically via the normal MRO walk.
+
+**Design decisions:** method-only (no mixin state), bake-time resolution
+(zero per-call overhead), class wins / first-mixin-wins for conflicts,
+`mixes` for membership check (not `isa`), `::` for explicit disambiguation.
+
+Includes two demo/test mixins (`Greetable`, `Taggable`) and 29 tests
+in `tests/unit/test_mixin_ts`.
+
+---
+
 ## Phase 2 Collections — Stack, Queue, Set
 
 **Completed:** 2026-05
