@@ -8,9 +8,9 @@
 #
 # Inheritance: boop → Collection.Container → Collection.List → Games.Deck
 
-[[ -n "${__boop_registry[Games.Deck]+set}" ]] && return 2>/dev/null
-
 . boop Collection::List
+
+boop.init Games.Deck || return 0
 
 # ═════════════════════════════════════════════════════════════════════
 # Games.Deck extends Collection.List — shuffle, draw

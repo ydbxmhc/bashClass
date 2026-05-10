@@ -5,153 +5,49 @@ Inline TODOs in source files should reference entries here by section name.
 
 ---
 
-## ★ Meta-Components and Graceful Degradation
+## ★ Meta-Components -- Phase 2
 
-**Priority item.** The core (`boop`) should define well-known
-extension points that optional meta-components can fill. If a
-meta-component is installed, the core uses it. If not, the core
-emits `_Warn` and carries on with reduced functionality. Sane
-defaults, customizable behavior.
-
-This is the "limp along without" pattern -- the core never hard-
-depends on anything outside itself, but it gets smarter when
-optional tools are present.
-
-### Motivating Use Cases
-
-- **`require Math 1.2+`** -- version-gated class loading. Needs
-  a SemVer parser to enforce the constraint. If SemVer isn't
-  available, warn and load without checking.
-
-- **`loadClass Math _Out=stdout version=1.2+`** -- per-class
-  arguments at load time. Needs ArgParser to parse key=value
-  args. If ArgParser isn't available, warn and fall back to
-  bare-name loading.
-
-- **Class version declarations** -- classes declare their version
-  in their descriptor (via `boopClass`). `require` checks it
-  after loading. Without SemVer, the version is stored but never
-  enforced.
-
-### Candidate Meta-Components
+Phase 1 (SemVer, boop version guard, class version token, `_Require`
+version checking) is done -- see DEVLOG.
 
 | Component | What it enables | Fallback without it |
 |-----------|----------------|---------------------|
-| **SemVer** | Version parsing, comparison, range matching | Warn, skip version checks |
 | **ArgParser** | key=value, positional, flag parsing for constructors and methods | Warn, ignore args / use current ad-hoc loops |
 | **Help** | `--help` on classes, auto-generated from descriptors | Warn, no help output |
 
-### Design Principles
-
-- Meta-components live in the standard namespace tree like any
-  other class. They're loaded via the normal import path.
-- The core checks for their presence at the point of use, not at
-  init time. Lazy detection -- no startup penalty.
-- Detection is a simple registry check:
-  `[[ -n "${__boop_registry[SemVer]+set}" ]]`
-- The warn-and-continue behavior is the default. A user who wants
-  strict enforcement can set `_FatalLevel warn` and missing
-  meta-components become fatal.
-- Each extension point has a well-defined interface the core
-  codes against. The meta-component implements that interface.
-  Swappable implementations are possible (e.g., a lightweight
-  SemVer vs a full-featured one).
-
-### Relationship to Existing TODO Items
-
 - **Argument-Parsing Object** -- becomes the ArgParser meta-component
-- **Version Declaration** -- becomes SemVer meta-component + class
-  version property + `require` function
 - **Class File Execution Guard & Help System** -- becomes the Help
   meta-component
 - **Inline Arguments on Class Load** -- enabled by ArgParser
 
-### Open Questions
-
-- Should `require` be a function or a keyword in the source line?
-  `require Math 1.2+` vs `. boop require:Math:1.2+`
-- How do classes declare their version? Property in `boopClass`
-  call? Separate `declare`?
-- Should meta-components be auto-loaded on first use, or must the
-  user explicitly import them?
-- Can meta-components depend on each other? (ArgParser probably
-  doesn't need SemVer, but `require` might need both.)
-
-Needs a full spec pass before implementation.
-
 ---
 
-## `::` Syntax -- Mixins, Classlets, and Multiple Inheritance
-
-The `::` separator is conventional in bash for namespaced functions
-(`mylib::init`). boop doesn't use it — dots handle class.method
-dispatch. That frees `::` for a new role.
-
-Three potential applications, possibly overlapping:
+## `::` Syntax — Mixins and Future Uses
 
 ### Mixins / Traits ("Classlets")
 
-Bundles of methods without constructors or state — `Serializable`,
-`Comparable`, `Printable`. Not full classes, just method sets you
-mix into a real class on demand. The `::` identifies provenance:
-`Serializable::save` is the `save` method provided by the
-`Serializable` mixin, distinguishing it from any `save` the class
-defines itself.
+Done — see DEVLOG. `boopMixin`, `mixin:` token in `boopClass`, `mixes`
+predicate, and `$obj.Mixin::method` explicit dispatch are all implemented.
+Two demo mixins: `Greetable`, `Taggable`.
 
-### Lazy Sub-Modules
+### Lazy Sub-Modules (future)
 
-`Math::Trig` loads trig functions only when first touched. It
-doesn't inherit from Math — it extends Math's surface area on
-demand. The `::` signals "sub-module of" without implying an
-inheritance relationship. Could hook into the existing lazy
-stub/bake mechanism: first call to `Math::Trig.sin` triggers
-the load.
+`Math::Trig` loads trig functions only when first touched. Doesn't inherit
+from Math — extends its surface area on demand. Could hook into the existing
+lazy stub/bake mechanism. No implementation yet.
 
-### Multiple Inheritance Disambiguation
+### Multiple Inheritance Disambiguation (future)
 
-If A inherits from both B and C, and both provide `method`,
-`B::A.method` specifies which lineage to resolve through.
-Similar to C++'s `Base::method()` — explicit, no magic, the
-programmer picks the path. Avoids Python-style MRO linearization
-complexity.
-
-Open questions:
-- Does `::` participate in dispatch, or is it purely a source-time
-  resolution hint?
-- Can classlets have state (properties), or are they method-only?
-- How does `isa` work with mixins? `$obj.isa Serializable`?
-- Performance: does this add overhead to the hot path, or is it
-  resolved at bake time and free thereafter?
-
-This is a design exploration — no implementation yet.
+`B::A.method` to resolve through a specific lineage when two parents
+provide the same method. The mixin `::` syntax already handles the
+common case (method-only composition); true MI with stateful parents
+is deferred and may never be needed.
 
 ---
 
 ## Load Guard & Class Init Refactor
 
-The current load guard pattern in every class file:
-
-```bash
-[[ -n "${__boop_registry[ClassName]+set}" ]] && return 2>/dev/null
-```
-
-Has two problems:
-
-1. The `return` silently fails when the file is executed directly
-   (not sourced), and `2>/dev/null` hides the error. Under `set -e`
-   this is a silent fatal exit with no explanation.
-
-2. There's no help output — running `bash Box` does nothing useful.
-
-Planned replacement: a `boop.init` method on the root class that
-handles the load guard, detects direct execution, and prints help text.
-Design includes per-class help via `__boop_help["ClassName"]`,
-inheritable defaults, and a single-statement call pattern in class
-files. Details still under discussion.
-
-See also: "Class File Execution Guard & Help System" (below).
-
-Source: `boop`, all class files.
+Done -- see DEVLOG. All 15 class files now use `boop.init ClassName || return 0`.
 
 ---
 
@@ -335,23 +231,15 @@ arbitrary signals beyond EXIT/ERR if the design generalizes cleanly.
 
 ## Phase 2 Collections
 
-### Stack
-Classic LIFO. Constrain List: expose `push`, `pop`, `peek`,
-`isEmpty`. Hide `shift`, `unshift`, `get`-by-index.
+Stack, Queue, Set done -- see DEVLOG.
 
-### Queue
-Classic FIFO. Expose `enqueue` (push), `dequeue` (shift),
-`peek`, `isEmpty`. Possibly `size`.
+### LinkedList (deferred)
 
-### LinkedList
-Each node is itself an object (or a Map entry). Requires `insertAt`,
-`removeAt`, `next`/`prev` traversal. Decide whether doubly-linked is
-worth the complexity at this stage.
-
-### Set
-Unique unordered collection. Implement on top of Map keys — values are
-irrelevant, keys are the members. Expose `add`, `has`, `remove`,
-`toArray`, `union`, `intersect`. Arguably simpler than LinkedList.
+Each node would be a full boop object. In practice: O(n) traversal to
+any insertion point, heavy per-element overhead, and the O(1)
+insert/delete advantage (given a node reference) is hard to express
+cleanly in the boop object model. Revisit if a concrete use case
+emerges that List can't serve.
 
 ---
 

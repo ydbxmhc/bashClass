@@ -37,9 +37,9 @@
 #   Access: $obj.get varName  /  $obj.get _action  /  $obj.get _remaining
 #   _remaining is delimiter-separated (default: newline).
 
-[[ -n "${__boop_registry[Args]+set}" ]] && return 2>/dev/null
-
 . boop
+
+boop.init Args || return 0
 
 # ============================================================================
 # Args.getOpts -- thin getopts wrapper

@@ -17,9 +17,9 @@
 #   file   — path of the file loaded from (used by save with no arg)
 #   format — "flat" or "ini" (used by save to choose write format)
 
-[[ -n "${__boop_registry[Config]+set}" ]] && return 2>/dev/null
-
 . boop
+
+boop.init Config || return 0
 
 # ============================================================================
 # Config Implementation

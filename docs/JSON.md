@@ -60,16 +60,19 @@ helpful message. Use `Data.JSON.parse` directly.
 
 - Objects: `{"key": "value"}`
 - Arrays: `[1, 2, 3]`
-- Strings: with escape sequences (`\n`, `\t`, `\\`, `\"`, `\/`)
+- Strings: with escape sequences (`\n`, `\t`, `\\`, `\"`, `\/`, `\uXXXX`)
 - Numbers: integers, floats, negative, scientific notation
 - Booleans: `true`, `false`
 - Null: `null`
 - Nested structures: arbitrary depth
 - Whitespace: ignored between tokens
+- Unicode: `\uXXXX` BMP escapes and `\uXXXX\uXXXX` surrogate pairs (emoji,
+  extended CJK). Encoded to UTF-8 bytes via pure bash arithmetic --
+  locale-independent, no external tools.
 
 ## Limitations
 
-- Unicode escapes (`\uXXXX`) are skipped (position advanced, char dropped)
+- Key order in stringify output is hash-iteration order (not insertion order)
 - Key order in stringify output is hash-iteration order (not insertion order)
 - No streaming/incremental parse (whole string in memory)
 - Duplicate keys: last value wins (no error)

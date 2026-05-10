@@ -27,9 +27,9 @@
 # understands the algorithms.
 
 # Load guard
-[[ -n "${__boop_registry[Math]+set}" ]] && return 2>/dev/null
-
 . boop
+
+boop.init Math || return 0
 
 # ============================================================================
 # Global Precision Configuration

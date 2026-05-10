@@ -23,9 +23,9 @@ methods, a return system that avoids subshells, and a namespace-aware class
 loader that scales from a single script to a library of dozens of classes.
 
 It is not a toy. The framework itself is ~2,500 lines of bash. The included
-classes — List, Map, Config, JSON, Args, Math — are well-tested
-implementations. The test suite runs 1,200+ assertions across unit,
-integration, and property-based tests.
+classes — List, Map, Stack, Queue, Set, Config, JSON, Args, Math, SemVer —
+are well-tested implementations. The test suite runs 1,300+ tests across
+unit, integration, and property-based suites.
 
 ---
 
@@ -308,6 +308,114 @@ done
 
 into=v $matrix.itemAt 1 2    # "6"   (row 1, col 2)
 $matrix.setAt "99" 1 2       # mutate that cell
+```
+
+### Stack
+
+LIFO stack. Composes a List internally.
+
+```bash
+. boop Stack
+
+into=s Collection.Stack.new
+$s.push task1 task2 task3
+
+into=top $s.peek          # "task3" (no removal)
+into=v   $s.pop           # "task3"
+into=n   $s.size          # "2"
+$s.isEmpty                # exits 1 (not empty)
+```
+
+### Queue
+
+FIFO queue. Composes a List internally.
+
+```bash
+. boop Queue
+
+into=q Collection.Queue.new
+$q.enqueue job1 job2 job3
+
+into=front $q.peek        # "job1" (no removal)
+into=v     $q.dequeue     # "job1"
+into=n     $q.size        # "2"
+```
+
+### Set
+
+Unordered unique-member collection. O(1) membership tests.
+
+```bash
+. boop Set
+
+into=a Collection.Set.new; $a.add apple banana cherry
+into=b Collection.Set.new; $b.add banana cherry date
+
+$a.has apple               # exits 0 (member)
+$a.has grape               # exits 1 (not a member)
+$a.add apple               # no-op (already present)
+into=n $a.size             # "3"
+
+into=u $a.union      "$b"  # {apple, banana, cherry, date}
+into=i $a.intersect  "$b"  # {banana, cherry}
+into=d $a.difference "$b"  # {apple}
+
+into=arr $a.toArray        # newline-separated members (order undefined)
+```
+
+---
+
+## Mixins
+
+Method bundles that compose into any class without inheritance. A mixin
+provides functions but owns no instance state — its methods operate on the
+host object's properties via `__boop.get`/`__boop.set`.
+
+```bash
+. boop Greetable Taggable
+```
+
+### Defining a mixin
+
+```bash
+# Mixins/Printable/Printable
+. boop
+boop.initMixin Printable || return 0
+
+Printable.print() {
+  local __Printable_print_s
+  into=__Printable_print_s __boop.toString
+  printf '%s\n' "$__Printable_print_s"
+}
+
+boopMixin Printable 'public:print'
+```
+
+### Using a mixin in a class
+
+```bash
+boopClass Widget mixin:Printable mixin:Taggable 'public:new,...'
+
+into=w Widget.new
+$w.print                # from Printable
+$w.addTag important     # from Taggable
+$w.hasTag important     # exits 0
+```
+
+### Resolution order
+
+Class-defined methods win. Among mixins, first listed takes priority.
+Later mixins are shadowed but always reachable explicitly:
+
+```bash
+$w.Taggable::identify   # always routes to Taggable's version
+```
+
+### Membership check
+
+```bash
+$w.mixes Printable   # exits 0 — has it (walks the inheritance chain)
+$w.mixes Comparable  # exits 1 — doesn't have it
 ```
 
 ---
@@ -808,7 +916,13 @@ boop                                    root — new, get, set, isa, toString
   │     │     ├── List                  ordered array — push/pop/slice/sort/each
   │     │     └── Map                   insertion-ordered key/value store
   │     ├── Map.Fast                    flat compound-key store — O(1) access
-  │     └── Iterator                    stateful cursor for Container subclasses
+  │     ├── Iterator                    stateful cursor for Container subclasses
+  │     ├── Stack                       LIFO — push/pop/peek
+  │     ├── Queue                       FIFO — enqueue/dequeue/peek
+  │     └── Set                         unique members — add/has/remove/union/intersect/difference
+  ├── Mixins
+  │     ├── Greetable                   demo mixin — greet, identify
+  │     └── Taggable                    demo mixin — addTag/hasTag/removeTag
   ├── Data
   │     └── JSON                        JSON ↔ Map.Fast parser/serializer
   ├── Config                            flat + INI config file reader/writer

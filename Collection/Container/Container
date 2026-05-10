@@ -42,9 +42,9 @@
 # Iterator delegation (lazy): next, prev, hasNext, hasPrev, current, iterIndex, iterReset
 
 # Load guard — if already registered, nothing to do
-[[ -n "${__boop_registry[Collection.Container]+set}" ]] && return 2>/dev/null
-
 . boop
+
+boop.init Collection.Container || return 0
 
 # ============================================================================
 # Virtual methods — child classes MUST override these.

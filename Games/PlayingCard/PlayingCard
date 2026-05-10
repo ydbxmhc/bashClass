@@ -11,9 +11,9 @@
 #
 # Inheritance: boop → Games.Card → Games.PlayingCard
 
-[[ -n "${__boop_registry[Games.PlayingCard]+set}" ]] && return 2>/dev/null
-
 . boop Games::Card Games::Deck
+
+boop.init Games.PlayingCard || return 0
 
 # ═════════════════════════════════════════════════════════════════════
 # Games.PlayingCard — suit + rank, toString, newDeck

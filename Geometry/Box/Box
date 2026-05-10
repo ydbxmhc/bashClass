@@ -3,9 +3,9 @@
 # Geometry.Box class
 
 # Load guard
-[[ -n "${__boop_registry[Geometry.Box]+set}" ]] && return 2>/dev/null
-
 . boop
+
+boop.init Geometry.Box || return 0
 
 # ============================================================================
 # Geometry.Box Implementation Functions

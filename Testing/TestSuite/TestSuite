@@ -25,9 +25,9 @@
 #   # Verbose: TESTSUITE_VERBOSE=1 bash my_test
 #   # Or:     into=t Testing.TestSuite name="My Tests" verbose=1
 
-[[ -n "${__boop_registry[Testing.TestSuite]+set}" ]] && return 2>/dev/null
-
 . boop Collection::List Collection::Map
+
+boop.init Testing.TestSuite || return 0
 
 # ============================================================================
 # Private helpers — _Self inherited from calling scope, not passed as $1

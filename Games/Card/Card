@@ -5,9 +5,9 @@
 # A card is just a bag of properties. No game logic, no assumptions
 # about what a card contains. Subclasses add domain-specific behavior.
 
-[[ -n "${__boop_registry[Games.Card]+set}" ]] && return 2>/dev/null
-
 . boop
+
+boop.init Games.Card || return 0
 
 Games.Card.new() {
   local _Class="${_Class:-Games.Card}"

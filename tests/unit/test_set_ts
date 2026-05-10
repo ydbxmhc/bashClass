@@ -1,0 +1,141 @@
+#!/bin/bash
+set -uo pipefail
+
+# Set class tests
+#
+# Classification: UNIT (Collection.Set)
+# Covers: add, has, remove, size, isEmpty, toArray, union, intersect, difference
+
+. boop TestSuite Set
+
+into=t TestSuite name="Set Tests"
+
+# ============================================================================
+# Construction
+# ============================================================================
+
+$t.section "construction"
+
+into=s Collection.Set.new
+$t.assert_ok   "Set created"   test -n "$s"
+$t.assert_ok   "starts empty"  $s.isEmpty
+into=n $s.size; $t.assert_eq "size 0" "$n" "0"
+
+# ============================================================================
+# add / has / size
+# ============================================================================
+
+$t.section "add and has"
+
+$s.add "apple"
+$t.assert_ok   "has apple"       $s.has "apple"
+$t.assert_fail "not has banana"  $s.has "banana"
+$t.assert_fail "not empty"       $s.isEmpty
+into=n $s.size; $t.assert_eq "size 1" "$n" "1"
+
+$s.add "banana" "cherry"
+into=n $s.size; $t.assert_eq "size 3 after variadic add" "$n" "3"
+$t.assert_ok   "has banana"  $s.has "banana"
+$t.assert_ok   "has cherry"  $s.has "cherry"
+
+# ============================================================================
+# Uniqueness -- adding existing member is a no-op
+# ============================================================================
+
+$t.section "uniqueness"
+
+$s.add "apple"
+into=n $s.size; $t.assert_eq "duplicate add does not grow set" "$n" "3"
+
+# ============================================================================
+# remove
+# ============================================================================
+
+$t.section "remove"
+
+$s.remove "banana"
+$t.assert_fail "banana gone"  $s.has "banana"
+into=n $s.size; $t.assert_eq "size 2 after remove" "$n" "2"
+
+$s.remove "nonexistent"
+into=n $s.size; $t.assert_eq "remove absent is no-op" "$n" "2"
+
+$s.remove "apple" "cherry"
+$t.assert_ok "empty after removing all" $s.isEmpty
+
+# ============================================================================
+# toArray
+# ============================================================================
+
+$t.section "toArray"
+
+into=s2 Collection.Set.new
+$s2.add "x" "y" "z"
+into=arr $s2.toArray
+$t.assert_ok "toArray contains x" grep -qF "x" <<< "$arr"
+$t.assert_ok "toArray contains y" grep -qF "y" <<< "$arr"
+$t.assert_ok "toArray contains z" grep -qF "z" <<< "$arr"
+
+into=empty_s Collection.Set.new
+into=earr $empty_s.toArray
+$t.assert_eq "empty toArray is empty string" "$earr" ""
+
+# ============================================================================
+# union
+# ============================================================================
+
+$t.section "union"
+
+into=a Collection.Set.new; $a.add "1" "2" "3"
+into=b Collection.Set.new; $b.add "3" "4" "5"
+into=u $a.union "$b"
+
+into=n $u.size; $t.assert_eq "union size" "$n" "5"
+$t.assert_ok "union has 1"  $u.has "1"
+$t.assert_ok "union has 3"  $u.has "3"
+$t.assert_ok "union has 5"  $u.has "5"
+$t.assert_ok "originals unchanged after union" $a.has "1"
+into=n $a.size; $t.assert_eq "a unchanged" "$n" "3"
+
+# ============================================================================
+# intersect
+# ============================================================================
+
+$t.section "intersect"
+
+into=i $a.intersect "$b"
+into=n $i.size; $t.assert_eq "intersect size" "$n" "1"
+$t.assert_ok   "intersect has 3"   $i.has "3"
+$t.assert_fail "intersect not 1"   $i.has "1"
+$t.assert_fail "intersect not 5"   $i.has "5"
+
+into=c Collection.Set.new; $c.add "9" "8"
+into=empty_i $a.intersect "$c"
+$t.assert_ok "disjoint intersect is empty" $empty_i.isEmpty
+
+# ============================================================================
+# difference
+# ============================================================================
+
+$t.section "difference"
+
+into=d $a.difference "$b"
+into=n $d.size; $t.assert_eq "difference size" "$n" "2"
+$t.assert_ok   "difference has 1"   $d.has "1"
+$t.assert_ok   "difference has 2"   $d.has "2"
+$t.assert_fail "difference not 3"   $d.has "3"
+
+into=d2 $b.difference "$a"
+into=n $d2.size; $t.assert_eq "difference is not symmetric" "$n" "2"
+$t.assert_ok   "b-a has 4"  $d2.has "4"
+$t.assert_ok   "b-a has 5"  $d2.has "5"
+
+# ============================================================================
+# direct execution guard
+# ============================================================================
+
+$t.section "direct execution guard"
+
+$t.assert_fail "bash Set exits 1" bash /home/user/bashClass/Collection/Set/Set
+
+$t.summary

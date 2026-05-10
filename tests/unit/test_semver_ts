@@ -1,0 +1,128 @@
+#!/bin/bash
+set -uo pipefail
+
+# SemVer class tests
+#
+# Classification: UNIT (SemVer class + boop version primitives)
+# Covers: __boop.versionCompare, __boop.versionSatisfies,
+#         SemVer.compare, SemVer.satisfies, _Require version arg,
+#         boopClass version: token, . boop require: guard
+
+. boop TestSuite SemVer
+
+into=t TestSuite name="SemVer Tests"
+
+# ============================================================================
+# __boop.versionCompare
+# ============================================================================
+
+$t.section "__boop.versionCompare"
+
+r="$(__boop.versionCompare "1.0.0" "1.0.0")"; $t.assert_eq "equal"              "$r"  "0"
+r="$(__boop.versionCompare "1.2.3" "1.3.0")"; $t.assert_eq "minor less"       "$r"  "-1"
+r="$(__boop.versionCompare "2.0.0" "1.9.9")"; $t.assert_eq "major greater"    "$r"  "1"
+r="$(__boop.versionCompare "1.2.4" "1.2.3")"; $t.assert_eq "patch greater"    "$r"  "1"
+r="$(__boop.versionCompare "1.2.3" "1.2.4")"; $t.assert_eq "patch less"       "$r"  "-1"
+r="$(__boop.versionCompare "1"     "1.0.0")"; $t.assert_eq "missing minor"    "$r"  "0"
+r="$(__boop.versionCompare "2"     "1.9.9")"; $t.assert_eq "major only"       "$r"  "1"
+r="$(__boop.versionCompare "1.2.3-beta" "1.2.3")"; $t.assert_eq "pre-release" "$r"  "0"
+
+# ============================================================================
+# __boop.versionSatisfies
+# ============================================================================
+
+$t.section "__boop.versionSatisfies: >= and + shorthand"
+
+$t.assert_ok   "1.3.0 satisfies 1.2+"      __boop.versionSatisfies "1.3.0" "1.2+"
+$t.assert_ok   "1.2.0 satisfies 1.2+"      __boop.versionSatisfies "1.2.0" "1.2+"
+$t.assert_fail "1.1.9 fails 1.2+"          __boop.versionSatisfies "1.1.9" "1.2+"
+$t.assert_ok   "2.0.0 satisfies >=1.2.3"   __boop.versionSatisfies "2.0.0" ">=1.2.3"
+$t.assert_ok   "1.2.3 satisfies >=1.2.3"   __boop.versionSatisfies "1.2.3" ">=1.2.3"
+$t.assert_fail "1.2.2 fails >=1.2.3"       __boop.versionSatisfies "1.2.2" ">=1.2.3"
+
+$t.section "__boop.versionSatisfies: > < <= exact"
+
+$t.assert_ok   "2.0.0 satisfies >1.9"      __boop.versionSatisfies "2.0.0" ">1.9"
+$t.assert_fail "1.9.0 fails >1.9"          __boop.versionSatisfies "1.9.0" ">1.9"
+$t.assert_ok   "1.5.0 satisfies <2.0"      __boop.versionSatisfies "1.5.0" "<2.0"
+$t.assert_fail "2.0.0 fails <2.0"          __boop.versionSatisfies "2.0.0" "<2.0"
+$t.assert_ok   "2.0.0 satisfies <=2.0"     __boop.versionSatisfies "2.0.0" "<=2.0"
+$t.assert_fail "2.0.1 fails <=2.0"         __boop.versionSatisfies "2.0.1" "<=2.0"
+$t.assert_ok   "1.2.3 satisfies exact"     __boop.versionSatisfies "1.2.3" "1.2.3"
+$t.assert_fail "1.2.4 fails exact 1.2.3"   __boop.versionSatisfies "1.2.4" "1.2.3"
+
+# ============================================================================
+# SemVer.compare
+# ============================================================================
+
+$t.section "SemVer.compare"
+
+into=r SemVer.compare "1.0.0" "1.0.0"; $t.assert_eq "equal"   "$r" "0"
+into=r SemVer.compare "1.2.3" "2.0.0"; $t.assert_eq "less"    "$r" "-1"
+into=r SemVer.compare "3.0.0" "2.9.9"; $t.assert_eq "greater" "$r" "1"
+
+$t.assert_fail "missing first arg crashes"  bash -c '. boop SemVer; SemVer.compare "" "1.0"'
+$t.assert_fail "missing second arg crashes" bash -c '. boop SemVer; SemVer.compare "1.0" ""'
+
+# ============================================================================
+# SemVer.satisfies
+# ============================================================================
+
+$t.section "SemVer.satisfies"
+
+$t.assert_ok   "satisfied"  SemVer.satisfies "1.3.0" "1.2+"
+$t.assert_fail "not satisfied" SemVer.satisfies "1.1.0" "1.2+"
+$t.assert_fail "missing version crashes"    bash -c '. boop SemVer; SemVer.satisfies "" "1.2+"'
+$t.assert_fail "missing constraint crashes" bash -c '. boop SemVer; SemVer.satisfies "1.0" ""'
+
+# ============================================================================
+# boopClass version: token
+# ============================================================================
+
+$t.section "boopClass version: token stored in registry"
+
+into=desc __boop.parse "SemVer" "version" __unused
+# Extract via the registry directly
+__semver_test_desc="${__boop_registry[SemVer]:-}"
+$t.assert_contains "version field present" "$__semver_test_desc" "version=1.0.0"
+unset __semver_test_desc
+
+# ============================================================================
+# _Require version arg (graceful degradation without SemVer already loaded)
+# ============================================================================
+
+$t.section "_Require: class version checking"
+
+# Class that declares version:1.2.0 -- we'll use SemVer itself
+$t.assert_ok "satisfied version loads ok" \
+  bash -c '. boop SemVer; _Require SemVer 1.0+'
+
+$t.assert_fail "unsatisfied version crashes" \
+  bash -c '. boop SemVer; _Require SemVer 99.0+'
+
+# Without SemVer: warn but don't crash (graceful degradation)
+__semver_gd_rc=0
+bash -c '. boop; _Require SemVer 1.0+' 2>/dev/null || __semver_gd_rc=$?
+$t.assert_eq "no SemVer loaded: exits 0" "$__semver_gd_rc" "0"
+unset __semver_gd_rc
+
+# ============================================================================
+# . boop require: guard
+# ============================================================================
+
+$t.section ". boop require: boop version guard"
+
+__semver_rv_rc=0
+bash -c ". boop require:0.1+" || __semver_rv_rc=$?
+$t.assert_eq "require:0.1+ succeeds (boop is 0.1.0)" "$__semver_rv_rc" "0"
+unset __semver_rv_rc
+
+$t.assert_fail "require:99.0+ crashes" bash -c ". boop require:99.0+"
+
+# require: with class load in same invocation
+__semver_mixed_rc=0
+bash -c ". boop require:0.1+ SemVer; SemVer.satisfies 1.0.0 1.0+" || __semver_mixed_rc=$?
+$t.assert_eq "require: + class load in one line" "$__semver_mixed_rc" "0"
+unset __semver_mixed_rc
+
+$t.summary

@@ -21,9 +21,9 @@
 # doesn't care what's inside — it's turtles all the way down.
 
 # Load guard — if already registered, nothing to do
-[[ -n "${__boop_registry[Collection.List]+set}" ]] && return 2>/dev/null
-
 . boop Collection::Container
+
+boop.init Collection.List || return 0
 
 # ============================================================================
 # List Implementation Functions

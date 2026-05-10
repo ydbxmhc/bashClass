@@ -19,9 +19,9 @@
 #   printf "%s\n" "$json"         # {"name":"Alice","age":"30"}
 
 # Load guard
-[[ -n "${__boop_registry[Data.JSON]+set}" ]] && return 2>/dev/null
-
 . boop Collection::Map::Fast
+
+boop.init Data.JSON || return 0
 
 # ============================================================================
 # JSON Tokenizer
@@ -77,10 +77,33 @@ __Data_JSON_parseUnicode() {
     _Crash "Data.JSON: unexpected low surrogate \\u$__Data_JSON_pu_hex"
   fi
 
-  # Emit as UTF-8 via printf's \U escape (bash 5+)
-  local __Data_JSON_pu_hexPad __Data_JSON_pu_utf8
-  printf -v __Data_JSON_pu_hexPad '%08X' "$__Data_JSON_pu_code"
-  printf -v __Data_JSON_pu_utf8 '%b' "\U$__Data_JSON_pu_hexPad"
+  # Encode codepoint to UTF-8 bytes via \xNN printf escapes (locale-independent)
+  local __Data_JSON_pu_fmt="" __Data_JSON_pu_b __Data_JSON_pu_utf8
+  if (( __Data_JSON_pu_code <= 0x7F )); then
+    printf -v __Data_JSON_pu_fmt '\\x%02X' "$__Data_JSON_pu_code"
+  elif (( __Data_JSON_pu_code <= 0x7FF )); then
+    printf -v __Data_JSON_pu_b '\\x%02X' $(( 0xC0 | (__Data_JSON_pu_code >> 6) ))
+    __Data_JSON_pu_fmt="$__Data_JSON_pu_b"
+    printf -v __Data_JSON_pu_b '\\x%02X' $(( 0x80 | (__Data_JSON_pu_code & 0x3F) ))
+    __Data_JSON_pu_fmt+="$__Data_JSON_pu_b"
+  elif (( __Data_JSON_pu_code <= 0xFFFF )); then
+    printf -v __Data_JSON_pu_b '\\x%02X' $(( 0xE0 | (__Data_JSON_pu_code >> 12) ))
+    __Data_JSON_pu_fmt="$__Data_JSON_pu_b"
+    printf -v __Data_JSON_pu_b '\\x%02X' $(( 0x80 | ((__Data_JSON_pu_code >> 6) & 0x3F) ))
+    __Data_JSON_pu_fmt+="$__Data_JSON_pu_b"
+    printf -v __Data_JSON_pu_b '\\x%02X' $(( 0x80 | (__Data_JSON_pu_code & 0x3F) ))
+    __Data_JSON_pu_fmt+="$__Data_JSON_pu_b"
+  else
+    printf -v __Data_JSON_pu_b '\\x%02X' $(( 0xF0 | (__Data_JSON_pu_code >> 18) ))
+    __Data_JSON_pu_fmt="$__Data_JSON_pu_b"
+    printf -v __Data_JSON_pu_b '\\x%02X' $(( 0x80 | ((__Data_JSON_pu_code >> 12) & 0x3F) ))
+    __Data_JSON_pu_fmt+="$__Data_JSON_pu_b"
+    printf -v __Data_JSON_pu_b '\\x%02X' $(( 0x80 | ((__Data_JSON_pu_code >> 6) & 0x3F) ))
+    __Data_JSON_pu_fmt+="$__Data_JSON_pu_b"
+    printf -v __Data_JSON_pu_b '\\x%02X' $(( 0x80 | (__Data_JSON_pu_code & 0x3F) ))
+    __Data_JSON_pu_fmt+="$__Data_JSON_pu_b"
+  fi
+  printf -v __Data_JSON_pu_utf8 "$__Data_JSON_pu_fmt"
   __Data_JSON_strResult+="$__Data_JSON_pu_utf8"
 }
 

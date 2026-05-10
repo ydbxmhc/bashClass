@@ -4,6 +4,143 @@ Completed work items, extracted from TODO.md. Most recent first.
 
 ---
 
+## Mixin System
+
+**Completed:** 2026-05
+
+Method-only mixins: bundles of functions with no constructor or state that
+can be composed into any class at bake time.
+
+**Core additions to `boop`:**
+
+- `boopMixin Name public:m1,m2` — declares a mixin; registers in
+  `__boop_mixin_registry` and `__boop_methodRegistry`
+- `mixin:Name` token in `boopClass` — wires a mixin into a class
+- `boop.initMixin` — load guard + direct-execution detection for mixin files
+- `__boop.mixes` / `$obj.mixes Name` — walks the inheritance chain checking
+  the `mixins=` field; analogous to `isa` but for the mixin dimension
+- `$obj.Mixin::method` — explicit provenance dispatch; always routes to that
+  mixin's implementation regardless of which method won the default slot
+
+**Resolution order:** class-defined methods win; then first mixin listed in
+`boopClass`; then subsequent mixins (shadowed but still reachable via `::`).
+
+**Inheritance:** `registerClass` registers each mixin method in
+`__boop_methodRegistry[ClassName.method]`, so subclasses pick it up
+automatically via the normal MRO walk.
+
+**Design decisions:** method-only (no mixin state), bake-time resolution
+(zero per-call overhead), class wins / first-mixin-wins for conflicts,
+`mixes` for membership check (not `isa`), `::` for explicit disambiguation.
+
+Includes two demo/test mixins (`Greetable`, `Taggable`) and 29 tests
+in `tests/unit/test_mixin_ts`.
+
+---
+
+## Phase 2 Collections — Stack, Queue, Set
+
+**Completed:** 2026-05
+
+All three use composition, not inheritance. Each holds its backing
+store internally and exposes only its own interface.
+
+**Stack** (`Collection/Stack`) — LIFO. Composes a List; delegates
+`push`/`pop`/`getAt(-1)` through it with `_Self` swapped to the
+internal list ID. `push`, `pop`, `peek`, `size`, `isEmpty`. Crashes
+on underflow. 19 tests.
+
+**Queue** (`Collection/Queue`) — FIFO. Same composition pattern over
+List; `enqueue` → List.push, `dequeue` → List.shift. `enqueue`,
+`dequeue`, `peek`, `size`, `isEmpty`. Crashes on underflow. 19 tests.
+
+**Set** (`Collection/Set`) — Unordered unique members. Backed by a
+raw bash associative array (keys = members, O(1) ops). No intermediate
+object needed. `add`, `has`, `remove`, `size`, `isEmpty`, `toArray`,
+`union`, `intersect`, `difference`. Set operations return new Set
+objects and leave operands unchanged. 38 tests.
+
+LinkedList deferred — see TODO.
+
+---
+
+## Load Guard Refactor — `boop.init`
+
+**Completed:** 2026-05
+
+Replaced the `[[ -n "${__boop_registry[...]+set}" ]] && return 2>/dev/null`
+pattern across all 15 class files. New pattern:
+
+```bash
+. boop
+boop.init ClassName || return 0
+```
+
+`boop.init` (public, in boop core) handles three cases: already loaded
+(returns 1, `|| return 0` exits cleanly), executed directly (`bash Box`
+→ prints "Box is a boop class file. Load it with: . boop Box", exits 1),
+first load (returns 0, loading continues). `__boop.guard` (internal)
+is the pure registry-presence check that `boop.init` delegates to.
+
+The `|| return 0` is intentional: `__boop.import` checks source exit
+code, and the class alias (`Container`) can differ from the registry key
+(`Collection.Container`), making a post-source registry check unreliable.
+
+---
+
+## Meta-Components Phase 1 — Version Guards and SemVer
+
+**Completed:** 2026-05
+
+Four interlocking pieces shipped together:
+
+**SemVer class** (`SemVer/SemVer`) — pure bash, no external tools.
+`SemVer.compare "1.2.3" "1.3.0"` → `-1`/`0`/`1` via `into=` or stdout.
+`SemVer.satisfies "1.3.0" "1.2+"` → exit 0/1. Delegates to comparison
+primitives inlined in boop core for the bootstrapping case. 38 tests.
+
+Constraint syntax: `1.2+` (≥1.2.0), `>=1.2.3`, `>1.2`, `<=2.0`,
+`<2.0`, `1.2.3` (exact). Pre-release suffixes ignored; missing
+minor/patch default to 0.
+
+**boop version guard** — `. boop require:1.2+` checks `__boop_version`
+at source time before any class loading. If unsatisfied, walks
+BOOPPATH/PATH for a candidate boop whose version satisfies the
+constraint (reads the file line-by-line, no sourcing). Reports the
+path if found; crashes either way. Re-loading a different boop core
+at runtime (bless-it-in) deferred as a future concern.
+
+**`boopClass version:` token** — `boopClass Math version:1.3.0 '...'`
+stores `version=1.3.0` in the registry descriptor. Parsed by
+`__boopClass.parseTokens`; harmlessly ignored by everything that
+doesn't look for it.
+
+**`_Require` class version checking** — `_Require Math 1.2+` loads
+Math then enforces the version floor. After loading, extracts
+`version=` from the registry descriptor. If SemVer is loaded, calls
+`SemVer.satisfies` and crashes on failure. If SemVer is absent, emits
+`_Warn` and continues (graceful degradation). Multiple classes in one
+call: `_Require SemVer Math 1.2+ Config`.
+
+Spec: `.kiro/specs/meta-components/design.md`
+
+---
+
+## JSON Unicode Escapes
+
+**Completed:** 2026-05
+
+`\uXXXX` escape sequences (BMP) and surrogate pairs (`🎉`
+→ 🎉, emoji and extended CJK) now decode to UTF-8. The original
+implementation used `printf '%b' "\U..."` which is locale-dependent
+and failed silently with `LC_CTYPE=POSIX`. Replaced with manual
+UTF-8 encoding: pure bash integer arithmetic computes the 1–4 byte
+sequence; `printf -v x '\\x%02X' byte` + `printf -v result "$fmt"`
+emits the bytes locale-independently. 54 tests, 6 previously failing
+unicode cases now pass.
+
+---
+
 ## Partial Namespace Resolution
 
 **Completed:** 2026-05

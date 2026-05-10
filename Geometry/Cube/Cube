@@ -3,9 +3,9 @@
 # Geometry.Cube class
 
 # Load guard
-[[ -n "${__boop_registry[Geometry.Cube]+set}" ]] && return 2>/dev/null
-
 . boop Geometry::Box
+
+boop.init Geometry.Cube || return 0
 
 # ============================================================================
 # Geometry.Cube Implementation Functions
