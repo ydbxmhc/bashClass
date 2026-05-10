@@ -1,0 +1,114 @@
+#!/bin/bash
+set -uo pipefail
+
+# Terminal mixin tests
+#
+# Classification: UNIT (Mixins.Terminal)
+# Covers: registration, char lookup, fg/bg validation, width/height,
+#         style methods emit something, direct execution guard.
+# Note: escape sequence content is not asserted (terminal-dependent);
+#       we verify methods exist, return correctly, and crash on bad input.
+
+. boop TestSuite Terminal
+
+into=t TestSuite name="Terminal Mixin Tests"
+
+# ============================================================================
+# Registration
+# ============================================================================
+
+$t.section "registration"
+
+$t.assert_ok "Terminal registered" test -n "${__boop_mixin_registry[Terminal]+set}"
+$t.assert_ok "char table populated" test "${#__Terminal_chars[@]}" -gt 0
+$t.assert_ok "fg table populated"   test "${#__Terminal_fg[@]}" -gt 0
+$t.assert_ok "bg table populated"   test "${#__Terminal_bg[@]}" -gt 0
+
+# ============================================================================
+# char lookup
+# ============================================================================
+
+$t.section "char lookup"
+
+# Build a minimal test class that mixes in Terminal
+Renderer.new() {
+  local _Class="${_Class:-Renderer}"
+  local __Renderer_new_self
+  into=__Renderer_new_self __boop.new "$@"
+  boop.pass "$__Renderer_new_self" ${into:-}
+}
+boopClass Renderer mixin:Terminal 'public:new'
+
+into=r Renderer.new
+
+into=c $r.char topLeft;      $t.assert_eq "topLeft"      "$c" '┌'
+into=c $r.char topRight;     $t.assert_eq "topRight"     "$c" '┐'
+into=c $r.char horiz;        $t.assert_eq "horiz"        "$c" '─'
+into=c $r.char vert;         $t.assert_eq "vert"         "$c" '│'
+into=c $r.char dTopLeft;     $t.assert_eq "dTopLeft"     "$c" '╔'
+into=c $r.char dHoriz;       $t.assert_eq "dHoriz"       "$c" '═'
+into=c $r.char dVert;        $t.assert_eq "dVert"        "$c" '║'
+into=c $r.char spade;        $t.assert_eq "spade"        "$c" '♠'
+into=c $r.char heart;        $t.assert_eq "heart"        "$c" '♥'
+into=c $r.char diamond;      $t.assert_eq "diamond"      "$c" '♦'
+into=c $r.char club;         $t.assert_eq "club"         "$c" '♣'
+into=c $r.char block;        $t.assert_eq "block"        "$c" '█'
+into=c $r.char check;        $t.assert_eq "check"        "$c" '✓'
+into=c $r.char arrowRight;   $t.assert_eq "arrowRight"   "$c" '→'
+
+$t.assert_fail "unknown char crashes" $r.char nonexistent
+
+# ============================================================================
+# Color tables
+# ============================================================================
+
+$t.section "color codes"
+
+$t.assert_ok "fg red exists"          test -n "${__Terminal_fg[red]+set}"
+$t.assert_ok "fg bright_blue exists"  test -n "${__Terminal_fg[bright_blue]+set}"
+$t.assert_ok "bg green exists"        test -n "${__Terminal_bg[green]+set}"
+$t.assert_eq "fg red code"            "${__Terminal_fg[red]}"         "31"
+$t.assert_eq "bg blue code"           "${__Terminal_bg[blue]}"        "44"
+$t.assert_eq "fg bright_white code"   "${__Terminal_fg[bright_white]}" "97"
+
+# ============================================================================
+# Style methods emit non-empty sequences
+# ============================================================================
+
+$t.section "style output"
+
+$t.assert_ok "bold emits something"      test -n "$($r.bold)"
+$t.assert_ok "reset emits something"     test -n "$($r.reset)"
+$t.assert_ok "fg red emits something"    test -n "$($r.fg red)"
+$t.assert_ok "bg blue emits something"   test -n "$($r.bg blue)"
+
+$t.assert_fail "fg bad color crashes"    $r.fg notacolor
+$t.assert_fail "bg bad color crashes"    $r.bg notacolor
+
+# ============================================================================
+# Terminal size
+# ============================================================================
+
+$t.section "terminal size"
+
+into=w $r.width;  $t.assert_ok "width is positive int"  test "$w" -gt 0
+into=h $r.height; $t.assert_ok "height is positive int" test "$h" -gt 0
+
+# ============================================================================
+# mixes predicate
+# ============================================================================
+
+$t.section "mixes"
+
+$t.assert_ok   "r mixes Terminal"   $r.mixes Terminal
+$t.assert_fail "r not mixes Taggable" $r.mixes Taggable
+
+# ============================================================================
+# direct execution guard
+# ============================================================================
+
+$t.section "direct execution guard"
+
+$t.assert_fail "bash Terminal exits 1" bash /home/user/bashClass/Mixins/Terminal/Terminal
+
+$t.summary
