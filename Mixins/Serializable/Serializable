@@ -1,0 +1,143 @@
+#!/bin/bash
+
+# Serializable mixin — JSON-backed serialization for object properties.
+#
+# Mixes into any class to add save/load capability. Only declared
+# properties (has: in boopClass) are serialized; internal properties
+# (prefixed with _) are excluded.
+#
+# toJSON/fromJSON handle string conversion. save/load handle file I/O
+# and remember the path in the internal _savefile property so subsequent
+# calls with no argument reuse the same file.
+#
+# toJSON builds JSON directly — no external tools, no forks.
+# fromJSON lazy-loads Data.JSON for parsing.
+
+. boop
+boop.initMixin Serializable || return 0
+
+# ============================================================================
+# toJSON — serialize declared properties to a JSON object string
+# ============================================================================
+
+Serializable.toJSON() {
+  local _Self="${_Self:-}" _Class="${_Class:-}"
+  local __Serializable_toJSON_props __Serializable_toJSON_prop
+  local __Serializable_toJSON_val __Serializable_toJSON_out
+
+  # Include class name so the file is self-describing
+  local __Serializable_toJSON_cls="${_Class//\\/\\\\}"
+  __Serializable_toJSON_cls="${__Serializable_toJSON_cls//\"/\\\"}"
+  __Serializable_toJSON_out="{\"_class\":\"${__Serializable_toJSON_cls}\""
+
+  # Walk declared properties — stored on the CLASS descriptor, not the object
+  local __Serializable_toJSON_cls_name
+  __boop.parse "$_Self" "class" __Serializable_toJSON_cls_name
+  __boop.parse "$__Serializable_toJSON_cls_name" "properties" __Serializable_toJSON_props
+  if [[ -n "$__Serializable_toJSON_props" ]]; then
+    local -a __Serializable_toJSON_arr
+    IFS=',' read -ra __Serializable_toJSON_arr <<< "$__Serializable_toJSON_props"
+    for __Serializable_toJSON_prop in "${__Serializable_toJSON_arr[@]}"; do
+      [[ "$__Serializable_toJSON_prop" == _* ]] && continue
+      __boop.parse "$_Self" "$__Serializable_toJSON_prop" __Serializable_toJSON_val
+      # JSON-escape value: backslash first, then quote, then whitespace
+      __Serializable_toJSON_val="${__Serializable_toJSON_val//\\/\\\\}"
+      __Serializable_toJSON_val="${__Serializable_toJSON_val//\"/\\\"}"
+      __Serializable_toJSON_val="${__Serializable_toJSON_val//$'\n'/\\n}"
+      __Serializable_toJSON_val="${__Serializable_toJSON_val//$'\r'/\\r}"
+      __Serializable_toJSON_val="${__Serializable_toJSON_val//$'\t'/\\t}"
+      __Serializable_toJSON_out+=",\"${__Serializable_toJSON_prop}\":\"${__Serializable_toJSON_val}\""
+    done
+  fi
+  __Serializable_toJSON_out+='}'
+
+  boop.pass "$__Serializable_toJSON_out" ${into:-}
+}
+
+# ============================================================================
+# fromJSON — restore declared properties from a JSON object string
+# ============================================================================
+
+Serializable.fromJSON() {
+  local _Self="${_Self:-}" _Class="${_Class:-}"
+  local __Serializable_fromJSON_str="${1:-}"
+  [[ -n "$__Serializable_fromJSON_str" ]] || \
+    _Crash "Serializable.fromJSON: JSON string required"
+
+  # Lazy-load Data.JSON — only needed for deserialization
+  [[ -n "${__boop_registry[Data.JSON]+set}" ]] || _Require Data::JSON
+
+  # _Class is visible to called functions via bash dynamic scoping; reset it
+  # so Collection.Map.Fast.new (inside Data.JSON.parse) uses its own class,
+  # not the caller's.
+  local __Serializable_fromJSON_parsed
+  _Class="" into=__Serializable_fromJSON_parsed \
+    Data.JSON.parse "$__Serializable_fromJSON_str"
+
+  [[ -n "$__Serializable_fromJSON_parsed" ]] || \
+    _Crash "Serializable.fromJSON: parse returned empty result"
+
+  # Walk keys and restore properties (skip _class)
+  local __Serializable_fromJSON_keys __Serializable_fromJSON_key
+  local __Serializable_fromJSON_val
+  local _Delimiter=$'\n'
+  into=__Serializable_fromJSON_keys $__Serializable_fromJSON_parsed.keys
+
+  while IFS= read -r __Serializable_fromJSON_key; do
+    [[ -z "$__Serializable_fromJSON_key" ]] && continue
+    [[ "$__Serializable_fromJSON_key" == "_class" ]] && continue
+    into=__Serializable_fromJSON_val \
+      $__Serializable_fromJSON_parsed.get "$__Serializable_fromJSON_key"
+    __boop.set "$__Serializable_fromJSON_key" "$__Serializable_fromJSON_val"
+  done <<< "$__Serializable_fromJSON_keys"
+}
+
+# ============================================================================
+# save — write toJSON output to a file
+# ============================================================================
+
+Serializable.save() {
+  local _Self="${_Self:-}" _Class="${_Class:-}"
+  local __Serializable_save_file="${1:-}"
+
+  if [[ -z "$__Serializable_save_file" ]]; then
+    into=__Serializable_save_file __boop.get _savefile
+    [[ -n "$__Serializable_save_file" ]] || \
+      _Crash "Serializable.save: no file specified and _savefile not set"
+  else
+    __boop.set _savefile "$__Serializable_save_file"
+  fi
+
+  into=__Serializable_save_json Serializable.toJSON
+  printf '%s\n' "$__Serializable_save_json" > "$__Serializable_save_file"
+}
+
+# ============================================================================
+# load — read a JSON file and restore properties via fromJSON
+# ============================================================================
+
+Serializable.load() {
+  local _Self="${_Self:-}" _Class="${_Class:-}"
+  local __Serializable_load_file="${1:-}"
+
+  if [[ -z "$__Serializable_load_file" ]]; then
+    into=__Serializable_load_file __boop.get _savefile
+    [[ -n "$__Serializable_load_file" ]] || \
+      _Crash "Serializable.load: no file specified and _savefile not set"
+  else
+    __boop.set _savefile "$__Serializable_load_file"
+  fi
+
+  [[ -f "$__Serializable_load_file" ]] || \
+    _Crash "Serializable.load: file not found: '$__Serializable_load_file'"
+
+  local __Serializable_load_str
+  __Serializable_load_str="$(<"$__Serializable_load_file")"
+  Serializable.fromJSON "$__Serializable_load_str"
+}
+
+# ============================================================================
+# Registration
+# ============================================================================
+
+boopMixin Serializable 'public:toJSON,fromJSON,save,load'
