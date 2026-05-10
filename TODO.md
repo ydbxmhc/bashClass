@@ -387,6 +387,18 @@ are inside `__boop.log`.
 ### Games (Card, PlayingCard, Deck, Blackjack)
 - `test_blackjack` coverage audit
 - Consider whether Blackjack logic belongs in `BlackjackHand` class
+- **Blackjack refactor** (pending Serializable mixin):
+  - Serializable mixin — JSON-backed save/load for object properties
+  - PlayingCard: add `faceUp` property, `flip` method, `render` method
+    (single-line box front, double-line box + blue bg "Cards/With/BOOP!" back)
+  - Terminal UI — clear/redraw loop, single-keypress input, colored output
+  - ASCII art card rendering using Terminal symbol table
+  - GameState class using Serializable (save/resume mid-game)
+  - Config for settings (starting bankroll, deck count, etc.)
+  - Args in `BlackjackHand.new` constructor
+  - Args in the top-level `blackjack` script for CLI options:
+    - `--simple` / `-s` — skip ASCII art, plain text output
+    - (other options TBD during implementation)
 
 ### Geometry (Box, Cube)
 - 91 tests passing, no known gaps. Revisit when new classes added.
