@@ -1,0 +1,205 @@
+#!/bin/bash
+# Visual test suite for the Terminal mixin.
+#
+# Renders each Terminal capability and prompts you to grade it pass/fail
+# with a single keypress. Results feed into standard TestSuite reporting.
+#
+# Run manually — not part of test_all (requires a human and a real terminal).
+#
+# Usage:
+#   ./tests/visual/test_terminal_visual
+
+set -uo pipefail
+
+. boop TestSuite Terminal
+
+into=t TestSuite name="Terminal Visual Tests"
+
+# ============================================================================
+# Grade helper
+#
+# Displays a visual element inline, then waits for a single y/n keypress.
+# Returns 0 (pass) for y/Y, 1 (fail) for anything else.
+# Scopes raw mode to just the keyread so TestSuite output is unaffected.
+# ============================================================================
+
+__tv_grade() {
+  local __tv_grade_label="$1"; shift
+  printf '    '
+  "$@"
+  printf '\033[0m'
+  printf '  ← %s? [y/n] ' "$__tv_grade_label"
+  local __tv_grade_k
+  stty -echo raw 2>/dev/null
+  IFS= read -rn1 __tv_grade_k
+  stty echo -raw 2>/dev/null
+  printf '%s\n' "$__tv_grade_k"
+  [[ "$__tv_grade_k" == [yY] ]]
+}
+
+# Build a minimal renderer object to exercise the mixin methods
+Renderer.new() {
+  local _Class="${_Class:-Renderer}"
+  local __Renderer_new_self
+  into=__Renderer_new_self __boop.new "$@"
+  boop.pass "$__Renderer_new_self" ${into:-}
+}
+boopClass Renderer mixin:Terminal 'public:new'
+into=r Renderer.new
+
+# ============================================================================
+printf '\n  Terminal Visual Test — grade each item with y (pass) or n (fail)\n\n'
+
+# ============================================================================
+$t.section "foreground colors"
+# ============================================================================
+
+$t.assert_ok "black"          __tv_grade "black?"          printf '\033[30mblack\033[0m'
+$t.assert_ok "red"            __tv_grade "red?"            printf '\033[31mred\033[0m'
+$t.assert_ok "green"          __tv_grade "green?"          printf '\033[32mgreen\033[0m'
+$t.assert_ok "yellow"         __tv_grade "yellow?"         printf '\033[33myellow\033[0m'
+$t.assert_ok "blue"           __tv_grade "blue?"           printf '\033[34mblue\033[0m'
+$t.assert_ok "magenta"        __tv_grade "magenta?"        printf '\033[35mmagenta\033[0m'
+$t.assert_ok "cyan"           __tv_grade "cyan?"           printf '\033[36mcyan\033[0m'
+$t.assert_ok "white"          __tv_grade "white?"          printf '\033[37mwhite\033[0m'
+$t.assert_ok "bright_black"   __tv_grade "bright black?"   printf '\033[90mbright black\033[0m'
+$t.assert_ok "bright_red"     __tv_grade "bright red?"     printf '\033[91mbright red\033[0m'
+$t.assert_ok "bright_green"   __tv_grade "bright green?"   printf '\033[92mbright green\033[0m'
+$t.assert_ok "bright_yellow"  __tv_grade "bright yellow?"  printf '\033[93mbright yellow\033[0m'
+$t.assert_ok "bright_blue"    __tv_grade "bright blue?"    printf '\033[94mbright blue\033[0m'
+$t.assert_ok "bright_magenta" __tv_grade "bright magenta?" printf '\033[95mbright magenta\033[0m'
+$t.assert_ok "bright_cyan"    __tv_grade "bright cyan?"    printf '\033[96mbright cyan\033[0m'
+$t.assert_ok "bright_white"   __tv_grade "bright white?"   printf '\033[97mbright white\033[0m'
+
+# ============================================================================
+$t.section "background colors"
+# ============================================================================
+
+$t.assert_ok "bg red"          __tv_grade "bg red?"    printf '\033[41m \033[37mred bg\033[0m '
+$t.assert_ok "bg green"        __tv_grade "bg green?"  printf '\033[42m \033[30mgreen bg\033[0m '
+$t.assert_ok "bg blue"         __tv_grade "bg blue?"   printf '\033[44m \033[97mblue bg\033[0m '
+$t.assert_ok "bg yellow"       __tv_grade "bg yellow?" printf '\033[43m \033[30myellow bg\033[0m '
+$t.assert_ok "bg bright_black" __tv_grade "bg bright black (dark grey)?" \
+  printf '\033[100m \033[97mbright_black bg\033[0m '
+
+# ============================================================================
+$t.section "text styles"
+# ============================================================================
+
+$t.assert_ok "bold"        __tv_grade "bold?"      printf '\033[1mbold text\033[0m'
+$t.assert_ok "dim"         __tv_grade "dim?"       printf '\033[2mdim text\033[0m'
+$t.assert_ok "italic"      __tv_grade "italic?"    printf '\033[3mitalic text\033[0m'
+$t.assert_ok "underline"   __tv_grade "underline?" printf '\033[4munderlined text\033[0m'
+$t.assert_ok "reverse"     __tv_grade "reverse video (fg/bg swapped)?" \
+  printf '\033[7mreverse video\033[0m'
+$t.assert_ok "combined"    __tv_grade "bold bright red on blue?" \
+  printf '\033[1m\033[91m\033[44m bold bright red on blue \033[0m'
+
+# ============================================================================
+$t.section "single-line box drawing"
+# ============================================================================
+
+__tv_single_box() {
+  local tl="${__Terminal_chars[topLeft]}"    tr="${__Terminal_chars[topRight]}"
+  local bl="${__Terminal_chars[bottomLeft]}" br="${__Terminal_chars[bottomRight]}"
+  local h="${__Terminal_chars[horiz]}"       v="${__Terminal_chars[vert]}"
+  printf '%s%s%s%s%s\n    %s boop  %s\n    %s%s%s%s%s' \
+    "$tl" "$h" "$h$h$h$h$h$h$h" "$h" "$tr" \
+    "$v" "$v" \
+    "$bl" "$h" "$h$h$h$h$h$h$h" "$h" "$br"
+}
+$t.assert_ok "single-line box" __tv_grade "clean single-line box?" __tv_single_box
+
+# ============================================================================
+$t.section "double-line box drawing"
+# ============================================================================
+
+__tv_double_box() {
+  local tl="${__Terminal_chars[dTopLeft]}"    tr="${__Terminal_chars[dTopRight]}"
+  local bl="${__Terminal_chars[dBottomLeft]}" br="${__Terminal_chars[dBottomRight]}"
+  local h="${__Terminal_chars[dHoriz]}"       v="${__Terminal_chars[dVert]}"
+  printf '%s%s%s%s%s\n    %s boop  %s\n    %s%s%s%s%s' \
+    "$tl" "$h" "$h$h$h$h$h$h$h" "$h" "$tr" \
+    "$v" "$v" \
+    "$bl" "$h" "$h$h$h$h$h$h$h" "$h" "$br"
+}
+$t.assert_ok "double-line box" __tv_grade "clean double-line box (heavier than single)?" \
+  __tv_double_box
+
+# ============================================================================
+$t.section "card suits"
+# ============================================================================
+
+__tv_suits() {
+  printf '\033[97m%s \033[31m%s \033[31m%s \033[97m%s\033[0m' \
+    "${__Terminal_chars[spade]}" "${__Terminal_chars[heart]}" \
+    "${__Terminal_chars[diamond]}" "${__Terminal_chars[club]}"
+}
+$t.assert_ok "suits (♠ white, ♥♦ red, ♣ white)" __tv_grade "suits correct colors and shapes?" \
+  __tv_suits
+
+# ============================================================================
+$t.section "block and shade characters"
+# ============================================================================
+
+__tv_blocks() {
+  printf '%s%s%s%s' \
+    "${__Terminal_chars[block]}" "${__Terminal_chars[darkShade]}" \
+    "${__Terminal_chars[medShade]}" "${__Terminal_chars[shade]}"
+}
+$t.assert_ok "block gradient (█▓▒░)" __tv_grade "smooth gradient dark to light?" __tv_blocks
+
+# ============================================================================
+$t.section "misc symbols"
+# ============================================================================
+
+$t.assert_ok "check mark"  __tv_grade "✓ visible?"  printf '%s' "${__Terminal_chars[check]}"
+$t.assert_ok "ballot X"    __tv_grade "✗ visible?"  printf '%s' "${__Terminal_chars[ballotX]}"
+$t.assert_ok "arrows"      __tv_grade "← → ↑ ↓ all present?" \
+  printf '%s %s %s %s' \
+    "${__Terminal_chars[arrowLeft]}"  "${__Terminal_chars[arrowRight]}" \
+    "${__Terminal_chars[arrowUp]}"    "${__Terminal_chars[arrowDown]}"
+$t.assert_ok "bullet"      __tv_grade "• visible?" printf '%s' "${__Terminal_chars[bullet]}"
+$t.assert_ok "star"        __tv_grade "★ visible?" printf '%s' "${__Terminal_chars[star]}"
+
+# ============================================================================
+$t.section "card face / back preview"
+# ============================================================================
+
+# Single-line front
+__tv_card_front() {
+  local tl="${__Terminal_chars[topLeft]}"    tr="${__Terminal_chars[topRight]}"
+  local bl="${__Terminal_chars[bottomLeft]}" br="${__Terminal_chars[bottomRight]}"
+  local h="${__Terminal_chars[horiz]}"       v="${__Terminal_chars[vert]}"
+  local ht="${__Terminal_chars[heart]}"
+  printf '\033[97m%s%s%s%s%s\n    %s\033[31mA%-4s\033[97m%s\n    %s  \033[31m%s\033[97m  %s\n    %s\033[31m%4sA\033[97m%s\n    %s%s%s%s%s\033[0m' \
+    "$tl" "$h$h$h$h$h$h$h$h$h" "$tr" \
+    "$v" "A" "$v" \
+    "$v" "$ht" "$v" \
+    "$v" "A" "$v" \
+    "$bl" "$h$h$h$h$h$h$h$h$h" "$br"
+}
+
+# Double-line back with "Cards/With/BOOP!"
+__tv_card_back() {
+  local tl="${__Terminal_chars[dTopLeft]}"    tr="${__Terminal_chars[dTopRight]}"
+  local bl="${__Terminal_chars[dBottomLeft]}" br="${__Terminal_chars[dBottomRight]}"
+  local h="${__Terminal_chars[dHoriz]}"       v="${__Terminal_chars[dVert]}"
+  printf '\033[44m\033[97m%s%s%s%s%s\n    %s Cards  %s\n    %s  With  %s\n    %s BOOP!  %s\n    %s%s%s%s%s\033[0m' \
+    "$tl" "$h$h$h$h$h$h$h$h$h" "$tr" \
+    "$v" "$v" \
+    "$v" "$v" \
+    "$v" "$v" \
+    "$bl" "$h$h$h$h$h$h$h$h$h" "$br"
+}
+
+$t.assert_ok "card front (single-line border, suit + rank)" \
+  __tv_grade "card front looks like a card?" __tv_card_front
+
+printf '\n'
+
+$t.assert_ok "card back (double-line border, blue bg, BOOP! text)" \
+  __tv_grade "card back distinct from front?" __tv_card_back
+
+# ============================================================================
+$t.summary
