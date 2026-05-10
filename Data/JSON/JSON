@@ -357,7 +357,16 @@ __Data_JSON_stringifyPrefix() {
   done
 
   if (( __Data_JSON_sp_is_array )); then
-    IFS=$'\n' read -d '' -ra __Data_JSON_sp_children < <(printf '%s\n' "${__Data_JSON_sp_children[@]}" | sort -n; printf '\0') || true
+    # JSON arrays are always sequentially indexed from 0; no sort needed.
+    # Find the max index and rebuild the child list in order.
+    local -i __Data_JSON_sp_max=0 __Data_JSON_sp_i
+    for __Data_JSON_sp_child in "${__Data_JSON_sp_children[@]}"; do
+      (( __Data_JSON_sp_child > __Data_JSON_sp_max )) && __Data_JSON_sp_max=$__Data_JSON_sp_child
+    done
+    __Data_JSON_sp_children=()
+    for (( __Data_JSON_sp_i=0; __Data_JSON_sp_i<=__Data_JSON_sp_max; __Data_JSON_sp_i++ )); do
+      __Data_JSON_sp_children+=("$__Data_JSON_sp_i")
+    done
     __Data_JSON_result+='['
   else
     __Data_JSON_result+='{'

@@ -2,7 +2,7 @@
 
 **Object-oriented programming for bash 5+.** Real classes, real objects, single
 inheritance, a namespace system, and a collection library — all in pure bash,
-with no external dependencies and no subshells in the hot path.
+requiring no third-party tools and no subshells in the dispatch path.
 
 The framework file is called `boop` because fun is a feature.
 
@@ -18,7 +18,7 @@ arrays and no way to pass structured data between functions without either
 forking a subshell or leaking state everywhere.
 
 boop is an answer to that problem. It gives bash the vocabulary it's missing:
-objects with encapsulated state, classes with typed constructors and inherited
+objects with conventionally private state, classes with constructors and inherited
 methods, a return system that avoids subshells, and a namespace-aware class
 loader that scales from a single script to a library of dozens of classes.
 
@@ -81,7 +81,7 @@ into=h $cfg.get host          # "localhost"
 # Type-check any object — walks the full inheritance chain
 $colors.isa List  && echo "yes"   # yes
 $colors.isa boop  && echo "yes"   # yes (everything inherits from boop)
-$colors.isa Map   && echo "no"    # (no output — wrong type)
+$colors.isa Map   || echo "no"    # "no" — wrong type
 ```
 
 The `into=varname command` syntax is how boop returns values. It is the central
@@ -91,8 +91,8 @@ pattern of the framework and the first thing worth understanding properly.
 
 ## The Return System
 
-Standard bash has two ways to get a value out of a function: print to stdout
-and capture with `$()`, or write to a global variable. The first spawns a
+Bash has two idiomatic ways to get a value out of a function: print to stdout
+and capture with `$()`, or write to a named global variable. The first spawns a
 subshell — slow, and it breaks assignments made inside the function. The second
 pollutes global scope and is easily clobbered.
 
@@ -160,8 +160,10 @@ $c.set size 10               # mutate in place
 into=v $c.get size           # "10"
 ```
 
-Properties are typed as strings. All values are strings. If you need to treat
-a value as a number, use it in arithmetic context: `$(( v + 1 ))`.
+Properties are stored as strings — bash has no type system. A value is
+interpreted by context: arithmetic expansion, pattern matching, or string
+operations as needed. `$(( v + 1 ))` treats a property as an integer;
+`[[ $v =~ ^[0-9]+$ ]]` treats it as a pattern.
 
 ### Type Checking
 
@@ -317,7 +319,7 @@ LIFO stack. Composes a List internally.
 ```bash
 . boop Stack
 
-into=s Collection.Stack.new
+into=s Stack
 $s.push task1 task2 task3
 
 into=top $s.peek          # "task3" (no removal)
@@ -333,7 +335,7 @@ FIFO queue. Composes a List internally.
 ```bash
 . boop Queue
 
-into=q Collection.Queue.new
+into=q Queue
 $q.enqueue job1 job2 job3
 
 into=front $q.peek        # "job1" (no removal)
@@ -348,8 +350,8 @@ Unordered unique-member collection. O(1) membership tests.
 ```bash
 . boop Set
 
-into=a Collection.Set.new; $a.add apple banana cherry
-into=b Collection.Set.new; $b.add banana cherry date
+into=a Set; $a.add apple banana cherry
+into=b Set; $b.add banana cherry date
 
 $a.has apple               # exits 0 (member)
 $a.has grape               # exits 1 (not a member)
@@ -368,8 +370,8 @@ into=arr $a.toArray        # newline-separated members (order undefined)
 ## Mixins
 
 Method bundles that compose into any class without inheritance. A mixin
-provides functions but owns no instance state — its methods operate on the
-host object's properties via `__boop.get`/`__boop.set`.
+provides functions but owns no instance state — its methods read and write
+the host object's properties through the same interface as any class method.
 
 ```bash
 . boop Greetable Taggable
@@ -668,9 +670,8 @@ Here's a minimal working class:
 ```bash
 #!/bin/bash
 
-# Load guard — prevents double-sourcing and double-registration
-[[ -n "${__boop_registry[Greeter]+set}" ]] && return 2>/dev/null
 . boop
+boop.init Greeter || return 0
 
 Greeter.new() {
   local _Class="${_Class:-Greeter}"
@@ -700,9 +701,10 @@ printf "%s\n" "$msg"   # Hello, World!
 
 ### What Each Piece Does
 
-**The load guard** prevents the class from being registered twice if the file
-is sourced more than once. The pattern checks the `__boop_registry` associative
-array and returns immediately if the class is already there.
+**`boop.init Greeter || return 0`** is the load guard. `boop.init` returns 1
+if the class is already registered (double-source), which triggers `|| return 0`
+to exit cleanly. It also detects direct execution (`bash Greeter`) and prints
+a helpful message instead of silently doing nothing.
 
 **`local _Class="${_Class:-Greeter}"`** reads `_Class` from the calling scope
 (set by the baked wrapper) and defaults to `Greeter` if not set. This is how
@@ -898,6 +900,9 @@ bash tests/unit/test_json_ts
 bash tests/unit/test_math_ts
 bash tests/unit/test_logging_ts
 bash tests/unit/test_classpath_ts
+bash tests/unit/test_mixin_ts
+bash tests/unit/test_terminal_ts
+bash tests/visual/test_terminal_visual   # interactive — grades each element y/n
 bash tests/integration/test_blackjack
 bash tests/integration/test_stress_ts
 ```
@@ -907,7 +912,7 @@ bash tests/integration/test_stress_ts
 ## Class Hierarchy
 
 ```
-boop                                    root — new, get, set, isa, toString
+boop                                    root — new, get, set, isa, mixes, trueClass, toString, inspect
   ├── Geometry
   │     ├── Box                         3D rectangle — volume, face areas
   │     └── Cube                        equal-sided Box
@@ -921,6 +926,7 @@ boop                                    root — new, get, set, isa, toString
   │     ├── Queue                       FIFO — enqueue/dequeue/peek
   │     └── Set                         unique members — add/has/remove/union/intersect/difference
   ├── Mixins
+  │     ├── Terminal                    ANSI control, named colors, symbol table
   │     ├── Greetable                   demo mixin — greet, identify
   │     └── Taggable                    demo mixin — addTag/hasTag/removeTag
   ├── Data
@@ -930,7 +936,7 @@ boop                                    root — new, get, set, isa, toString
   ├── Math                              arbitrary-precision arithmetic
   ├── Games
   │     ├── Card                        generic card base
-  │     │     └── PlayingCard           standard 52-card deck (suit/rank/faceUp)
+  │     │     └── PlayingCard           individual playing card — suit, rank, face state
   │     └── Deck                        extends List — shuffle, draw
   └── Testing
         └── TestSuite                   structured test harness
