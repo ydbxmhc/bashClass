@@ -4,10 +4,14 @@ A stateful cursor over a Container (List, Map, or any subclass).
 Holds a reference to a container and a current position.
 Does not own data — it reads from its target.
 
+**Iterator is defined in `Collection/Container/Container`, not in its own file.**
+It lives there because it was designed alongside Container and has no meaning
+without one. Loading Container (directly or via List/Map/Deck) makes Iterator available.
+
 ## Dependencies
 
 ```bash
-. boop Container    # Iterator is defined in the Container file
+. boop Container    # also loads Iterator; no separate file needed
 ```
 
 ---
