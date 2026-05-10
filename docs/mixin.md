@@ -1,79 +1,134 @@
-# Mixin Support — Design Notes
+# Mixins
 
-## Current State
+Mixins are method bundles composed into classes at declaration time.
+They are not classes — they have no constructor, no state of their own,
+and do not appear in the `isa` chain. They give objects additional behavior
+without inheritance.
 
-The boop class system uses single inheritance (`isa:Parent`). The closest existing
-mechanisms are:
-
-- `boopExtend ClassName custom:method=impl` — adds methods to one class imperatively
-- `_Cast Class obj method` — calls a different class's method on an object
-- `_Delegate $other.method "$@"` — forwards to another object's method
-
-None of these are declarative mixin composition.
-
-## What Needs to Change
-
-Three blockers, all small:
-
-### 1. Descriptor format — add `mixins=` field
-
-`boopClass` stores class metadata as a pipe-delimited descriptor in `__boop_registry`.
-Currently: `|class=Box|trueClass=Box|parent=boop|methods=...|properties=...|`
-
-Add: `|mixins=Serializable,Comparable|` alongside the existing `parent=` field.
-
-### 2. Token parser — recognize `mixin:` in `boopClass`
-
-`__boopClass.parseTokens()` (boop:2282) handles `isa:`, `has:`, `public:`, `custom:`.
-Add `mixin:Mixin1,Mixin2` as a new token type, parsed into a `__boopClass_mixins`
-variable the same way `isa:` is parsed into `__boopClass_parent`.
-
-### 3. Method resolution — check mixins before climbing to parent
-
-`__boop.methodResolve()` (boop:1044) walks the parent chain linearly. Add one loop
-before the parent walk: iterate `mixins=`, check `__boop_methodRegistry["Mixin.method"]`,
-inject into the calling class's registry entry if found. Cache hit after first lookup —
-same O(1) behaviour as today.
-
-`__boop.backfillMethods()` (boop:1419) generates per-object wrappers by walking the
-`methods=` field. Mixin methods just need to appear in that list — inject them at
-registration time (step 2 above).
-
-## Design Decision: Conflict Resolution
-
-If a mixin and the parent both define the same method, **mixin wins**. Resolution order:
-
-```
-own class → mixins (left to right) → parent chain
-```
-
-This matches Ruby/Python mixin semantics and keeps the rule simple.
-
-## Scope
-
-~100 lines across four functions:
-
-| Function | File | Change |
-|---|---|---|
-| `__boopClass.parseTokens()` | boop:2282 | Parse `mixin:` token |
-| `boopClass()` | boop:2333 | Store `mixins=` in descriptor |
-| `__boop.methodResolve()` | boop:1044 | Check mixins before parent |
-| `__boop.backfillMethods()` | boop:1419 | Include mixin methods in wrapper generation |
-
-Fully backward compatible — classes without `mixin:` are unaffected.
-
-## Example Syntax (proposed)
+## Declaring a Mixin
 
 ```bash
-boopClass Serializable '
-  public:toJSON,fromJSON
-'
+# Define the functions:
+Printable.print() {
+  printf '%s\n' "${_Class}: $(boop.pass "$_Self" ${into:-})"
+}
 
-boopClass Comparable '
-  public:eq,lt,gt,between
-'
+Printable.inspect() {
+  boop.pass "Printable::inspect on ${_Self}" ${into:-}
+}
 
-boopClass Product isa:BaseModel mixin:Serializable,Comparable has:name,price '
+# Register them as a mixin:
+boopMixin Printable 'public:print,inspect'
+```
+
+`boopMixin` takes the same `public:` and `custom:` token syntax as `boopClass`.
+The mixin's functions must already be defined before calling `boopMixin`.
+
+## Composing into a Class
+
+```bash
+boopClass Article isa:Document mixin:Printable mixin:Taggable '
+  has:title,body
   public:new,toString
 '
 ```
+
+Multiple `mixin:Name` tokens compose multiple mixins. The first mixin listed
+wins when two mixins provide the same method name.
+
+## Resolution Order
+
+For any method call, boop searches in this order:
+
+1. The object's own class
+2. Mixins (left to right, as listed in `boopClass`)
+3. Parent class
+4. Parent's mixins
+5. (continues up the chain)
+
+**Own class always wins.** If `Article` defines `print`, its definition is
+used — the mixin's `print` is shadowed.
+
+## Provenance Dispatch (`::`)
+
+To call a specific mixin's version of a method regardless of resolution order:
+
+```bash
+$article.Printable::print     # always Printable's version
+$article.Taggable::identify   # always Taggable's version
+```
+
+This works even when the method is shadowed by the class or another mixin.
+
+## `mixes` Predicate
+
+Check whether an object's class composes a given mixin (walks the inheritance chain):
+
+```bash
+$article.mixes Printable   && echo "yes"   # 0 = true
+$article.mixes Comparable  && echo "yes"   # 1 = false — silent
+```
+
+A subclass of a class that composes a mixin also satisfies `mixes`:
+
+```bash
+boopClass BlogPost isa:Article public:new,...
+# BlogPost inherits Article's mixins
+
+into=post BlogPost.new
+$post.mixes Taggable   # 0 — inherited from Article
+```
+
+## Writing a Mixin File
+
+```bash
+#!/bin/bash
+# Comparable mixin — comparison predicates.
+
+. boop
+boop.initMixin Comparable || return 0
+
+Comparable.eq() { ... }
+Comparable.lt() { ... }
+Comparable.gt() { ... }
+
+boopMixin Comparable 'public:eq,lt,gt'
+```
+
+`boop.initMixin` is the mixin equivalent of `boop.init` for classes:
+- Returns 1 (and the file returns 0 via `|| return 0`) if already loaded
+- Detects direct execution and prints a helpful error instead of crashing
+
+## A Class That Is Also a Mixin
+
+A file can declare both `boopClass` and `boopMixin` for the same name.
+The class registration covers `new`, `isa`, and object dispatch.
+The mixin registration separately lists which methods other classes can
+compose (typically the same methods minus `new`):
+
+```bash
+boopClass Serializable public:new,toJSON,fromJSON has:...
+boopMixin  Serializable 'public:toJSON,fromJSON'
+```
+
+This is valid because both registries (`__boop_registry` for classes and
+`__boop_mixin_registry` for mixins) are independent.
+
+## Available Mixins
+
+| Mixin | Purpose | Doc |
+|-------|---------|-----|
+| `Terminal` | ANSI output, raw input, named symbols | [Terminal.md](Terminal.md) |
+| `Taggable` | Tag/untag/query labels on any object | [Taggable.md](Taggable.md) |
+| `Greetable` | Demo/test mixin for the system | [Greetable.md](Greetable.md) |
+
+## Mixin vs Inheritance
+
+| | Inheritance (`isa:`) | Mixin (`mixin:`) |
+|-|---------------------|-----------------|
+| State | Inherited | Not shared (host's descriptor) |
+| Constructor | Inherited | None |
+| `isa` check | Yes | No |
+| `mixes` check | N/A | Yes |
+| Multiple | No (single parent) | Yes (as many as needed) |
+| Method priority | Parent loses to child | First mixin listed wins |
