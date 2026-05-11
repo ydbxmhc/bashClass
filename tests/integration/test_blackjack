@@ -294,14 +294,14 @@ $t.assert_contains "show includes 7♠" "$v" "7♠"
 $t.assert_contains "show includes K♥" "$v" "K♥"
 $t.assert_contains "show includes total" "$v" "[17]"
 
-# Dealer hand — faceUp=1 hides first card
+# Dealer hand — faceUp=1 shows first card only; hole card (index 1) hidden
 into=h2 BlackjackHand faceUp=1
 into=c1 PlayingCard suit="♦" rank="3"; $h2.push "$c1"
 into=c2 PlayingCard suit="♣" rank="9"; $h2.push "$c2"
 into=v $h2.show "Dealer"
 $t.assert_contains "hidden shows [?]" "$v" "[?]"
 $t.assert_contains "hidden shows label" "$v" "Dealer:"
-$t.assert_contains "visible card shown" "$v" "9♣"
+$t.assert_contains "visible card shown" "$v" "3♦"
 # Should NOT contain a total bracket when cards are hidden
 declare __test_has_total=0
 [[ "$v" =~ \[[0-9] ]] && __test_has_total=1
@@ -349,7 +349,7 @@ $t.section "BlackjackHand.reveal"
 into=h BlackjackHand faceUp=1
 into=c1 PlayingCard suit="♠" rank="5"; $h.push "$c1"
 into=c2 PlayingCard suit="♥" rank="9"; $h.push "$c2"
-# Before reveal: faceUp=1 (only last card visible)
+# Before reveal: faceUp=1 (first card visible, hole card hidden)
 into=v $h.get faceUp; $t.assert_eq "faceUp before reveal = 1" "$v" "1"
 $h.reveal
 # After reveal: faceUp=99 (sentinel meaning "all cards visible")

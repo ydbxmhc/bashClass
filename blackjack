@@ -100,7 +100,7 @@ BlackjackHand.show() {
   into=__BH_show_faceUp $_Self.get faceUp
   for (( __BH_show_i=0; __BH_show_i < __BH_show_len; __BH_show_i++ )); do
     into=__BH_show_card $_Self.getAt $__BH_show_i
-    if (( __BH_show_i < __BH_show_len - __BH_show_faceUp )); then
+    if (( __BH_show_i >= __BH_show_faceUp )); then
       __BH_show_str="[?]"
       __BH_show_hidden=1
     else
@@ -180,8 +180,8 @@ draw_cards() {
     into=__BJ_dc_card    $__BJ_dc_hand.getAt $__BJ_dc_i
     into=__BJ_dc_orig_fu $__BJ_dc_card.get faceUp
 
-    # Hidden cards (before the visible tail) render as backs
-    if (( __BJ_dc_i < __BJ_dc_len - __BJ_dc_fu )); then
+    # Hidden cards: indices at or beyond faceUp count are face-down
+    if (( __BJ_dc_i >= __BJ_dc_fu )); then
       $__BJ_dc_card.set faceUp "false"
     else
       $__BJ_dc_card.set faceUp "true"
