@@ -84,6 +84,6 @@ into=n $q2.size; $t.assert_eq "q2 size" "$n" "2"
 
 $t.section "direct execution guard"
 
-$t.assert_fail "bash Queue exits 1" bash /home/user/bashClass/Collection/Queue/Queue
+$t.assert_fail "bash Queue exits 1" bash "$__boop_root/Collection/Queue/Queue"
 
 $t.summary

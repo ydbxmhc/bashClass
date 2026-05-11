@@ -168,7 +168,7 @@ $t.assert_ok "mixes Taggable via parent"  $sg.mixes Taggable
 
 $t.section "direct execution guard"
 
-$t.assert_fail "bash Greetable exits 1" bash /home/user/bashClass/Mixins/Greetable/Greetable
-$t.assert_fail "bash Taggable exits 1"  bash /home/user/bashClass/Mixins/Taggable/Taggable
+$t.assert_fail "bash Greetable exits 1" bash "$__boop_root/Mixins/Greetable/Greetable"
+$t.assert_fail "bash Taggable exits 1"  bash "$__boop_root/Mixins/Taggable/Taggable"
 
 $t.summary

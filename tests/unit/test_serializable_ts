@@ -155,6 +155,6 @@ $t.assert_fail "load missing file crashes"    $p.load "/nonexistent/path/file.js
 $t.section "direct execution guard"
 
 $t.assert_fail "bash Serializable exits 1" \
-  bash /home/user/bashClass/Mixins/Serializable/Serializable
+  bash "$__boop_root/Mixins/Serializable/Serializable"
 
 $t.summary
