@@ -26,20 +26,20 @@ set -uo pipefail
 # BlackjackHand — a List of PlayingCards with blackjack scoring
 # ═════════════════════════════════════════════════════════════════════
 #
-# faceUp (int) — how many cards from the END of the hand are visible.
-# Dealer gets faceUp=1 (hole card hidden); player gets faceUp=99 (all).
+# Card visibility is per-card: each PlayingCard has hidden=0 (visible)
+# or hidden=1 (face-down). deal accepts hidden=1 to deal a card face-down.
+# reveal sets hidden=0 on every card in the hand.
 
 BlackjackHand.new() {
   local _Class="${_Class:-BlackjackHand}"
-  local __BH_new_self __BH_new_faceUp=99 __BH_new_deck=""
+  local __BH_new_self __BH_new_deck=""
   local __BH_new_arg
   for __BH_new_arg in "$@"; do
     case "$__BH_new_arg" in
-      faceUp=*) __BH_new_faceUp="${__BH_new_arg#faceUp=}" ;;
-      deck=*)   __BH_new_deck="${__BH_new_arg#deck=}" ;;
+      deck=*) __BH_new_deck="${__BH_new_arg#deck=}" ;;
     esac
   done
-  into=__BH_new_self List.new faceUp="$__BH_new_faceUp" deck="$__BH_new_deck"
+  into=__BH_new_self List.new deck="$__BH_new_deck"
   _Bless "$__BH_new_self" BlackjackHand
   boop.pass "$__BH_new_self" ${into:-}
 }
@@ -91,25 +91,25 @@ BlackjackHand.isBlackjack() {
   (( __BH_isBJ_t == 21 ))
 }
 
-# Format for display. Cards past the faceUp count show as [?].
+# Format for display. Hidden cards (hidden=1) show as [?].
 BlackjackHand.show() {
   local -I _Self; local _Class="${_Class:-BlackjackHand}"
-  local __BH_show_label="${1:-Hand}" __BH_show_out="" __BH_show_card __BH_show_str
-  local -i __BH_show_i __BH_show_len __BH_show_faceUp __BH_show_hidden=0
+  local __BH_show_label="${1:-Hand}" __BH_show_out="" __BH_show_card __BH_show_str __BH_show_h
+  local -i __BH_show_i __BH_show_len __BH_show_any_hidden=0
   into=__BH_show_len $_Self.length
-  into=__BH_show_faceUp $_Self.get faceUp
   for (( __BH_show_i=0; __BH_show_i < __BH_show_len; __BH_show_i++ )); do
     into=__BH_show_card $_Self.getAt $__BH_show_i
-    if (( __BH_show_i >= __BH_show_faceUp )); then
+    __boop.parse "$__BH_show_card" hidden __BH_show_h
+    if [[ "${__BH_show_h:-0}" == "1" ]]; then
       __BH_show_str="[?]"
-      __BH_show_hidden=1
+      __BH_show_any_hidden=1
     else
       into=__BH_show_str _Delegate $__BH_show_card.toString
     fi
     (( __BH_show_i > 0 )) && __BH_show_out="$__BH_show_out "
     __BH_show_out="$__BH_show_out$__BH_show_str"
   done
-  if (( __BH_show_hidden )); then
+  if (( __BH_show_any_hidden )); then
     __BH_show_out="$__BH_show_label: $__BH_show_out"
   else
     local -i __BH_show_total
@@ -119,22 +119,53 @@ BlackjackHand.show() {
   boop.pass "$__BH_show_out" ${into:-}
 }
 
+# Reveal all cards in the hand (set hidden=0 on each).
 BlackjackHand.reveal() {
   local -I _Self; local _Class="${_Class:-BlackjackHand}"
-  $_Self.set faceUp "99"
+  local -i __BH_reveal_len __BH_reveal_i
+  local __BH_reveal_card
+  into=__BH_reveal_len $_Self.length
+  for (( __BH_reveal_i=0; __BH_reveal_i < __BH_reveal_len; __BH_reveal_i++ )); do
+    into=__BH_reveal_card $_Self.getAt $__BH_reveal_i
+    _Delegate $__BH_reveal_card.set hidden "0"
+  done
 }
 
+# Draw a card and push it to target (default: self). hidden=1 deals it face-down.
 BlackjackHand.deal() {
   local -I _Self; local _Class="${_Class:-BlackjackHand}"
-  local __BH_deal_target="${1:-$_Self}" __BH_deal_deck __BH_deal_card
+  local __BH_deal_target="" __BH_deal_deck __BH_deal_card __BH_deal_hidden="0"
+  local __BH_deal_arg
+  for __BH_deal_arg in "$@"; do
+    case "$__BH_deal_arg" in
+      hidden=*) __BH_deal_hidden="${__BH_deal_arg#hidden=}" ;;
+      *)        __BH_deal_target="$__BH_deal_arg" ;;
+    esac
+  done
+  : "${__BH_deal_target:=$_Self}"
   into=__BH_deal_deck $_Self.get deck
   [[ -z "$__BH_deal_deck" ]] && _Crash "BlackjackHand.deal: no deck on this hand"
   into=__BH_deal_card $__BH_deal_deck.draw
+  [[ "$__BH_deal_hidden" == "1" ]] && _Delegate $__BH_deal_card.set hidden "1"
   _Delegate $__BH_deal_target.push "$__BH_deal_card"
 }
 
-boopClass BlackjackHand isa:List has:type,faceUp,deck '
-  public:new,cardVal,total,isBust,isBlackjack,show,reveal,deal
+# Exit 0 if any card in the hand has hidden=1.
+BlackjackHand.hasHidden() {
+  local -I _Self; local _Class="${_Class:-BlackjackHand}"
+  local -i __BH_hasHidden_len __BH_hasHidden_i
+  local __BH_hasHidden_card __BH_hasHidden_h
+  into=__BH_hasHidden_len $_Self.length
+  for (( __BH_hasHidden_i=0; __BH_hasHidden_i < __BH_hasHidden_len; __BH_hasHidden_i++ )); do
+    into=__BH_hasHidden_card $_Self.getAt $__BH_hasHidden_i
+    __boop.parse "$__BH_hasHidden_card" hidden __BH_hasHidden_h
+    [[ "${__BH_hasHidden_h:-0}" == "1" ]] && return 0
+  done
+  return 1
+}
+
+boopClass BlackjackHand isa:List has:type,deck '
+  public:new,cardVal,total,isBust,isBlackjack,show,reveal,deal,hasHidden
 '
 
 # ═════════════════════════════════════════════════════════════════════
@@ -166,30 +197,20 @@ unset simple
 # ─────────────────────────────────────────────────────────────────────
 
 # Render all cards in a hand side by side (9 cols × 5 rows each).
-# Temporarily syncs each card's faceUp boolean with the hand's faceUp count.
+# Each card renders itself based on its own hidden property.
 draw_cards() {
   local __BJ_dc_hand="$1"
-  local -i __BJ_dc_len __BJ_dc_fu __BJ_dc_i
+  local -i __BJ_dc_len __BJ_dc_i
   into=__BJ_dc_len $__BJ_dc_hand.length
-  into=__BJ_dc_fu  $__BJ_dc_hand.get faceUp
 
   local -a __BJ_dc_r0=() __BJ_dc_r1=() __BJ_dc_r2=() __BJ_dc_r3=() __BJ_dc_r4=()
 
   for (( __BJ_dc_i=0; __BJ_dc_i < __BJ_dc_len; __BJ_dc_i++ )); do
-    local __BJ_dc_card __BJ_dc_orig_fu
-    into=__BJ_dc_card    $__BJ_dc_hand.getAt $__BJ_dc_i
-    into=__BJ_dc_orig_fu $__BJ_dc_card.get faceUp
-
-    # Hidden cards: indices at or beyond faceUp count are face-down
-    if (( __BJ_dc_i >= __BJ_dc_fu )); then
-      $__BJ_dc_card.set faceUp "false"
-    else
-      $__BJ_dc_card.set faceUp "true"
-    fi
+    local __BJ_dc_card
+    into=__BJ_dc_card $__BJ_dc_hand.getAt $__BJ_dc_i
 
     local -a __BJ_dc_lines=()
     readarray -t __BJ_dc_lines < <($__BJ_dc_card.render)
-    $__BJ_dc_card.set faceUp "$__BJ_dc_orig_fu"
 
     __BJ_dc_r0+=("${__BJ_dc_lines[0]:-}")
     __BJ_dc_r1+=("${__BJ_dc_lines[1]:-}")
@@ -241,14 +262,11 @@ draw_table() {
     "$__BJ_dt_round" "$__BJ_dt_bankroll" "$__BJ_dt_bet"
 
   # Dealer — hide total while hole card is down
-  local -i __BJ_dt_dfu __BJ_dt_dlen
-  into=__BJ_dt_dlen $__BJ_dt_dealer.length
-  into=__BJ_dt_dfu  $__BJ_dt_dealer.get faceUp
-  if (( __BJ_dt_dfu >= __BJ_dt_dlen )); then
+  if $__BJ_dt_dealer.hasHidden; then
+    printf '  DEALER\n'
+  else
     local -i __BJ_dt_dtot; into=__BJ_dt_dtot $__BJ_dt_dealer.total
     printf '  DEALER  [%d]\n' "$__BJ_dt_dtot"
-  else
-    printf '  DEALER\n'
   fi
   draw_cards "$__BJ_dt_dealer"
 
@@ -314,13 +332,13 @@ while (( bankroll > 0 )); do
   # Fresh deck lives on the dealer
   into=__BJ_deck PlayingCard.newDeck
   into=player BlackjackHand
-  into=dealer BlackjackHand faceUp=1 deck="$__BJ_deck"
+  into=dealer BlackjackHand deck="$__BJ_deck"
 
-  # Deal: player, dealer, player, dealer
+  # Deal: player, dealer, player, dealer (hole card face-down)
   $dealer.deal "$player"
   $dealer.deal
   $dealer.deal "$player"
-  $dealer.deal
+  $dealer.deal hidden=1
 
   draw_table "$player" "$dealer" "$round" "$bankroll" "$bet"
 

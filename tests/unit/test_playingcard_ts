@@ -15,15 +15,15 @@ into=t TestSuite name="PlayingCard Tests"
 # faceUp default
 # ============================================================================
 
-$t.section "faceUp default"
+$t.section "hidden default"
 
 into=pc PlayingCard suit="♠" rank="A"
-into=v $pc.get faceUp
-$t.assert_eq "faceUp defaults to true" "$v" "true"
+into=v $pc.get hidden
+$t.assert_eq "hidden defaults to 0" "$v" "0"
 
-into=pc2 PlayingCard suit="♥" rank="10" faceUp="false"
-into=v $pc2.get faceUp
-$t.assert_eq "faceUp=false accepted" "$v" "false"
+into=pc2 PlayingCard suit="♥" rank="10" hidden="1"
+into=v $pc2.get hidden
+$t.assert_eq "hidden=1 accepted" "$v" "1"
 
 # ============================================================================
 # flip
@@ -33,12 +33,12 @@ $t.section "flip"
 
 into=pc PlayingCard suit="♠" rank="K"
 $pc.flip
-into=v $pc.get faceUp
-$t.assert_eq "flip true→false" "$v" "false"
+into=v $pc.get hidden
+$t.assert_eq "flip 0→1" "$v" "1"
 
 $pc.flip
-into=v $pc.get faceUp
-$t.assert_eq "flip false→true" "$v" "true"
+into=v $pc.get hidden
+$t.assert_eq "flip 1→0" "$v" "0"
 
 # ============================================================================
 # render — face (faceUp=true)

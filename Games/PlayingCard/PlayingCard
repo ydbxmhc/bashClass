@@ -5,8 +5,8 @@
 # A PlayingCard knows its suit (♠ ♥ ♦ ♣) and rank (A 2-10 J Q K).
 # It does not assign numeric values — that's game-specific logic.
 #
-# faceUp controls the visible side: true = face (rank+suit), false = back.
-# flip toggles faceUp. render prints 5-line ASCII art to stdout.
+# hidden=0 (default): card is face-up. hidden=1: face-down (back shown).
+# flip toggles hidden. render draws face or back based on hidden.
 #
 # The newDeck class method creates a Deck of 52 standard cards.
 # It respects _Class, so subclasses that inherit newDeck get their
@@ -19,14 +19,14 @@
 boop.init Games.PlayingCard || return 0
 
 # ═════════════════════════════════════════════════════════════════════
-# Games.PlayingCard — suit + rank + faceUp, toString, flip, render, newDeck
+# Games.PlayingCard — suit + rank + hidden, toString, flip, render, newDeck
 # ═════════════════════════════════════════════════════════════════════
 
 Games.PlayingCard.new() {
   local _Class="${_Class:-Games.PlayingCard}"
   local __Games_PlayingCard_new_self
-  # faceUp defaults to true; caller may override with faceUp=false
-  into=__Games_PlayingCard_new_self __boop.new faceUp="true" "$@"
+  # hidden defaults to 0 (face-up); caller may override with hidden=1
+  into=__Games_PlayingCard_new_self __boop.new hidden="0" "$@"
   boop.pass "$__Games_PlayingCard_new_self" ${into:-}
 }
 
@@ -38,31 +38,30 @@ Games.PlayingCard.toString() {
   boop.pass "${__Games_PlayingCard_toString_rank}${__Games_PlayingCard_toString_suit}" ${into:-}
 }
 
-# Toggle the faceUp property between true and false.
+# Toggle the hidden property between 0 (face-up) and 1 (face-down).
 Games.PlayingCard.flip() {
   local _Self="${_Self:-}" _Class="${_Class:-Games.PlayingCard}"
-  local __Games_PlayingCard_flip_faceUp
-  __boop.parse "$_Self" faceUp __Games_PlayingCard_flip_faceUp
-  if [[ "${__Games_PlayingCard_flip_faceUp:-true}" == "true" ]]; then
-    __boop.set faceUp "false"
+  local __Games_PlayingCard_flip_hidden
+  __boop.parse "$_Self" hidden __Games_PlayingCard_flip_hidden
+  if [[ "${__Games_PlayingCard_flip_hidden:-0}" == "1" ]]; then
+    __boop.set hidden "0"
   else
-    __boop.set faceUp "true"
+    __boop.set hidden "1"
   fi
 }
 
 # Print a 5-line ASCII art card to stdout.
-# Face side: single-line box, rank top-left and bottom-right, suit centered.
-# Back side: double-line box, blue background, shade pattern.
+# Face side (hidden=0): single-line box, rank top-left/bottom-right, suit centered.
+# Back side (hidden=1): double-line box, blue background, shade pattern.
 # Red for hearts/diamonds; default color for spades/clubs.
 Games.PlayingCard.render() {
   local _Self="${_Self:-}" _Class="${_Class:-Games.PlayingCard}"
-  local __Games_PlayingCard_render_rank __Games_PlayingCard_render_suit __Games_PlayingCard_render_faceUp
+  local __Games_PlayingCard_render_rank __Games_PlayingCard_render_suit __Games_PlayingCard_render_hidden
   __boop.parse "$_Self" rank   __Games_PlayingCard_render_rank
   __boop.parse "$_Self" suit   __Games_PlayingCard_render_suit
-  __boop.parse "$_Self" faceUp __Games_PlayingCard_render_faceUp
-  : "${__Games_PlayingCard_render_faceUp:=true}"
+  __boop.parse "$_Self" hidden __Games_PlayingCard_render_hidden
 
-  if [[ "$__Games_PlayingCard_render_faceUp" != "true" ]]; then
+  if [[ "${__Games_PlayingCard_render_hidden:-0}" == "1" ]]; then
     printf '\033[44;97m╔═══════╗\033[0m\n'
     printf '\033[44;36m║░░░░░░░║\033[0m\n'
     printf '\033[44;97m║░BOOP!░║\033[0m\n'
@@ -121,4 +120,4 @@ Games.PlayingCard.newDeck() {
 
 boopClass Games.PlayingCard isa:Games.Card \
   'public:new,toString,flip,render,newDeck' \
-  'has:suit,rank,faceUp'
+  'has:suit,rank,hidden'
