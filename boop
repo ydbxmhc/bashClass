@@ -24,10 +24,12 @@ if (( ! ${__boop_loaded:-0} )); then
 declare -gi __boop_rootPID=$BASHPID
 
 # Directory where the boop framework file lives. Resolved once at load time
-# via dirname + realpath so symlinks don't fool it. Used as a fallback root
-# in the resolution chain -- checked last, after . + BOOPPATH + PATH.
+# via realpath so symlinks don't fool it; the trailing segment is stripped
+# with parameter expansion to avoid a second subshell. Used as a fallback
+# root in the resolution chain -- checked last, after . + BOOPPATH + PATH.
 declare -g __boop_root
-__boop_root="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+__boop_root="$(realpath "${BASH_SOURCE[0]}")"
+__boop_root="${__boop_root%/*}"
 
 # ============================================================================
 # GLOBALS - Registries

@@ -284,7 +284,7 @@ $t.assert_fail "K+Q=20 not blackjack" $h5.isBlackjack
 
 $t.section "BlackjackHand.show"
 
-# All face up (default faceUp=99)
+# All face up (default hidden=0)
 into=h BlackjackHand
 into=c1 PlayingCard suit="♠" rank="7"; $h.push "$c1"
 into=c2 PlayingCard suit="♥" rank="K"; $h.push "$c2"
@@ -294,8 +294,8 @@ $t.assert_contains "show includes 7♠" "$v" "7♠"
 $t.assert_contains "show includes K♥" "$v" "K♥"
 $t.assert_contains "show includes total" "$v" "[17]"
 
-# Dealer hand — faceUp=1 hides first card
-into=h2 BlackjackHand faceUp=1
+# Dealer hand — hidden=1 means card 0 is face-down
+into=h2 BlackjackHand hidden=1
 into=c1 PlayingCard suit="♦" rank="3"; $h2.push "$c1"
 into=c2 PlayingCard suit="♣" rank="9"; $h2.push "$c2"
 into=v $h2.show "Dealer"
@@ -346,14 +346,14 @@ into=v BlackjackHand.cardVal "$c"; $t.assert_eq "2 = 2"   "$v" "2"
 # ============================================================================
 
 $t.section "BlackjackHand.reveal"
-into=h BlackjackHand faceUp=1
+into=h BlackjackHand hidden=1
 into=c1 PlayingCard suit="♠" rank="5"; $h.push "$c1"
 into=c2 PlayingCard suit="♥" rank="9"; $h.push "$c2"
-# Before reveal: faceUp=1 (only last card visible)
-into=v $h.get faceUp; $t.assert_eq "faceUp before reveal = 1" "$v" "1"
+# Before reveal: hand.hidden=1
+$t.assert_ok "hasHidden before reveal" $h.hasHidden
 $h.reveal
-# After reveal: faceUp = hand length (2)
-into=v $h.get faceUp; $t.assert_eq "faceUp after reveal = hand length" "$v" "2"
+# After reveal: hand.hidden=0
+$t.assert_fail "no hidden after reveal" $h.hasHidden
 # show now includes both cards and a total
 into=s $h.show "Test"
 $t.assert_contains "revealed show has 5♠" "$s" "5♠"
@@ -366,7 +366,7 @@ $t.assert_contains "revealed show has total" "$s" "[14]"
 
 $t.section "BlackjackHand.deal"
 into=d PlayingCard.newDeck
-into=dealer BlackjackHand faceUp=1 deck="$d"
+into=dealer BlackjackHand deck="$d"
 into=player BlackjackHand
 
 # Deal to player
@@ -399,7 +399,7 @@ $t.assert_fail "BH not Deck" $h.isa Deck
 $t.section "Integration"
 
 into=d PlayingCard.newDeck
-into=dealer BlackjackHand faceUp=1 deck="$d"
+into=dealer BlackjackHand deck="$d"
 into=player BlackjackHand
 
 # Dealer deals 5 cards to the player

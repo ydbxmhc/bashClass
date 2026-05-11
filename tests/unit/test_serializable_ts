@@ -1,0 +1,160 @@
+#!/bin/bash
+set -uo pipefail
+
+# Serializable mixin tests
+#
+# Classification: UNIT (Mixins.Serializable)
+# Covers: registration, toJSON structure, fromJSON round-trip,
+#         save/load file I/O, _savefile memory, internal prop exclusion,
+#         error cases, mixes predicate, direct execution guard.
+
+. boop TestSuite Serializable
+
+into=t TestSuite name="Serializable Mixin Tests"
+
+# ============================================================================
+# Build a minimal test class with declared properties
+# ============================================================================
+
+Player.new() {
+  local _Class="${_Class:-Player}"
+  local __Player_new_self
+  into=__Player_new_self __boop.new "$@"
+  boop.pass "$__Player_new_self" ${into:-}
+}
+boopClass Player mixin:Serializable has:name,score,level 'public:new'
+
+# ============================================================================
+# Registration
+# ============================================================================
+
+$t.section "registration"
+
+$t.assert_ok "Serializable registered" \
+  test -n "${__boop_mixin_registry[Serializable]+set}"
+
+into=p Player.new name="Alice" score="42" level="3"
+$t.assert_ok "Player mixes Serializable" $p.mixes Serializable
+
+# ============================================================================
+# toJSON — structure and content
+# ============================================================================
+
+$t.section "toJSON"
+
+into=json $p.toJSON
+
+$t.assert_ok   "toJSON is non-empty"           test -n "$json"
+$t.assert_ok   "toJSON starts with {"          test "${json:0:1}" = "{"
+$t.assert_ok   "toJSON ends with }"            test "${json: -1}" = "}"
+$t.assert_contains "has _class field"          "$json" '"_class"'
+$t.assert_contains "_class value is Player"    "$json" '"_class":"Player"'
+$t.assert_contains "has name"                  "$json" '"name":"Alice"'
+$t.assert_contains "has score"                 "$json" '"score":"42"'
+$t.assert_contains "has level"                 "$json" '"level":"3"'
+
+# ============================================================================
+# toJSON — internal properties excluded
+# ============================================================================
+
+$t.section "internal prop exclusion"
+
+into=p2 Player.new name="Bob" score="0" level="1"
+$p2.mixes Serializable  # ensure mixin is active
+
+# _savefile is an internal property — should not appear in JSON
+into=json2 $p2.toJSON
+$t.assert_ok "no _savefile in JSON" bash -c \
+  '[[ "'"$json2"'" != *"_savefile"* ]]'
+
+# ============================================================================
+# fromJSON — round-trip
+# ============================================================================
+
+$t.section "fromJSON round-trip"
+
+into=p3 Player.new name="" score="" level=""
+$p3.fromJSON '{"_class":"Player","name":"Carol","score":"99","level":"7"}'
+
+into=n $p3.get name;  $t.assert_eq "name restored"  "$n" "Carol"
+into=s $p3.get score; $t.assert_eq "score restored" "$s" "99"
+into=l $p3.get level; $t.assert_eq "level restored" "$l" "7"
+
+# ============================================================================
+# fromJSON — special characters survive the round-trip
+# ============================================================================
+
+$t.section "special character round-trip"
+
+into=p4 Player.new name='say "hello"' score="0" level="1"
+into=json4 $p4.toJSON
+
+into=p5 Player.new name="" score="" level=""
+$p5.fromJSON "$json4"
+into=n5 $p5.get name
+$t.assert_eq "quotes survive round-trip" "$n5" 'say "hello"'
+
+# ============================================================================
+# save / load — file I/O
+# ============================================================================
+
+$t.section "save and load"
+
+__ts_tmpfile="$(mktemp /tmp/boop_serializable_test.XXXXXX)"
+trap 'rm -f "$__ts_tmpfile"' EXIT
+
+into=pa Player.new name="Dave" score="15" level="2"
+$pa.save "$__ts_tmpfile"
+
+$t.assert_ok "save creates file"   test -f "$__ts_tmpfile"
+$t.assert_ok "save is non-empty"   test -s "$__ts_tmpfile"
+
+into=pb Player.new name="" score="" level=""
+$pb.load "$__ts_tmpfile"
+
+into=n $pb.get name;  $t.assert_eq "name loaded"  "$n" "Dave"
+into=s $pb.get score; $t.assert_eq "score loaded" "$s" "15"
+into=l $pb.get level; $t.assert_eq "level loaded" "$l" "2"
+
+# ============================================================================
+# _savefile memory — save without arg reuses stored path
+# ============================================================================
+
+$t.section "_savefile memory"
+
+into=pm Player.new name="Eve" score="77" level="5"
+$pm.save "$__ts_tmpfile"         # stores _savefile internally
+
+$pm.set name "Eve Updated"
+$pm.save                          # no arg — should reuse _savefile
+
+into=pr Player.new name="" score="" level=""
+$pr.load "$__ts_tmpfile"
+into=n $pr.get name
+$t.assert_eq "save reuses _savefile" "$n" "Eve Updated"
+
+# ============================================================================
+# Error cases
+# ============================================================================
+
+$t.section "error cases"
+
+$t.assert_fail "fromJSON no arg crashes"      $p.fromJSON
+$t.assert_fail "save no file no _savefile"    \
+  bash -c '. boop Serializable
+  Empty.new() { local _Class=Empty; local __Empty_new_s; into=__Empty_new_s __boop.new "$@"; boop.pass "$__Empty_new_s" ${into:-}; }
+  boopClass Empty mixin:Serializable "public:new"
+  into=e Empty.new
+  $e.save'
+$t.assert_fail "load missing file crashes"    $p.load "/nonexistent/path/file.json"
+
+# ============================================================================
+# Direct execution guard
+# ============================================================================
+
+$t.section "direct execution guard"
+
+$t.assert_fail "bash Serializable exits 1" \
+  bash "$__boop_root/Mixins/Serializable/Serializable"
+
+$t.summary

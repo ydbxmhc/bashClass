@@ -387,6 +387,10 @@ are inside `__boop.log`.
 ### Games (Card, PlayingCard, Deck, Blackjack)
 - `test_blackjack` coverage audit
 - Consider whether Blackjack logic belongs in `BlackjackHand` class
+- Remaining blackjack polish:
+  - GameState class using Serializable (save/resume mid-game)
+  - Config for settings (starting bankroll, deck count, etc.)
+  - Args in `BlackjackHand.new` constructor
 
 ### Geometry (Box, Cube)
 - 91 tests passing, no known gaps. Revisit when new classes added.
@@ -403,6 +407,35 @@ Every declared method in every class should have test coverage:
 Priority: Container (23 methods), Math (26 methods), List (15),
 Map (12), Iterator (8). Also CLI-level testing for Tier 3 public
 methods.
+
+---
+
+## Documentation Sync Pass
+
+Several docs are out of date with current conventions:
+
+- **`docs/STANDARDS.md`** — "Inherited Identity Variables" section
+  says `local -I _Self _Class` is required. This is wrong; the
+  framework uses `local _Self="${_Self:-}" _Class="${_Class:-...}"`
+  throughout. Update the section to describe the current pattern.
+
+- **`docs/Container.md`** — the `MyStack.new()` example uses
+  `local -I _Class` — update to match current framework style.
+
+- **`docs/comparison.md`** — references `local -I` as a dispatch
+  overhead candidate. Either remove the reference or rewrite to
+  reflect that `local -I` is no longer used in the hot path.
+
+- **`docs/PLAN.md`** — mentions `local -I` as a bash 5 feature
+  users need. Still true mechanically, but the framework no longer
+  requires it; doc should reflect that.
+
+- **`docs/bash_style.md`** — TODO comment asks to document
+  `local -I`; resolve by documenting *why the framework doesn't
+  use it* instead.
+
+Related README audit item #10: add "why we don't use local -I"
+section to STANDARDS.md.
 
 ---
 

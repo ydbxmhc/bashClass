@@ -84,6 +84,6 @@ into=n $s2.size; $t.assert_eq "s2 size" "$n" "2"
 
 $t.section "direct execution guard"
 
-$t.assert_fail "bash Stack exits 1" bash /home/user/bashClass/Collection/Stack/Stack
+$t.assert_fail "bash Stack exits 1" bash "$__boop_root/Collection/Stack/Stack"
 
 $t.summary

@@ -5,6 +5,9 @@
 # A PlayingCard knows its suit (♠ ♥ ♦ ♣) and rank (A 2-10 J Q K).
 # It does not assign numeric values — that's game-specific logic.
 #
+# render prints a 7-line ASCII art card (face always shown).
+# Card visibility is the caller's responsibility (e.g. BlackjackHand.hidden).
+#
 # The newDeck class method creates a Deck of 52 standard cards.
 # It respects _Class, so subclasses that inherit newDeck get their
 # own type in the deck.
@@ -16,12 +19,14 @@
 boop.init Games.PlayingCard || return 0
 
 # ═════════════════════════════════════════════════════════════════════
-# Games.PlayingCard — suit + rank, toString, newDeck
+# Games.PlayingCard — suit + rank, toString, render, newDeck
 # ═════════════════════════════════════════════════════════════════════
 
 Games.PlayingCard.new() {
   local _Class="${_Class:-Games.PlayingCard}"
-  Games.Card.new "$@"
+  local __Games_PlayingCard_new_self
+  into=__Games_PlayingCard_new_self __boop.new "$@"
+  boop.pass "$__Games_PlayingCard_new_self" ${into:-}
 }
 
 Games.PlayingCard.toString() {
@@ -30,6 +35,48 @@ Games.PlayingCard.toString() {
   __boop.parse "$_Self" "rank" __Games_PlayingCard_toString_rank
   __boop.parse "$_Self" "suit" __Games_PlayingCard_toString_suit
   boop.pass "${__Games_PlayingCard_toString_rank}${__Games_PlayingCard_toString_suit}" ${into:-}
+}
+
+# Print a 7-line ASCII art card to stdout.
+# Single-line box, rank top-left/bottom-right, suit centered.
+# Red for hearts/diamonds; default color for spades/clubs.
+Games.PlayingCard.render() {
+  local _Self="${_Self:-}" _Class="${_Class:-Games.PlayingCard}"
+  local __Games_PlayingCard_render_rank __Games_PlayingCard_render_suit
+  __boop.parse "$_Self" rank __Games_PlayingCard_render_rank
+  __boop.parse "$_Self" suit __Games_PlayingCard_render_suit
+
+  # Red for hearts and diamonds
+  local __Games_PlayingCard_render_c='' __Games_PlayingCard_render_r=''
+  if [[ "$__Games_PlayingCard_render_suit" == '♥' || \
+        "$__Games_PlayingCard_render_suit" == '♦' ]]; then
+    __Games_PlayingCard_render_c=$'\033[91m'
+    __Games_PlayingCard_render_r=$'\033[0m'
+  fi
+
+  # Pad to fill 7-column inner width (rank is 1 or 2 ASCII chars)
+  local __Games_PlayingCard_render_pad
+  printf -v __Games_PlayingCard_render_pad '%*s' \
+    $(( 7 - ${#__Games_PlayingCard_render_rank} )) ''
+
+  printf '┌───────┐\n'
+  printf "│%s%s%s%s│\n" \
+    "$__Games_PlayingCard_render_c" \
+    "$__Games_PlayingCard_render_rank" \
+    "$__Games_PlayingCard_render_pad" \
+    "$__Games_PlayingCard_render_r"
+  printf '│       │\n'
+  printf "│%s   %s   %s│\n" \
+    "$__Games_PlayingCard_render_c" \
+    "$__Games_PlayingCard_render_suit" \
+    "$__Games_PlayingCard_render_r"
+  printf '│       │\n'
+  printf "│%s%s%s%s│\n" \
+    "$__Games_PlayingCard_render_c" \
+    "$__Games_PlayingCard_render_pad" \
+    "$__Games_PlayingCard_render_rank" \
+    "$__Games_PlayingCard_render_r"
+  printf '└───────┘\n'
 }
 
 # Fill a Deck with 52 standard playing cards and shuffle it.
@@ -49,4 +96,6 @@ Games.PlayingCard.newDeck() {
   boop.pass "$__Games_PlayingCard_newDeck_deck" ${into:-}
 }
 
-boopClass Games.PlayingCard isa:Games.Card public:new,toString,newDeck has:suit,rank
+boopClass Games.PlayingCard isa:Games.Card \
+  'public:new,toString,render,newDeck' \
+  'has:suit,rank'

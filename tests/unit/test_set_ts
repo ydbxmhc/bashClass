@@ -136,6 +136,6 @@ $t.assert_ok   "b-a has 5"  $d2.has "5"
 
 $t.section "direct execution guard"
 
-$t.assert_fail "bash Set exits 1" bash /home/user/bashClass/Collection/Set/Set
+$t.assert_fail "bash Set exits 1" bash "$__boop_root/Collection/Set/Set"
 
 $t.summary

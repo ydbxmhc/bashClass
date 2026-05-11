@@ -109,6 +109,6 @@ $t.assert_fail "r not mixes Taggable" $r.mixes Taggable
 
 $t.section "direct execution guard"
 
-$t.assert_fail "bash Terminal exits 1" bash /home/user/bashClass/Mixins/Terminal/Terminal
+$t.assert_fail "bash Terminal exits 1" bash "$__boop_root/Mixins/Terminal/Terminal"
 
 $t.summary

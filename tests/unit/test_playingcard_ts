@@ -1,0 +1,81 @@
+#!/bin/bash
+set -uo pipefail
+
+# PlayingCard tests — render output and existing behavior
+#
+# Classification: UNIT (Games.PlayingCard)
+# Covers: render borders and content, red-suit coloring, 2-char rank padding.
+# Note: card visibility (hidden) is a BlackjackHand property, not a card property.
+
+. boop TestSuite PlayingCard
+
+into=t TestSuite name="PlayingCard Tests"
+
+# ============================================================================
+# render — face
+# ============================================================================
+
+$t.section "render face"
+
+# $() strips trailing newline; printf '%s\n' restores it for wc -l
+__pct_raw_spade="$(bash -c '. boop PlayingCard; into=pc PlayingCard suit="♠" rank="A"; $pc.render')"
+__pct_spade="$(printf '%s\n' "$__pct_raw_spade" | sed $'s/\033\\[[0-9;]*m//g')"
+
+$t.assert_eq "face is 7 lines" \
+  "$(printf '%s\n' "$__pct_spade" | wc -l | tr -d ' ')" "7"
+
+# Match the stripped output against a glob pattern anchored to the
+# opening/closing border lines. No subshell, no quote-in-quote, no pipeline.
+$t.assert_match "top border is ┌───────┐"    "$__pct_spade" "┌───────┐"$'\n*'
+$t.assert_match "bottom border is └───────┘" "$__pct_spade" $'*\n'"└───────┘"
+
+$t.assert_contains "rank top-left"    "$__pct_spade" "A      "
+$t.assert_contains "rank bottom-right" "$__pct_spade" "      A"
+$t.assert_contains "suit centered"    "$__pct_spade" "   ♠   "
+
+# ============================================================================
+# render — 2-char rank (10)
+# ============================================================================
+
+$t.section "render 2-char rank"
+
+__pct_raw_ten="$(bash -c '. boop PlayingCard; into=pc PlayingCard suit="♥" rank="10"; $pc.render')"
+__pct_ten="$(printf '%s\n' "$__pct_raw_ten" | sed $'s/\033\\[[0-9;]*m//g')"
+
+$t.assert_contains "10 top-left"     "$__pct_ten" "10     "
+$t.assert_contains "10 bottom-right" "$__pct_ten" "     10"
+$t.assert_contains "suit centered"   "$__pct_ten" "   ♥   "
+
+# ============================================================================
+# render — red suit coloring
+# ============================================================================
+
+$t.section "render red suit"
+
+__pct_heart_raw="$(bash -c '. boop PlayingCard; into=pc PlayingCard suit="♥" rank="Q"; $pc.render')"
+$t.assert_contains "heart card has red ANSI code" \
+  "$__pct_heart_raw" $'\033[91m'
+
+__pct_spade_raw="$(bash -c '. boop PlayingCard; into=pc PlayingCard suit="♠" rank="Q"; $pc.render')"
+# Inverted match: assert the escape sequence is NOT present.
+$t.assert_ok "spade card has no red ANSI code" \
+  test "${__pct_spade_raw/$'\033[91m'/}" = "$__pct_spade_raw"
+
+# ============================================================================
+# Existing behavior preserved
+# ============================================================================
+
+$t.section "existing behavior"
+
+into=pc PlayingCard suit="♣" rank="J"
+into=v $pc.toString
+$t.assert_eq "toString still works" "$v" "J♣"
+
+$t.assert_ok "isa PlayingCard" $pc.isa PlayingCard
+$t.assert_ok "isa Card"        $pc.isa Card
+
+into=deck PlayingCard.newDeck
+into=n $deck.length
+$t.assert_eq "newDeck still produces 52 cards" "$n" "52"
+
+$t.summary
