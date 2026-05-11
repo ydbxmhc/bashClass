@@ -15,6 +15,11 @@ __ta_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 __ta_mode="${1:-all}"
 rc=0
 
+# Tee all output (stdout + stderr) to a log for later inspection.
+# The log lives at the repo root; overwritten each run.
+__ta_log="$(cd "$__ta_dir/.." && pwd)/test_all.log"
+exec > >(tee "$__ta_log") 2>&1
+
 # ============================================================================
 # Smoke — always runs first; failure aborts everything
 # ============================================================================
