@@ -1,47 +1,18 @@
 #!/bin/bash
 set -uo pipefail
 
-# PlayingCard tests — faceUp default, flip, render output
+# PlayingCard tests — render output and existing behavior
 #
 # Classification: UNIT (Games.PlayingCard)
-# Covers: faceUp default, flip toggle, render borders and content,
-#         face/back distinction, red-suit coloring, 2-char rank padding.
+# Covers: render borders and content, red-suit coloring, 2-char rank padding.
+# Note: card visibility (hidden) is a BlackjackHand property, not a card property.
 
 . boop TestSuite PlayingCard
 
 into=t TestSuite name="PlayingCard Tests"
 
 # ============================================================================
-# faceUp default
-# ============================================================================
-
-$t.section "hidden default"
-
-into=pc PlayingCard suit="♠" rank="A"
-into=v $pc.get hidden
-$t.assert_eq "hidden defaults to 0" "$v" "0"
-
-into=pc2 PlayingCard suit="♥" rank="10" hidden="1"
-into=v $pc2.get hidden
-$t.assert_eq "hidden=1 accepted" "$v" "1"
-
-# ============================================================================
-# flip
-# ============================================================================
-
-$t.section "flip"
-
-into=pc PlayingCard suit="♠" rank="K"
-$pc.flip
-into=v $pc.get hidden
-$t.assert_eq "flip 0→1" "$v" "1"
-
-$pc.flip
-into=v $pc.get hidden
-$t.assert_eq "flip 1→0" "$v" "0"
-
-# ============================================================================
-# render — face (faceUp=true)
+# render — face
 # ============================================================================
 
 $t.section "render face"
@@ -89,29 +60,6 @@ $t.assert_contains "heart card has red ANSI code" \
 __pct_spade_raw="$(bash -c '. boop PlayingCard; into=pc PlayingCard suit="♠" rank="Q"; $pc.render')"
 $t.assert_ok "spade card has no red ANSI code" bash -c \
   '[[ "'"$(printf '%s' "$__pct_spade_raw" | cat -v)"'" != *"91m"* ]]'
-
-# ============================================================================
-# render — back (faceUp=false)
-# ============================================================================
-
-$t.section "render back"
-
-__pct_back_raw="$(bash -c '. boop PlayingCard; into=pc PlayingCard suit="♦" rank="5"; $pc.flip; $pc.render')"
-__pct_back="$(printf '%s\n' "$__pct_back_raw" | sed $'s/\033\\[[0-9;]*m//g')"
-
-$t.assert_eq "back is 5 lines" \
-  "$(printf '%s\n' "$__pct_back" | wc -l | tr -d ' ')" "5"
-
-$t.assert_ok "back top border is ╔═══════╗" bash -c \
-  '[[ "'"$(printf '%s\n' "$__pct_back" | head -1)"'" = "╔═══════╗" ]]'
-
-$t.assert_ok "back bottom border is ╚═══════╝" bash -c \
-  '[[ "'"$(printf '%s\n' "$__pct_back" | tail -1)"'" = "╚═══════╝" ]]'
-
-$t.assert_contains "back has BOOP!" "$__pct_back"     "BOOP!"
-$t.assert_contains "back has blue ANSI code" "$__pct_back_raw" $'\033[44'
-$t.assert_ok "back has no rank exposed" bash -c \
-  '[[ "'"$__pct_back"'" != *"5"* ]]'
 
 # ============================================================================
 # Existing behavior preserved
