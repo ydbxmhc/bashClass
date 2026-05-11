@@ -352,8 +352,8 @@ into=c2 PlayingCard suit="♥" rank="9"; $h.push "$c2"
 # Before reveal: faceUp=1 (only last card visible)
 into=v $h.get faceUp; $t.assert_eq "faceUp before reveal = 1" "$v" "1"
 $h.reveal
-# After reveal: faceUp = hand length (2)
-into=v $h.get faceUp; $t.assert_eq "faceUp after reveal = hand length" "$v" "2"
+# After reveal: faceUp=99 (sentinel meaning "all cards visible")
+into=v $h.get faceUp; $t.assert_eq "faceUp after reveal = 99" "$v" "99"
 # show now includes both cards and a total
 into=s $h.show "Test"
 $t.assert_contains "revealed show has 5♠" "$s" "5♠"

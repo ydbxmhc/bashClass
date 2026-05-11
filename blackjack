@@ -6,32 +6,28 @@ set -uo pipefail
 #
 # Single-player blackjack against the house. You start with $100.
 #
+# Usage:
+#   bash blackjack            — full ASCII art terminal UI
+#   bash blackjack --simple   — plain text output, line-buffered input
+#   bash blackjack -s         — same
+#
 # Demonstrates:
-#   - Sourcing library classes (PlayingCard, Deck)
+#   - Sourcing library classes (PlayingCard, Deck, Terminal, Args)
 #   - Defining local subclasses in a script (BlackjackHand)
 #   - Inheritance (BlackjackHand → List), class methods
 #   - into= returns, object creation, property access
-#   - Using generic containers with domain-specific logic
-#
-# Library classes used:
-#   Card → PlayingCard — suit/rank, newDeck fills 52 standard cards
-#   List → Deck        — shuffle, draw
-#   List               — BlackjackHand inherits directly
-#
-# Usage: bash blackjack
+#   - PlayingCard.render for ASCII art cards
+#   - Terminal mixin for clear/redraw and single-keypress input
 # ─────────────────────────────────────────────────────────────────────
 
-. boop PlayingCard Deck
+. boop PlayingCard Deck Terminal Args
 
 # ═════════════════════════════════════════════════════════════════════
 # BlackjackHand — a List of PlayingCards with blackjack scoring
 # ═════════════════════════════════════════════════════════════════════
 #
-# Knows how to score cards by blackjack rules, track which cards
-# are face-up, and format itself for display. The faceUp property
-# tracks how many cards (from the end) are visible — the rest show
-# as [?]. Dealer gets faceUp=1 (hole card hidden), player gets
-# faceUp=99 (all visible).
+# faceUp (int) — how many cards from the END of the hand are visible.
+# Dealer gets faceUp=1 (hole card hidden); player gets faceUp=99 (all).
 
 BlackjackHand.new() {
   local _Class="${_Class:-BlackjackHand}"
@@ -48,8 +44,6 @@ BlackjackHand.new() {
   boop.pass "$__BH_new_self" ${into:-}
 }
 
-# Map a PlayingCard's rank to its blackjack numeric value.
-# A=11 (ace adjustment happens at the hand level), J/Q/K=10.
 BlackjackHand.cardVal() {
   local __BH_cv_rank
   __boop.parse "$1" "rank" __BH_cv_rank
@@ -60,8 +54,6 @@ BlackjackHand.cardVal() {
   esac
 }
 
-# Sum card values with ace adjustment — aces drop from 11 to 1
-# one at a time until the total is ≤21 or no aces remain.
 BlackjackHand.total() {
   local -I _Self; local _Class="${_Class:-BlackjackHand}"
   local -i __BH_total_sum=0 __BH_total_aces=0 __BH_total_i __BH_total_len __BH_total_v
@@ -100,7 +92,6 @@ BlackjackHand.isBlackjack() {
 }
 
 # Format for display. Cards past the faceUp count show as [?].
-# When any card is hidden, the total is hidden too.
 BlackjackHand.show() {
   local -I _Self; local _Class="${_Class:-BlackjackHand}"
   local __BH_show_label="${1:-Hand}" __BH_show_out="" __BH_show_card __BH_show_str
@@ -128,16 +119,11 @@ BlackjackHand.show() {
   boop.pass "$__BH_show_out" ${into:-}
 }
 
-# Reveal all cards (set faceUp to hand length).
 BlackjackHand.reveal() {
   local -I _Self; local _Class="${_Class:-BlackjackHand}"
-  local -i __BH_reveal_len
-  into=__BH_reveal_len $_Self.length
-  $_Self.set faceUp "$__BH_reveal_len"
+  $_Self.set faceUp "99"
 }
 
-# Draw a card from this hand's deck and push it to a target hand.
-# If no target is given, deals to self (the dealer hitting).
 BlackjackHand.deal() {
   local -I _Self; local _Class="${_Class:-BlackjackHand}"
   local __BH_deal_target="${1:-$_Self}" __BH_deal_deck __BH_deal_card
@@ -157,48 +143,178 @@ boopClass BlackjackHand isa:List has:type,faceUp,deck '
 
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0
 
-show_table() {
-  local __BJ_st_player="$1" __BJ_st_dealer="$2" __BJ_st_s
-  into=__BJ_st_s $__BJ_st_dealer.show "Dealer"; printf "  %s\n" "$__BJ_st_s"
-  into=__BJ_st_s $__BJ_st_player.show "You";    printf "  %s\n\n" "$__BJ_st_s"
+# ─────────────────────────────────────────────────────────────────────
+# CLI options — --simple / -s skips ASCII art
+# ─────────────────────────────────────────────────────────────────────
+
+declare simple=0
+Args.parse '
+[Options]
+simple | s
+' "$@"
+declare -i __BJ_simple="${simple:-0}"
+unset simple
+
+# ─────────────────────────────────────────────────────────────────────
+# Terminal cleanup on exit
+# ─────────────────────────────────────────────────────────────────────
+
+(( __BJ_simple )) || trap 'Terminal.restore 2>/dev/null; printf "\n"' EXIT
+
+# ─────────────────────────────────────────────────────────────────────
+# UI helpers
+# ─────────────────────────────────────────────────────────────────────
+
+# Render all cards in a hand side by side (9 cols × 5 rows each).
+# Temporarily syncs each card's faceUp boolean with the hand's faceUp count.
+draw_cards() {
+  local __BJ_dc_hand="$1"
+  local -i __BJ_dc_len __BJ_dc_fu __BJ_dc_i
+  into=__BJ_dc_len $__BJ_dc_hand.length
+  into=__BJ_dc_fu  $__BJ_dc_hand.get faceUp
+
+  local -a __BJ_dc_r0=() __BJ_dc_r1=() __BJ_dc_r2=() __BJ_dc_r3=() __BJ_dc_r4=()
+
+  for (( __BJ_dc_i=0; __BJ_dc_i < __BJ_dc_len; __BJ_dc_i++ )); do
+    local __BJ_dc_card __BJ_dc_orig_fu
+    into=__BJ_dc_card    $__BJ_dc_hand.getAt $__BJ_dc_i
+    into=__BJ_dc_orig_fu $__BJ_dc_card.get faceUp
+
+    # Hidden cards (before the visible tail) render as backs
+    if (( __BJ_dc_i < __BJ_dc_len - __BJ_dc_fu )); then
+      $__BJ_dc_card.set faceUp "false"
+    else
+      $__BJ_dc_card.set faceUp "true"
+    fi
+
+    local -a __BJ_dc_lines=()
+    readarray -t __BJ_dc_lines < <($__BJ_dc_card.render)
+    $__BJ_dc_card.set faceUp "$__BJ_dc_orig_fu"
+
+    __BJ_dc_r0+=("${__BJ_dc_lines[0]:-}")
+    __BJ_dc_r1+=("${__BJ_dc_lines[1]:-}")
+    __BJ_dc_r2+=("${__BJ_dc_lines[2]:-}")
+    __BJ_dc_r3+=("${__BJ_dc_lines[3]:-}")
+    __BJ_dc_r4+=("${__BJ_dc_lines[4]:-}")
+  done
+
+  # Print all 5 rows; cards separated by two spaces
+  local __BJ_dc_j
+  for __BJ_dc_j in 0 1 2 3 4; do
+    local -n __BJ_dc_row="__BJ_dc_r${__BJ_dc_j}"
+    printf '    '
+    local -i __BJ_dc_k=0
+    local __BJ_dc_cell
+    for __BJ_dc_cell in "${__BJ_dc_row[@]+"${__BJ_dc_row[@]}"}"; do
+      (( __BJ_dc_k++ > 0 )) && printf '  '
+      printf '%s' "$__BJ_dc_cell"
+    done
+    printf '\n'
+    unset -n __BJ_dc_row
+  done
 }
 
-# ═════════════════════════════════════════════════════════════════════
-# Main game loop
-# ═════════════════════════════════════════════════════════════════════
+# Clear screen and redraw full game state.
+# Args: player dealer round bankroll bet [message]
+draw_table() {
+  local __BJ_dt_player="$1" __BJ_dt_dealer="$2"
+  local -i __BJ_dt_round="$3" __BJ_dt_bankroll="$4" __BJ_dt_bet="$5"
+  local __BJ_dt_msg="${6:-}"
 
-printf '
+  # ── Simple (text) mode ──
+  if (( __BJ_simple )); then
+    local __BJ_dt_s
+    into=__BJ_dt_s $__BJ_dt_dealer.show "Dealer"; printf "  %s\n" "$__BJ_dt_s"
+    into=__BJ_dt_s $__BJ_dt_player.show "You";    printf "  %s\n\n" "$__BJ_dt_s"
+    [[ -n "$__BJ_dt_msg" ]] && printf '  %s\n\n' "$__BJ_dt_msg"
+    return
+  fi
+
+  # ── Full (ASCII art) mode ──
+  Terminal.clear
+  printf '\n'
+  printf '  ╔══════════════════════════════════╗\n'
+  printf '  ║         ♠  BLACKJACK  ♠          ║\n'
+  printf '  ║         powered by boop!         ║\n'
+  printf '  ╚══════════════════════════════════╝\n\n'
+  printf '  Round %-3d  ·  Bankroll: $%-6d  ·  Bet: $%d\n\n' \
+    "$__BJ_dt_round" "$__BJ_dt_bankroll" "$__BJ_dt_bet"
+
+  # Dealer — hide total while hole card is down
+  local -i __BJ_dt_dfu __BJ_dt_dlen
+  into=__BJ_dt_dlen $__BJ_dt_dealer.length
+  into=__BJ_dt_dfu  $__BJ_dt_dealer.get faceUp
+  if (( __BJ_dt_dfu >= __BJ_dt_dlen )); then
+    local -i __BJ_dt_dtot; into=__BJ_dt_dtot $__BJ_dt_dealer.total
+    printf '  DEALER  [%d]\n' "$__BJ_dt_dtot"
+  else
+    printf '  DEALER\n'
+  fi
+  draw_cards "$__BJ_dt_dealer"
+
+  # Player
+  printf '\n'
+  local -i __BJ_dt_ptot; into=__BJ_dt_ptot $__BJ_dt_player.total
+  printf '  YOU  [%d]\n' "$__BJ_dt_ptot"
+  draw_cards "$__BJ_dt_player"
+
+  [[ -n "$__BJ_dt_msg" ]] && printf '\n  %s' "$__BJ_dt_msg"
+  printf '\n'
+}
+
+# Read a single keypress (full mode) or a word (simple mode).
+# Prints the first character of the response to stdout.
+player_action() {
+  local __BJ_pa_prompt="${1:-}" __BJ_pa_key
+  if (( __BJ_simple )); then
+    printf '  %s: ' "$__BJ_pa_prompt"
+    read -r __BJ_pa_key || __BJ_pa_key="q"
+  else
+    Terminal.raw
+    into=__BJ_pa_key Terminal.readKey
+    Terminal.restore
+    printf '%s\n' "${__BJ_pa_key:-}"
+  fi
+  boop.pass "${__BJ_pa_key:0:1}" ${into:-}
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Main game loop
+# ─────────────────────────────────────────────────────────────────────
+
+if (( __BJ_simple )); then
+  printf '
   ╔══════════════════════════════════╗
   ║         ♠  BLACKJACK  ♠          ║
   ║         powered by boop!         ║
   ╚══════════════════════════════════╝
 \n'
+fi
 
 declare -i bankroll=100 round=0
-declare -l input
 
 while (( bankroll > 0 )); do
   printf "  Bankroll: \$%d\n" "$bankroll"
   printf "  Bet (or 'q' to quit): "
-  read -r input || break
+  read -r __BJ_input || break
 
-  [[ "$input" == "q" ]] && break
+  [[ "$__BJ_input" == "q" ]] && break
 
-  if [[ ! "$input" =~ ^[0-9]+$ ]] || (( input < 1 )); then
+  if [[ ! "$__BJ_input" =~ ^[0-9]+$ ]] || (( __BJ_input < 1 )); then
     printf "  Invalid bet.\n\n"; continue
   fi
-  declare -i bet=$input
+  declare -i bet=__BJ_input
   if (( bet > bankroll )); then
     printf "  You only have \$%d.\n\n" "$bankroll"; continue
   fi
 
   (( round++ ))
-  printf "\n  ── Round %d ──\n\n" "$round"
+  (( __BJ_simple )) && printf "\n  ── Round %d ──\n\n" "$round"
 
   # Fresh deck lives on the dealer
-  into=deck PlayingCard.newDeck
+  into=__BJ_deck PlayingCard.newDeck
   into=player BlackjackHand
-  into=dealer BlackjackHand faceUp=1 deck="$deck"
+  into=dealer BlackjackHand faceUp=1 deck="$__BJ_deck"
 
   # Deal: player, dealer, player, dealer
   $dealer.deal "$player"
@@ -206,27 +322,27 @@ while (( bankroll > 0 )); do
   $dealer.deal "$player"
   $dealer.deal
 
-  show_table "$player" "$dealer"
+  draw_table "$player" "$dealer" "$round" "$bankroll" "$bet"
 
   # ── Check naturals ──
   declare -i player_bj=0 dealer_bj=0
   $player.isBlackjack && player_bj=1
-  # Peek at dealer's hand for natural (both cards known to the game)
   declare -i __BJ_peek_total
   into=__BJ_peek_total $dealer.total
   (( __BJ_peek_total == 21 )) && dealer_bj=1
 
   if (( player_bj || dealer_bj )); then
     $dealer.reveal
-    show_table "$player" "$dealer"
     if (( player_bj && dealer_bj )); then
-      printf "  Both have Blackjack — push.\n\n"
+      draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" "Both have Blackjack — push."
     elif (( player_bj )); then
-      printf "  ♠ Blackjack! You win \$%d!\n\n" "$(( bet * 3 / 2 ))"
       (( bankroll += bet * 3 / 2 ))
+      draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
+        "♠ Blackjack! You win \$$(( bet * 3 / 2 ))!"
     else
-      printf "  Dealer has Blackjack. You lose \$%d.\n\n" "$bet"
       (( bankroll -= bet ))
+      draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
+        "Dealer has Blackjack. You lose \$$bet."
     fi
     continue
   fi
@@ -234,20 +350,22 @@ while (( bankroll > 0 )); do
   # ── Player turn ──
   declare -i busted=0
   while true; do
-    printf "  [H]it or [S]tand? "
-    read -r choice
-    case "${choice,,}" in
-      h|hit)
+    draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
+      "[H]it  [S]tand  [Q]uit"
+    into=__BJ_choice player_action "[H]it, [S]tand, [Q]uit"
+    case "${__BJ_choice,,}" in
+      h)
         $dealer.deal "$player"
-        show_table "$player" "$dealer"
         if $player.isBust; then
-          printf "  Bust! You lose \$%d.\n\n" "$bet"
           (( bankroll -= bet ))
+          draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
+            "Bust! You lose \$$bet."
           busted=1; break
         fi
         ;;
-      s|stand) break ;;
-      *) printf "  Type 'h' or 's'.\n" ;;
+      s) break ;;
+      q) exit 0 ;;
+      *) : ;;
     esac
   done
 
@@ -255,40 +373,42 @@ while (( bankroll > 0 )); do
 
   # ── Dealer turn ──
   $dealer.reveal
-  printf "  Dealer reveals hole card.\n"
-  show_table "$player" "$dealer"
+  draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
+    "Dealer reveals hole card..."
 
   declare -i dtotal
   while true; do
     into=dtotal $dealer.total
     (( dtotal >= 17 )) && break
-    printf "  Dealer hits.\n"
     $dealer.deal
-    show_table "$player" "$dealer"
+    draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
+      "Dealer hits..."
   done
 
   # ── Outcome ──
   declare -i ptotal; into=ptotal $player.total
   into=dtotal $dealer.total
 
+  declare __BJ_outcome_msg
   if $dealer.isBust; then
-    printf "  Dealer busts! You win \$%d!\n\n" "$bet"
     (( bankroll += bet ))
+    __BJ_outcome_msg="Dealer busts! You win \$$bet!"
   elif (( ptotal > dtotal )); then
-    printf "  You win \$%d!\n\n" "$bet"
     (( bankroll += bet ))
+    __BJ_outcome_msg="You win \$$bet!"
   elif (( dtotal > ptotal )); then
-    printf "  Dealer wins. You lose \$%d.\n\n" "$bet"
     (( bankroll -= bet ))
+    __BJ_outcome_msg="Dealer wins. You lose \$$bet."
   else
-    printf "  Push — bet returned.\n\n"
+    __BJ_outcome_msg="Push — bet returned."
   fi
+  draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" "$__BJ_outcome_msg"
+  (( __BJ_simple )) || { printf '  Press any key...' ; player_action "" >/dev/null; }
 done
 
 if (( bankroll <= 0 )); then
-  printf "  You're broke. Better luck next time.\n"
+  printf "\n  You're broke. Better luck next time.\n"
 else
   printf "\n  You leave with \$%d.\n" "$bankroll"
 fi
 printf "  Thanks for playing!\n\n"
-
