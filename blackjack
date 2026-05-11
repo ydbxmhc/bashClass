@@ -176,7 +176,7 @@ unset simple
 # UI helpers
 # ─────────────────────────────────────────────────────────────────────
 
-# Render all cards in a hand side by side (9 cols × 5 rows each).
+# Render all cards in a hand side by side (9 cols × 7 rows each).
 # If hand.hidden=1, card 0 is drawn as a back (face-down).
 draw_cards() {
   local __BJ_dc_hand="$1" __BJ_dc_h
@@ -184,7 +184,8 @@ draw_cards() {
   local -i __BJ_dc_len __BJ_dc_i
   into=__BJ_dc_len $__BJ_dc_hand.length
 
-  local -a __BJ_dc_r0=() __BJ_dc_r1=() __BJ_dc_r2=() __BJ_dc_r3=() __BJ_dc_r4=()
+  local -a __BJ_dc_r0=() __BJ_dc_r1=() __BJ_dc_r2=() __BJ_dc_r3=() \
+           __BJ_dc_r4=() __BJ_dc_r5=() __BJ_dc_r6=()
 
   for (( __BJ_dc_i=0; __BJ_dc_i < __BJ_dc_len; __BJ_dc_i++ )); do
     local __BJ_dc_card
@@ -195,7 +196,9 @@ draw_cards() {
       __BJ_dc_lines=(
         $'\033[44;97m╔═══════╗\033[0m'
         $'\033[44;36m║░░░░░░░║\033[0m'
+        $'\033[44;36m║░░░░░░░║\033[0m'
         $'\033[44;97m║░BOOP!░║\033[0m'
+        $'\033[44;36m║░░░░░░░║\033[0m'
         $'\033[44;36m║░░░░░░░║\033[0m'
         $'\033[44;97m╚═══════╝\033[0m'
       )
@@ -208,11 +211,13 @@ draw_cards() {
     __BJ_dc_r2+=("${__BJ_dc_lines[2]:-}")
     __BJ_dc_r3+=("${__BJ_dc_lines[3]:-}")
     __BJ_dc_r4+=("${__BJ_dc_lines[4]:-}")
+    __BJ_dc_r5+=("${__BJ_dc_lines[5]:-}")
+    __BJ_dc_r6+=("${__BJ_dc_lines[6]:-}")
   done
 
-  # Print all 5 rows; cards separated by two spaces
+  # Print all 7 rows; cards separated by two spaces
   local __BJ_dc_j
-  for __BJ_dc_j in 0 1 2 3 4; do
+  for __BJ_dc_j in 0 1 2 3 4 5 6; do
     local -n __BJ_dc_row="__BJ_dc_r${__BJ_dc_j}"
     printf '    '
     local -i __BJ_dc_k=0
@@ -261,10 +266,14 @@ draw_table() {
   fi
   draw_cards "$__BJ_dt_dealer"
 
-  # Player
+  # Player — hide total while hole card is face-down
   printf '\n'
-  local -i __BJ_dt_ptot; into=__BJ_dt_ptot $__BJ_dt_player.total
-  printf '  YOU  [%d]\n' "$__BJ_dt_ptot"
+  if $__BJ_dt_player.hasHidden; then
+    printf '  YOU\n'
+  else
+    local -i __BJ_dt_ptot; into=__BJ_dt_ptot $__BJ_dt_player.total
+    printf '  YOU  [%d]\n' "$__BJ_dt_ptot"
+  fi
   draw_cards "$__BJ_dt_player"
 
   [[ -n "$__BJ_dt_msg" ]] && printf '\n  %s' "$__BJ_dt_msg"
@@ -322,7 +331,7 @@ while (( bankroll > 0 )); do
 
   # Fresh deck lives on the dealer
   into=__BJ_deck PlayingCard.newDeck
-  into=player BlackjackHand
+  into=player BlackjackHand hidden=1
   into=dealer BlackjackHand hidden=1 deck="$__BJ_deck"
 
   # Deal: player, dealer, player, dealer
@@ -341,7 +350,7 @@ while (( bankroll > 0 )); do
   (( __BJ_peek_total == 21 )) && dealer_bj=1
 
   if (( player_bj || dealer_bj )); then
-    $dealer.reveal
+    $dealer.reveal; $player.reveal
     if (( player_bj && dealer_bj )); then
       draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" "Both have Blackjack — push."
     elif (( player_bj )); then
@@ -360,19 +369,33 @@ while (( bankroll > 0 )); do
   declare -i busted=0
   while true; do
     draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
-      "[H]it  [S]tand  [Q]uit"
-    into=__BJ_choice player_action "[H]it, [S]tand, [Q]uit"
+      "[H]it  [S]tand  [P]eek  [Q]uit"
+    into=__BJ_choice player_action "[H]it, [S]tand, [P]eek, [Q]uit"
     case "${__BJ_choice,,}" in
       h)
         $dealer.deal "$player"
         if $player.isBust; then
+          $player.reveal
           (( bankroll -= bet ))
           draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
             "Bust! You lose \$$bet."
           busted=1; break
         fi
         ;;
-      s) break ;;
+      s) $player.reveal; break ;;
+      p)
+        if (( __BJ_simple )); then
+          declare __BJ_peek_c __BJ_peek_s
+          into=__BJ_peek_c $player.getAt 0
+          into=__BJ_peek_s _Delegate $__BJ_peek_c.toString
+          printf '  [Peek] Your hole card: %s\n\n' "$__BJ_peek_s"
+        else
+          $player.reveal
+          draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" "Peeking..."
+          sleep 1
+          $player.set hidden "1"
+        fi
+        ;;
       q) exit 0 ;;
       *) : ;;
     esac
@@ -384,6 +407,7 @@ while (( bankroll > 0 )); do
   $dealer.reveal
   draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
     "Dealer reveals hole card..."
+  sleep 1
 
   declare -i dtotal
   while true; do
@@ -392,6 +416,7 @@ while (( bankroll > 0 )); do
     $dealer.deal
     draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
       "Dealer hits..."
+    sleep 1
   done
 
   # ── Outcome ──

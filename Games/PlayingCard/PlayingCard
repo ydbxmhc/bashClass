@@ -5,8 +5,8 @@
 # A PlayingCard knows its suit (♠ ♥ ♦ ♣) and rank (A 2-10 J Q K).
 # It does not assign numeric values — that's game-specific logic.
 #
-# hidden=0 (default): card is face-up. hidden=1: face-down (back shown).
-# flip toggles hidden. render draws face or back based on hidden.
+# render prints a 7-line ASCII art card (face always shown).
+# Card visibility is the caller's responsibility (e.g. BlackjackHand.hidden).
 #
 # The newDeck class method creates a Deck of 52 standard cards.
 # It respects _Class, so subclasses that inherit newDeck get their
@@ -19,7 +19,7 @@
 boop.init Games.PlayingCard || return 0
 
 # ═════════════════════════════════════════════════════════════════════
-# Games.PlayingCard — suit + rank + hidden, toString, flip, render, newDeck
+# Games.PlayingCard — suit + rank, toString, render, newDeck
 # ═════════════════════════════════════════════════════════════════════
 
 Games.PlayingCard.new() {
@@ -37,7 +37,7 @@ Games.PlayingCard.toString() {
   boop.pass "${__Games_PlayingCard_toString_rank}${__Games_PlayingCard_toString_suit}" ${into:-}
 }
 
-# Print a 5-line ASCII art card to stdout.
+# Print a 7-line ASCII art card to stdout.
 # Single-line box, rank top-left/bottom-right, suit centered.
 # Red for hearts/diamonds; default color for spades/clubs.
 Games.PlayingCard.render() {
@@ -65,10 +65,12 @@ Games.PlayingCard.render() {
     "$__Games_PlayingCard_render_rank" \
     "$__Games_PlayingCard_render_pad" \
     "$__Games_PlayingCard_render_r"
+  printf '│       │\n'
   printf "│%s   %s   %s│\n" \
     "$__Games_PlayingCard_render_c" \
     "$__Games_PlayingCard_render_suit" \
     "$__Games_PlayingCard_render_r"
+  printf '│       │\n'
   printf "│%s%s%s%s│\n" \
     "$__Games_PlayingCard_render_c" \
     "$__Games_PlayingCard_render_pad" \
