@@ -1,0 +1,133 @@
+#!/bin/bash
+set -uo pipefail
+
+# PlayingCard tests — faceUp default, flip, render output
+#
+# Classification: UNIT (Games.PlayingCard)
+# Covers: faceUp default, flip toggle, render borders and content,
+#         face/back distinction, red-suit coloring, 2-char rank padding.
+
+. boop TestSuite PlayingCard
+
+into=t TestSuite name="PlayingCard Tests"
+
+# ============================================================================
+# faceUp default
+# ============================================================================
+
+$t.section "faceUp default"
+
+into=pc PlayingCard suit="♠" rank="A"
+into=v $pc.get faceUp
+$t.assert_eq "faceUp defaults to true" "$v" "true"
+
+into=pc2 PlayingCard suit="♥" rank="10" faceUp="false"
+into=v $pc2.get faceUp
+$t.assert_eq "faceUp=false accepted" "$v" "false"
+
+# ============================================================================
+# flip
+# ============================================================================
+
+$t.section "flip"
+
+into=pc PlayingCard suit="♠" rank="K"
+$pc.flip
+into=v $pc.get faceUp
+$t.assert_eq "flip true→false" "$v" "false"
+
+$pc.flip
+into=v $pc.get faceUp
+$t.assert_eq "flip false→true" "$v" "true"
+
+# ============================================================================
+# render — face (faceUp=true)
+# ============================================================================
+
+$t.section "render face"
+
+# $() strips trailing newline; printf '%s\n' restores it for wc -l
+__pct_raw_spade="$(bash -c '. boop PlayingCard; into=pc PlayingCard suit="♠" rank="A"; $pc.render')"
+__pct_spade="$(printf '%s\n' "$__pct_raw_spade" | sed $'s/\033\\[[0-9;]*m//g')"
+
+$t.assert_eq "face is 5 lines" \
+  "$(printf '%s\n' "$__pct_spade" | wc -l | tr -d ' ')" "5"
+
+$t.assert_ok "top border is ┌───────┐" bash -c \
+  '[[ "'"$(printf '%s\n' "$__pct_spade" | head -1)"'" = "┌───────┐" ]]'
+
+$t.assert_ok "bottom border is └───────┘" bash -c \
+  '[[ "'"$(printf '%s\n' "$__pct_spade" | tail -1)"'" = "└───────┘" ]]'
+
+$t.assert_contains "rank top-left"    "$__pct_spade" "A      "
+$t.assert_contains "rank bottom-right" "$__pct_spade" "      A"
+$t.assert_contains "suit centered"    "$__pct_spade" "   ♠   "
+
+# ============================================================================
+# render — 2-char rank (10)
+# ============================================================================
+
+$t.section "render 2-char rank"
+
+__pct_raw_ten="$(bash -c '. boop PlayingCard; into=pc PlayingCard suit="♥" rank="10"; $pc.render')"
+__pct_ten="$(printf '%s\n' "$__pct_raw_ten" | sed $'s/\033\\[[0-9;]*m//g')"
+
+$t.assert_contains "10 top-left"     "$__pct_ten" "10     "
+$t.assert_contains "10 bottom-right" "$__pct_ten" "     10"
+$t.assert_contains "suit centered"   "$__pct_ten" "   ♥   "
+
+# ============================================================================
+# render — red suit coloring
+# ============================================================================
+
+$t.section "render red suit"
+
+__pct_heart_raw="$(bash -c '. boop PlayingCard; into=pc PlayingCard suit="♥" rank="Q"; $pc.render')"
+$t.assert_contains "heart card has red ANSI code" \
+  "$__pct_heart_raw" $'\033[91m'
+
+__pct_spade_raw="$(bash -c '. boop PlayingCard; into=pc PlayingCard suit="♠" rank="Q"; $pc.render')"
+$t.assert_ok "spade card has no red ANSI code" bash -c \
+  '[[ "'"$(printf '%s' "$__pct_spade_raw" | cat -v)"'" != *"91m"* ]]'
+
+# ============================================================================
+# render — back (faceUp=false)
+# ============================================================================
+
+$t.section "render back"
+
+__pct_back_raw="$(bash -c '. boop PlayingCard; into=pc PlayingCard suit="♦" rank="5"; $pc.flip; $pc.render')"
+__pct_back="$(printf '%s\n' "$__pct_back_raw" | sed $'s/\033\\[[0-9;]*m//g')"
+
+$t.assert_eq "back is 5 lines" \
+  "$(printf '%s\n' "$__pct_back" | wc -l | tr -d ' ')" "5"
+
+$t.assert_ok "back top border is ╔═══════╗" bash -c \
+  '[[ "'"$(printf '%s\n' "$__pct_back" | head -1)"'" = "╔═══════╗" ]]'
+
+$t.assert_ok "back bottom border is ╚═══════╝" bash -c \
+  '[[ "'"$(printf '%s\n' "$__pct_back" | tail -1)"'" = "╚═══════╝" ]]'
+
+$t.assert_contains "back has BOOP!" "$__pct_back"     "BOOP!"
+$t.assert_contains "back has blue ANSI code" "$__pct_back_raw" $'\033[44'
+$t.assert_ok "back has no rank exposed" bash -c \
+  '[[ "'"$__pct_back"'" != *"5"* ]]'
+
+# ============================================================================
+# Existing behavior preserved
+# ============================================================================
+
+$t.section "existing behavior"
+
+into=pc PlayingCard suit="♣" rank="J"
+into=v $pc.toString
+$t.assert_eq "toString still works" "$v" "J♣"
+
+$t.assert_ok "isa PlayingCard" $pc.isa PlayingCard
+$t.assert_ok "isa Card"        $pc.isa Card
+
+into=deck PlayingCard.newDeck
+into=n $deck.length
+$t.assert_eq "newDeck still produces 52 cards" "$n" "52"
+
+$t.summary
