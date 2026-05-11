@@ -391,6 +391,14 @@ are inside `__boop.log`.
   - GameState class using Serializable (save/resume mid-game)
   - Config for settings (starting bankroll, deck count, etc.)
   - Args in `BlackjackHand.new` constructor
+- **Partial redraw** (UI optimization): `draw_table` currently clears
+  and rebuilds the whole screen on every state change -- hit, stand,
+  peek, dealer turn, outcome. Works fine but flickers. Better shape:
+  a `Terminal.moveTo row col` helper + layout constants for each
+  region (header, dealer row, player row, message line), so a peek
+  only redraws the hole card and a hit only redraws the relevant
+  hand. Needs a cursor-positioning primitive on the Terminal mixin
+  and some layout accounting.
 
 ### Geometry (Box, Cube)
 - 91 tests passing, no known gaps. Revisit when new classes added.

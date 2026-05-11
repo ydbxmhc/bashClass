@@ -195,13 +195,17 @@ draw_cards() {
 
     local -a __BJ_dc_lines=()
     if [[ "${__BJ_dc_h:-0}" == "1" && __BJ_dc_i -eq 0 ]]; then
-      local __BJ_dc_bw=$'\033[44;97m' __BJ_dc_cy=$'\033[44;36m' __BJ_dc_rs=$'\033[0m'
+      # Blue background throughout. Plain white for structure (border),
+      # cyan for the decorative ░ pattern, black for the lettering.
+      # No bright/bold variants anywhere.
+      local __BJ_dc_bw=$'\033[44;37m' __BJ_dc_cy=$'\033[44;36m' \
+            __BJ_dc_bk=$'\033[44;30m' __BJ_dc_rs=$'\033[0m'
       __BJ_dc_lines=(
         "${__BJ_dc_bw}╔═══════╗${__BJ_dc_rs}"
         "${__BJ_dc_bw}║${__BJ_dc_cy}░░░░░░░${__BJ_dc_bw}║${__BJ_dc_rs}"
-        "${__BJ_dc_bw}║${__BJ_dc_cy}░░░░░░░${__BJ_dc_bw}║${__BJ_dc_rs}"
-        "${__BJ_dc_bw}║${__BJ_dc_cy}░BOOP!░${__BJ_dc_bw}║${__BJ_dc_rs}"
-        "${__BJ_dc_bw}║${__BJ_dc_cy}░░░░░░░${__BJ_dc_bw}║${__BJ_dc_rs}"
+        "${__BJ_dc_bw}║${__BJ_dc_cy}░${__BJ_dc_bk}CARDS${__BJ_dc_cy}░${__BJ_dc_bw}║${__BJ_dc_rs}"
+        "${__BJ_dc_bw}║${__BJ_dc_cy}░${__BJ_dc_bk}WITH${__BJ_dc_cy}░░${__BJ_dc_bw}║${__BJ_dc_rs}"
+        "${__BJ_dc_bw}║${__BJ_dc_cy}░${__BJ_dc_bk}BOOP!${__BJ_dc_cy}░${__BJ_dc_bw}║${__BJ_dc_rs}"
         "${__BJ_dc_bw}║${__BJ_dc_cy}░░░░░░░${__BJ_dc_bw}║${__BJ_dc_rs}"
         "${__BJ_dc_bw}╚═══════╝${__BJ_dc_rs}"
       )
@@ -320,6 +324,77 @@ fi
 
 declare -i bankroll=100 round=0
 
+# ─────────────────────────────────────────────────────────────────────
+# Deck: Platonic Master + indexed working order
+# ─────────────────────────────────────────────────────────────────────
+#
+# The expensive operation here is creating PlayingCard objects (~10 seconds
+# for 52 cards on fork-heavy platforms like Git Bash on Windows). We do
+# that exactly once at session start to build __BJ_master -- a flat bash
+# array of 52 card IDs. That's the Platonic deck; it never changes.
+#
+# The working state is __BJ_order (a shuffled permutation of 0..51) plus
+# __BJ_next (the cursor into __BJ_order). Drawing advances the cursor;
+# shuffling just Fisher-Yates'es the index array and resets the cursor.
+# Both are pure bash-array operations -- sub-millisecond on any platform.
+#
+# At end-of-hand, hands are "discarded" (cleared). The cards stay in the
+# master forever; we just stop referencing them via the hands.
+
+printf "  Dealing a fresh deck..."
+into=__BJ_one_deck PlayingCard.newDeck
+declare -a __BJ_master=()
+declare -i __BJ_mi __BJ_mlen
+into=__BJ_mlen $__BJ_one_deck.length
+for (( __BJ_mi=0; __BJ_mi < __BJ_mlen; __BJ_mi++ )); do
+  into=__BJ_master[__BJ_mi] $__BJ_one_deck.getAt $__BJ_mi
+done
+unset __BJ_one_deck __BJ_mi __BJ_mlen
+
+# Wipe the "Dealing..." line with carriage return + enough spaces.
+printf '\r                             \r'
+
+declare -a __BJ_order=()
+declare -i __BJ_next=0
+
+# Shuffle the index array (Fisher-Yates) and reset the cursor.
+# Sub-millisecond since we're only moving integers around.
+__bj_shuffle() {
+  local -i __i
+  __BJ_order=()
+  for (( __i = 0; __i < 52; __i++ )); do __BJ_order[__i]=__i; done
+  local -i __j __tmp
+  for (( __i = 51; __i > 0; __i-- )); do
+    __j=$(( RANDOM % (__i + 1) ))
+    __tmp="${__BJ_order[__i]}"
+    __BJ_order[__i]="${__BJ_order[__j]}"
+    __BJ_order[__j]="$__tmp"
+  done
+  __BJ_next=0
+}
+
+# Draw the next card from the shuffled order and advance the cursor.
+# Returns the card's object ID via boop.pass, honoring into=.
+__bj_draw() {
+  local __card="${__BJ_master[${__BJ_order[__BJ_next]}]}"
+  (( __BJ_next++ ))
+  boop.pass "$__card" ${into:-}
+}
+
+# Discard a hand: clear its contents. The cards stay in the master
+# forever -- hands just stop referencing them.
+__bj_discard() {
+  local __hand="$1"
+  $__hand.clear
+}
+
+__bj_shuffle
+
+# Hands are reused across rounds -- at end-of-round we discard (clear)
+# them, which is cheap, rather than creating new hand objects each time.
+into=player BlackjackHand hidden=1
+into=dealer BlackjackHand hidden=1
+
 while (( bankroll > 0 )); do
   printf "  Bankroll: \$%d\n" "$bankroll"
   printf "  Bet (or 'q' to quit): "
@@ -338,16 +413,27 @@ while (( bankroll > 0 )); do
   (( round++ ))
   (( __BJ_simple )) && printf "\n  ── Round %d ──\n\n" "$round"
 
-  # Fresh deck lives on the dealer
-  into=__BJ_deck PlayingCard.newDeck
-  into=player BlackjackHand hidden=1
-  into=dealer BlackjackHand hidden=1 deck="$__BJ_deck"
+  # Reshuffle only when cards run low. Worst-case single hand is
+  # ~18 cards (2 initial each + up to ~8 hits per player before bust).
+  # 20 is a safe threshold. The reshuffle itself is sub-millisecond.
+  if (( 52 - __BJ_next < 20 )); then
+    printf "  Shuffling..."
+    __bj_shuffle
+    printf '\r                 \r'
+  fi
 
-  # Deal: player, dealer, player, dealer
-  $dealer.deal "$player"
-  $dealer.deal
-  $dealer.deal "$player"
-  $dealer.deal
+  # Start of round: discard both hands (carried over from prior round
+  # on rounds 2+) and reset the hole-card flag.
+  __bj_discard "$player"; $player.set hidden "1"
+  __bj_discard "$dealer"; $dealer.set hidden "1"
+
+  # Deal: player, dealer, player, dealer. We draw from the working
+  # order and push straight into the hand.
+  declare __BJ_card
+  into=__BJ_card __bj_draw; $player.push "$__BJ_card"
+  into=__BJ_card __bj_draw; $dealer.push "$__BJ_card"
+  into=__BJ_card __bj_draw; $player.push "$__BJ_card"
+  into=__BJ_card __bj_draw; $dealer.push "$__BJ_card"
 
   draw_table "$player" "$dealer" "$round" "$bankroll" "$bet"
 
@@ -375,20 +461,30 @@ while (( bankroll > 0 )); do
   fi
 
   # ── Player turn ──
-  declare -i busted=0
+  declare -i busted=0 charlie=0
   while true; do
     draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
       "[H]it  [S]tand  [P]eek  [Q]uit"
     into=__BJ_choice player_action "[H]it, [S]tand, [P]eek, [Q]uit"
     case "${__BJ_choice,,}" in
       h)
-        $dealer.deal "$player"
+        into=__BJ_card __bj_draw; $player.push "$__BJ_card"
         if $player.isBust; then
           $player.reveal
           (( bankroll -= bet ))
           draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
             "Bust! You lose \$$bet."
           busted=1; break
+        fi
+        # Five-Card Charlie: 5 cards without busting is an auto-win at 2:1.
+        declare -i __BJ_plen
+        into=__BJ_plen $player.length
+        if (( __BJ_plen >= 5 )); then
+          $player.reveal
+          (( bankroll += bet * 2 ))
+          draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
+            "Five-Card Charlie! You win \$$(( bet * 2 ))!"
+          charlie=1; break
         fi
         ;;
       s) $player.reveal; break ;;
@@ -410,7 +506,7 @@ while (( bankroll > 0 )); do
     esac
   done
 
-  (( busted )) && continue
+  (( busted || charlie )) && continue
 
   # ── Dealer turn ──
   $dealer.reveal
@@ -422,7 +518,7 @@ while (( bankroll > 0 )); do
   while true; do
     into=dtotal $dealer.total
     (( dtotal >= 17 )) && break
-    $dealer.deal
+    into=__BJ_card __bj_draw; $dealer.push "$__BJ_card"
     draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
       "Dealer hits..."
     sleep 1
