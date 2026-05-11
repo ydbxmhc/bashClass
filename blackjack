@@ -56,7 +56,7 @@ BlackjackHand.cardVal() {
 }
 
 BlackjackHand.total() {
-  local -I _Self; local _Class="${_Class:-BlackjackHand}"
+  local _Self="${_Self:-}" _Class="${_Class:-BlackjackHand}"
   local -i __BH_total_sum=0 __BH_total_aces=0 __BH_total_i __BH_total_len __BH_total_v
   local __BH_total_card __BH_total_rank
   into=__BH_total_len $_Self.length
@@ -77,14 +77,14 @@ BlackjackHand.total() {
 }
 
 BlackjackHand.isBust() {
-  local -I _Self; local _Class="${_Class:-BlackjackHand}"
+  local _Self="${_Self:-}" _Class="${_Class:-BlackjackHand}"
   local -i __BH_isBust_t
   into=__BH_isBust_t $_Self.total
   (( __BH_isBust_t > 21 ))
 }
 
 BlackjackHand.isBlackjack() {
-  local -I _Self; local _Class="${_Class:-BlackjackHand}"
+  local _Self="${_Self:-}" _Class="${_Class:-BlackjackHand}"
   local -i __BH_isBJ_len __BH_isBJ_t
   into=__BH_isBJ_len $_Self.length
   (( __BH_isBJ_len != 2 )) && return 1
@@ -94,7 +94,7 @@ BlackjackHand.isBlackjack() {
 
 # Format for display. Card 0 shows as [?] when hand.hidden=1.
 BlackjackHand.show() {
-  local -I _Self; local _Class="${_Class:-BlackjackHand}"
+  local _Self="${_Self:-}" _Class="${_Class:-BlackjackHand}"
   local __BH_show_label="${1:-Hand}" __BH_show_out="" __BH_show_card __BH_show_str __BH_show_h
   local -i __BH_show_i __BH_show_len
   __boop.parse "$_Self" hidden __BH_show_h
@@ -121,13 +121,13 @@ BlackjackHand.show() {
 
 # Reveal all cards by clearing the hand's hidden flag.
 BlackjackHand.reveal() {
-  local -I _Self; local _Class="${_Class:-BlackjackHand}"
+  local _Self="${_Self:-}" _Class="${_Class:-BlackjackHand}"
   __boop.set hidden "0"
 }
 
 # Draw a card from the deck and push it to target (default: self).
 BlackjackHand.deal() {
-  local -I _Self; local _Class="${_Class:-BlackjackHand}"
+  local _Self="${_Self:-}" _Class="${_Class:-BlackjackHand}"
   local __BH_deal_target="${1:-}" __BH_deal_deck __BH_deal_card
   : "${__BH_deal_target:=$_Self}"
   into=__BH_deal_deck $_Self.get deck
@@ -138,7 +138,7 @@ BlackjackHand.deal() {
 
 # Exit 0 if hand.hidden=1 (card 0 is face-down).
 BlackjackHand.hasHidden() {
-  local -I _Self; local _Class="${_Class:-BlackjackHand}"
+  local _Self="${_Self:-}" _Class="${_Class:-BlackjackHand}"
   local __BH_hasHidden_h
   __boop.parse "$_Self" hidden __BH_hasHidden_h
   [[ "${__BH_hasHidden_h:-0}" == "1" ]]
@@ -169,8 +169,10 @@ unset simple
 # ─────────────────────────────────────────────────────────────────────
 # Terminal cleanup on exit
 # ─────────────────────────────────────────────────────────────────────
-
-(( __BJ_simple )) || trap 'Terminal.restore 2>/dev/null; printf "\n"' EXIT
+#
+# No top-level trap — we only enter raw mode briefly inside player_action,
+# and that function installs its own narrow-scope trap for the duration
+# of the keypress. See player_action below.
 
 # ─────────────────────────────────────────────────────────────────────
 # UI helpers
@@ -289,9 +291,15 @@ player_action() {
     printf '  %s: ' "$__BJ_pa_prompt"
     read -r __BJ_pa_key || __BJ_pa_key="q"
   else
+    # Raw mode is scoped tightly around the keypress: install the
+    # restore-trap after entering raw mode and tear it down once we
+    # restore cleanly. If a signal fires during readKey, the trap
+    # runs and the terminal is left in a sane state.
     Terminal.raw
+    trap 'Terminal.restore; printf "\n"' EXIT INT TERM
     into=__BJ_pa_key Terminal.readKey
     Terminal.restore
+    trap - EXIT INT TERM
     printf '%s\n' "${__BJ_pa_key:-}"
   fi
   boop.pass "${__BJ_pa_key:0:1}" ${into:-}
