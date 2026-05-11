@@ -1,6 +1,25 @@
 #!/bin/bash
 set -uo pipefail
 
+printf '
+  ╔══════════════════════════════════╗ 
+  ║         ♠  BLACKJACK  ♠          ║ 
+  ║         powered by boop!         ║ 
+  ╚══════════════════════════════════╝ 
+\n'
+
+# Helper: print a loading message, overwriting the previous one.
+# Uses \r + spaces to clear the line, so consecutive calls stack
+# cleanly without newlines.
+__bj_loading() {
+  printf "\r                                              \r  %s" "$1"
+}
+
+# The heavy work is PlayingCard.newDeck (~9s). The other steps are
+# near-instant. These three messages are for color; we pace them
+# with short sleeps so the narrative beats feel roughly even.
+__bj_loading "Unwrapping a fresh deck..."
+
 # ─────────────────────────────────────────────────────────────────────
 # BLACKJACK — a boop framework demonstration
 #
@@ -92,17 +111,32 @@ BlackjackHand.isBlackjack() {
   (( __BH_isBJ_t == 21 ))
 }
 
-# Format for display. Card 0 shows as [?] when hand.hidden=1.
+# Format for display.
+#
+# Second arg controls how a hidden hole card is rendered:
+#   opponent (default) — card 0 shows as [?] (dealer-style; opaque to observer)
+#   owner              — card 0 shows bracketed with its value (e.g. [7♠]),
+#                        representing "you know what it is, but it's face-down
+#                        on the table." Player's own hand should use this.
+#
+# When hand.hidden=0 (revealed) both modes print the card normally.
 BlackjackHand.show() {
   local _Self="${_Self:-}" _Class="${_Class:-BlackjackHand}"
-  local __BH_show_label="${1:-Hand}" __BH_show_out="" __BH_show_card __BH_show_str __BH_show_h
+  local __BH_show_label="${1:-Hand}" __BH_show_view="${2:-opponent}"
+  local __BH_show_out="" __BH_show_card __BH_show_str __BH_show_h
   local -i __BH_show_i __BH_show_len
   __boop.parse "$_Self" hidden __BH_show_h
   into=__BH_show_len $_Self.length
   for (( __BH_show_i=0; __BH_show_i < __BH_show_len; __BH_show_i++ )); do
     into=__BH_show_card $_Self.getAt $__BH_show_i
     if [[ "${__BH_show_h:-0}" == "1" && __BH_show_i -eq 0 ]]; then
-      __BH_show_str="[?]"
+      if [[ "$__BH_show_view" == "owner" ]]; then
+        local __BH_show_cstr
+        into=__BH_show_cstr _Delegate $__BH_show_card.toString
+        __BH_show_str="[$__BH_show_cstr]"
+      else
+        __BH_show_str="[?]"
+      fi
     else
       into=__BH_show_str _Delegate $__BH_show_card.toString
     fi
@@ -249,7 +283,15 @@ draw_table() {
   if (( __BJ_simple )); then
     local __BJ_dt_s
     into=__BJ_dt_s $__BJ_dt_dealer.show "Dealer"; printf "  %s\n" "$__BJ_dt_s"
-    into=__BJ_dt_s $__BJ_dt_player.show "You";    printf "  %s\n\n" "$__BJ_dt_s"
+    into=__BJ_dt_s $__BJ_dt_player.show "You" "owner"
+    # Always show the player's running total, even with a hidden hole card.
+    # If the hand is hidden, .show suppresses the [N] bracket -- append it.
+    if $__BJ_dt_player.hasHidden; then
+      local -i __BJ_dt_ptot_simple
+      into=__BJ_dt_ptot_simple $__BJ_dt_player.total
+      __BJ_dt_s="$__BJ_dt_s  [$__BJ_dt_ptot_simple]"
+    fi
+    printf "  %s\n\n" "$__BJ_dt_s"
     [[ -n "$__BJ_dt_msg" ]] && printf '  %s\n\n' "$__BJ_dt_msg"
     return
   fi
@@ -273,14 +315,11 @@ draw_table() {
   fi
   draw_cards "$__BJ_dt_dealer"
 
-  # Player — hide total while hole card is face-down
+  # Player — always show the running total (even when the hole card
+  # is face-down). The player knows their own total.
   printf '\n'
-  if $__BJ_dt_player.hasHidden; then
-    printf '  YOU\n'
-  else
-    local -i __BJ_dt_ptot; into=__BJ_dt_ptot $__BJ_dt_player.total
-    printf '  YOU  [%d]\n' "$__BJ_dt_ptot"
-  fi
+  local -i __BJ_dt_ptot; into=__BJ_dt_ptot $__BJ_dt_player.total
+  printf '  YOU  [%d]\n' "$__BJ_dt_ptot"
   draw_cards "$__BJ_dt_player"
 
   [[ -n "$__BJ_dt_msg" ]] && printf '\n  %s' "$__BJ_dt_msg"
@@ -313,15 +352,6 @@ player_action() {
 # Main game loop
 # ─────────────────────────────────────────────────────────────────────
 
-if (( __BJ_simple )); then
-  printf '
-  ╔══════════════════════════════════╗
-  ║         ♠  BLACKJACK  ♠          ║
-  ║         powered by boop!         ║
-  ╚══════════════════════════════════╝
-\n'
-fi
-
 declare -i bankroll=100 round=0
 
 # ─────────────────────────────────────────────────────────────────────
@@ -340,19 +370,22 @@ declare -i bankroll=100 round=0
 #
 # At end-of-hand, hands are "discarded" (cleared). The cards stay in the
 # master forever; we just stop referencing them via the hands.
-
-printf "  Dealing a fresh deck..."
+__bj_loading "Shuffling thoroughly..."
 into=__BJ_one_deck PlayingCard.newDeck
 declare -a __BJ_master=()
 declare -i __BJ_mi __BJ_mlen
+$__BJ_one_deck.shuffle
+
+__bj_loading "Loading into the shoe..."
 into=__BJ_mlen $__BJ_one_deck.length
 for (( __BJ_mi=0; __BJ_mi < __BJ_mlen; __BJ_mi++ )); do
   into=__BJ_master[__BJ_mi] $__BJ_one_deck.getAt $__BJ_mi
 done
 unset __BJ_one_deck __BJ_mi __BJ_mlen
+sleep 0.5
 
-# Wipe the "Dealing..." line with carriage return + enough spaces.
-printf '\r                             \r'
+# Clear the final loading message.
+printf '\r                                              \r'
 
 declare -a __BJ_order=()
 declare -i __BJ_next=0
@@ -360,10 +393,9 @@ declare -i __BJ_next=0
 # Shuffle the index array (Fisher-Yates) and reset the cursor.
 # Sub-millisecond since we're only moving integers around.
 __bj_shuffle() {
-  local -i __i
+  local -i __i __j __tmp
   __BJ_order=()
-  for (( __i = 0; __i < 52; __i++ )); do __BJ_order[__i]=__i; done
-  local -i __j __tmp
+  for (( __i = 0; __i < 52; __i++ )); do __BJ_order[__i]="$__i"; done
   for (( __i = 51; __i > 0; __i-- )); do
     __j=$(( RANDOM % (__i + 1) ))
     __tmp="${__BJ_order[__i]}"
@@ -417,9 +449,9 @@ while (( bankroll > 0 )); do
   # ~18 cards (2 initial each + up to ~8 hits per player before bust).
   # 20 is a safe threshold. The reshuffle itself is sub-millisecond.
   if (( 52 - __BJ_next < 20 )); then
-    printf "  Shuffling..."
+    __bj_loading "Shuffling..."
     __bj_shuffle
-    printf '\r                 \r'
+    printf '\r                                              \r'
   fi
 
   # Start of round: discard both hands (carried over from prior round
@@ -434,8 +466,6 @@ while (( bankroll > 0 )); do
   into=__BJ_card __bj_draw; $dealer.push "$__BJ_card"
   into=__BJ_card __bj_draw; $player.push "$__BJ_card"
   into=__BJ_card __bj_draw; $dealer.push "$__BJ_card"
-
-  draw_table "$player" "$dealer" "$round" "$bankroll" "$bet"
 
   # ── Check naturals ──
   declare -i player_bj=0 dealer_bj=0
@@ -463,8 +493,14 @@ while (( bankroll > 0 )); do
   # ── Player turn ──
   declare -i busted=0 charlie=0
   while true; do
-    draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
-      "[H]it  [S]tand  [P]eek  [Q]uit"
+    # Full mode shows the action hint as the table message; simple mode
+    # lets player_action emit its own prompt (avoids duplicate lines).
+    if (( __BJ_simple )); then
+      draw_table "$player" "$dealer" "$round" "$bankroll" "$bet"
+    else
+      draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
+        "[H]it  [S]tand  [P]eek  [Q]uit"
+    fi
     into=__BJ_choice player_action "[H]it, [S]tand, [P]eek, [Q]uit"
     case "${__BJ_choice,,}" in
       h)
@@ -542,7 +578,6 @@ while (( bankroll > 0 )); do
     __BJ_outcome_msg="Push — bet returned."
   fi
   draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" "$__BJ_outcome_msg"
-  (( __BJ_simple )) || { printf '  Press any key...' ; player_action "" >/dev/null; }
 done
 
 if (( bankroll <= 0 )); then

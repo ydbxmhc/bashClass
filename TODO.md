@@ -399,6 +399,18 @@ are inside `__boop.log`.
   only redraws the hole card and a hit only redraws the relevant
   hand. Needs a cursor-positioning primitive on the Terminal mixin
   and some layout accounting.
+- **Flash/flicker in general**: related to the partial-redraw item
+  above but broader. Every screen refresh repaints all UI chrome
+  (header box, bankroll line, section labels, card borders). The
+  demo feels choppy as a result. When we tackle partial redraw,
+  the goal is "only the cells that actually changed."
+- **Streamlined betting**: the current bet flow is a plain `read`
+  prompt on a bare line, separate from the main table view. Feels
+  bolted-on. Needs a design pass -- options include an inline bet
+  field inside the header, a slider-style +/- keypress adjustment,
+  preset buttons (min/max/double), or auto-repeat-last-bet with
+  a key to change it. Whatever it is, the act of placing a bet
+  shouldn't involve typing a number on a naked line.
 
 ### Geometry (Box, Cube)
 - 91 tests passing, no known gaps. Revisit when new classes added.
