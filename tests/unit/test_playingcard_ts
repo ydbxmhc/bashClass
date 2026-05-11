@@ -24,11 +24,10 @@ __pct_spade="$(printf '%s\n' "$__pct_raw_spade" | sed $'s/\033\\[[0-9;]*m//g')"
 $t.assert_eq "face is 7 lines" \
   "$(printf '%s\n' "$__pct_spade" | wc -l | tr -d ' ')" "7"
 
-$t.assert_ok "top border is ┌───────┐" bash -c \
-  '[[ "'"$(printf '%s\n' "$__pct_spade" | head -1)"'" = "┌───────┐" ]]'
-
-$t.assert_ok "bottom border is └───────┘" bash -c \
-  '[[ "'"$(printf '%s\n' "$__pct_spade" | tail -1)"'" = "└───────┘" ]]'
+# Match the stripped output against a glob pattern anchored to the
+# opening/closing border lines. No subshell, no quote-in-quote, no pipeline.
+$t.assert_match "top border is ┌───────┐"    "$__pct_spade" "┌───────┐"$'\n*'
+$t.assert_match "bottom border is └───────┘" "$__pct_spade" $'*\n'"└───────┘"
 
 $t.assert_contains "rank top-left"    "$__pct_spade" "A      "
 $t.assert_contains "rank bottom-right" "$__pct_spade" "      A"
@@ -58,8 +57,9 @@ $t.assert_contains "heart card has red ANSI code" \
   "$__pct_heart_raw" $'\033[91m'
 
 __pct_spade_raw="$(bash -c '. boop PlayingCard; into=pc PlayingCard suit="♠" rank="Q"; $pc.render')"
-$t.assert_ok "spade card has no red ANSI code" bash -c \
-  '[[ "'"$(printf '%s' "$__pct_spade_raw" | cat -v)"'" != *"91m"* ]]'
+# Inverted match: assert the escape sequence is NOT present.
+$t.assert_ok "spade card has no red ANSI code" \
+  test "${__pct_spade_raw/$'\033[91m'/}" = "$__pct_spade_raw"
 
 # ============================================================================
 # Existing behavior preserved
