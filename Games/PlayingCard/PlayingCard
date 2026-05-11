@@ -39,44 +39,58 @@ Games.PlayingCard.toString() {
 
 # Print a 7-line ASCII art card to stdout.
 # Single-line box, rank top-left/bottom-right, suit centered.
-# Red for hearts/diamonds; default color for spades/clubs.
+# Standard-red (31) for hearts/diamonds, standard-black (30) for
+# spades/clubs. White background (47) applied to every character of
+# every line so the whole card reads as a white card regardless of
+# the terminal's default colors. No bold.
 Games.PlayingCard.render() {
   local _Self="${_Self:-}" _Class="${_Class:-Games.PlayingCard}"
   local __Games_PlayingCard_render_rank __Games_PlayingCard_render_suit
   __boop.parse "$_Self" rank __Games_PlayingCard_render_rank
   __boop.parse "$_Self" suit __Games_PlayingCard_render_suit
 
-  # Red for hearts and diamonds
-  local __Games_PlayingCard_render_c='' __Games_PlayingCard_render_r=''
+  # Color palette: black-on-white for structure and non-red suits,
+  # red-on-white for hearts and diamonds. Reset clears the line.
+  local __Games_PlayingCard_render_fg=$'\033[30;47m'       # black on white
+  local __Games_PlayingCard_render_suit_fg=$'\033[30;47m'  # default: black
+  local __Games_PlayingCard_render_rs=$'\033[0m'
   if [[ "$__Games_PlayingCard_render_suit" == '♥' || \
         "$__Games_PlayingCard_render_suit" == '♦' ]]; then
-    __Games_PlayingCard_render_c=$'\033[91m'
-    __Games_PlayingCard_render_r=$'\033[0m'
+    __Games_PlayingCard_render_suit_fg=$'\033[31;47m'      # red on white
   fi
 
-  # Pad to fill 7-column inner width (rank is 1 or 2 ASCII chars)
+  # Pad to fill 7-column inner width (rank is 1 or 2 ASCII chars).
   local __Games_PlayingCard_render_pad
   printf -v __Games_PlayingCard_render_pad '%*s' \
     $(( 7 - ${#__Games_PlayingCard_render_rank} )) ''
 
-  printf '┌───────┐\n'
-  printf "│%s%s%s%s│\n" \
-    "$__Games_PlayingCard_render_c" \
-    "$__Games_PlayingCard_render_rank" \
-    "$__Games_PlayingCard_render_pad" \
-    "$__Games_PlayingCard_render_r"
-  printf '│       │\n'
-  printf "│%s   %s   %s│\n" \
-    "$__Games_PlayingCard_render_c" \
+  # Each line: set fg/bg at the start, clear at the end.
+  # Rank lines use the structure fg; the middle line switches to suit_fg
+  # for the glyph only, then back to structure fg for the closing border.
+  printf '%s┌───────┐%s\n' \
+    "$__Games_PlayingCard_render_fg" "$__Games_PlayingCard_render_rs"
+  printf '%s│%s%s│%s\n' \
+    "$__Games_PlayingCard_render_fg" \
+    "$__Games_PlayingCard_render_rank$__Games_PlayingCard_render_pad" \
+    "" \
+    "$__Games_PlayingCard_render_rs"
+  printf '%s│       │%s\n' \
+    "$__Games_PlayingCard_render_fg" "$__Games_PlayingCard_render_rs"
+  printf '%s│   %s%s%s   │%s\n' \
+    "$__Games_PlayingCard_render_fg" \
+    "$__Games_PlayingCard_render_suit_fg" \
     "$__Games_PlayingCard_render_suit" \
-    "$__Games_PlayingCard_render_r"
-  printf '│       │\n'
-  printf "│%s%s%s%s│\n" \
-    "$__Games_PlayingCard_render_c" \
-    "$__Games_PlayingCard_render_pad" \
-    "$__Games_PlayingCard_render_rank" \
-    "$__Games_PlayingCard_render_r"
-  printf '└───────┘\n'
+    "$__Games_PlayingCard_render_fg" \
+    "$__Games_PlayingCard_render_rs"
+  printf '%s│       │%s\n' \
+    "$__Games_PlayingCard_render_fg" "$__Games_PlayingCard_render_rs"
+  printf '%s│%s%s│%s\n' \
+    "$__Games_PlayingCard_render_fg" \
+    "$__Games_PlayingCard_render_pad$__Games_PlayingCard_render_rank" \
+    "" \
+    "$__Games_PlayingCard_render_rs"
+  printf '%s└───────┘%s\n' \
+    "$__Games_PlayingCard_render_fg" "$__Games_PlayingCard_render_rs"
 }
 
 # Fill a Deck with 52 standard playing cards and shuffle it.

@@ -54,12 +54,12 @@ $t.section "render red suit"
 
 __pct_heart_raw="$(bash -c '. boop PlayingCard; into=pc PlayingCard suit="♥" rank="Q"; $pc.render')"
 $t.assert_contains "heart card has red ANSI code" \
-  "$__pct_heart_raw" $'\033[91m'
+  "$__pct_heart_raw" $'\033[31;47m'
 
 __pct_spade_raw="$(bash -c '. boop PlayingCard; into=pc PlayingCard suit="♠" rank="Q"; $pc.render')"
-# Inverted match: assert the escape sequence is NOT present.
+# Inverted match: red-on-white sequence should NOT appear on spade cards.
 $t.assert_ok "spade card has no red ANSI code" \
-  test "${__pct_spade_raw/$'\033[91m'/}" = "$__pct_spade_raw"
+  test "${__pct_spade_raw/$'\033[31;47m'/}" = "$__pct_spade_raw"
 
 # ============================================================================
 # Existing behavior preserved
