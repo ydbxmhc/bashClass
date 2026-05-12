@@ -3,7 +3,7 @@
 # Geometry.Cube class
 
 # Load guard
-. boop Geometry::Box
+. boop Geometry::Box Args
 
 boop.init Geometry.Cube || return 0
 
@@ -13,19 +13,41 @@ boop.init Geometry.Cube || return 0
 
 # Cube constructor - sets all dimensions equal to size
 Geometry.Cube.new() {
-  local _Class="${_Class:-Geometry.Cube}" __Geometry_Cube_new_size="" __Geometry_Cube_new_self
-
-  for __Geometry_Cube_new_arg in "$@"; do [[ "$__Geometry_Cube_new_arg" =~ ^size= ]] || continue
-      [[ -n "${__Geometry_Cube_new_size:-}" ]] && _Crash "repeated argument '$__Geometry_Cube_new_arg'"
-      [[ "$__Geometry_Cube_new_arg" =~ ^size=([1-9][0-9]*)$ ]] ||
-        _Crash "Cube: size requires a positive integer, got '$__Geometry_Cube_new_arg'"
-      __Geometry_Cube_new_size="${BASH_REMATCH[1]}"
+  local _Class="${_Class:-Geometry.Cube}"
+  local __Geometry_Cube_new_self __Geometry_Cube_new_size __Geometry_Cube_new_cfg
+  local -i __Geometry_Cube_new_size_count=0
+  local -a __Geometry_Cube_new_args=()
+  local __Geometry_Cube_new_arg
+  for __Geometry_Cube_new_arg in "$@"; do
+    [[ "$__Geometry_Cube_new_arg" =~ ^size= ]] && ((__Geometry_Cube_new_size_count++))
+    ((__Geometry_Cube_new_size_count > 1)) && _Crash "Cube: repeated 'size' argument"
   done
+  for __Geometry_Cube_new_arg in "$@"; do
+    [[ "$__Geometry_Cube_new_arg" == *=* && "$__Geometry_Cube_new_arg" != --* ]] \
+      && __Geometry_Cube_new_args+=("--${__Geometry_Cube_new_arg}") \
+      || __Geometry_Cube_new_args+=("$__Geometry_Cube_new_arg")
+  done
+  into=__Geometry_Cube_new_cfg Args.parse '
+    [Options]
+    size  :
+    unit  =
+    color =
+  ' "${__Geometry_Cube_new_args[@]+"${__Geometry_Cube_new_args[@]}"}"
+  into=__Geometry_Cube_new_size  $__Geometry_Cube_new_cfg.get size
+  local __Geometry_Cube_new_unit;  into=__Geometry_Cube_new_unit  $__Geometry_Cube_new_cfg.get unit
+  local __Geometry_Cube_new_color; into=__Geometry_Cube_new_color $__Geometry_Cube_new_cfg.get color
   [[ -n "$__Geometry_Cube_new_size" ]] || _Crash "Cube: size is required"
-
+  [[ "$__Geometry_Cube_new_size" =~ ^[1-9][0-9]*$ ]] || \
+    _Crash "Cube: size requires a positive integer, got '$__Geometry_Cube_new_size'"
   _Debug "new: size=$__Geometry_Cube_new_size"
-  into=__Geometry_Cube_new_self _Super new "$@" length="$__Geometry_Cube_new_size" width="$__Geometry_Cube_new_size" height="$__Geometry_Cube_new_size"
+  into=__Geometry_Cube_new_self _Super new \
+    length="$__Geometry_Cube_new_size" \
+    width="$__Geometry_Cube_new_size" \
+    height="$__Geometry_Cube_new_size" \
+    unit="$__Geometry_Cube_new_unit" \
+    color="$__Geometry_Cube_new_color"
   _Bless "$__Geometry_Cube_new_self" Geometry.Cube
+  $__Geometry_Cube_new_self.set size "$__Geometry_Cube_new_size"
   _Info "new: created $__Geometry_Cube_new_self (size=$__Geometry_Cube_new_size)"
   boop.pass "$__Geometry_Cube_new_self" ${into:-}
 }

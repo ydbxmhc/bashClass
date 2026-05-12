@@ -3,7 +3,7 @@
 # Geometry.Box class
 
 # Load guard
-. boop
+. boop Args
 
 boop.init Geometry.Box || return 0
 
@@ -89,7 +89,22 @@ Geometry.Box.volume() {
 Geometry.Box.new() {
   local _Class="${_Class:-Geometry.Box}"
   local __Geometry_Box_new_self
-  into=__Geometry_Box_new_self __boop.new "$@"
+  into=__Geometry_Box_new_self __boop.new
+  local -a __Geometry_Box_new_args=()
+  local __Geometry_Box_new_arg
+  for __Geometry_Box_new_arg in "$@"; do
+    [[ "$__Geometry_Box_new_arg" == *=* && "$__Geometry_Box_new_arg" != --* ]] \
+      && __Geometry_Box_new_args+=("--${__Geometry_Box_new_arg}") \
+      || __Geometry_Box_new_args+=("$__Geometry_Box_new_arg")
+  done
+  into= _Self="$__Geometry_Box_new_self" Args.parse '
+    [Options]
+    length =
+    width  =
+    height =
+    unit   =
+    color  =
+  ' "${__Geometry_Box_new_args[@]+"${__Geometry_Box_new_args[@]}"}"
   _Info "new: created $__Geometry_Box_new_self"
   boop.pass "$__Geometry_Box_new_self" ${into:-}
 }
