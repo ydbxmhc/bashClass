@@ -197,6 +197,21 @@ __Args.printHelp() {
 }
 
 # ============================================================================
+# __Args_setVar -- write a parsed option value to the right destination.
+# Object context  (_Self set)             → $target.set name value
+# Class context   (_Class set, not Args)  → $target.set name value
+# Script context  (neither)               → declare -g (current behaviour)
+# NOTE: _Class is intentionally not declared local in Args.parse so that
+# the caller's _Class is visible here via dynamic scoping.
+__Args_setVar() {
+  local __Args_setVar_target="${_Self:-${_Class:-}}"
+  if [[ -n "$__Args_setVar_target" && "$__Args_setVar_target" != "Args" ]]; then
+    "$__Args_setVar_target".set "$1" "$2"
+  else
+    declare -g "${1}=${2}"
+  fi
+}
+
 # Args.parse -- GNU long + subcommand parser
 # ============================================================================
 
@@ -246,7 +261,7 @@ Args.parse() {
 
   local __Args_parse_v
   for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
-    declare -g "${__Args_parse_v}=${__Args_defaults[$__Args_parse_v]:-}"
+    __Args_setVar "$__Args_parse_v" "${__Args_defaults[$__Args_parse_v]:-}"
   done
 
   # --- Phase 3: Walk args ---
@@ -299,12 +314,12 @@ Args.parse() {
           __Args_parse_val="$1"; shift
         fi
         _Debug "parse: $__Args_parse_key ($__Args_parse_vn) = '$__Args_parse_val'"
-        declare -g "${__Args_parse_vn}=${__Args_parse_val}"
+        __Args_setVar "$__Args_parse_vn" "$__Args_parse_val"
       else
         [[ $__Args_parse_hasval -eq 0 ]] || \
           _Crash "Args.parse: $__Args_parse_key is a boolean flag, does not take a value"
         _Debug "parse: $__Args_parse_key ($__Args_parse_vn) = true"
-        declare -g "${__Args_parse_vn}=1"
+        __Args_setVar "$__Args_parse_vn" "1"
       fi
       continue
     fi
@@ -333,10 +348,10 @@ Args.parse() {
             __Args_parse_sv="$1"; shift
           fi
           _Debug "parse: -$__Args_parse_c ($__Args_parse_cvn) = '$__Args_parse_sv'"
-          declare -g "${__Args_parse_cvn}=${__Args_parse_sv}"
+          __Args_setVar "$__Args_parse_cvn" "$__Args_parse_sv"
         else
           _Debug "parse: -$__Args_parse_c ($__Args_parse_cvn) = true"
-          declare -g "${__Args_parse_cvn}=1"
+          __Args_setVar "$__Args_parse_cvn" "1"
         fi
       done
       continue

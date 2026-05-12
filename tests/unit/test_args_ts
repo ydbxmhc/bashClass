@@ -410,4 +410,38 @@ pull
 [push]
 : force =" pull'
 
+# ============================================================================
+# Args.parse: context-aware setVar
+# ============================================================================
+
+$t.section "Args.parse: context-aware setVar"
+
+# Script context (no _Self, no _Class) — declare -g as before
+unset _Self 2>/dev/null; unset _Class 2>/dev/null
+Args.parse '
+  [Options]
+  ctxwidth  = 10
+  ctxheight = 20
+' --ctxwidth 42
+$t.assert_eq "script context sets global"  "$ctxwidth"  "42"
+$t.assert_eq "script context applies default" "$ctxheight" "20"
+
+# Object context (_Self set) — values go to object properties
+into=__ta_obj Config.new
+_Self="$__ta_obj" Args.parse '
+  [Options]
+  color = red
+  size  = 5
+' --color blue --size 9
+into=__ta_v $__ta_obj.get color; $t.assert_eq "object context value"   "$__ta_v" "blue"
+into=__ta_v $__ta_obj.get size;  $t.assert_eq "object context value 2" "$__ta_v" "9"
+
+# Default goes to object property too
+into=__ta_obj2 Config.new
+_Self="$__ta_obj2" Args.parse '
+  [Options]
+  flavor = vanilla
+'
+into=__ta_v $__ta_obj2.get flavor; $t.assert_eq "object context default" "$__ta_v" "vanilla"
+
 $t.summary
