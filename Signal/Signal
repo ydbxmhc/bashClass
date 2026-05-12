@@ -45,20 +45,32 @@ declare -gA __Signal_installed=()
 # KILL/STOP warnings are always emitted regardless of this flag.
 declare -gi __Signal_strict=1
 
-# Signals that bash accepts in trap without error but that the OS will never
-# deliver — the kernel enforces SIGKILL and SIGSTOP unconditionally.
-# Accept both bare names and SIG-prefixed forms.
-declare -ga __Signal_unblockable=(KILL SIGKILL 9 STOP SIGSTOP 19)
+# Signals that Signal refuses to manage. Registration is rejected with
+# a clear error. These fall into two categories but the outcome is the same:
+#
+#   KILL, STOP (and their numeric/SIG-prefixed forms):
+#     Unblockable by the OS. The kernel enforces these unconditionally.
+#     A trap can be installed without error, but it will never fire.
+#     Registering a handler is pointless and misleading.
+#
+#   DEBUG, RETURN:
+#     Bash pseudo-signals that fire on every command / every function return.
+#     They are incompatible with the LIFO callback-stack model -- a "stack"
+#     of handlers here means N callbacks on every single command in the shell.
+#     That's a profiler hook, not a signal handler. Use 'trap ... DEBUG'
+#     directly if you need this behavior.
+#
+declare -gA __Signal_rejected=(
+  [KILL]=1 [SIGKILL]=1 [9]=1
+  [STOP]=1 [SIGSTOP]=1 [19]=1
+  [DEBUG]=1 [RETURN]=1
+)
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
 
-# __Signal.isUnblockable — return 0 if sig is KILL or STOP (never fires).
-__Signal.isUnblockable() {
-  local __Signal__iu_s
-  for __Signal__iu_s in "${__Signal_unblockable[@]}"; do
-    [[ "$1" == "$__Signal__iu_s" ]] && return 0
-  done
-  return 1
+# __Signal.isRejected — return 0 if sig is in the rejection list.
+__Signal.isRejected() {
+  [[ -n "${__Signal_rejected[${1:-}]+set}" ]]
 }
 
 # __Signal.dispatch — fire all callbacks for a signal in LIFO order.
@@ -75,18 +87,19 @@ __Signal.dispatch() {
          __Signal__dispatch_i>=0;
          __Signal__dispatch_i-- )); do
     "${__Signal__dispatch_arr[$__Signal__dispatch_i]}" \
-      "$__Signal__dispatch_sig" "$@" 2>/dev/null || true
+      "$__Signal__dispatch_sig" "$@" || true
   done
 }
 
 # __Signal.ensure — declare the per-signal array and install the trap once.
-# Emits warnings for KILL/STOP (always) and invalid signals (when strict).
+# Rejects signals in the rejection list. Warns on invalid names (when strict).
 __Signal.ensure() {
   local __Signal__ensure_sig="$1"
 
-  # KILL and STOP are unblockable — warn unconditionally.
-  if __Signal.isUnblockable "$__Signal__ensure_sig"; then
-    _Warn "Signal: '${__Signal__ensure_sig}' cannot be caught — SIGKILL and SIGSTOP are unblockable by the OS; handlers registered for them will never fire"
+  # Reject signals that Signal refuses to manage.
+  if __Signal.isRejected "$__Signal__ensure_sig"; then
+    _Error "Signal: '${__Signal__ensure_sig}' is not supported by the Signal class. KILL/STOP are unblockable by the OS (handlers never fire). DEBUG/RETURN are bash pseudo-signals that fire per-command/per-return and are incompatible with the callback-stack model. Use 'trap' directly for these."
+    return 1
   fi
 
   local __Signal__ensure_var="__Signal_handlers_${__Signal__ensure_sig}"
@@ -96,7 +109,7 @@ __Signal.ensure() {
 
   if [[ -z "${__Signal_installed[$__Signal__ensure_sig]+set}" ]]; then
     if trap "__Signal.dispatch '${__Signal__ensure_sig}'" \
-       "$__Signal__ensure_sig" 2>/dev/null; then
+       "$__Signal__ensure_sig"; then
       __Signal_installed[$__Signal__ensure_sig]=1
     else
       (( __Signal_strict )) && \
@@ -118,7 +131,7 @@ __Signal.ensure() {
 # Called once automatically at class load time.
 __Signal.surveyExisting() {
   local __Signal__se_all __Signal__se_line __Signal__se_sig
-  __Signal__se_all="$(trap -p 2>/dev/null)" || return 0
+  __Signal__se_all="$(trap -p)" || return 0
   [[ -z "$__Signal__se_all" ]] && return 0
 
   local __Signal__se_body __Signal__se_wrap
@@ -162,7 +175,7 @@ __Signal.surveyExisting() {
 # Signal.strict — set strict mode on (1/on/true) or off (0/off/false).
 # Strict mode on (default): warn on invalid signal names and undefined callbacks.
 # Strict mode off: suppress those warnings — useful for tests with synthetic names.
-# KILL/STOP warnings are always emitted regardless of this setting.
+# Rejected signals (KILL/STOP/DEBUG/RETURN) always error regardless of this setting.
 Signal.strict() {
   local _Class="${_Class:-Signal}"
   case "${1:-}" in
@@ -186,7 +199,7 @@ Signal.on() {
     _Warn "Signal.on: '${__Signal_on_cb}' is not a currently defined function — ensure it is defined before '${__Signal_on_sig}' fires"
   fi
 
-  __Signal.ensure "$__Signal_on_sig"
+  __Signal.ensure "$__Signal_on_sig" || return 1
   local -n __Signal_on_arr="__Signal_handlers_${__Signal_on_sig}"
   __Signal_on_arr+=( "$__Signal_on_cb" )
 }
@@ -271,7 +284,7 @@ Signal.clear() {
     __Signal_clear_arr=()
   fi
   if [[ -n "${__Signal_installed[$__Signal_clear_sig]+set}" ]]; then
-    trap - "$__Signal_clear_sig" 2>/dev/null || true
+    trap - "$__Signal_clear_sig" || true
     unset '__Signal_installed[$__Signal_clear_sig]'
   fi
 }
