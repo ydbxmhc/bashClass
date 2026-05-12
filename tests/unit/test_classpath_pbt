@@ -298,10 +298,11 @@ for (( __cp_p7_i=0; __cp_p7_i < 20; __cp_p7_i++ )); do
     : $(( ++__cp_p7_fail )); unset __cp_p7_expected; continue
   fi
 
-  # Verify by sourcing in subshell
+  # Verify by reading Key=Value file content directly
   __cp_p7_ok=1
   for __cp_p7_cls in "${!__cp_p7_expected[@]}"; do
-    __cp_p7_val=$(bash -c 'declare -gA __boop_Index; . "'"$__cp_p7_root/.boopIndex"'"; printf "%s" "${__boop_Index['"$__cp_p7_cls"']:-MISSING}"')
+    __cp_p7_line=$(grep "^${__cp_p7_cls}=" "$__cp_p7_root/.boopIndex" 2>/dev/null || true)
+    __cp_p7_val="${__cp_p7_line#"${__cp_p7_cls}="}"
     if [[ "$__cp_p7_val" != "${__cp_p7_expected[$__cp_p7_cls]}" ]]; then
       __cp_p7_ok=0; break
     fi
@@ -364,12 +365,14 @@ for (( __cp_p9_i=0; __cp_p9_i < 20; __cp_p9_i++ )); do
   boop.classPath rebuild "$__cp_p9_root" 2>/dev/null
   _LogLevel warn
 
-  __cp_p9_check=$(bash -c '
-    declare -gA __boop_Index; . "'"$__cp_p9_root/.boopIndex"'"
-    printf "%s|%s" "${__boop_Index['"$__cp_p9_conflict"']:-EXCLUDED}" "${__boop_Index['"$__cp_p9_unique"']:-MISSING}"
-  ')
-  __cp_p9_cval="${__cp_p9_check%%|*}"
-  __cp_p9_uval="${__cp_p9_check##*|}"
+  # Check conflict exclusion and unique presence via file content
+  if grep -q "^${__cp_p9_conflict}=" "$__cp_p9_root/.boopIndex" 2>/dev/null; then
+    __cp_p9_cval="PRESENT"
+  else
+    __cp_p9_cval="EXCLUDED"
+  fi
+  __cp_p9_uline=$(grep "^${__cp_p9_unique}=" "$__cp_p9_root/.boopIndex" 2>/dev/null || true)
+  [[ -n "$__cp_p9_uline" ]] && __cp_p9_uval="FOUND" || __cp_p9_uval="MISSING"
   [[ "$__cp_p9_cval" == "EXCLUDED" && "$__cp_p9_uval" != "MISSING" ]] && : $(( ++__cp_p9_pass )) || : $(( ++__cp_p9_fail ))
 done
 
@@ -434,9 +437,11 @@ for (( __cp_p11_i=0; __cp_p11_i < 20; __cp_p11_i++ )); do
     unset __cp_p11_model; continue
   fi
 
+  # Verify by reading Key=Value file content directly
   __cp_p11_ok=1
   for __cp_p11_key in "${!__cp_p11_model[@]}"; do
-    __cp_p11_check=$(bash -c 'declare -gA __boop_classPath; . "'"$__cp_p11_cfg"'"; printf "%s" "${__boop_classPath['"$__cp_p11_key"']:-MISSING}"')
+    __cp_p11_line=$(grep "^${__cp_p11_key}=" "$__cp_p11_cfg" 2>/dev/null || true)
+    __cp_p11_check="${__cp_p11_line#"${__cp_p11_key}="}"
     if [[ "$__cp_p11_check" != "${__cp_p11_model[$__cp_p11_key]}" ]]; then
       __cp_p11_ok=0; break
     fi

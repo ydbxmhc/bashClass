@@ -1619,6 +1619,63 @@ new() {
 }
 
 # ============================================================================
+# CONFIG PARSING
+# ============================================================================
+
+# __boop.parseConfig — Read a config file as data into an associative array.
+#
+# Handles three line formats (all backward-compatible):
+#   Key=Value                         — new canonical format
+#   [Key]="Value"                     — old .boopIndex array-literal format
+#   __boop_classPath["Key"]="Value"   — old .boop.cfg assignment format
+#
+# Blank lines and lines beginning with '#' are skipped.
+# Lines matching 'declare *' or a bare ')' are skipped (old array wrappers).
+# Unrecognized lines emit _Warn and are skipped.
+# First-write-wins: if a key is already present, later entries are ignored.
+# This gives earlier roots precedence when merging multiple index files.
+#
+# Usage: __boop.parseConfig /path/to/file array_name
+__boop.parseConfig() {
+  local __boop_parseConfig_file="$1"
+  local -n __boop_parseConfig_arr="$2"
+  local __boop_parseConfig_line __boop_parseConfig_key __boop_parseConfig_val
+  while IFS= read -r __boop_parseConfig_line; do
+    # Strip leading whitespace
+    while [[ "${__boop_parseConfig_line:0:1}" == ' ' || "${__boop_parseConfig_line:0:1}" == $'\t' ]]; do
+      __boop_parseConfig_line="${__boop_parseConfig_line:1}"
+    done
+    [[ -z "$__boop_parseConfig_line" ]] && continue
+    [[ "${__boop_parseConfig_line:0:1}" == '#' ]] && continue
+    case "$__boop_parseConfig_line" in declare\ *|')') continue ;; esac
+
+    if [[ "$__boop_parseConfig_line" =~ ^\[([^]]+)\]=\"(.*)\"$ ]]; then
+      # Old .boopIndex format: [Key]="Value"
+      __boop_parseConfig_key="${BASH_REMATCH[1]}"
+      __boop_parseConfig_val="${BASH_REMATCH[2]}"
+    elif [[ "$__boop_parseConfig_line" =~ \[\"([^\"]+)\"\]=\"(.*)\"$ ]]; then
+      # Old .boop.cfg format: __boop_classPath["Key"]="Value"
+      __boop_parseConfig_key="${BASH_REMATCH[1]}"
+      __boop_parseConfig_val="${BASH_REMATCH[2]}"
+    elif [[ "$__boop_parseConfig_line" =~ ^([A-Za-z0-9_./:-]+)=(.*)$ ]]; then
+      # New canonical format: Key=Value (optional surrounding quotes stripped)
+      __boop_parseConfig_key="${BASH_REMATCH[1]}"
+      __boop_parseConfig_val="${BASH_REMATCH[2]}"
+      if [[ "${__boop_parseConfig_val:0:1}" == '"' && "${__boop_parseConfig_val: -1}" == '"' && ${#__boop_parseConfig_val} -ge 2 ]]; then
+        __boop_parseConfig_val="${__boop_parseConfig_val:1:${#__boop_parseConfig_val}-2}"
+      fi
+    else
+      _Warn "parseConfig: unrecognized line in '$__boop_parseConfig_file': $__boop_parseConfig_line"
+      continue
+    fi
+
+    # First-write-wins: skip if already populated
+    [[ -n "${__boop_parseConfig_arr[$__boop_parseConfig_key]+set}" ]] && continue
+    __boop_parseConfig_arr["$__boop_parseConfig_key"]="$__boop_parseConfig_val"
+  done < "$__boop_parseConfig_file"
+}
+
+# ============================================================================
 # LOADER — RC/CFG Bootstrap and BOOPPATH Initialization
 # ============================================================================
 
@@ -1684,7 +1741,21 @@ __boop.loader() {
   done
 
   # -----------------------------------------------------------------
-  # 3. .boopIndex sourcing from each valid root
+  # 1b. Parse .boop.cfg as data into __boop_classPath
+  # -----------------------------------------------------------------
+  # RC files may source .boop.cfg the old way; we also parse it directly
+  # so that the new Key=Value format works even without RC file changes.
+  # First-write-wins: RC-sourced entries (already in __boop_classPath) win.
+  local __boop_loader_cfg
+  for __boop_loader_cfg in "/etc/boop.cfg" "$HOME/.boop.cfg" "./.boop.cfg"; do
+    [[ -f "$__boop_loader_cfg" ]] || continue
+    _Trace "loader: parsing cfg $__boop_loader_cfg"
+    __boop.parseConfig "$__boop_loader_cfg" __boop_classPath
+    _Info "parsed cfg: $__boop_loader_cfg"
+  done
+
+  # -----------------------------------------------------------------
+  # 3. .boopIndex parsing from each valid root
   # -----------------------------------------------------------------
   _Trace "loader: building effective root list"
   # Build the effective root list: . + BOOPPATH + PATH
@@ -1727,31 +1798,15 @@ __boop.loader() {
   _Trace "loader: effective root list has ${#__boop_loader_roots[@]} entries"
   _Debug "loader: effective roots: ${__boop_loader_roots[*]}"
 
-  # Source .boopIndex from each root. Earlier roots take precedence:
-  # if a key is already set in __boop_Index, the index file's declare -gA
-  # would overwrite it, so we use a pre-source snapshot approach —
-  # save existing keys, source the index, then restore any keys that
-  # were already set before the source.
+  # Parse .boopIndex from each root as data (not sourced as code).
+  # __boop.parseConfig uses first-write-wins, so earlier roots take precedence.
   local __boop_loader_root
   for __boop_loader_root in "${__boop_loader_roots[@]}"; do
     local __boop_loader_idx="$__boop_loader_root/.boopIndex"
     [[ -f "$__boop_loader_idx" ]] || continue
-    _Trace "loader: sourcing index $__boop_loader_idx"
-
-    # Snapshot existing keys so we can protect them from overwrite
-    local -A __boop_loader_snapshot
-    local __boop_loader_key
-    for __boop_loader_key in "${!__boop_Index[@]}"; do
-      __boop_loader_snapshot[$__boop_loader_key]="${__boop_Index[$__boop_loader_key]}"
-    done
-
-    . "$__boop_loader_idx"
-
-    # Restore any keys that existed before this source (earlier roots win)
-    for __boop_loader_key in "${!__boop_loader_snapshot[@]}"; do
-      __boop_Index[$__boop_loader_key]="${__boop_loader_snapshot[$__boop_loader_key]}"
-    done
-    _Info "sourced index: $__boop_loader_idx"
+    _Trace "loader: parsing index $__boop_loader_idx"
+    __boop.parseConfig "$__boop_loader_idx" __boop_Index
+    _Info "parsed index: $__boop_loader_idx"
   done
 
   # -----------------------------------------------------------------
@@ -2001,7 +2056,7 @@ __boop.classPath.writeCfg() {
     printf '# Auto-generated by boop.classPath -- do not edit manually\n'
     local __boop_writeCfg_key
     for __boop_writeCfg_key in "${!__boop_classPath[@]}"; do
-      printf '__boop_classPath["%s"]="%s"\n' "$__boop_writeCfg_key" "${__boop_classPath[$__boop_writeCfg_key]}"
+      printf '%s=%s\n' "$__boop_writeCfg_key" "${__boop_classPath[$__boop_writeCfg_key]}"
     done
   } >| "$__boop_writeCfg_target"
 }
@@ -2153,12 +2208,10 @@ boop.classPath() {
       local __boop_cp_idx="$__boop_cp_root/.boopIndex"
       {
         printf '# .boopIndex -- auto-generated by boop.classPath rebuild\n'
-        printf 'declare -gA __boop_Index=(\n'
         local __boop_cp_key
         for __boop_cp_key in "${!__boop_cp_short2ns[@]}"; do
-          printf '  [%s]="%s"\n' "$__boop_cp_key" "${__boop_cp_short2ns[$__boop_cp_key]}"
+          printf '%s=%s\n' "$__boop_cp_key" "${__boop_cp_short2ns[$__boop_cp_key]}"
         done
-        printf ')\n'
       } >| "$__boop_cp_idx"
       _Info "rebuilt index: $__boop_cp_idx (${#__boop_cp_short2ns[@]} entries)"
       ;;

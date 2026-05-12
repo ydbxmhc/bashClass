@@ -200,17 +200,10 @@ printf '# b\n' > "$__ct_tmp/B"
 _CfgFile="$__ct_tmp/.boop_rt.cfg" boop.classPath set RtA "$__ct_tmp/A"
 _CfgFile="$__ct_tmp/.boop_rt.cfg" boop.classPath set RtB "$__ct_tmp/B"
 
-# Source CFG into a clean array and verify
-__ct_rt_result=$(bash -c '
-  declare -gA __boop_classPath
-  . "'"$__ct_tmp"'/.boop_rt.cfg"
-  printf "%s\n" "${__boop_classPath[RtA]:-MISSING}"
-  printf "%s\n" "${__boop_classPath[RtB]:-MISSING}"
-')
-__ct_rt_a="${__ct_rt_result%%$'\n'*}"
-__ct_rt_b="${__ct_rt_result##*$'\n'}"
-$t.assert_eq "CFG round-trip A" "$__ct_rt_a" "$__ct_tmp/A"
-$t.assert_eq "CFG round-trip B" "$__ct_rt_b" "$__ct_tmp/B"
+# Verify the CFG file content directly (new Key=Value format)
+__ct_rt_cfg=$(<"$__ct_tmp/.boop_rt.cfg")
+$t.assert_contains "CFG round-trip A" "$__ct_rt_cfg" "RtA=$__ct_tmp/A"
+$t.assert_contains "CFG round-trip B" "$__ct_rt_cfg" "RtB=$__ct_tmp/B"
 
 # CFG has no procedural logic (no if/for/while/function)
 __ct_logic=$(grep -cE '^\s*(if|for|while|function|eval)' "$__ct_tmp/.boop_rt.cfg" || true)
@@ -241,17 +234,11 @@ _LogLevel warn
 # Verify .boopIndex was created
 $t.assert_ok ".boopIndex created" test -f "$__ct_tmp/rebuild_root/.boopIndex"
 
-# Source it and check mappings
-__ct_rebuild_result=$(bash -c '
-  declare -gA __boop_Index
-  . "'"$__ct_tmp/rebuild_root/.boopIndex"'"
-  printf "%s\n" "${__boop_Index[List]:-MISSING}"
-  printf "%s\n" "${__boop_Index[Map]:-MISSING}"
-  printf "%s\n" "${__boop_Index[Trig]:-MISSING}"
-')
-$t.assert_contains "index has List" "$__ct_rebuild_result" "Collection/List"
-$t.assert_contains "index has Map" "$__ct_rebuild_result" "Collection/Map"
-$t.assert_contains "index has Trig" "$__ct_rebuild_result" "Math/Trig"
+# Verify the index file content directly (new Key=Value format)
+__ct_rebuild_idx=$(<"$__ct_tmp/rebuild_root/.boopIndex")
+$t.assert_contains "index has List" "$__ct_rebuild_idx" "List=Collection/List"
+$t.assert_contains "index has Map"  "$__ct_rebuild_idx" "Map=Collection/Map"
+$t.assert_contains "index has Trig" "$__ct_rebuild_idx" "Trig=Math/Trig"
 
 # Generated file is valid sourceable bash
 $t.assert_ok "index is sourceable bash" bash -c '. "'"$__ct_tmp/rebuild_root/.boopIndex"'"'
@@ -274,21 +261,13 @@ _LogLevel info
 _ce; boop.classPath rebuild "$__ct_tmp/conflict_root" 2>"$__ct_err"
 _LogLevel warn
 
-# Util should be excluded (conflict)
-__ct_conflict_check=$(bash -c '
-  declare -gA __boop_Index
-  . "'"$__ct_tmp/conflict_root/.boopIndex"'"
-  printf "%s" "${__boop_Index[Util]:-EXCLUDED}"
-')
-$t.assert_eq "conflicting short name excluded" "$__ct_conflict_check" "EXCLUDED"
+# Util should be excluded (conflict) — check file content directly
+__ct_conflict_idx=$(<"$__ct_tmp/conflict_root/.boopIndex")
+$t.assert_ok "conflicting short name excluded" \
+  bash -c '! grep -q "^Util=" "'"$__ct_tmp/conflict_root/.boopIndex"'"'
 
 # Non-conflicting names still present
-__ct_stream_check=$(bash -c '
-  declare -gA __boop_Index
-  . "'"$__ct_tmp/conflict_root/.boopIndex"'"
-  printf "%s" "${__boop_Index[Stream]:-MISSING}"
-')
-$t.assert_contains "non-conflicting name present" "$__ct_stream_check" "IO/Stream"
+$t.assert_contains "non-conflicting name present" "$__ct_conflict_idx" "Stream=IO/Stream"
 
 # Conflict diagnostic emitted
 $t.assert_contains "conflict diagnostic emitted" "$(<"$__ct_err")" "conflicts"
