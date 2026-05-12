@@ -51,6 +51,43 @@ Type reconstruction:
 - Empty string = `null`
 - Everything else = quoted string
 
+**Key order**: documents created via `Data.JSON.parse` preserve
+insertion (parse) order. Documents built by hand with `$doc.set`
+use hash-iteration order (undefined but consistent per bash version).
+
+**Diffing tip**: `stringify` produces compact output with no
+whitespace. When diffing JSON output, use your diff tool's
+whitespace-ignore flag (`diff -w`, `git diff -w`,
+`git diff --ignore-all-space`) or pretty-print both sides with a
+formatter first — otherwise a key-order change in an outer object
+can make the entire value appear changed even when content is identical.
+
+### `Data.JSON.validate jsonString`
+
+Checks whether a string is valid JSON. Returns 0 if valid, 1 if not.
+No subshell needed — the parser runs in-process with errors routed
+to a return code instead of `_Crash`.
+
+When invalid, the error message is passed via `into=` (or stdout):
+
+```bash
+# Simple check
+Data.JSON.validate '{"ok":true}'    # exit 0
+Data.JSON.validate 'not json'       # exit 1
+
+# Capture the error message
+into=err Data.JSON.validate '{"x":}'
+printf '%s\n' "$err"   # Data.JSON: unexpected character '}' at position 5
+
+# Conditional in a script
+if Data.JSON.validate "$payload"; then
+  into=doc Data.JSON.parse "$payload"
+  # ... use $doc
+else
+  printf 'Invalid JSON: %s\n' "$err" >&2
+fi
+```
+
 ### Not Instantiable
 
 `Data.JSON` is a static-only class. `Data.JSON.new` crashes with a
@@ -72,8 +109,7 @@ helpful message. Use `Data.JSON.parse` directly.
 
 ## Limitations
 
-- Key order in stringify output is hash-iteration order (not insertion order)
-- Key order in stringify output is hash-iteration order (not insertion order)
+- Key order for hand-built (non-parsed) docs is hash-iteration order
 - No streaming/incremental parse (whole string in memory)
 - Duplicate keys: last value wins (no error)
 - No `parseDeep` yet (full Map/List object tree -- planned)

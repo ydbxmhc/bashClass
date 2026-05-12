@@ -23,6 +23,14 @@
 
 boop.init Data.JSON || return 0
 
+# ── Parser globals ─────────────────────────────────────────────────────────────
+# Set by Data.JSON.parse before each run; read by internal helpers.
+# __Data_JSON_safe: when 1, parse errors return 1 instead of crashing —
+# used by Data.JSON.validate to avoid a subshell.
+# __Data_JSON_error: holds the last error message set in safe mode.
+declare -gi __Data_JSON_safe=0
+declare -g  __Data_JSON_error=""
+
 # ============================================================================
 # JSON Tokenizer
 # ============================================================================
@@ -56,25 +64,26 @@ __Data_JSON_skipWS() {
 # Appends the decoded UTF-8 bytes to __Data_JSON_strResult.
 __Data_JSON_parseUnicode() {
   local __Data_JSON_pu_hex="${__Data_JSON_src:__Data_JSON_pos:4}"
-  [[ "$__Data_JSON_pu_hex" =~ ^[0-9A-Fa-f]{4}$ ]] || _Crash "Data.JSON: invalid \\u escape: '$__Data_JSON_pu_hex'"
+  [[ "$__Data_JSON_pu_hex" =~ ^[0-9A-Fa-f]{4}$ ]] || \
+    __Data_JSON_fail "Data.JSON: invalid \\u escape: '$__Data_JSON_pu_hex'" || return 1
   (( __Data_JSON_pos += 4 ))
   local -i __Data_JSON_pu_code=$((16#$__Data_JSON_pu_hex))
 
   # High surrogate: expect a low surrogate to follow as \uXXXX
   if (( __Data_JSON_pu_code >= 0xD800 && __Data_JSON_pu_code <= 0xDBFF )); then
     [[ "${__Data_JSON_src:__Data_JSON_pos:2}" == '\u' ]] || \
-      _Crash "Data.JSON: unpaired high surrogate \\u$__Data_JSON_pu_hex"
+      __Data_JSON_fail "Data.JSON: unpaired high surrogate \\u$__Data_JSON_pu_hex" || return 1
     (( __Data_JSON_pos += 2 ))
     local __Data_JSON_pu_lowHex="${__Data_JSON_src:__Data_JSON_pos:4}"
     [[ "$__Data_JSON_pu_lowHex" =~ ^[0-9A-Fa-f]{4}$ ]] || \
-      _Crash "Data.JSON: invalid \\u escape in surrogate pair: '$__Data_JSON_pu_lowHex'"
+      __Data_JSON_fail "Data.JSON: invalid \\u escape in surrogate pair: '$__Data_JSON_pu_lowHex'" || return 1
     (( __Data_JSON_pos += 4 ))
     local -i __Data_JSON_pu_low=$((16#$__Data_JSON_pu_lowHex))
     (( __Data_JSON_pu_low >= 0xDC00 && __Data_JSON_pu_low <= 0xDFFF )) || \
-      _Crash "Data.JSON: invalid low surrogate \\u$__Data_JSON_pu_lowHex"
+      __Data_JSON_fail "Data.JSON: invalid low surrogate \\u$__Data_JSON_pu_lowHex" || return 1
     __Data_JSON_pu_code=$(( 0x10000 + ((__Data_JSON_pu_code - 0xD800) << 10) + (__Data_JSON_pu_low - 0xDC00) ))
   elif (( __Data_JSON_pu_code >= 0xDC00 && __Data_JSON_pu_code <= 0xDFFF )); then
-    _Crash "Data.JSON: unexpected low surrogate \\u$__Data_JSON_pu_hex"
+    __Data_JSON_fail "Data.JSON: unexpected low surrogate \\u$__Data_JSON_pu_hex" || return 1
   fi
 
   # Encode codepoint to UTF-8 bytes via \xNN printf escapes (locale-independent)
@@ -127,14 +136,25 @@ __Data_JSON_parseString() {
         'r') __Data_JSON_strResult+=$'\r' ;;
         'b') __Data_JSON_strResult+=$'\b' ;;
         'f') __Data_JSON_strResult+=$'\f' ;;
-        'u') __Data_JSON_parseUnicode ;;
+        'u') __Data_JSON_parseUnicode || return 1 ;;
         *) __Data_JSON_strResult+="$__Data_JSON_parseString_c" ;;
       esac
     else
       __Data_JSON_strResult+="$__Data_JSON_parseString_c"
     fi
   done
-  _Crash "Data.JSON: unterminated string"
+  __Data_JSON_fail "Data.JSON: unterminated string" || return 1
+}
+
+# __Data_JSON_fail -- conditional crash for safe mode.
+# Normal mode: calls _Crash (aborts). Safe mode: stores msg in __Data_JSON_error
+# and returns 1 so the caller can propagate via "|| return 1".
+__Data_JSON_fail() {
+  if (( __Data_JSON_safe )); then
+    __Data_JSON_error="$1"
+    return 1
+  fi
+  _Crash "$1"
 }
 
 # __Data_JSON_storeLeaf -- write a leaf value into the current doc.
@@ -162,7 +182,8 @@ __Data_JSON_parseNumber() {
 __Data_JSON_parseValue() {
   local __Data_JSON_parseValue_prefix="$1"
   __Data_JSON_skipWS
-  (( __Data_JSON_pos < __Data_JSON_len )) || _Crash "Data.JSON: unexpected end of input"
+  (( __Data_JSON_pos < __Data_JSON_len )) || \
+    __Data_JSON_fail "Data.JSON: unexpected end of input" || return 1
 
   local __Data_JSON_parseValue_c="${__Data_JSON_src:__Data_JSON_pos:1}"
 
@@ -170,7 +191,7 @@ __Data_JSON_parseValue() {
     '"')
       # String
       (( __Data_JSON_pos++ ))
-      __Data_JSON_parseString
+      __Data_JSON_parseString || return 1
       __Data_JSON_storeLeaf "$__Data_JSON_parseValue_prefix" "$__Data_JSON_strResult"
       ;;
     '{')
@@ -184,13 +205,15 @@ __Data_JSON_parseValue() {
       while :; do
         __Data_JSON_skipWS
         # Key
-        [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == '"' ]] || _Crash "Data.JSON: expected '\"' for object key"
+        [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == '"' ]] || \
+          __Data_JSON_fail "Data.JSON: expected '\"' for object key" || return 1
         (( __Data_JSON_pos++ ))
-        __Data_JSON_parseString
+        __Data_JSON_parseString || return 1
         local __Data_JSON_parseValue_key="$__Data_JSON_strResult"
         __Data_JSON_skipWS
         # Colon
-        [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == ":" ]] || _Crash "Data.JSON: expected ':'"
+        [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == ":" ]] || \
+          __Data_JSON_fail "Data.JSON: expected ':'" || return 1
         (( __Data_JSON_pos++ ))
         # Value
         local __Data_JSON_parseValue_childPrefix
@@ -199,7 +222,7 @@ __Data_JSON_parseValue() {
         else
           __Data_JSON_parseValue_childPrefix="$__Data_JSON_parseValue_key"
         fi
-        __Data_JSON_parseValue "$__Data_JSON_parseValue_childPrefix"
+        __Data_JSON_parseValue "$__Data_JSON_parseValue_childPrefix" || return 1
         __Data_JSON_skipWS
         # Comma or end
         if [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == "," ]]; then
@@ -208,7 +231,7 @@ __Data_JSON_parseValue() {
           (( __Data_JSON_pos++ ))
           return
         else
-          _Crash "Data.JSON: expected ',' or '}'"
+          __Data_JSON_fail "Data.JSON: expected ',' or '}'" || return 1
         fi
       done
       ;;
@@ -228,7 +251,7 @@ __Data_JSON_parseValue() {
         else
           __Data_JSON_parseValue_childPrefix="$__Data_JSON_parseValue_idx"
         fi
-        __Data_JSON_parseValue "$__Data_JSON_parseValue_childPrefix"
+        __Data_JSON_parseValue "$__Data_JSON_parseValue_childPrefix" || return 1
         (( __Data_JSON_parseValue_idx++ ))
         __Data_JSON_skipWS
         if [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == "," ]]; then
@@ -237,25 +260,28 @@ __Data_JSON_parseValue() {
           (( __Data_JSON_pos++ ))
           return
         else
-          _Crash "Data.JSON: expected ',' or ']'"
+          __Data_JSON_fail "Data.JSON: expected ',' or ']'" || return 1
         fi
       done
       ;;
     't')
       # true
-      [[ "${__Data_JSON_src:__Data_JSON_pos:4}" == "true" ]] || _Crash "Data.JSON: invalid token"
+      [[ "${__Data_JSON_src:__Data_JSON_pos:4}" == "true" ]] || \
+        __Data_JSON_fail "Data.JSON: invalid token" || return 1
       (( __Data_JSON_pos += 4 ))
       __Data_JSON_storeLeaf "$__Data_JSON_parseValue_prefix" "true"
       ;;
     'f')
       # false
-      [[ "${__Data_JSON_src:__Data_JSON_pos:5}" == "false" ]] || _Crash "Data.JSON: invalid token"
+      [[ "${__Data_JSON_src:__Data_JSON_pos:5}" == "false" ]] || \
+        __Data_JSON_fail "Data.JSON: invalid token" || return 1
       (( __Data_JSON_pos += 5 ))
       __Data_JSON_storeLeaf "$__Data_JSON_parseValue_prefix" "false"
       ;;
     'n')
       # null
-      [[ "${__Data_JSON_src:__Data_JSON_pos:4}" == "null" ]] || _Crash "Data.JSON: invalid token"
+      [[ "${__Data_JSON_src:__Data_JSON_pos:4}" == "null" ]] || \
+        __Data_JSON_fail "Data.JSON: invalid token" || return 1
       (( __Data_JSON_pos += 4 ))
       __Data_JSON_storeLeaf "$__Data_JSON_parseValue_prefix" ""
       ;;
@@ -265,7 +291,8 @@ __Data_JSON_parseValue() {
       __Data_JSON_storeLeaf "$__Data_JSON_parseValue_prefix" "$__Data_JSON_numResult"
       ;;
     *)
-      _Crash "Data.JSON: unexpected character '$__Data_JSON_parseValue_c' at position $__Data_JSON_pos"
+      __Data_JSON_fail "Data.JSON: unexpected character '$__Data_JSON_parseValue_c' at position $__Data_JSON_pos" \
+        || return 1
       ;;
   esac
 }
@@ -299,7 +326,7 @@ Data.JSON.parse() {
   __Data_JSON_len=${#__Data_JSON_src}
 
   # Parse
-  __Data_JSON_parseValue ""
+  __Data_JSON_parseValue "" || return 1
 
   boop.pass "$__Data_JSON_doc" "${into:-}"
 }
@@ -431,6 +458,47 @@ __Data_JSON_stringifyPrefix() {
   (( __Data_JSON_sp_is_array )) && __Data_JSON_result+=']' || __Data_JSON_result+='}'
 }
 
+# Data.JSON.validate -- check whether a string is valid JSON, without crashing.
+#
+# Returns 0 if valid, 1 if not. When invalid, the error message is passed via
+# into= (or stdout if no target is given).
+#
+# No subshell needed: the parser runs in safe mode, which replaces _Crash with
+# a return-1 path. The temporary doc object is cleaned up on both paths.
+#
+# Usage:
+#   Data.JSON.validate '{"ok":true}'       # exit 0
+#   Data.JSON.validate 'not json'          # exit 1 (prints error to stdout)
+#   into=err Data.JSON.validate '{'        # exit 1; err = "...error message..."
+Data.JSON.validate() {
+  local _Class="${_Class:-Data.JSON}"
+  local __Data_JSON_validate_json="${1:-}"
+  if [[ -z "$__Data_JSON_validate_json" ]]; then
+    boop.pass "Data.JSON.validate: empty input" "${into:-}"
+    return 1
+  fi
+
+  local __Data_JSON_validate_prev=$__Data_JSON_safe
+  __Data_JSON_safe=1
+  __Data_JSON_error=""
+
+  local __Data_JSON_validate_out
+  into=__Data_JSON_validate_out Data.JSON.parse "$__Data_JSON_validate_json"
+  local __Data_JSON_validate_rc=$?
+  __Data_JSON_safe=$__Data_JSON_validate_prev
+
+  # Clean up the doc object (complete or partial) that parse created.
+  # __Data_JSON_doc is the global set by parse before any parsing begins.
+  unset "__boop_data_${__Data_JSON_doc}" "__boop_keys_${__Data_JSON_doc}"
+
+  if (( __Data_JSON_validate_rc != 0 )); then
+    boop.pass "$__Data_JSON_error" "${into:-}"
+    return 1
+  fi
+  boop.pass "" "${into:-}"
+  return 0
+}
+
 # ============================================================================
 # Registration
 # ============================================================================
@@ -438,5 +506,5 @@ __Data_JSON_stringifyPrefix() {
 # Data.JSON is a static-only class (no instances, just class methods)
 Data.JSON.new() { _Crash "Data.JSON: not instantiable -- use Data.JSON.parse"; }
 
-boopClass Data.JSON 'public:new,parse,stringify'
+boopClass Data.JSON 'public:new,parse,stringify,validate'
 

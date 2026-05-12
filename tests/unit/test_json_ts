@@ -227,6 +227,35 @@ __json_has_tab=0; [[ "$j" == *'a\tb'* ]] && __json_has_tab=1
 $t.assert_eq "tab escaped in output" "$__json_has_tab" "1"
 
 # ============================================================================
+# Validate
+# ============================================================================
+
+$t.section "Validate"
+
+$t.assert_ok "valid object"    Data.JSON.validate '{"a":1}'
+$t.assert_ok "valid array"     Data.JSON.validate '[1,2,3]'
+$t.assert_ok "valid string"    Data.JSON.validate '"hello"'
+$t.assert_ok "valid number"    Data.JSON.validate '42'
+$t.assert_ok "valid null"      Data.JSON.validate 'null'
+$t.assert_ok "valid true"      Data.JSON.validate 'true'
+$t.assert_ok "valid nested"    Data.JSON.validate '{"a":{"b":[1,2]}}'
+
+$t.assert_fail "invalid: bare word"     bash -c '. boop Data::JSON; Data.JSON.validate "undefined"   >/dev/null'
+$t.assert_fail "invalid: missing value" bash -c '. boop Data::JSON; Data.JSON.validate "{\"x\":}"      >/dev/null'
+$t.assert_fail "invalid: bad array"     bash -c '. boop Data::JSON; Data.JSON.validate "[1,2,]"       >/dev/null'
+$t.assert_fail "invalid: empty input"   bash -c '. boop Data::JSON; Data.JSON.validate ""             >/dev/null'
+
+# Error message captured via into=
+into=__vt_err Data.JSON.validate '{"x":}' 2>/dev/null || true
+$t.assert_contains "error message captured" "$__vt_err" "Data.JSON:"
+
+# Valid parse still works after validate (no state corruption)
+Data.JSON.validate '{"ok":1}' >/dev/null
+into=d Data.JSON.parse '{"check":"pass"}'
+into=v $d.get "check"
+$t.assert_eq "parse works after validate" "$v" "pass"
+
+# ============================================================================
 # Stringify: key order preservation
 # ============================================================================
 
