@@ -54,23 +54,119 @@ my_temp_cleanup() {
 
 ## Signal Names
 
-Signal works with any name that bash's `trap` accepts:
+Signal works with any name that bash's `trap` accepts.
+
+### Bash pseudo-signals
+
+These are not OS signals — bash generates them internally:
 
 | Name | Fires when... |
 |------|--------------|
 | `EXIT` | The shell exits for any reason |
 | `ERR` | A command returns non-zero (see [ERR notes](#err-notes)) |
-| `INT` | `Ctrl-C` (SIGINT) |
-| `TERM` | `kill` or system shutdown (SIGTERM) |
-| `HUP` | Terminal disconnect (SIGHUP) |
-| `USR1` | Application-defined |
-| `USR2` | Application-defined |
-| `DEBUG` | Before every command (use sparingly) |
-| `RETURN` | After every `return` or function exit |
+| `DEBUG` | Before every simple command (use sparingly — fires constantly) |
+| `RETURN` | After every `return` or sourced-file exit |
 
-Unrecognized signal names — those `bash` rejects — do not cause errors.
-Signal silently skips trap installation for them; `Signal.dispatch` still
-works for manual dispatch in tests.
+### Standard signals
+
+| Name | Number | Fires when... | Default action |
+|------|--------|--------------|----------------|
+| `HUP` | 1 | Terminal disconnected or controlling process exited | Terminate |
+| `INT` | 2 | `Ctrl-C` | Terminate |
+| `QUIT` | 3 | `Ctrl-\` | Terminate + core dump |
+| `ILL` | 4 | Illegal instruction executed | Terminate + core dump |
+| `ABRT` | 6 | `abort()` called (assertion failure) | Terminate + core dump |
+| `FPE` | 8 | Floating-point or integer divide-by-zero | Terminate + core dump |
+| `SEGV` | 11 | Invalid memory access | Terminate + core dump |
+| `PIPE` | 13 | Write to a closed pipe (`set -o pipefail` or explicit) | Terminate |
+| `ALRM` | 14 | Timer set by `alarm()` expired | Terminate |
+| `TERM` | 15 | Polite termination request (`kill`, system shutdown) | Terminate |
+| `CHLD` | 17 | A child process changed state (exited, stopped, continued) | Ignore |
+| `CONT` | 18 | Process resumed after being stopped | Continue |
+| `TSTP` | 20 | `Ctrl-Z` keyboard stop request | Stop |
+| `TTIN` | 21 | Background process tried to read from terminal | Stop |
+| `TTOU` | 22 | Background process tried to write to terminal (if `stty tostop`) | Stop |
+| `WINCH` | 28 | Terminal window resized | Ignore |
+| `USR1` | 10 | Application-defined | Terminate |
+| `USR2` | 12 | Application-defined | Terminate |
+
+### Untrappable signals
+
+`KILL` (9) and `STOP` (19) **cannot** be caught, blocked, or ignored —
+the OS enforces this. Bash does not error when you call
+`Signal.on KILL …` or `Signal.on STOP …`, but the handler will **never
+fire**. The process is simply killed or stopped by the kernel with no
+opportunity for cleanup.
+
+If you want to handle the keyboard stop gesture (`Ctrl-Z`), trap `TSTP`,
+not `STOP`. `TSTP` is the *request* to stop; the process can intercept it.
+`STOP` is the kernel *enforcing* the stop with no escape.
+
+```bash
+# CORRECT — trap the keyboard Ctrl-Z request:
+Signal.on TSTP handle_suspend
+
+# USELESS — SIGSTOP cannot be caught:
+Signal.on STOP handle_suspend   # handler registers but never fires
+```
+
+Similarly, trap `TERM` (polite shutdown) and `HUP` (disconnect) rather
+than relying on `KILL` cleanup. Well-behaved process managers send `TERM`
+first and only escalate to `KILL` if the process doesn't exit within a
+timeout.
+
+### Notes on specific signals
+
+**QUIT** — `Ctrl-\` in the terminal. Default action is terminate + core
+dump. Trapping it is useful for "dump diagnostics and exit cleanly" rather
+than leaving a core file behind. Less commonly sent than `INT` but worth
+handling in long-running scripts.
+
+**SEGV** — Invalid memory access. Pure bash scripts don't allocate memory
+directly, but bash itself can segfault (rare). Trapping `SEGV` gives you
+a last-chance handler to log context before the process dies, but you
+cannot continue execution after a SEGV — the handler runs and then the
+process exits.
+
+**PIPE** — Fires when you write to a pipe whose reader has closed (e.g.
+`printf '%s' "$data" | head -1` — `head` closes the pipe after one line).
+Trapping `PIPE` suppresses the default termination and lets the script
+handle broken pipes explicitly, though `set -o pipefail` is usually the
+more direct tool.
+
+**CONT** — Fires when a stopped process is resumed (e.g. after `Ctrl-Z`
+followed by `fg`). Useful for re-initializing terminal state after
+suspension.
+
+```bash
+Signal.on TSTP save_terminal_state
+Signal.on CONT restore_terminal_state
+```
+
+**CHLD** — Fires whenever a child process changes state: exits, is stopped
+by a signal, or is resumed. Useful for async job tracking without blocking
+`wait` calls. The handler cannot easily distinguish which child changed
+state (bash doesn't pass that information); use `wait -n` or iterate
+`wait $pid` for specifics.
+
+**WINCH** — Terminal window resized. Essential for full-screen terminal UIs
+that need to reflow their layout when the user resizes the window.
+
+```bash
+Signal.on WINCH redraw_screen
+redraw_screen() {
+  read -r LINES COLUMNS < <(stty size)
+  draw_table
+}
+```
+
+### Unrecognized names
+
+Signal names that bash itself rejects (misspellings, platform-specific
+names not present on the current OS) do not cause errors. Signal silently
+skips trap installation; all collection operations (`on`, `off`, `list`,
+`pop`, `shift`, `clear`) and `Signal.dispatch` still work. This makes
+synthetic signal names safe to use in tests.
 
 ---
 
