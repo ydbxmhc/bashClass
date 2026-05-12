@@ -284,12 +284,11 @@ draw_table() {
     local __BJ_dt_s
     into=__BJ_dt_s $__BJ_dt_dealer.show "Dealer"; printf "  %s\n" "$__BJ_dt_s"
     into=__BJ_dt_s $__BJ_dt_player.show "You" "owner"
-    # Always show the player's running total, even with a hidden hole card.
-    # If the hand is hidden, .show suppresses the [N] bracket -- append it.
-    if $__BJ_dt_player.hasHidden; then
-      local -i __BJ_dt_ptot_simple
-      into=__BJ_dt_ptot_simple $__BJ_dt_player.total
-      __BJ_dt_s="$__BJ_dt_s  [$__BJ_dt_ptot_simple]"
+    local __BJ_dt_ph
+    __boop.parse "$__BJ_dt_player" hidden __BJ_dt_ph
+    if [[ "${__BJ_dt_ph:-0}" == "1" ]]; then
+      local -i __BJ_dt_ptot; into=__BJ_dt_ptot $__BJ_dt_player.total
+      __BJ_dt_s+="  [$__BJ_dt_ptot]"
     fi
     printf "  %s\n\n" "$__BJ_dt_s"
     [[ -n "$__BJ_dt_msg" ]] && printf '  %s\n\n' "$__BJ_dt_msg"
@@ -374,8 +373,6 @@ __bj_loading "Shuffling thoroughly..."
 into=__BJ_one_deck PlayingCard.newDeck
 declare -a __BJ_master=()
 declare -i __BJ_mi __BJ_mlen
-$__BJ_one_deck.shuffle
-
 __bj_loading "Loading into the shoe..."
 into=__BJ_mlen $__BJ_one_deck.length
 for (( __BJ_mi=0; __BJ_mi < __BJ_mlen; __BJ_mi++ )); do
@@ -470,9 +467,9 @@ while (( bankroll > 0 )); do
   # ── Check naturals ──
   declare -i player_bj=0 dealer_bj=0
   $player.isBlackjack && player_bj=1
-  declare -i __BJ_peek_total
-  into=__BJ_peek_total $dealer.total
-  (( __BJ_peek_total == 21 )) && dealer_bj=1
+  declare -i __BJ_nat_dtot
+  into=__BJ_nat_dtot $dealer.total
+  (( __BJ_nat_dtot == 21 )) && dealer_bj=1
 
   if (( player_bj || dealer_bj )); then
     $dealer.reveal; $player.reveal
@@ -533,7 +530,7 @@ while (( bankroll > 0 )); do
         else
           $player.reveal
           draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" "Peeking..."
-          sleep 1
+          (( __BJ_simple )) || sleep 1
           $player.set hidden "1"
         fi
         ;;
@@ -557,7 +554,7 @@ while (( bankroll > 0 )); do
     into=__BJ_card __bj_draw; $dealer.push "$__BJ_card"
     draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
       "Dealer hits..."
-    sleep 1
+    (( __BJ_simple )) || sleep 1
   done
 
   # ── Outcome ──
