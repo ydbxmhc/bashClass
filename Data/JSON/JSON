@@ -137,6 +137,16 @@ __Data_JSON_parseString() {
   _Crash "Data.JSON: unterminated string"
 }
 
+# __Data_JSON_storeLeaf -- write a leaf value into the current doc.
+# Records in both the data hash (for O(1) lookup) and the ordered keys array
+# (for insertion-order stringify). All leaf writes go through here.
+__Data_JSON_storeLeaf() {
+  local -n __Data_JSON_storeLeaf_data="__boop_data_${__Data_JSON_doc}"
+  local -n __Data_JSON_storeLeaf_keys="__boop_keys_${__Data_JSON_doc}"
+  __Data_JSON_storeLeaf_data["$1"]="$2"
+  __Data_JSON_storeLeaf_keys+=("$1")
+}
+
 # Parse a JSON number -- sets __Data_JSON_numResult (no subshell)
 __Data_JSON_parseNumber() {
   local __Data_JSON_parseNumber_start=$__Data_JSON_pos __Data_JSON_parseNumber_c
@@ -161,8 +171,7 @@ __Data_JSON_parseValue() {
       # String
       (( __Data_JSON_pos++ ))
       __Data_JSON_parseString
-      local -n __Data_JSON_parseValue_data="__boop_data_${__Data_JSON_doc}"
-      __Data_JSON_parseValue_data["$__Data_JSON_parseValue_prefix"]="$__Data_JSON_strResult"
+      __Data_JSON_storeLeaf "$__Data_JSON_parseValue_prefix" "$__Data_JSON_strResult"
       ;;
     '{')
       # Object
@@ -236,28 +245,24 @@ __Data_JSON_parseValue() {
       # true
       [[ "${__Data_JSON_src:__Data_JSON_pos:4}" == "true" ]] || _Crash "Data.JSON: invalid token"
       (( __Data_JSON_pos += 4 ))
-      local -n __Data_JSON_parseValue_data="__boop_data_${__Data_JSON_doc}"
-      __Data_JSON_parseValue_data["$__Data_JSON_parseValue_prefix"]="true"
+      __Data_JSON_storeLeaf "$__Data_JSON_parseValue_prefix" "true"
       ;;
     'f')
       # false
       [[ "${__Data_JSON_src:__Data_JSON_pos:5}" == "false" ]] || _Crash "Data.JSON: invalid token"
       (( __Data_JSON_pos += 5 ))
-      local -n __Data_JSON_parseValue_data="__boop_data_${__Data_JSON_doc}"
-      __Data_JSON_parseValue_data["$__Data_JSON_parseValue_prefix"]="false"
+      __Data_JSON_storeLeaf "$__Data_JSON_parseValue_prefix" "false"
       ;;
     'n')
       # null
       [[ "${__Data_JSON_src:__Data_JSON_pos:4}" == "null" ]] || _Crash "Data.JSON: invalid token"
       (( __Data_JSON_pos += 4 ))
-      local -n __Data_JSON_parseValue_data="__boop_data_${__Data_JSON_doc}"
-      __Data_JSON_parseValue_data["$__Data_JSON_parseValue_prefix"]=""
+      __Data_JSON_storeLeaf "$__Data_JSON_parseValue_prefix" ""
       ;;
     '-'|[0-9])
       # Number
       __Data_JSON_parseNumber
-      local -n __Data_JSON_parseValue_data="__boop_data_${__Data_JSON_doc}"
-      __Data_JSON_parseValue_data["$__Data_JSON_parseValue_prefix"]="$__Data_JSON_numResult"
+      __Data_JSON_storeLeaf "$__Data_JSON_parseValue_prefix" "$__Data_JSON_numResult"
       ;;
     *)
       _Crash "Data.JSON: unexpected character '$__Data_JSON_parseValue_c' at position $__Data_JSON_pos"
@@ -282,8 +287,11 @@ Data.JSON.parse() {
   local __Data_JSON_parse_json="${1:-}"
   [[ -n "$__Data_JSON_parse_json" ]] || _Crash "Data.JSON.parse: empty input"
 
-  # Create the target Fast object
+  # Create the target Fast object and its companion ordered-key index.
+  # __boop_keys_${doc} is an indexed array that records each leaf key as it is
+  # parsed, so stringify can reconstruct the original key order without sorting.
   into=__Data_JSON_doc Collection.Map.Fast.new
+  declare -ga "__boop_keys_${__Data_JSON_doc}=()"
 
   # Set up parser state
   __Data_JSON_src="$__Data_JSON_parse_json"
@@ -328,12 +336,22 @@ __Data_JSON_stringifyPrefix() {
     return
   fi
 
-  # Collect direct children of this prefix
+  # Collect direct children of this prefix in the correct order.
+  # When __boop_keys_${doc} is present (JSON.parse sets it) we iterate in
+  # leaf-insertion order so stringify reproduces the original key order.
+  # For raw Fast objects (no keys array) we fall back to hash iteration.
   local -a __Data_JSON_sp_children=()
   local -A __Data_JSON_sp_seen=()
   local __Data_JSON_sp_k __Data_JSON_sp_child
+  local -a __Data_JSON_sp_walk_keys
+  if [[ -v "__boop_keys_${__Data_JSON_sp_doc}" ]]; then
+    local -n __Data_JSON_sp_ord="__boop_keys_${__Data_JSON_sp_doc}"
+    __Data_JSON_sp_walk_keys=( "${__Data_JSON_sp_ord[@]+"${__Data_JSON_sp_ord[@]}"}" )
+  else
+    __Data_JSON_sp_walk_keys=( "${!__Data_JSON_sp_data[@]}" )
+  fi
 
-  for __Data_JSON_sp_k in "${!__Data_JSON_sp_data[@]}"; do
+  for __Data_JSON_sp_k in "${__Data_JSON_sp_walk_keys[@]+"${__Data_JSON_sp_walk_keys[@]}"}"; do
     if [[ -z "$__Data_JSON_sp_prefix" ]]; then
       __Data_JSON_sp_child="${__Data_JSON_sp_k%%.*}"
     elif [[ "$__Data_JSON_sp_k" == "${__Data_JSON_sp_prefix}."* ]]; then

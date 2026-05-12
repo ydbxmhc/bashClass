@@ -226,4 +226,31 @@ $t.assert_eq "newline escaped in output" "$__json_has_nl" "1"
 __json_has_tab=0; [[ "$j" == *'a\tb'* ]] && __json_has_tab=1
 $t.assert_eq "tab escaped in output" "$__json_has_tab" "1"
 
+# ============================================================================
+# Stringify: key order preservation
+# ============================================================================
+
+$t.section "Stringify: key order"
+
+# Flat object — keys must appear in parse order, not hash order
+into=d Data.JSON.parse '{"z":1,"a":2,"m":3}'
+into=j Data.JSON.stringify "$d"
+$t.assert_eq "flat object keys in parse order" "$j" '{"z":1,"a":2,"m":3}'
+
+# Nested object — both top-level and inner keys ordered
+into=d Data.JSON.parse '{"b":{"y":1,"x":2},"a":3}'
+into=j Data.JSON.stringify "$d"
+$t.assert_eq "nested object keys in parse order" "$j" '{"b":{"y":1,"x":2},"a":3}'
+
+# Array order was always correct; verify it still is
+into=d Data.JSON.parse '[30,10,20]'
+into=j Data.JSON.stringify "$d"
+$t.assert_eq "array order preserved" "$j" '[30,10,20]'
+
+# Complex: mixed object+array, ensure full round-trip matches input exactly
+__json_input='{"name":"Alice","scores":[3,1,2],"meta":{"z":9,"a":1}}'
+into=d Data.JSON.parse "$__json_input"
+into=j Data.JSON.stringify "$d"
+$t.assert_eq "complex round-trip exact match" "$j" "$__json_input"
+
 $t.summary
