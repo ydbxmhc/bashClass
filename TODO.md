@@ -51,14 +51,84 @@ Done -- see DEVLOG. All 15 class files now use `boop.init ClassName || return 0`
 
 ---
 
+## Class Variant Conventions (`::Simple` and `::Fast`)
+
+Two naming conventions for class variants with specific optimization
+axes. Not mandatory -- not every class has, needs, or will ever need
+one of these. The convention exists so a reader seeing `Foo`, `Foo::Simple`,
+or `Foo::Fast` in the tree immediately understands what they're looking
+at without having to read the file for a first clue.
+
+### `Class::Simple`
+
+A minimal-dependency variant for use *inside* the dependency graph of
+core classes. Typically a subset of the full API, no dependencies on
+other framework classes beyond the root `boop`, and focused on the one
+or two operations that matter for the intended caller. Examples that
+may want one:
+
+- `Collection::Map::Simple` -- plain key-value hash with set/get/has/keys,
+  no ordering, no delimiters, no Iterator. Usable by other classes that
+  need a hash but cannot depend on the full Map.
+- `Config::Simple` -- flat `key=value` parser with `#` comments and
+  blank-line skipping. No INI sections, no object wrapper, no round-trip.
+  Target consumers: Args types registry, `__boop.parseConfig`, anywhere
+  else the framework needs to read a config file without pulling in
+  Config's full surface area.
+
+### `Class::Fast`
+
+An optimized-hot-path variant. Already demonstrated by `Collection::Map::Fast`
+(flat compound-key store, O(1) get/set, no insertion ordering). The
+conventional signal is "this sacrifices features for speed."
+
+### What the convention is NOT
+
+- Not a mandate. Most classes will have neither variant. Only create
+  one when there's an actual dependency cycle, weight problem, or
+  hot-path bottleneck to solve.
+- Not a symmetry requirement. A class can have `::Simple` without
+  `::Fast`, or vice versa, or the full version can be the only one.
+- Not the same as inheritance. The variants don't typically share an
+  inheritance chain -- each implements what it needs directly. They
+  just share a name root and a conventional letter-suffix meaning.
+
+### Caveats
+
+- **Auto-short-alias**: `Simple` and `Fast` are too generic to auto-alias.
+  If we auto-alias anything it should be the qualified form (`Map.Simple`,
+  `Map.Fast`), never the suffix alone.
+- **Documentation**: each variant documents its own interface. Don't
+  cross-reference with "this is Map.Simple minus features X, Y, Z" --
+  describe what it does, not what it doesn't.
+- **Refactoring momentum**: early in framework evolution, expect a lot
+  of churn as new classes arrive and old ones get carved into Simple /
+  Fast / Full forms. That's fine.
+
+---
+
 ## Args -- Pending Items
 
-Core done. Implementation at `Args/Args`. 63 tests in
+Core done. Implementation at `Args/Args`. 71 tests in
 `tests/unit/test_args_ts`. Docs at `docs/Args.md`.
 
 ### Pending
 - Schema validation warnings for common mistakes (typos, duplicate
   option names, missing `=` on value-taking options)
+- **Value validators in the schema** (`Args.types` registry):
+  - Named types: `: size = int+` / `: host = fqdn` / `: port = port`
+  - Inline regex: `: name = ~ ^[a-z][a-z0-9]*$`
+  - Pluggable registry -- internal associative array seeded at class load
+    with common types (int, int+, int0+, float, identifier, word, path,
+    ipv4, fqdn, email, port, bool). Public API: `Args.types.add NAME PATTERN`,
+    `.get`, `.has`, `.list`, `.remove`.
+  - Unknown named type crashes at schema parse (typo safety).
+  - Validation runs between phase 3 (parsing) and phase 4 (required check).
+  - Error shape: `Args.parse: 'size' = 'abc' does not match int+ (^[1-9][0-9]*$)`.
+  - Empty values skip validation (absence is valid for non-required fields).
+  - Eventual refactor: once `Config::Simple` exists (see "Class Variant
+    Conventions" below), use it as the types-registry backing store so
+    the registry can be loaded from a config file.
 
 ---
 

@@ -197,6 +197,43 @@ __Args.printHelp() {
 }
 
 # ============================================================================
+# __Args.schemaLine -- parse a single [Parser] section line.
+#
+# [Parser] is the schema section for parser-behavior toggles. Only one
+# key is currently recognized:
+#
+#   bareKV=true  -- accept bare 'key=value' positional args as though
+#                   they had been written '--key=value'. Intended for
+#                   boop-style constructors where the caller writes
+#                   `MyClass foo=bar` and the method forwards directly
+#                   to Args.parse. Default: false (strict CLI behavior).
+#
+# Unknown keys crash to catch typos -- this is framework config, not
+# user-supplied data.
+__Args.schemaLine() {
+  local __Args_sl_line="${1%%#*}"
+  __Args_sl_line="${__Args_sl_line%"${__Args_sl_line##*[![:space:]]}"}"
+  [[ -z "$__Args_sl_line" ]] && return 0
+  local __Args_sl_key __Args_sl_val
+  if [[ "$__Args_sl_line" =~ ^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+    __Args_sl_key="${BASH_REMATCH[1]}"
+    __Args_sl_val="${BASH_REMATCH[2]}"
+  else
+    _Crash "Args.parse: invalid [Parser] line: $__Args_sl_line"
+  fi
+  case "$__Args_sl_key" in
+    bareKV)
+      case "$__Args_sl_val" in
+        true|1|yes|on)   __Args_parser_bareKV=1 ;;
+        false|0|no|off|'') __Args_parser_bareKV=0 ;;
+        *) _Crash "Args.parse: [Parser] bareKV expects true|false, got '$__Args_sl_val'" ;;
+      esac
+      ;;
+    *) _Crash "Args.parse: [Parser] unknown key: $__Args_sl_key" ;;
+  esac
+}
+
+# ============================================================================
 # __Args_setVar -- store a parsed option value into the working table.
 # Routing (object/class property, declare -g, Config) happens once after
 # all parsing is complete. NOTE: _Class is intentionally not declared local
@@ -225,6 +262,8 @@ Args.parse() {
   declare -g  __Args_usage=""
   declare -gA __Args_seen=()
   declare -gA __Args_values=()
+  # Parser-behavior flags set by the [Parser] schema section.
+  declare -gi __Args_parser_bareKV=0
 
   # --- Phase 1: Parse schema ---
   _Debug "parse: parsing schema"
@@ -241,6 +280,7 @@ Args.parse() {
       Use|'') __Args_usage+="${__Args_parse_ln}"$'\n' ;;
       Subcommands) __Args.parseSubcmdLine "$__Args_parse_ln" ;;
       Options)     __Args.parseOptLine "" "$__Args_parse_ln" ;;
+      Parser)      __Args.schemaLine "$__Args_parse_ln" ;;
       *)           __Args.parseOptLine "$__Args_parse_section" "$__Args_parse_ln" ;;
     esac
   done <<< "$__Args_parse_schema"
@@ -281,6 +321,14 @@ Args.parse() {
     if [[ "$__Args_parse_arg" == "--help" || "$__Args_parse_arg" == "-h" ]]; then
       __Args.printHelp
       exit 0
+    fi
+
+    # [Parser] bareKV=true: accept bare 'key=value' as '--key=value'.
+    # The rewrite happens before any option-pattern check so the rest
+    # of the loop handles the value exactly like an explicit long option.
+    if (( __Args_parser_bareKV )) \
+      && [[ "$__Args_parse_arg" != -* && "$__Args_parse_arg" == *=* ]]; then
+      __Args_parse_arg="--${__Args_parse_arg}"
     fi
 
     # Long option: --name or --name=value
@@ -423,7 +471,8 @@ Args.parse() {
   # Cleanup working tables (kept until here so phase 5 can read __Args_var_scope)
   unset __Args_alias_map __Args_takes_val __Args_required __Args_defaults \
         __Args_subcmd_map __Args_varlist __Args_var_scope \
-        __Args_descriptions __Args_subcmd_desc __Args_usage __Args_seen __Args_values
+        __Args_descriptions __Args_subcmd_desc __Args_usage __Args_seen __Args_values \
+        __Args_parser_bareKV
 }
 
 # ============================================================================

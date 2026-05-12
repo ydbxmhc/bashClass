@@ -1,37 +1,68 @@
 #!/bin/bash
 
-# Geometry.Cube class
+# Geometry.Cube -- a Box where every dimension equals 'size'.
+#
+# Cube is a Box at the descriptor level: it inherits length, width, height,
+# unit, and color; calc, area, and volume all work unchanged. Cube adds
+# one property (size) and overrides every face method with a thin wrapper
+# around a single side calculation -- because every face of a cube has
+# the same area, the specific face (top, bottom, end, side) is irrelevant.
+#
+# Inheritance: boop -> Geometry.Box -> Geometry.Cube
+#
+# Usage:
+#   . boop Geometry::Cube
+#   into=c Geometry.Cube size=5 unit=cm color=red
+#   into=v $c.volume              # 125
+#   into=a $c.side                # 25  (== top == bottom == end)
+#
+# The class tracks size separately from length/width/height so that code
+# that cares about "is this a cube" can read the size property and know
+# it's authoritative. Mutating length/width/height through the inherited
+# setters would de-cube the object without updating size; documenting
+# that as an anti-pattern is enough for now.
 
-# Load guard
 . boop Geometry::Box Args
 
 boop.init Geometry.Cube || return 0
 
 # ============================================================================
-# Geometry.Cube Implementation Functions
+# Geometry.Cube -- public methods
 # ============================================================================
 
-# Cube constructor - sets all dimensions equal to size
+# new -- constructor with required 'size'. Delegates to Geometry.Box.new
+# for the actual object creation (via _Super), then sets size explicitly
+# after _Bless re-classes the object as Geometry.Cube.
+#
+# [Parser] bareKV=true lets the caller write `Cube size=5` naturally;
+# Args.parse treats that as `--size=5`.
+#
+# Why object mode here (into=cfg Args.parse) rather than Box-style direct
+# property routing: the Cube object doesn't exist yet when we need to
+# validate 'size'. We capture the parsed values into a Config object,
+# pull size out, validate it (^[1-9][0-9]*$ -- positive integer), then
+# build the real object through _Super and set size on the finished product.
+#
+# The schema marks size required with ':'; unit and color remain optional.
+# Duplicate size= is rejected automatically by Args (framework-level).
 Geometry.Cube.new() {
   local _Class="${_Class:-Geometry.Cube}"
   local __Geometry_Cube_new_self __Geometry_Cube_new_size __Geometry_Cube_new_cfg
-  local -a __Geometry_Cube_new_args=()
-  local __Geometry_Cube_new_arg
-  for __Geometry_Cube_new_arg in "$@"; do
-    [[ "$__Geometry_Cube_new_arg" == *=* && "$__Geometry_Cube_new_arg" != --* ]] \
-      && __Geometry_Cube_new_args+=("--${__Geometry_Cube_new_arg}") \
-      || __Geometry_Cube_new_args+=("$__Geometry_Cube_new_arg")
-  done
   into=__Geometry_Cube_new_cfg Args.parse '
+    [Parser]
+    bareKV = true
+
     [Options]
-    size  :
-    unit  =
-    color =
-  ' "${__Geometry_Cube_new_args[@]+"${__Geometry_Cube_new_args[@]}"}"
+    : size  =  # edge length (positive integer); sets length=width=height
+      unit  =  # unit of measurement (e.g. cm, in, mm) -- display only
+      color =  # display color -- cosmetic, not used in calculations
+  ' "$@"
   into=__Geometry_Cube_new_size  $__Geometry_Cube_new_cfg.get size
   local __Geometry_Cube_new_unit;  into=__Geometry_Cube_new_unit  $__Geometry_Cube_new_cfg.get unit
   local __Geometry_Cube_new_color; into=__Geometry_Cube_new_color $__Geometry_Cube_new_cfg.get color
-  [[ -n "$__Geometry_Cube_new_size" ]] || _Crash "Cube: size is required"
+  # Args enforced presence via ':'; validate the value is a positive integer.
+  # Once Args grows a types registry with 'int+' (see TODO: Args / Value
+  # validators), this check moves into the schema.
   [[ "$__Geometry_Cube_new_size" =~ ^[1-9][0-9]*$ ]] || \
     _Crash "Cube: size requires a positive integer, got '$__Geometry_Cube_new_size'"
   _Debug "new: size=$__Geometry_Cube_new_size"
@@ -47,7 +78,9 @@ Geometry.Cube.new() {
   boop.pass "$__Geometry_Cube_new_self" ${into:-}
 }
 
-# Calculate side face area (all faces equal for cube)
+# side -- area of a cube face. For a cube, every face is size x size,
+# so the other face methods all delegate here. Validation happens in
+# Box.area via the inherited calc path.
 Geometry.Cube.side() {
   local _Self="${_Self:-${_Class:-Geometry.Cube}}" _Class="${_Class:-Geometry.Cube}"
   local __Geometry_Cube_side_size __Geometry_Cube_side_val
@@ -57,12 +90,16 @@ Geometry.Cube.side() {
   boop.pass "$__Geometry_Cube_side_val" ${into:-}
 }
 
-# All faces same as side for cube
-Geometry.Cube.top    () { local _Self="${_Self:-${_Class:-Geometry.Cube}}" _Class="${_Class:-Geometry.Cube}"; $_Self.side; }
-Geometry.Cube.end    () { local _Self="${_Self:-${_Class:-Geometry.Cube}}" _Class="${_Class:-Geometry.Cube}"; $_Self.side; }
-Geometry.Cube.bottom () { local _Self="${_Self:-${_Class:-Geometry.Cube}}" _Class="${_Class:-Geometry.Cube}"; $_Self.side; }
+# top, end, bottom -- all faces of a cube are equal. These one-liners
+# alias side using the clean forwarding pattern (see Box.bottom for the
+# idiom).
+Geometry.Cube.top()    { ${_Self:-${_Class:-Geometry.Cube}}.side "$@"; }
+Geometry.Cube.end()    { ${_Self:-${_Class:-Geometry.Cube}}.side "$@"; }
+Geometry.Cube.bottom() { ${_Self:-${_Class:-Geometry.Cube}}.side "$@"; }
 
-# Calculate volume
+# volume -- size cubed. Uses the inherited calc with required=3 to match
+# Box.volume's semantics (exactly three dimensions), though for a cube all
+# three happen to be identical.
 Geometry.Cube.volume() {
   local _Self="${_Self:-${_Class:-Geometry.Cube}}" _Class="${_Class:-Geometry.Cube}"
   local __Geometry_Cube_volume_size __Geometry_Cube_volume_vol
@@ -77,4 +114,3 @@ Geometry.Cube.volume() {
 # ============================================================================
 
 boopClass Geometry.Cube isa:Geometry.Box has:size
-

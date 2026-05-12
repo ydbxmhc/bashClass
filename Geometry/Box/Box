@@ -1,17 +1,59 @@
 #!/bin/bash
 
-# Geometry.Box class
+# Geometry.Box -- a 3D rectangular solid.
+#
+# Box has length, width, and height (all positive integers for area/volume
+# to be meaningful) plus optional descriptive properties for display. A
+# rectangular solid has six faces in three opposite-pair groups, which
+# means exactly three unique face areas. The public methods name all
+# six positions (top, bottom, end, side) for readable calling code, but
+# only three distinct calculations live behind them -- bottom delegates
+# to top, and the opposite end/side pair isn't named explicitly because
+# the caller doesn't need to distinguish.
+#
+# volume multiplies all three dimensions.
+#
+# Every spatial method delegates to calc, which is the single point of
+# numeric validation: non-zero positive integers only, enforced per-arg
+# with a crash message that names the offending value. If you ever add
+# a method that multiplies dimensions, route it through calc and you get
+# input validation for free.
+#
+# Inheritance: boop -> Geometry.Box
+#
+# Usage:
+#   . boop Geometry::Box
+#   into=b Geometry.Box length=5 width=3 height=7
+#   into=v $b.volume              # 105
+#   into=v $b.top                 # 15
+#
+# Cube extends this class and replaces new + the face methods; everything
+# else (calc, area, volume) is inherited unchanged.
 
-# Load guard
+# Args is loaded at class-file scope (not inside a function) because the
+# constructor uses Args.parse and we want the dependency visible from the
+# top of the file.
 . boop Args
 
 boop.init Geometry.Box || return 0
 
 # ============================================================================
-# Geometry.Box Implementation Functions
+# Geometry.Box -- public methods
 # ============================================================================
 
-# Generic multiplication calculator
+# calc -- multiply a list of positive integers with validation.
+#
+# Used as the single numeric-validation chokepoint for every spatial
+# method in the class. Each arg must match ^[0-9]+$ AND be non-zero
+# (arithmetic evaluation of the match). Crashes loudly on any bad arg.
+#
+# Environment:
+#   required -- if set to N, crash unless exactly N args were passed.
+#               Defaults to 0 (accept any count >= 1).
+#
+# Usage:
+#   into=v Geometry.Box.calc 5 3 7          -> 105
+#   required=2 into=a $obj.calc 5 3         -> 15
 Geometry.Box.calc() {
   local _Self="${_Self:-${Class:-Geometry.Box}}" _Class="${_Class:-Geometry.Box}"
   local -i __Geometry_Box_calc_tot=1 required="${required:-0}"
@@ -29,13 +71,15 @@ Geometry.Box.calc() {
   boop.pass "$__Geometry_Box_calc_tot" ${into:-}
 }
 
-# Calculate area (2D)
+# area -- 2D area of two dimensions. Thin wrapper on calc with required=2.
+#
+# Usage:  into=v Geometry.Box.area 5 3     -> 15
 Geometry.Box.area() {
   local _Self="${_Self:-${Class:-Geometry.Box}}" _Class="${_Class:-Geometry.Box}"
   required=2 into=${into:-} Geometry.Box.calc "$@"
 }
 
-# Calculate top face area
+# top -- area of the top face (length x width).
 Geometry.Box.top() {
   local _Self="${_Self:-${Class:-Geometry.Box}}" _Class="${_Class:-Geometry.Box}"
   local __Geometry_Box_top_l __Geometry_Box_top_w __Geometry_Box_top_val
@@ -45,7 +89,7 @@ Geometry.Box.top() {
   boop.pass "$__Geometry_Box_top_val" ${into:-}
 }
 
-# Calculate end face area
+# end -- area of an end face (height x width).
 Geometry.Box.end() {
   local _Self="${_Self:-${Class:-Geometry.Box}}" _Class="${_Class:-Geometry.Box}"
   local __Geometry_Box_end_h __Geometry_Box_end_w __Geometry_Box_end_val
@@ -55,7 +99,7 @@ Geometry.Box.end() {
   boop.pass "$__Geometry_Box_end_val" ${into:-}
 }
 
-# Calculate side face area
+# side -- area of a side face (height x length).
 Geometry.Box.side() {
   local _Self="${_Self:-${Class:-Geometry.Box}}" _Class="${_Class:-Geometry.Box}"
   local __Geometry_Box_side_h __Geometry_Box_side_l __Geometry_Box_side_val
@@ -65,15 +109,16 @@ Geometry.Box.side() {
   boop.pass "$__Geometry_Box_side_val" ${into:-}
 }
 
-# Calculate bottom face area (same as top)
-Geometry.Box.bottom() {
-  local _Self="${_Self:-${Class:-Geometry.Box}}" _Class="${_Class:-Geometry.Box}"
-  local __Geometry_Box_bottom_val
-  into=__Geometry_Box_bottom_val $_Self.top
-  boop.pass "$__Geometry_Box_bottom_val" ${into:-}
-}
+# bottom -- English lacks a single word for the top/bottom face pair the
+# way "sides" and "ends" designate their respective pairs, so we provide
+# 'bottom' as a method alias to 'top'. This is the canonical boop idiom
+# for method aliasing: a one-line forwarding function. Both names appear
+# in the public: descriptor so dispatch recognizes either one. Math does
+# the same thing with symbol aliases (Math.+ -> Math.add, etc).
+Geometry.Box.bottom() { ${_Self:-${_Class:-Geometry.Box}}.top "$@"; }
 
-# Calculate volume (3D)
+# volume -- 3D volume (length x width x height). Crashes if any dimension
+# is missing, zero, or non-numeric, via calc's validation.
 Geometry.Box.volume() {
   local _Self="${_Self:-${Class:-Geometry.Box}}" _Class="${_Class:-Geometry.Box}"
   local __Geometry_Box_volume_l __Geometry_Box_volume_h __Geometry_Box_volume_w __Geometry_Box_volume_vol
@@ -81,30 +126,40 @@ Geometry.Box.volume() {
   into=__Geometry_Box_volume_h $_Self.height
   into=__Geometry_Box_volume_w $_Self.width
   into=__Geometry_Box_volume_vol required=3 $_Self.calc "$__Geometry_Box_volume_l" "$__Geometry_Box_volume_h" "$__Geometry_Box_volume_w"
-  _Debug "volume: ${__Geometry_Box_volume_l}×${__Geometry_Box_volume_h}×${__Geometry_Box_volume_w} = $__Geometry_Box_volume_vol"
+  _Debug "volume: ${__Geometry_Box_volume_l}x${__Geometry_Box_volume_h}x${__Geometry_Box_volume_w} = $__Geometry_Box_volume_vol"
   boop.pass "$__Geometry_Box_volume_vol" ${into:-}
 }
 
-# Constructor
+# new -- constructor. Accepts key=value args (boop convention) via the
+# [Parser] bareKV=true directive, which tells Args.parse to treat bare
+# key=value as though the caller wrote --key=value. That's the right
+# boundary for the translation: the caller uses the natural boop form,
+# the parser sees canonical long options, no munge loop in the middle.
+#
+# Why `into=` is unset before calling Args.parse: Args.parse runs in object
+# mode if `into=` is set, returning a Config object instead of writing
+# properties to the new Box. We want property writes routed to the new
+# object (via `_Self` set to its ID), so we blank `into=` for this call
+# and restore it on the outer boop.pass at the end.
+#
+# length, width, and height are marked required (the ':' prefix): a Box
+# that can't compute area or volume isn't really a Box. unit and color
+# stay optional -- those are cosmetic.
 Geometry.Box.new() {
   local _Class="${_Class:-Geometry.Box}"
   local __Geometry_Box_new_self
   into=__Geometry_Box_new_self __boop.new
-  local -a __Geometry_Box_new_args=()
-  local __Geometry_Box_new_arg
-  for __Geometry_Box_new_arg in "$@"; do
-    [[ "$__Geometry_Box_new_arg" == *=* && "$__Geometry_Box_new_arg" != --* ]] \
-      && __Geometry_Box_new_args+=("--${__Geometry_Box_new_arg}") \
-      || __Geometry_Box_new_args+=("$__Geometry_Box_new_arg")
-  done
   into= _Self="$__Geometry_Box_new_self" Args.parse '
+    [Parser]
+    bareKV = true
+
     [Options]
-    length =
-    width  =
-    height =
-    unit   =
-    color  =
-  ' "${__Geometry_Box_new_args[@]+"${__Geometry_Box_new_args[@]}"}"
+    : length =  # length of the box (positive integer)
+    : width  =  # width of the box (positive integer)
+    : height =  # height of the box (positive integer)
+      unit   =  # unit of measurement (e.g. cm, in, mm) -- display only
+      color  =  # display color -- cosmetic, not used in calculations
+  ' "$@"
   _Info "new: created $__Geometry_Box_new_self"
   boop.pass "$__Geometry_Box_new_self" ${into:-}
 }
@@ -117,4 +172,3 @@ boopClass Geometry.Box '
   has:length,width,height,unit,color
   public:calc,area,top,end,side,bottom,volume
 '
-
