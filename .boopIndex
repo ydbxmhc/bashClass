@@ -21,3 +21,4 @@ Taggable=Mixins/Taggable
 Terminal=Mixins/Terminal
 Serializable=Mixins/Serializable
 JSON=Data/JSON
+Signal=Signal

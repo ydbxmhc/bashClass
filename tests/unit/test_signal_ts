@@ -1,0 +1,242 @@
+#!/bin/bash
+set -uo pipefail
+
+# Signal tests — callback stacks, LIFO dispatch, collection API
+#
+# Classification: UNIT (Signal)
+# Covers: on/push, off, pop, shift, clear, list, dispatch, EXIT trap,
+#         LIFO order, extra args, per-callback error resilience.
+
+. boop TestSuite Signal
+
+into=t TestSuite name="Signal Tests"
+
+__st_boop="${__boop_root}/boop"
+
+# ── Shared callback infrastructure ─────────────────────────────────────────────
+# Callbacks write to __st_log so tests can verify call order and args.
+__st_log=""
+__st_reset() { __st_log=""; }
+
+__st_a() { __st_log+="A(${1:-})"; }
+__st_b() { __st_log+="B(${1:-})"; }
+__st_c() { __st_log+="C(${1:-})"; }
+__st_bad() { return 1; }  # always fails — tests error resilience
+
+# ── on / list / clear ──────────────────────────────────────────────────────────
+
+$t.section "on and list"
+
+Signal.on TESTSIG __st_a
+Signal.on TESTSIG __st_b
+
+into=__st_out Signal.list TESTSIG
+$t.assert_contains "list shows first callback"  "$__st_out" "__st_a"
+$t.assert_contains "list shows second callback" "$__st_out" "__st_b"
+
+Signal.clear TESTSIG
+
+into=__st_out Signal.list TESTSIG
+$t.assert_eq "list empty after clear" "$__st_out" ""
+
+# ── push as alias ──────────────────────────────────────────────────────────────
+
+$t.section "push alias"
+
+Signal.push TESTSIG __st_a
+Signal.push TESTSIG __st_b
+
+into=__st_out Signal.list TESTSIG
+$t.assert_contains "push adds to list" "$__st_out" "__st_a"
+
+Signal.clear TESTSIG
+
+# ── LIFO dispatch order ────────────────────────────────────────────────────────
+
+$t.section "LIFO dispatch order"
+
+__st_reset
+Signal.on TESTSIG __st_a
+Signal.on TESTSIG __st_b
+Signal.on TESTSIG __st_c
+
+Signal.dispatch TESTSIG
+$t.assert_eq "dispatch fires LIFO: C then B then A" \
+  "$__st_log" "C(TESTSIG)B(TESTSIG)A(TESTSIG)"
+
+Signal.clear TESTSIG
+
+# ── Extra args forwarded ───────────────────────────────────────────────────────
+
+$t.section "extra args"
+
+__st_args_cb() { __st_log+="cb(${1:-},${2:-},${3:-})"; }
+__st_reset
+Signal.on TESTSIG __st_args_cb
+Signal.dispatch TESTSIG foo bar
+$t.assert_eq "extra args reach callback" "$__st_log" "cb(TESTSIG,foo,bar)"
+
+Signal.clear TESTSIG
+
+# ── Error resilience ──────────────────────────────────────────────────────────
+
+$t.section "error resilience"
+
+__st_reset
+Signal.on TESTSIG __st_a
+Signal.on TESTSIG __st_bad
+Signal.on TESTSIG __st_c
+
+Signal.dispatch TESTSIG
+$t.assert_contains "A fires despite bad middle handler" "$__st_log" "A(TESTSIG)"
+$t.assert_contains "C fires despite bad middle handler" "$__st_log" "C(TESTSIG)"
+
+Signal.clear TESTSIG
+
+# ── Signal.off ────────────────────────────────────────────────────────────────
+
+$t.section "off"
+
+Signal.on TESTSIG __st_a
+Signal.on TESTSIG __st_b
+Signal.on TESTSIG __st_a   # duplicate — only first removed by off
+
+Signal.off TESTSIG __st_a
+
+into=__st_out Signal.list TESTSIG
+# First __st_a removed; second __st_a and __st_b remain
+$t.assert_contains "off removes first occurrence" "$__st_out" "__st_b"
+# Still has the second __st_a
+__st_count=$(printf '%s\n' "$__st_out" | grep -c "__st_a" || true)
+$t.assert_eq "second occurrence kept" "$__st_count" "1"
+
+# Dispatch after off
+__st_reset
+Signal.dispatch TESTSIG
+$t.assert_contains "off-ed handler not called at head" "$__st_log" "A(TESTSIG)"
+
+Signal.clear TESTSIG
+
+# off on non-existent signal — no crash
+$t.assert_ok "off on unknown signal is harmless" Signal.off NOSIG __st_a
+
+# ── Signal.pop ────────────────────────────────────────────────────────────────
+
+$t.section "pop"
+
+Signal.on TESTSIG __st_a
+Signal.on TESTSIG __st_b
+Signal.on TESTSIG __st_c
+
+into=__st_popped Signal.pop TESTSIG
+$t.assert_eq "pop returns last-pushed" "$__st_popped" "__st_c"
+
+# List now has only a and b
+into=__st_out Signal.list TESTSIG
+$t.assert_contains "pop removes from list" "$__st_out" "__st_b"
+$t.assert_ok "popped item gone from list" \
+  test "${__st_out/__st_c/}" = "$__st_out"
+
+# Dispatch after pop fires b then a (LIFO)
+__st_reset
+Signal.dispatch TESTSIG
+$t.assert_eq "dispatch after pop: B then A" "$__st_log" "B(TESTSIG)A(TESTSIG)"
+
+Signal.clear TESTSIG
+
+# pop on empty
+into=__st_popped Signal.pop TESTSIG
+$t.assert_eq "pop on empty returns empty" "$__st_popped" ""
+
+# ── Signal.shift ──────────────────────────────────────────────────────────────
+
+$t.section "shift"
+
+Signal.on TESTSIG __st_a
+Signal.on TESTSIG __st_b
+Signal.on TESTSIG __st_c
+
+into=__st_shifted Signal.shift TESTSIG
+$t.assert_eq "shift returns first-pushed" "$__st_shifted" "__st_a"
+
+# List now has b and c
+into=__st_out Signal.list TESTSIG
+$t.assert_ok "shifted item gone" \
+  test "${__st_out/__st_a/}" = "$__st_out"
+
+# Dispatch after shift fires c then b
+__st_reset
+Signal.dispatch TESTSIG
+$t.assert_eq "dispatch after shift: C then B" "$__st_log" "C(TESTSIG)B(TESTSIG)"
+
+Signal.clear TESTSIG
+
+# shift on empty
+into=__st_shifted Signal.shift TESTSIG
+$t.assert_eq "shift on empty returns empty" "$__st_shifted" ""
+
+# ── Multiple signals are independent ─────────────────────────────────────────
+
+$t.section "multiple signals"
+
+Signal.on SIG1 __st_a
+Signal.on SIG2 __st_b
+
+__st_reset
+Signal.dispatch SIG1
+$t.assert_eq "SIG1 fires only A" "$__st_log" "A(SIG1)"
+
+__st_reset
+Signal.dispatch SIG2
+$t.assert_eq "SIG2 fires only B" "$__st_log" "B(SIG2)"
+
+Signal.clear SIG1
+Signal.clear SIG2
+
+# ── Dispatch on empty / unknown signal ─────────────────────────────────────────
+
+$t.section "empty dispatch"
+
+__st_reset
+Signal.dispatch NOSIG
+$t.assert_eq "dispatch on unknown signal is no-op" "$__st_log" ""
+
+Signal.on TESTSIG __st_a
+Signal.clear TESTSIG
+__st_reset
+Signal.dispatch TESTSIG
+$t.assert_eq "dispatch on cleared signal is no-op" "$__st_log" ""
+
+# ── EXIT trap in a real subshell ───────────────────────────────────────────────
+
+$t.section "EXIT trap"
+
+__st_exit_out=$(bash -c '
+  . "'"$__st_boop"'" Signal
+  __cleanup() { printf "cleaned:%s" "${1:-}"; }
+  Signal.on EXIT __cleanup
+  exit 0
+')
+$t.assert_eq "EXIT callback fires on exit" "$__st_exit_out" "cleaned:EXIT"
+
+# Multiple EXIT handlers — LIFO
+__st_exit_out=$(bash -c '
+  . "'"$__st_boop"'" Signal
+  __first()  { printf "first ";  }
+  __second() { printf "second "; }
+  __third()  { printf "third ";  }
+  Signal.on EXIT __first
+  Signal.on EXIT __second
+  Signal.on EXIT __third
+  exit 0
+')
+$t.assert_eq "EXIT handlers fire LIFO" "$__st_exit_out" "third second first "
+
+# ── isa / class identity ───────────────────────────────────────────────────────
+
+$t.section "class identity"
+
+$t.assert_ok "Signal.isa Signal" Signal.isa Signal
+$t.assert_ok "Signal.isa boop"   Signal.isa boop
+
+$t.summary

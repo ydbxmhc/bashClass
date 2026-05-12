@@ -1,0 +1,201 @@
+#!/bin/bash
+
+# Signal — managed signal/trap callback stacks
+#
+# Layers a LIFO callback stack on top of bash's single-slot trap, so
+# multiple components can register cleanup/error handlers without stomping
+# each other.
+#
+# All methods are class-level — no instances. Storage is one indexed bash
+# array per signal, named __Signal_handlers_SIGNAME. Using plain arrays
+# (not boop collection objects) keeps the trap dispatch path lightweight
+# and free of global-state concerns.
+#
+# Callback contract: each callback is called as:
+#   callback signame [extra_args...]
+# where extra_args come from Signal.dispatch. Callbacks called via the
+# installed trap receive only the signame. Errors in callbacks are
+# suppressed so one bad handler cannot break the rest.
+#
+# Interface:
+#   Signal.on     signame callback   — push callback onto the stack
+#   Signal.push   signame callback   — alias for on
+#   Signal.off    signame callback   — remove first occurrence
+#   Signal.pop    signame            — remove & return last-pushed (into=)
+#   Signal.shift  signame            — remove & return first-pushed (into=)
+#   Signal.clear  signame            — empty stack, uninstall trap
+#   Signal.list   signame            — newline-joined callback list (into=)
+#   Signal.dispatch signame [args…]  — fire all callbacks LIFO
+
+. boop
+
+boop.init Signal || return 0
+
+# One slot per registered signal: tracks whether a trap has been installed.
+declare -gA __Signal_installed=()
+
+# ── Internal dispatch ──────────────────────────────────────────────────────────
+
+# __Signal.dispatch — fire all callbacks for a signal in LIFO order.
+# Called by installed traps and by Signal.dispatch. Extra args beyond
+# signame are forwarded to each callback. Per-callback errors suppressed.
+__Signal.dispatch() {
+  local __Signal__dispatch_sig="${1:-}"; shift || true
+  [[ -n "$__Signal__dispatch_sig" ]] || return 0
+  local __Signal__dispatch_var="__Signal_handlers_${__Signal__dispatch_sig}"
+  [[ -v "$__Signal__dispatch_var" ]] || return 0
+  local -n __Signal__dispatch_arr="$__Signal__dispatch_var"
+  local -i __Signal__dispatch_i
+  for (( __Signal__dispatch_i=${#__Signal__dispatch_arr[@]}-1;
+         __Signal__dispatch_i>=0;
+         __Signal__dispatch_i-- )); do
+    "${__Signal__dispatch_arr[$__Signal__dispatch_i]}" \
+      "$__Signal__dispatch_sig" "$@" 2>/dev/null || true
+  done
+}
+
+# __Signal.ensure — declare the per-signal array and install the trap once.
+__Signal.ensure() {
+  local __Signal__ensure_sig="$1"
+  local __Signal__ensure_var="__Signal_handlers_${__Signal__ensure_sig}"
+  if [[ ! -v "$__Signal__ensure_var" ]]; then
+    declare -ga "$__Signal__ensure_var"
+  fi
+  if [[ -z "${__Signal_installed[$__Signal__ensure_sig]+set}" ]]; then
+    if trap "__Signal.dispatch '${__Signal__ensure_sig}'" \
+       "$__Signal__ensure_sig" 2>/dev/null; then
+      __Signal_installed[$__Signal__ensure_sig]=1
+    fi
+  fi
+}
+
+# ── Public API ─────────────────────────────────────────────────────────────────
+
+# Signal.on — push a callback onto the top of the LIFO stack.
+# The trap is installed on first registration for each signal.
+Signal.on() {
+  local _Class="${_Class:-Signal}"
+  local __Signal_on_sig="${1:-}" __Signal_on_cb="${2:-}"
+  [[ -n "$__Signal_on_sig" ]] || _Crash "Signal.on: signal name required"
+  [[ -n "$__Signal_on_cb"  ]] || _Crash "Signal.on: callback required"
+  __Signal.ensure "$__Signal_on_sig"
+  local -n __Signal_on_arr="__Signal_handlers_${__Signal_on_sig}"
+  __Signal_on_arr+=( "$__Signal_on_cb" )
+}
+
+# Signal.push — alias for Signal.on.
+Signal.push() {
+  local _Class="${_Class:-Signal}"
+  Signal.on "$@"
+}
+
+# Signal.off — remove the first occurrence of a callback from the stack.
+Signal.off() {
+  local _Class="${_Class:-Signal}"
+  local __Signal_off_sig="${1:-}" __Signal_off_cb="${2:-}"
+  [[ -n "$__Signal_off_sig" ]] || _Crash "Signal.off: signal name required"
+  [[ -n "$__Signal_off_cb"  ]] || _Crash "Signal.off: callback required"
+  local __Signal_off_var="__Signal_handlers_${__Signal_off_sig}"
+  [[ -v "$__Signal_off_var" ]] || return 0
+  local -n __Signal_off_arr="$__Signal_off_var"
+  local -a __Signal_off_new=()
+  local -i __Signal_off_removed=0
+  local __Signal_off_entry
+  if (( ${#__Signal_off_arr[@]} > 0 )); then
+    for __Signal_off_entry in "${__Signal_off_arr[@]}"; do
+      if [[ "$__Signal_off_entry" == "$__Signal_off_cb" && $__Signal_off_removed -eq 0 ]]; then
+        __Signal_off_removed=1
+      else
+        __Signal_off_new+=( "$__Signal_off_entry" )
+      fi
+    done
+  fi
+  __Signal_off_arr=( "${__Signal_off_new[@]+"${__Signal_off_new[@]}"}" )
+}
+
+# Signal.pop — remove and return the last-pushed callback.
+# Returns empty string if the stack is empty.
+Signal.pop() {
+  local _Class="${_Class:-Signal}"
+  local __Signal_pop_sig="${1:-}"
+  [[ -n "$__Signal_pop_sig" ]] || _Crash "Signal.pop: signal name required"
+  local __Signal_pop_var="__Signal_handlers_${__Signal_pop_sig}"
+  if [[ ! -v "$__Signal_pop_var" ]]; then
+    boop.pass "" "${into:-}"; return 0
+  fi
+  local -n __Signal_pop_arr="$__Signal_pop_var"
+  if (( ${#__Signal_pop_arr[@]} == 0 )); then
+    boop.pass "" "${into:-}"; return 0
+  fi
+  local -i __Signal_pop_last=$(( ${#__Signal_pop_arr[@]} - 1 ))
+  local __Signal_pop_val="${__Signal_pop_arr[$__Signal_pop_last]}"
+  unset '__Signal_pop_arr[$__Signal_pop_last]'
+  boop.pass "$__Signal_pop_val" "${into:-}"
+}
+
+# Signal.shift — remove and return the first-pushed callback.
+# Returns empty string if the stack is empty.
+Signal.shift() {
+  local _Class="${_Class:-Signal}"
+  local __Signal_shift_sig="${1:-}"
+  [[ -n "$__Signal_shift_sig" ]] || _Crash "Signal.shift: signal name required"
+  local __Signal_shift_var="__Signal_handlers_${__Signal_shift_sig}"
+  if [[ ! -v "$__Signal_shift_var" ]]; then
+    boop.pass "" "${into:-}"; return 0
+  fi
+  local -n __Signal_shift_arr="$__Signal_shift_var"
+  if (( ${#__Signal_shift_arr[@]} == 0 )); then
+    boop.pass "" "${into:-}"; return 0
+  fi
+  local __Signal_shift_val="${__Signal_shift_arr[0]}"
+  __Signal_shift_arr=( "${__Signal_shift_arr[@]:1}" )
+  boop.pass "$__Signal_shift_val" "${into:-}"
+}
+
+# Signal.clear — empty all callbacks for a signal and uninstall its trap.
+Signal.clear() {
+  local _Class="${_Class:-Signal}"
+  local __Signal_clear_sig="${1:-}"
+  [[ -n "$__Signal_clear_sig" ]] || _Crash "Signal.clear: signal name required"
+  local __Signal_clear_var="__Signal_handlers_${__Signal_clear_sig}"
+  if [[ -v "$__Signal_clear_var" ]]; then
+    local -n __Signal_clear_arr="$__Signal_clear_var"
+    __Signal_clear_arr=()
+  fi
+  if [[ -n "${__Signal_installed[$__Signal_clear_sig]+set}" ]]; then
+    trap - "$__Signal_clear_sig" 2>/dev/null || true
+    unset '__Signal_installed[$__Signal_clear_sig]'
+  fi
+}
+
+# Signal.list — return newline-joined list of registered callbacks.
+# First line is first-pushed (fires last); last line is most recently pushed.
+Signal.list() {
+  local _Class="${_Class:-Signal}"
+  local __Signal_list_sig="${1:-}"
+  [[ -n "$__Signal_list_sig" ]] || _Crash "Signal.list: signal name required"
+  local __Signal_list_var="__Signal_handlers_${__Signal_list_sig}"
+  if [[ ! -v "$__Signal_list_var" ]]; then
+    boop.pass "" "${into:-}"; return 0
+  fi
+  local -n __Signal_list_arr="$__Signal_list_var"
+  if (( ${#__Signal_list_arr[@]} == 0 )); then
+    boop.pass "" "${into:-}"; return 0
+  fi
+  local __Signal_list_out
+  printf -v __Signal_list_out '%s\n' "${__Signal_list_arr[@]}"
+  __Signal_list_out="${__Signal_list_out%$'\n'}"
+  boop.pass "$__Signal_list_out" "${into:-}"
+}
+
+# Signal.dispatch — manually fire all callbacks for a signal in LIFO order.
+# Any args after signame are forwarded to each callback.
+Signal.dispatch() {
+  local _Class="${_Class:-Signal}"
+  local __Signal_dispatch_sig="${1:-}"; shift || true
+  [[ -n "$__Signal_dispatch_sig" ]] || _Crash "Signal.dispatch: signal name required"
+  __Signal.dispatch "$__Signal_dispatch_sig" "$@"
+}
+
+boopClass Signal \
+  'public:on,push,off,pop,shift,clear,list,dispatch'
