@@ -197,19 +197,12 @@ __Args.printHelp() {
 }
 
 # ============================================================================
-# __Args_setVar -- write a parsed option value to the right destination.
-# Object context  (_Self set)             → $target.set name value
-# Class context   (_Class set, not Args)  → $target.set name value
-# Script context  (neither)               → declare -g (current behaviour)
-# NOTE: _Class is intentionally not declared local in Args.parse so that
-# the caller's _Class is visible here via dynamic scoping.
+# __Args_setVar -- store a parsed option value into the working table.
+# Routing (object/class property, declare -g, Config) happens once after
+# all parsing is complete. NOTE: _Class is intentionally not declared local
+# in Args.parse so that the caller's _Class is visible via dynamic scoping.
 __Args_setVar() {
-  local __Args_setVar_target="${_Self:-${_Class:-}}"
-  if [[ -z "${into:-}" && -n "$__Args_setVar_target" && "$__Args_setVar_target" != "Args" ]]; then
-    "$__Args_setVar_target".set "$1" "$2"
-  else
-    declare -g "${1}=${2}"
-  fi
+  __Args_values[$1]="$2"
 }
 
 # Args.parse -- GNU long + subcommand parser
@@ -231,6 +224,7 @@ Args.parse() {
   declare -gA __Args_subcmd_desc=()
   declare -g  __Args_usage=""
   declare -gA __Args_seen=()
+  declare -gA __Args_values=()
 
   # --- Phase 1: Parse schema ---
   _Debug "parse: parsing schema"
@@ -382,24 +376,24 @@ Args.parse() {
   for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
     __Args_parse_scope="${__Args_var_scope[$__Args_parse_v]:-}"
     [[ -n "$__Args_parse_scope" && "$__Args_parse_scope" != "$_Action" ]] && continue
-    if [[ "${__Args_required[$__Args_parse_v]:-0}" == 1 && -z "${!__Args_parse_v}" ]]; then
+    if [[ "${__Args_required[$__Args_parse_v]:-0}" == 1 && -z "${__Args_values[$__Args_parse_v]:-}" ]]; then
       __Args_parse_missing="${__Args_parse_missing:+$__Args_parse_missing, }$__Args_parse_v"
     fi
   done
   [[ -z "$__Args_parse_missing" ]] || _Crash "Args.parse: required options not provided: $__Args_parse_missing"
 
-  # --- Phase 5: Object mode ---
+  # --- Phase 5: Route parsed values to their destination ---
+  local __Args_parse_v_scope
+  local __Args_parse_target="${_Self:-${_Class:-}}"
   if [[ -n "${into:-}" ]]; then
+    # Object mode: build a Config and return it via into=
     _Require Config
     local __Args_parse_obj __Args_parse_rem="" __Args_parse_d="${_Delimiter:-$_EOL}"
-    local __Args_parse_v_scope
     into=__Args_parse_obj Config.new
     for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
       __Args_parse_v_scope="${__Args_var_scope[$__Args_parse_v]:-}"
-      if [[ -z "$__Args_parse_v_scope" || "$__Args_parse_v_scope" == "$_Action" ]]; then
-        $__Args_parse_obj.set "$__Args_parse_v" "${!__Args_parse_v}"
-      fi
-      unset "$__Args_parse_v"
+      [[ -z "$__Args_parse_v_scope" || "$__Args_parse_v_scope" == "$_Action" ]] || continue
+      $__Args_parse_obj.set "$__Args_parse_v" "${__Args_values[$__Args_parse_v]:-}"
     done
     if (( ${#_ArgsRemaining[@]} > 0 )); then
       printf -v __Args_parse_rem "%s${__Args_parse_d}" "${_ArgsRemaining[@]}"
@@ -407,14 +401,29 @@ Args.parse() {
     fi
     $__Args_parse_obj.set _action    "$_Action"
     $__Args_parse_obj.set _remaining "$__Args_parse_rem"
+    for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
+      unset "$__Args_parse_v"
+    done
     unset _Action _ArgsRemaining
     boop.pass "$__Args_parse_obj" ${into:-}
+  elif [[ -n "$__Args_parse_target" && "$__Args_parse_target" != "Args" ]]; then
+    # Object/class context: route each value to the property system
+    for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
+      __Args_parse_v_scope="${__Args_var_scope[$__Args_parse_v]:-}"
+      [[ -z "$__Args_parse_v_scope" || "$__Args_parse_v_scope" == "$_Action" ]] || continue
+      "$__Args_parse_target".set "$__Args_parse_v" "${__Args_values[$__Args_parse_v]:-}"
+    done
+  else
+    # Script context: set global variables
+    for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
+      declare -g "${__Args_parse_v}=${__Args_values[$__Args_parse_v]:-}"
+    done
   fi
 
   # Cleanup working tables (kept until here so phase 5 can read __Args_var_scope)
   unset __Args_alias_map __Args_takes_val __Args_required __Args_defaults \
         __Args_subcmd_map __Args_varlist __Args_var_scope \
-        __Args_descriptions __Args_subcmd_desc __Args_usage __Args_seen
+        __Args_descriptions __Args_subcmd_desc __Args_usage __Args_seen __Args_values
 }
 
 # ============================================================================
