@@ -18,23 +18,48 @@
 # suppressed so one bad handler cannot break the rest.
 #
 # Interface:
-#   Signal.on     signame callback   — push callback onto the stack
-#   Signal.push   signame callback   — alias for on
-#   Signal.off    signame callback   — remove first occurrence
-#   Signal.pop    signame            — remove & return last-pushed (into=)
-#   Signal.shift  signame            — remove & return first-pushed (into=)
-#   Signal.clear  signame            — empty stack, uninstall trap
-#   Signal.list   signame            — newline-joined callback list (into=)
-#   Signal.dispatch signame [args…]  — fire all callbacks LIFO
+#   Signal.strict [0|1]           — toggle strict mode (default on)
+#   Signal.on     signame callback — push callback onto the stack
+#   Signal.push   signame callback — alias for on
+#   Signal.off    signame callback — remove first occurrence
+#   Signal.pop    signame          — remove & return last-pushed (into=)
+#   Signal.shift  signame          — remove & return first-pushed (into=)
+#   Signal.clear  signame          — empty stack, uninstall trap
+#   Signal.list   signame          — newline-joined callback list (into=)
+#   Signal.dispatch signame [args…] — fire all callbacks LIFO
 
 . boop
 
 boop.init Signal || return 0
 
+# ── Global state ───────────────────────────────────────────────────────────────
+
 # One slot per registered signal: tracks whether a trap has been installed.
 declare -gA __Signal_installed=()
 
-# ── Internal dispatch ──────────────────────────────────────────────────────────
+# Strict mode (default 1). When on:
+#   - Warns if a signal name is invalid (trap returns non-zero).
+#   - Warns if a callback is not a currently defined function.
+# Set to 0 to suppress these warnings — useful in tests that use synthetic
+# signal names or that register handlers before the function is defined.
+# KILL/STOP warnings are always emitted regardless of this flag.
+declare -gi __Signal_strict=1
+
+# Signals that bash accepts in trap without error but that the OS will never
+# deliver — the kernel enforces SIGKILL and SIGSTOP unconditionally.
+# Accept both bare names and SIG-prefixed forms.
+declare -ga __Signal_unblockable=(KILL SIGKILL 9 STOP SIGSTOP 19)
+
+# ── Internal helpers ───────────────────────────────────────────────────────────
+
+# __Signal.isUnblockable — return 0 if sig is KILL or STOP (never fires).
+__Signal.isUnblockable() {
+  local __Signal__iu_s
+  for __Signal__iu_s in "${__Signal_unblockable[@]}"; do
+    [[ "$1" == "$__Signal__iu_s" ]] && return 0
+  done
+  return 1
+}
 
 # __Signal.dispatch — fire all callbacks for a signal in LIFO order.
 # Called by installed traps and by Signal.dispatch. Extra args beyond
@@ -55,29 +80,112 @@ __Signal.dispatch() {
 }
 
 # __Signal.ensure — declare the per-signal array and install the trap once.
+# Emits warnings for KILL/STOP (always) and invalid signals (when strict).
 __Signal.ensure() {
   local __Signal__ensure_sig="$1"
+
+  # KILL and STOP are unblockable — warn unconditionally.
+  if __Signal.isUnblockable "$__Signal__ensure_sig"; then
+    _Warn "Signal: '${__Signal__ensure_sig}' cannot be caught — SIGKILL and SIGSTOP are unblockable by the OS; handlers registered for them will never fire"
+  fi
+
   local __Signal__ensure_var="__Signal_handlers_${__Signal__ensure_sig}"
   if [[ ! -v "$__Signal__ensure_var" ]]; then
     declare -ga "$__Signal__ensure_var"
   fi
+
   if [[ -z "${__Signal_installed[$__Signal__ensure_sig]+set}" ]]; then
     if trap "__Signal.dispatch '${__Signal__ensure_sig}'" \
        "$__Signal__ensure_sig" 2>/dev/null; then
       __Signal_installed[$__Signal__ensure_sig]=1
+    else
+      (( __Signal_strict )) && \
+        _Warn "Signal: '${__Signal__ensure_sig}' is not a valid signal name on this platform; callbacks will be registered but no trap will be installed"
     fi
   fi
 }
 
+# __Signal.surveyExisting — internalize any traps set before Signal loaded.
+#
+# Reads trap -p output, wraps each pre-existing handler in a named function
+# (__Signal_legacy_SIGNAME), and registers it via Signal.on at the bottom of
+# the LIFO stack. New registrations added later will fire before the legacy
+# handler, preserving the "last registered, first called" contract.
+#
+# Handler strings (possibly bare code) are preserved verbatim via eval inside
+# the wrapper — safe because this code was already scheduled to run as a trap.
+#
+# Called once automatically at class load time.
+__Signal.surveyExisting() {
+  local __Signal__se_all __Signal__se_line __Signal__se_sig
+  __Signal__se_all="$(trap -p 2>/dev/null)" || return 0
+  [[ -z "$__Signal__se_all" ]] && return 0
+
+  local __Signal__se_body __Signal__se_wrap
+  while IFS= read -r __Signal__se_line; do
+    [[ -z "$__Signal__se_line" ]] && continue
+
+    # Format from trap -p: trap -- 'HANDLER' SIGSPEC
+    # SIGSPEC is always the last whitespace-delimited token.
+    __Signal__se_sig="${__Signal__se_line##* }"
+    [[ -z "$__Signal__se_sig" ]] && continue
+
+    # Skip signals already managed by Signal (shouldn't occur at load time).
+    [[ -n "${__Signal_installed[$__Signal__se_sig]+set}" ]] && continue
+
+    # Extract the quoted handler body by stripping the known prefix and suffix.
+    __Signal__se_body="${__Signal__se_line#trap -- }"
+    __Signal__se_body="${__Signal__se_body% "${__Signal__se_sig}"}"
+
+    # Skip ignored signals (empty-string handler: '').
+    [[ "$__Signal__se_body" == "''" || -z "$__Signal__se_body" ]] && continue
+
+    # Create a wrapper function that evals the original handler code at dispatch
+    # time. Using eval is safe: this code was already registered as a trap and
+    # would have executed had Signal not loaded. The body string is in bash-
+    # reusable quoting exactly as produced by trap -p.
+    __Signal__se_wrap="__Signal_legacy_${__Signal__se_sig}"
+    eval "${__Signal__se_wrap}() { eval ${__Signal__se_body}; }"
+
+    # Register with strict off — the original trap was already valid.
+    local __Signal__se_saved=$__Signal_strict
+    __Signal_strict=0
+    Signal.on "$__Signal__se_sig" "$__Signal__se_wrap"
+    __Signal_strict=$__Signal__se_saved
+
+    _Info "Signal: internalized pre-existing ${__Signal__se_sig} trap"
+  done <<< "$__Signal__se_all"
+}
+
 # ── Public API ─────────────────────────────────────────────────────────────────
 
+# Signal.strict — set strict mode on (1/on/true) or off (0/off/false).
+# Strict mode on (default): warn on invalid signal names and undefined callbacks.
+# Strict mode off: suppress those warnings — useful for tests with synthetic names.
+# KILL/STOP warnings are always emitted regardless of this setting.
+Signal.strict() {
+  local _Class="${_Class:-Signal}"
+  case "${1:-}" in
+    0|off|false) __Signal_strict=0 ;;
+    1|on|true|"") __Signal_strict=1 ;;
+    *) _Crash "Signal.strict: expected 0/off or 1/on, got '$1'" ;;
+  esac
+}
+
 # Signal.on — push a callback onto the top of the LIFO stack.
-# The trap is installed on first registration for each signal.
+# Warns (in strict mode) if the signal is invalid or the callback is not
+# currently a defined function.
 Signal.on() {
   local _Class="${_Class:-Signal}"
   local __Signal_on_sig="${1:-}" __Signal_on_cb="${2:-}"
   [[ -n "$__Signal_on_sig" ]] || _Crash "Signal.on: signal name required"
   [[ -n "$__Signal_on_cb"  ]] || _Crash "Signal.on: callback required"
+
+  # Warn if the callback is not yet a defined function.
+  if (( __Signal_strict )) && ! declare -f "$__Signal_on_cb" >/dev/null 2>&1; then
+    _Warn "Signal.on: '${__Signal_on_cb}' is not a currently defined function — ensure it is defined before '${__Signal_on_sig}' fires"
+  fi
+
   __Signal.ensure "$__Signal_on_sig"
   local -n __Signal_on_arr="__Signal_handlers_${__Signal_on_sig}"
   __Signal_on_arr+=( "$__Signal_on_cb" )
@@ -198,4 +306,7 @@ Signal.dispatch() {
 }
 
 boopClass Signal \
-  'public:on,push,off,pop,shift,clear,list,dispatch'
+  'public:strict,on,push,off,pop,shift,clear,list,dispatch'
+
+# Survey and internalize any traps that were set before Signal loaded.
+__Signal.surveyExisting

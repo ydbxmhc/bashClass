@@ -1,17 +1,22 @@
 #!/bin/bash
 set -uo pipefail
 
-# Signal tests — callback stacks, LIFO dispatch, collection API
+# Signal tests — callback stacks, LIFO dispatch, collection API, strict mode,
+# KILL/STOP warnings, undefined-callback warnings, pre-existing trap survey.
 #
 # Classification: UNIT (Signal)
 # Covers: on/push, off, pop, shift, clear, list, dispatch, EXIT trap,
-#         LIFO order, extra args, per-callback error resilience.
+#         LIFO order, extra args, error resilience, strict mode, survey.
 
 . boop TestSuite Signal
 
 into=t TestSuite name="Signal Tests"
 
 __st_boop="${__boop_root}/boop"
+
+# Synthetic signal names used throughout don't correspond to real signals.
+# Turn strict off so those sections don't spam undefined-signal warnings.
+Signal.strict off
 
 # ── Shared callback infrastructure ─────────────────────────────────────────────
 # Callbacks write to __st_log so tests can verify call order and args.
@@ -22,6 +27,38 @@ __st_a() { __st_log+="A(${1:-})"; }
 __st_b() { __st_log+="B(${1:-})"; }
 __st_c() { __st_log+="C(${1:-})"; }
 __st_bad() { return 1; }  # always fails — tests error resilience
+
+# ── strict mode ────────────────────────────────────────────────────────────────
+
+$t.section "strict mode"
+
+# KILL and STOP always warn regardless of strict setting.
+__st_kill_warn=$(Signal.strict on; Signal.on KILL __st_a 2>&1; Signal.clear KILL)
+$t.assert_contains "KILL always warns" "$__st_kill_warn" "unblockable"
+
+__st_stop_warn=$(Signal.strict on; Signal.on STOP __st_a 2>&1; Signal.clear STOP)
+$t.assert_contains "STOP always warns" "$__st_stop_warn" "unblockable"
+
+# Invalid signal: warns in strict mode, silent when off.
+__st_inv_warn=$(Signal.strict on; Signal.on INVALID_SIG __st_a 2>&1; Signal.clear INVALID_SIG)
+$t.assert_contains "invalid signal warns in strict mode" "$__st_inv_warn" "not a valid signal"
+
+Signal.strict off
+__st_inv_silent=$(Signal.on INVALID_SIG __st_a 2>&1; Signal.clear INVALID_SIG)
+$t.assert_eq "invalid signal silent when strict off" "$__st_inv_silent" ""
+
+# Undefined callback: warns in strict mode, silent when off.
+__st_undef_warn=$(Signal.strict on; Signal.on EXIT __st_undefined_fn 2>&1; Signal.clear EXIT)
+$t.assert_contains "undefined callback warns in strict mode" "$__st_undef_warn" "not a currently defined function"
+
+Signal.strict off
+__st_undef_silent=$(Signal.on EXIT __st_undefined_fn 2>&1; Signal.clear EXIT)
+$t.assert_eq "undefined callback silent when strict off" "$__st_undef_silent" ""
+
+# Defined callback in strict mode: no warning.
+__st_def_warn=$(Signal.strict on; Signal.on EXIT __st_a 2>&1; Signal.clear EXIT)
+$t.assert_eq "defined callback no warning in strict mode" "$__st_def_warn" ""
+Signal.strict off
 
 # ── on / list / clear ──────────────────────────────────────────────────────────
 
@@ -106,18 +143,15 @@ Signal.off TESTSIG __st_a
 into=__st_out Signal.list TESTSIG
 # First __st_a removed; second __st_a and __st_b remain
 $t.assert_contains "off removes first occurrence" "$__st_out" "__st_b"
-# Still has the second __st_a
 __st_count=$(printf '%s\n' "$__st_out" | grep -c "__st_a" || true)
 $t.assert_eq "second occurrence kept" "$__st_count" "1"
 
-# Dispatch after off
 __st_reset
 Signal.dispatch TESTSIG
-$t.assert_contains "off-ed handler not called at head" "$__st_log" "A(TESTSIG)"
+$t.assert_contains "remaining handlers still fire" "$__st_log" "A(TESTSIG)"
 
 Signal.clear TESTSIG
 
-# off on non-existent signal — no crash
 $t.assert_ok "off on unknown signal is harmless" Signal.off NOSIG __st_a
 
 # ── Signal.pop ────────────────────────────────────────────────────────────────
@@ -131,20 +165,17 @@ Signal.on TESTSIG __st_c
 into=__st_popped Signal.pop TESTSIG
 $t.assert_eq "pop returns last-pushed" "$__st_popped" "__st_c"
 
-# List now has only a and b
 into=__st_out Signal.list TESTSIG
 $t.assert_contains "pop removes from list" "$__st_out" "__st_b"
 $t.assert_ok "popped item gone from list" \
   test "${__st_out/__st_c/}" = "$__st_out"
 
-# Dispatch after pop fires b then a (LIFO)
 __st_reset
 Signal.dispatch TESTSIG
 $t.assert_eq "dispatch after pop: B then A" "$__st_log" "B(TESTSIG)A(TESTSIG)"
 
 Signal.clear TESTSIG
 
-# pop on empty
 into=__st_popped Signal.pop TESTSIG
 $t.assert_eq "pop on empty returns empty" "$__st_popped" ""
 
@@ -159,19 +190,16 @@ Signal.on TESTSIG __st_c
 into=__st_shifted Signal.shift TESTSIG
 $t.assert_eq "shift returns first-pushed" "$__st_shifted" "__st_a"
 
-# List now has b and c
 into=__st_out Signal.list TESTSIG
 $t.assert_ok "shifted item gone" \
   test "${__st_out/__st_a/}" = "$__st_out"
 
-# Dispatch after shift fires c then b
 __st_reset
 Signal.dispatch TESTSIG
 $t.assert_eq "dispatch after shift: C then B" "$__st_log" "C(TESTSIG)B(TESTSIG)"
 
 Signal.clear TESTSIG
 
-# shift on empty
 into=__st_shifted Signal.shift TESTSIG
 $t.assert_eq "shift on empty returns empty" "$__st_shifted" ""
 
@@ -206,6 +234,37 @@ Signal.clear TESTSIG
 __st_reset
 Signal.dispatch TESTSIG
 $t.assert_eq "dispatch on cleared signal is no-op" "$__st_log" ""
+
+# ── Pre-existing trap survey ───────────────────────────────────────────────────
+
+$t.section "pre-existing trap survey"
+
+# A pre-existing function-name trap is internalized and fires via Signal.dispatch.
+__st_exit_out=$(bash -c '
+  . "'"$__st_boop"'"
+  __pre() { printf "pre:%s" "${1:-}"; }
+  trap "__pre EXIT" EXIT          # set before Signal loads
+  . "'"$__st_boop"'" Signal
+  __post() { printf "post:%s" "${1:-}"; }
+  Signal.on EXIT __post           # registered after load, fires FIRST (LIFO)
+  exit 0
+' 2>/dev/null)
+$t.assert_contains "pre-existing trap fires" "$__st_exit_out" "pre:EXIT"
+$t.assert_contains "post-load handler fires" "$__st_exit_out" "post:EXIT"
+# LIFO: post fires before pre (post was pushed later)
+__st_post_pos=$(printf '%s' "$__st_exit_out" | grep -bo "post" | cut -d: -f1 | head -1)
+__st_pre_pos=$(printf '%s' "$__st_exit_out" | grep -bo "pre" | cut -d: -f1 | head -1)
+$t.assert_ok "post-load handler fires before pre-existing (LIFO)" \
+  test "${__st_post_pos:-999}" -lt "${__st_pre_pos:-0}"
+
+# Bare code trap (not a function name) is also internalized.
+__st_bare_out=$(bash -c '
+  . "'"$__st_boop"'"
+  trap '\''printf "bare_fired"'\'' EXIT   # bare code on EXIT, not a function
+  . "'"$__st_boop"'" Signal
+  exit 0
+' 2>/dev/null)
+$t.assert_contains "bare code trap internalized and fires" "$__st_bare_out" "bare_fired"
 
 # ── EXIT trap in a real subshell ───────────────────────────────────────────────
 

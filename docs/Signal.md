@@ -163,14 +163,40 @@ redraw_screen() {
 ### Unrecognized names
 
 Signal names that bash itself rejects (misspellings, platform-specific
-names not present on the current OS) do not cause errors. Signal silently
-skips trap installation; all collection operations (`on`, `off`, `list`,
-`pop`, `shift`, `clear`) and `Signal.dispatch` still work. This makes
-synthetic signal names safe to use in tests.
+names not present on the current OS) produce a warning in strict mode and
+are silently skipped otherwise. All collection operations (`on`, `off`,
+`list`, `pop`, `shift`, `clear`) and `Signal.dispatch` still work even
+without a trap installed. Turn strict mode off when using synthetic signal
+names in tests (`Signal.strict off`).
 
 ---
 
 ## Methods
+
+### `Signal.strict [0|1|on|off]`
+
+Set strict mode on (`1`/`on`/`true`, the default) or off (`0`/`off`/`false`).
+
+When **on** (default):
+- `Signal.on` warns if the signal name is invalid (trap refused by bash)
+- `Signal.on` warns if the callback is not currently a defined function
+
+When **off**: both of the above warnings are suppressed. KILL/STOP warnings
+are always emitted regardless.
+
+```bash
+# Turn off for a test file that uses synthetic signal names:
+Signal.strict off
+Signal.on FAKE_SIG my_handler    # no warning
+Signal.strict on
+
+# Or inline for a single call:
+Signal.strict off
+Signal.on EXIT fn_defined_later
+Signal.strict on
+```
+
+---
 
 ### `Signal.on signame callback`
 
@@ -182,6 +208,17 @@ Signal.on EXIT cleanup_tmpdir
 Signal.on EXIT restore_terminal    # fires first on exit
 Signal.on ERR  log_error
 ```
+
+**Strict-mode checks run at registration time:**
+
+- If `signame` is `KILL` or `STOP`, always warns that the handler will never
+  fire (SIGKILL and SIGSTOP are unblockable by the OS).
+- If `signame` is otherwise invalid (bash rejects the trap), warns in strict
+  mode. The callback is still registered; `Signal.dispatch` works manually.
+- If `callback` is not currently a defined bash function, warns in strict mode.
+  The registration proceeds — the function may be defined later before the
+  signal fires. If it is not, the callback will silently fail at dispatch time
+  (errors are suppressed per the error-resilience contract).
 
 `Signal.push` is an exact alias for `Signal.on`.
 
@@ -379,6 +416,46 @@ that use `into=` on globals your script is currently mid-write on, because
 
 ---
 
+## Pre-existing Trap Survey
+
+When Signal loads it scans the current trap table with `trap -p` and
+internalizes any traps that were already set. Each pre-existing handler is
+wrapped in a named function (`__Signal_legacy_SIGNAME`) and pushed onto the
+bottom of the LIFO stack for that signal, so newly registered handlers still
+fire first.
+
+```bash
+. boop           # load framework
+
+# Set traps before Signal arrives:
+trap 'rm -rf $tmpdir' EXIT        # bare code
+trap my_existing_fn INT           # function name
+
+. boop Signal    # Signal surveys and wraps both
+
+# Add new handlers — these fire BEFORE the legacy ones:
+Signal.on EXIT  my_new_cleanup
+Signal.on INT   my_new_int_handler
+```
+
+On exit, the order is:
+1. `my_new_cleanup` (registered last → fires first)
+2. `__Signal_legacy_EXIT` wrapper → runs `rm -rf $tmpdir`
+
+**Bare code is handled correctly.** The handler string from `trap -p` is in
+bash's reusable quoted format. Signal wraps it with `eval` inside the legacy
+function, so `$tmpdir` (or any other variable reference) is evaluated at the
+time the handler fires, not at survey time. This matches the behavior the
+original trap would have had.
+
+**Ignored signals are not wrapped.** A signal ignored with `trap '' SIGNAME`
+(empty handler) is left alone. Signal does not install a handler for it.
+
+**Survey runs once at class load time.** Traps set after `. boop Signal`
+are not automatically detected — use `Signal.on` for those.
+
+---
+
 ## Common Patterns
 
 ### Multi-component EXIT cleanup
@@ -533,10 +610,36 @@ previous `trap` that may have been set before Signal took over the slot.
 Signal assumes it owns the trap slot for signals it manages.
 
 **Unrecognized signal names.** If bash rejects a signal name (e.g. a
-misspelled `EXITT`), `trap` returns non-zero and Signal silently skips
-trap installation. The per-signal array is still created, so `Signal.dispatch`
-and all collection operations work — useful for tests that use synthetic
-signal names.
+misspelled `EXITT`), `trap` returns non-zero and Signal warns in strict mode
+but still creates the per-signal array. `Signal.dispatch` and all collection
+operations work — useful for tests that use synthetic signal names. Disable
+the warning with `Signal.strict off`.
+
+**KILL and STOP always warn.** Registering a handler for SIGKILL or SIGSTOP
+is a latent bug — the kernel delivers these signals without consulting the
+process's signal mask. Signal warns unconditionally (even with `Signal.strict
+off`) because a developer who sees "my cleanup never ran" has a hard time
+diagnosing why without this hint. The handler is still registered so it can
+be reached via `Signal.dispatch` in tests.
+
+**Undefined callback warning.** `Signal.on` checks `declare -f` at
+registration time. This catches typos immediately rather than silently
+failing at signal delivery time. The check runs only in strict mode (the
+default); turn it off if you're registering handlers for functions defined
+later in the file, or use `Signal.strict off` for that one call.
+
+**Strict mode is global state.** `Signal.strict` sets a global flag
+(`__Signal_strict`). Toggle it around a block that needs looser rules, then
+restore it. The common pattern in test files is to call `Signal.strict off`
+once at the top and `Signal.strict on` at the end.
+
+**Pre-existing trap survey uses eval.** The `eval` call in
+`__Signal.surveyExisting` is intentional and safe: it executes code that was
+already registered as a trap handler and would have run regardless. The handler
+string comes from bash's own `trap -p` output (trusted shell state, not user
+input), and it is evaluated at dispatch time inside a wrapper function rather
+than at survey time, so variable references like `$tmpdir` expand correctly
+when the handler fires.
 
 **Callback errors suppressed at dispatch time.** `2>/dev/null || true`
 wraps each callback invocation. This means even a callback that calls `exit`
