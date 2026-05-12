@@ -329,6 +329,33 @@ Args.parse '
 ' --bad-name
 ERREOF6
 
+# Duplicate long option crashes
+$t.assert_fail "duplicate long option crashes" bash << 'ERREOF7'
+. boop Args
+Args.parse '
+[Options]
+  name =
+' --name alice --name bob
+ERREOF7
+
+# Duplicate via alias crashes (same variable, different flags)
+$t.assert_fail "duplicate via alias crashes" bash << 'ERREOF8'
+. boop Args
+Args.parse '
+[Options]
+  verbose | v
+' --verbose -v
+ERREOF8
+
+# Duplicate short option crashes
+$t.assert_fail "duplicate short option crashes" bash << 'ERREOF9'
+. boop Args
+Args.parse '
+[Options]
+  file | f =
+' -f one -f two
+ERREOF9
+
 # No args with no required options -- should succeed
 __args_noargs_rc=0
 bash << 'NOARGSEOF' || __args_noargs_rc=$?

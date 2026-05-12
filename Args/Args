@@ -230,6 +230,7 @@ Args.parse() {
   declare -gA __Args_descriptions=()
   declare -gA __Args_subcmd_desc=()
   declare -g  __Args_usage=""
+  declare -gA __Args_seen=()
 
   # --- Phase 1: Parse schema ---
   _Debug "parse: parsing schema"
@@ -300,6 +301,8 @@ Args.parse() {
       fi
       __Args_parse_vn="${__Args_alias_map[$__Args_parse_key]:-}"
       [[ -n "$__Args_parse_vn" ]] || _Crash "Args.parse: unknown option: $__Args_parse_key"
+      [[ -z "${__Args_seen[$__Args_parse_vn]+set}" ]] || _Crash "Args.parse: duplicate option: $__Args_parse_key"
+      __Args_seen[$__Args_parse_vn]=1
       __Args_parse_scope="${__Args_var_scope[$__Args_parse_vn]:-}"
       if [[ -n "$__Args_parse_scope" ]]; then
         if [[ -z "$_Action" ]]; then
@@ -332,6 +335,8 @@ Args.parse() {
         __Args_parse_cluster="${__Args_parse_cluster:1}"
         __Args_parse_cvn="${__Args_alias_map["-${__Args_parse_c}"]:-}"
         [[ -n "$__Args_parse_cvn" ]] || _Crash "Args.parse: unknown option: -${__Args_parse_c}"
+        [[ -z "${__Args_seen[$__Args_parse_cvn]+set}" ]] || _Crash "Args.parse: duplicate option: -${__Args_parse_c}"
+        __Args_seen[$__Args_parse_cvn]=1
         __Args_parse_scope="${__Args_var_scope[$__Args_parse_cvn]:-}"
         if [[ -n "$__Args_parse_scope" ]]; then
           if [[ -z "$_Action" ]]; then
@@ -409,7 +414,7 @@ Args.parse() {
   # Cleanup working tables (kept until here so phase 5 can read __Args_var_scope)
   unset __Args_alias_map __Args_takes_val __Args_required __Args_defaults \
         __Args_subcmd_map __Args_varlist __Args_var_scope \
-        __Args_descriptions __Args_subcmd_desc __Args_usage
+        __Args_descriptions __Args_subcmd_desc __Args_usage __Args_seen
 }
 
 # ============================================================================

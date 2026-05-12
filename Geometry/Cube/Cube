@@ -15,13 +15,8 @@ boop.init Geometry.Cube || return 0
 Geometry.Cube.new() {
   local _Class="${_Class:-Geometry.Cube}"
   local __Geometry_Cube_new_self __Geometry_Cube_new_size __Geometry_Cube_new_cfg
-  local -i __Geometry_Cube_new_size_count=0
   local -a __Geometry_Cube_new_args=()
   local __Geometry_Cube_new_arg
-  for __Geometry_Cube_new_arg in "$@"; do
-    [[ "$__Geometry_Cube_new_arg" =~ ^size= ]] && ((__Geometry_Cube_new_size_count++))
-    ((__Geometry_Cube_new_size_count > 1)) && _Crash "Cube: repeated 'size' argument"
-  done
   for __Geometry_Cube_new_arg in "$@"; do
     [[ "$__Geometry_Cube_new_arg" == *=* && "$__Geometry_Cube_new_arg" != --* ]] \
       && __Geometry_Cube_new_args+=("--${__Geometry_Cube_new_arg}") \
