@@ -196,8 +196,47 @@ use case emerges that List can't serve.
 
 ## I/O Classes (Phase 5)
 
-All implementable in pure bash using persistent file descriptors --
-no forks, no subshells, no external tools.
+### Design: Two-Layer Delimiter Architecture
+
+`_EOL` and `_Delimiter` are the universal IO-control variables across
+the framework. They default to `$'\n'` and `${_EOL}` respectively,
+and are set inline on commands that need them changed. Two layers
+handle them:
+
+**Layer 1 -- the fast path (current, single-char optimized):**
+- Used directly in `printf`, parameter expansion, `read -d`
+- Zero overhead beyond what bash already does
+- This is what Map.keys, List.toArray, boop.pass, Config.keys, etc.
+  use today and will continue to use
+- The standard: every method that joins or splits respects these
+  variables. Rigorous application throughout the common codebase.
+- Single characters are the common case and should stay fast.
+
+**Layer 2 -- the IO class (complex path, multi-char capable):**
+- Mixes in Text.String for string-manipulation toolkit
+- Internal double-buffer: pre-loads chunks (~8KB) from an FD into a
+  bash variable, scans for the delimiter using parameter expansion,
+  returns one "record" at a time, refills when exhausted
+- Handles multi-character `_EOL` (paragraph mode with `$'\n\n'`,
+  CRLF sequences, arbitrary byte patterns)
+- Handles multi-character `_Delimiter` (e.g. `$',\r\n'` to split
+  on comma-CRLF within a record)
+- Exposed as a `Read` method (capital R) on the IO class, possibly
+  also as a `_Read` Tier 2 helper for framework-internal use
+- The caller sets `_EOL` and `_Delimiter` the same way regardless
+  of which layer executes -- the intent is expressed identically
+
+**The hybrid principle:**
+- Single-char delimiter + data fits in a variable: fast path (no IO class)
+- Multi-char delimiter, streaming data, or paragraph mode: IO class Read
+- Same variable names, same caller intent, different execution paths
+
+**Null bytes:**
+Bash variables cannot hold `\0` (C string terminator). `read` stops at
+null. The only way to handle binary with embedded nulls is byte-by-byte
+via `read -N 1` with `LC_ALL=C`, never storing in a variable. This is
+possible but painful and slow. Document the limitation clearly; don't
+pretend to solve it unless a real use case demands it.
 
 ### File
 Wraps a persistent file descriptor opened with `exec {fd}<>file`.
@@ -206,7 +245,7 @@ Interface: `open`, `close`, `read`, `readLine`, `readAll`, `write`,
 
 ### Buffer
 Accumulates writes in a string variable, flushes on demand or at
-a size threshold.
+a size threshold. The internal double-buffer for Read lives here.
 
 ### Pipe
 Bidirectional in-memory channel using bash's `exec {rfd}<> <(...)` or
@@ -216,6 +255,12 @@ a named FIFO. Needs design work.
 `mapfile`/`readarray` for bulk line-array reads. `read -t 0` for
 non-blocking poll. `read -N n` for exact byte counts. Wrap as static
 methods on an `IO` namespace class.
+
+### Consistency audit needed
+Every method in the framework that joins or splits values should be
+verified to respect `_Delimiter` (for multi-value) and `_EOL` (for
+output termination) consistently. Current coverage is good but not
+audited for completeness.
 
 ---
 
