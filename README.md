@@ -1044,6 +1044,9 @@ boop                                    root — new, get, set, isa, mixes, true
   │     ├── Terminal                    ANSI control, named colors, symbol table
   │     ├── Greetable                   demo mixin — greet, identify
   │     └── Taggable                    demo mixin — addTag/hasTag/removeTag
+  ├── Text
+  │     └── String                      string objects — trim/case/pad/replace, bare and -ed forms, pipeline
+  ├── DateTime                          date/time objects — epoch-based, zero-fork arithmetic and formatting
   ├── Data
   │     └── JSON                        JSON ↔ Map.Fast parser/serializer
   ├── Config                            flat + INI config file reader/writer

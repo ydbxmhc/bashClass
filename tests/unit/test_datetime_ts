@@ -1,0 +1,339 @@
+#!/bin/bash
+set -uo pipefail
+
+# DateTime tests
+#
+# Classification: UNIT (DateTime class)
+# Covers: constructors (now, fromEpoch, utc, parse), getters (epoch, format,
+#         components, iso forms), arithmetic (addSeconds/Minutes/Hours/Days),
+#         difference (diffSeconds, diffDays), comparison (before/after/equals),
+#         edge cases (epoch 0, leap day, negative arithmetic).
+
+# Pin to UTC so component assertions are timezone-independent.
+export TZ=UTC
+
+. boop TestSuite DateTime
+
+into=t TestSuite name="DateTime Tests"
+
+# Reference epochs (all UTC, verified against 'date -d ... +%s'):
+#   1705276800 = 2024-01-15 00:00:00 UTC  (Monday,  weekday 1)
+#   1705314645 = 2024-01-15 10:30:45 UTC  (Monday)
+#   1705881600 = 2024-01-22 00:00:00 UTC  (Monday, +7 days)
+#   951782400  = 2000-02-29 00:00:00 UTC  (Tuesday, weekday 2, leap day)
+#   0          = 1970-01-01 00:00:00 UTC  (Thursday, weekday 4)
+
+# ============================================================================
+# Construction
+# ============================================================================
+
+$t.section "construction: now"
+
+into=d DateTime.now
+$t.assert_ok  "now: isa DateTime"  $d.isa DateTime
+into=ep $d.epoch
+# Compare against EPOCHSECONDS (bash 5 builtin) — no subshell needed.
+$t.assert_ok  "now: epoch close to current time" \
+  bash -c "(( $ep >= EPOCHSECONDS - 5 && $ep <= EPOCHSECONDS + 5 ))"
+
+$t.section "construction: fromEpoch"
+
+into=d DateTime.fromEpoch 1705276800
+$t.assert_ok  "fromEpoch: isa DateTime"  $d.isa DateTime
+into=v $d.epoch
+$t.assert_eq  "fromEpoch: epoch stored"  "$v"  "1705276800"
+
+into=d DateTime.fromEpoch 0
+into=v $d.epoch
+$t.assert_eq  "fromEpoch: epoch 0"  "$v"  "0"
+
+$t.section "construction: utc"
+
+into=d DateTime.utc "2024-01-15"
+into=v $d.epoch
+$t.assert_eq  "utc: date-only"  "$v"  "1705276800"
+
+into=d DateTime.utc "2024-01-15T10:30:45"
+into=v $d.epoch
+$t.assert_eq  "utc: datetime with T"  "$v"  "1705314645"
+
+into=d DateTime.utc "2024-01-15 10:30:45"
+into=v $d.epoch
+$t.assert_eq  "utc: datetime with space"  "$v"  "1705314645"
+
+into=d DateTime.utc "1970-01-01"
+into=v $d.epoch
+$t.assert_eq  "utc: epoch 0"  "$v"  "0"
+
+into=d DateTime.utc "2000-02-29"
+into=v $d.epoch
+$t.assert_eq  "utc: leap day 2000-02-29"  "$v"  "951782400"
+
+$t.assert_fail "utc: rejects non-ISO" \
+  bash -c '. boop DateTime; DateTime.utc "January 15 2024"'
+
+$t.section "construction: parse — ISO 8601 (pure bash path)"
+
+# With TZ=UTC the local offset is 0, so no-tz ISO parses same as utc().
+into=d DateTime.parse "2024-01-15"
+into=v $d.epoch
+$t.assert_eq  "parse: date-only"  "$v"  "1705276800"
+
+into=d DateTime.parse "2024-01-15T10:30:45"
+into=v $d.epoch
+$t.assert_eq  "parse: datetime"  "$v"  "1705314645"
+
+into=d DateTime.parse "2024-01-15T10:30:45Z"
+into=v $d.epoch
+$t.assert_eq  "parse: UTC suffix Z"  "$v"  "1705314645"
+
+into=d DateTime.parse "2024-01-15T12:30:45+02:00"
+into=v $d.epoch
+$t.assert_eq  "parse: positive offset +02:00"  "$v"  "1705314645"
+
+into=d DateTime.parse "2024-01-15T08:30:45-02:00"
+into=v $d.epoch
+$t.assert_eq  "parse: negative offset -02:00"  "$v"  "1705314645"
+
+into=d DateTime.parse "2024-01-15T15:00:45+04:30"
+into=v $d.epoch
+$t.assert_eq  "parse: fractional-hour offset +04:30"  "$v"  "1705314645"
+
+$t.section "construction: parse — arbitrary format (date -d path)"
+
+into=d DateTime.parse "January 15 2024 UTC"
+into=v $d.epoch
+$t.assert_eq  "parse: natural language"  "$v"  "1705276800"
+
+into=d DateTime.parse "15 Jan 2024 UTC"
+into=v $d.epoch
+$t.assert_eq  "parse: day-month-year"  "$v"  "1705276800"
+
+$t.assert_fail "parse: crashes on garbage" \
+  bash -c '. boop DateTime; DateTime.parse "not a date at all zzzz"'
+
+# ============================================================================
+# Getters: epoch
+# ============================================================================
+
+$t.section "epoch getter"
+
+into=d DateTime.fromEpoch 1705314645
+into=v $d.epoch
+$t.assert_eq  "epoch returns stored value"  "$v"  "1705314645"
+
+# ============================================================================
+# Getters: format
+# ============================================================================
+
+$t.section "format"
+
+into=d DateTime.fromEpoch 1705314645
+into=v $d.format "%Y/%m/%d"
+$t.assert_eq  "format: date"  "$v"  "2024/01/15"
+
+into=v $d.format "%H:%M:%S"
+$t.assert_eq  "format: time"  "$v"  "10:30:45"
+
+into=v $d.format "%A"
+$t.assert_eq  "format: weekday name"  "$v"  "Monday"
+
+into=v $d.format "%B"
+$t.assert_eq  "format: month name"  "$v"  "January"
+
+# ============================================================================
+# Getters: components
+# ============================================================================
+
+$t.section "component getters"
+
+into=d DateTime.fromEpoch 1705314645
+
+into=v $d.year;    $t.assert_eq  "year"     "$v"  "2024"
+into=v $d.month;   $t.assert_eq  "month"    "$v"  "01"
+into=v $d.day;     $t.assert_eq  "day"      "$v"  "15"
+into=v $d.hour;    $t.assert_eq  "hour"     "$v"  "10"
+into=v $d.minute;  $t.assert_eq  "minute"   "$v"  "30"
+into=v $d.second;  $t.assert_eq  "second"   "$v"  "45"
+into=v $d.weekday; $t.assert_eq  "weekday (Mon=1)"  "$v"  "1"
+
+into=d DateTime.fromEpoch 0
+into=v $d.year;    $t.assert_eq  "epoch-0 year"     "$v"  "1970"
+into=v $d.month;   $t.assert_eq  "epoch-0 month"    "$v"  "01"
+into=v $d.day;     $t.assert_eq  "epoch-0 day"      "$v"  "01"
+into=v $d.weekday; $t.assert_eq  "epoch-0 weekday (Thu=4)"  "$v"  "4"
+
+into=d DateTime.fromEpoch 951782400
+into=v $d.year;  $t.assert_eq "leap-day year"   "$v" "2000"
+into=v $d.month; $t.assert_eq "leap-day month"  "$v" "02"
+into=v $d.day;   $t.assert_eq "leap-day day"    "$v" "29"
+
+# ============================================================================
+# Getters: iso forms
+# ============================================================================
+
+$t.section "iso forms"
+
+into=d DateTime.fromEpoch 1705314645
+into=v $d.iso;      $t.assert_eq  "iso"      "$v"  "2024-01-15T10:30:45"
+into=v $d.isoDate;  $t.assert_eq  "isoDate"  "$v"  "2024-01-15"
+into=v $d.isoTime;  $t.assert_eq  "isoTime"  "$v"  "10:30:45"
+
+into=d DateTime.fromEpoch 0
+into=v $d.iso;  $t.assert_eq  "iso at epoch 0"  "$v"  "1970-01-01T00:00:00"
+
+# ============================================================================
+# Arithmetic
+# ============================================================================
+
+$t.section "arithmetic: addSeconds"
+
+into=d DateTime.fromEpoch 1705314645
+into=d2 $d.addSeconds 15
+into=v $d2.epoch
+$t.assert_eq  "addSeconds: positive"  "$v"  "1705314660"
+into=v $d.epoch
+$t.assert_eq  "addSeconds: original unchanged"  "$v"  "1705314645"
+
+into=d2 $d.addSeconds -45
+into=v $d2.epoch
+$t.assert_eq  "addSeconds: negative"  "$v"  "1705314600"
+
+$t.section "arithmetic: addMinutes"
+
+into=d DateTime.fromEpoch 1705314645
+into=d2 $d.addMinutes 30
+into=v $d2.epoch
+$t.assert_eq  "addMinutes: positive"  "$v"  "$(( 1705314645 + 1800 ))"
+
+into=d2 $d.addMinutes -30
+into=v $d2.epoch
+$t.assert_eq  "addMinutes: negative"  "$v"  "$(( 1705314645 - 1800 ))"
+
+$t.section "arithmetic: addHours"
+
+into=d DateTime.fromEpoch 1705314645
+into=d2 $d.addHours 6
+into=v $d2.epoch
+$t.assert_eq  "addHours: positive"  "$v"  "$(( 1705314645 + 21600 ))"
+
+$t.section "arithmetic: addDays"
+
+into=d DateTime.fromEpoch 1705276800
+into=d2 $d.addDays 7
+into=v $d2.epoch
+$t.assert_eq  "addDays: +7"  "$v"  "1705881600"
+
+into=d2 $d.addDays -1
+into=v $d2.epoch
+$t.assert_eq  "addDays: -1 (yesterday)"  "$v"  "$(( 1705276800 - 86400 ))"
+
+into=d2 $d.addDays 0
+into=v $d2.epoch
+$t.assert_eq  "addDays: 0 is identity"  "$v"  "1705276800"
+
+$t.assert_ok  "addDays result isa DateTime"  $d2.isa DateTime
+
+# ============================================================================
+# Difference
+# ============================================================================
+
+$t.section "diffSeconds"
+
+into=a DateTime.fromEpoch 1705314645
+into=b DateTime.fromEpoch 1705276800
+
+into=v $a.diffSeconds "$b"
+$t.assert_eq  "diffSeconds: a-b positive"  "$v"  "37845"
+
+into=v $b.diffSeconds "$a"
+$t.assert_eq  "diffSeconds: b-a negative"  "$v"  "-37845"
+
+into=v $a.diffSeconds "$a"
+$t.assert_eq  "diffSeconds: same object = 0"  "$v"  "0"
+
+$t.section "diffDays"
+
+into=a DateTime.fromEpoch 1705881600
+into=b DateTime.fromEpoch 1705276800
+
+into=v $a.diffDays "$b"
+$t.assert_eq  "diffDays: 7-day gap"  "$v"  "7"
+
+into=v $b.diffDays "$a"
+$t.assert_eq  "diffDays: negative"  "$v"  "-7"
+
+into=a DateTime.fromEpoch $(( 1705276800 + 86400/2 ))
+into=v $a.diffDays "$b"
+$t.assert_eq  "diffDays: truncated toward zero (<1 day)"  "$v"  "0"
+
+# ============================================================================
+# Comparison
+# ============================================================================
+
+$t.section "comparison"
+
+into=a DateTime.fromEpoch 1705276800
+into=b DateTime.fromEpoch 1705881600
+
+$t.assert_ok  "before: a before b"        $a.before "$b"
+$t.assert_ok  "before: not b before a"  bash -c '. boop DateTime
+  into=a DateTime.fromEpoch 1705276800
+  into=b DateTime.fromEpoch 1705881600
+  $b.before "$a" && exit 1 || exit 0'
+
+$t.assert_ok  "after: b after a"          $b.after "$a"
+$t.assert_ok  "after: not a after b"    bash -c '. boop DateTime
+  into=a DateTime.fromEpoch 1705276800
+  into=b DateTime.fromEpoch 1705881600
+  $a.after "$b" && exit 1 || exit 0'
+
+into=c DateTime.fromEpoch 1705276800
+$t.assert_ok  "equals: same epoch"        $a.equals "$c"
+$t.assert_ok  "equals: different epoch"  bash -c '. boop DateTime
+  into=a DateTime.fromEpoch 1705276800
+  into=b DateTime.fromEpoch 1705881600
+  $a.equals "$b" && exit 1 || exit 0'
+
+# ============================================================================
+# Edge cases
+# ============================================================================
+
+$t.section "edge cases"
+
+# Epoch 0 round-trip
+into=d DateTime.fromEpoch 0
+into=v $d.iso
+$t.assert_eq  "epoch 0 iso"  "$v"  "1970-01-01T00:00:00"
+
+# Chained arithmetic
+into=d DateTime.utc "2024-01-15"
+into=d2 $d.addDays 7
+into=d3 $d2.addHours 10
+into=v $d3.iso
+$t.assert_eq  "chained: +7d +10h"  "$v"  "2024-01-22T10:00:00"
+
+# Large epoch (year 2038+ -- tests no 32-bit overflow in bash arithmetic)
+into=d DateTime.fromEpoch 4102444800
+into=v $d.year
+$t.assert_eq  "year 2100 (no 32-bit overflow)"  "$v"  "2100"
+
+# Leap year boundary: 2000-02-28 + 1 day = 2000-02-29
+into=d DateTime.utc "2000-02-28"
+into=d2 $d.addDays 1
+into=v $d2.isoDate
+$t.assert_eq  "leap: 2000-02-28 + 1 = 2000-02-29"  "$v"  "2000-02-29"
+
+# Non-leap year: 2001-02-28 + 1 day = 2001-03-01
+into=d DateTime.utc "2001-02-28"
+into=d2 $d.addDays 1
+into=v $d2.isoDate
+$t.assert_eq  "non-leap: 2001-02-28 + 1 = 2001-03-01"  "$v"  "2001-03-01"
+
+# Year boundary: 2023-12-31 + 1 = 2024-01-01
+into=d DateTime.utc "2023-12-31"
+into=d2 $d.addDays 1
+into=v $d2.isoDate
+$t.assert_eq  "year boundary: 2023-12-31 + 1 = 2024-01-01"  "$v"  "2024-01-01"
+
+$t.summary

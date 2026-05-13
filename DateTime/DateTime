@@ -1,0 +1,383 @@
+#!/bin/bash
+
+# DateTime -- date/time objects for boop.
+#
+# Stores time internally as a UTC epoch integer. All arithmetic, comparison,
+# and formatting runs in pure bash with no subshells. The only code path that
+# spawns a subshell is DateTime.parse when the input is not ISO 8601 -- it
+# calls 'date -d' exactly once at construction. Everything after that is free.
+#
+# Construction summary (subshell cost):
+#   DateTime.now              -- zero  (printf builtin strftime)
+#   DateTime.fromEpoch n      -- zero  (direct property write)
+#   DateTime.utc "YYYY-MM-DD" -- zero  (pure bash parse)
+#   DateTime.parse "ISO 8601" -- zero  (pure bash parse)
+#   DateTime.parse "Jan 15"   -- ONE   (date -d, construction only)
+#
+# After construction, every method is zero-fork:
+#   format/components         -- printf '%(...)T' epoch  (bash builtin strftime)
+#   addDays / addHours / ...  -- (( epoch + n * 86400 ))
+#   before / after / equals   -- (( a < b ))
+#   diffDays / diffSeconds    -- (( a - b ))
+#
+# Timezone note: DateTime.utc and DateTime.parse with explicit Z/offset are
+# always exact. DateTime.parse without a timezone applies the current local
+# UTC offset -- this is approximate across DST transitions for historical dates.
+# For DST-accurate local-time parsing, let DateTime.parse fall back to date -d.
+
+. boop
+boop.init DateTime || return 0
+
+# ============================================================================
+# Internal helpers
+# ============================================================================
+
+# __DateTime_epochFromUTC outVar y mo d [h [mi [s]]]
+# Pure bash epoch computation. No subshell. Result written via nameref outVar.
+# Handles leap years correctly via the proleptic Gregorian calendar formula.
+__DateTime_epochFromUTC() {
+  local -n __DateTime_epochFromUTC_r=$1; shift
+  local __DateTime_epochFromUTC_y=$(( 10#${1} ))
+  local __DateTime_epochFromUTC_mo=$(( 10#${2} ))
+  local __DateTime_epochFromUTC_d=$(( 10#${3} ))
+  local __DateTime_epochFromUTC_h=$(( 10#${4:-0} ))
+  local __DateTime_epochFromUTC_mi=$(( 10#${5:-0} ))
+  local __DateTime_epochFromUTC_s=$(( 10#${6:-0} ))
+
+  local __DateTime_epochFromUTC_ym1=$(( __DateTime_epochFromUTC_y - 1 ))
+  # Leap days from 1970-01-01 to start of year: (ym1/4 - ym1/100 + ym1/400) minus same for 1969.
+  # 1969/4=492, 1969/100=19, 1969/400=4 => 492-19+4=477.
+  local __DateTime_epochFromUTC_leaps=$(( \
+    __DateTime_epochFromUTC_ym1/4 \
+    - __DateTime_epochFromUTC_ym1/100 \
+    + __DateTime_epochFromUTC_ym1/400 \
+    - 477 ))
+  local __DateTime_epochFromUTC_yd=$(( \
+    (__DateTime_epochFromUTC_y - 1970) * 365 \
+    + __DateTime_epochFromUTC_leaps ))
+
+  local -a __DateTime_epochFromUTC_md=(0 31 28 31 30 31 30 31 31 30 31 30 31)
+  if (( (__DateTime_epochFromUTC_y % 4 == 0 && __DateTime_epochFromUTC_y % 100 != 0) \
+     || __DateTime_epochFromUTC_y % 400 == 0 )); then
+    __DateTime_epochFromUTC_md[2]=29
+  fi
+
+  local __DateTime_epochFromUTC_ms=0 __DateTime_epochFromUTC_i
+  for (( __DateTime_epochFromUTC_i = 1;
+         __DateTime_epochFromUTC_i < __DateTime_epochFromUTC_mo;
+         __DateTime_epochFromUTC_i++ )); do
+    (( __DateTime_epochFromUTC_ms += __DateTime_epochFromUTC_md[__DateTime_epochFromUTC_i] ))
+  done
+
+  local __DateTime_epochFromUTC_days=$(( \
+    __DateTime_epochFromUTC_yd \
+    + __DateTime_epochFromUTC_ms \
+    + __DateTime_epochFromUTC_d - 1 ))
+
+  __DateTime_epochFromUTC_r=$(( \
+    __DateTime_epochFromUTC_days * 86400 \
+    + __DateTime_epochFromUTC_h   * 3600 \
+    + __DateTime_epochFromUTC_mi  * 60 \
+    + __DateTime_epochFromUTC_s ))
+}
+
+# __DateTime_parseISO outVar str
+# Parse ISO 8601 date/datetime string in pure bash. No subshell.
+# Recognizes: YYYY-MM-DD, YYYY-MM-DD[T ]HH:MM:SS, with optional Z or +/-HH:MM.
+# Returns 0 on success (outVar set); 1 if format not recognized.
+__DateTime_parseISO() {
+  local -n __DateTime_parseISO_r=$1
+  local __DateTime_parseISO_str="$2"
+
+  # Full pattern: date required, time optional, timezone optional.
+  # Timezone: Z, or (+/-)HH:MM or (+/-)HHMM.
+  if [[ "$__DateTime_parseISO_str" =~ \
+    ^([0-9]{4})-([0-9]{2})-([0-9]{2})([T\ ]([0-9]{2}):([0-9]{2}):([0-9]{2}))?(Z|([+-])([0-9]{2}):?([0-9]{2}))?$ ]]; then
+
+    local __DateTime_parseISO_y="${BASH_REMATCH[1]}"
+    local __DateTime_parseISO_mo="${BASH_REMATCH[2]}"
+    local __DateTime_parseISO_d="${BASH_REMATCH[3]}"
+    local __DateTime_parseISO_h="${BASH_REMATCH[5]:-0}"
+    local __DateTime_parseISO_mi="${BASH_REMATCH[6]:-0}"
+    local __DateTime_parseISO_s="${BASH_REMATCH[7]:-0}"
+    local __DateTime_parseISO_tz_z="${BASH_REMATCH[8]}"
+    local __DateTime_parseISO_tz_sign="${BASH_REMATCH[9]}"
+    local __DateTime_parseISO_tz_h="${BASH_REMATCH[10]:-0}"
+    local __DateTime_parseISO_tz_m="${BASH_REMATCH[11]:-0}"
+
+    local __DateTime_parseISO_utc
+    __DateTime_epochFromUTC __DateTime_parseISO_utc \
+      "$__DateTime_parseISO_y"  "$__DateTime_parseISO_mo" "$__DateTime_parseISO_d" \
+      "$__DateTime_parseISO_h"  "$__DateTime_parseISO_mi" "$__DateTime_parseISO_s"
+
+    local __DateTime_parseISO_offset=0
+    if [[ "$__DateTime_parseISO_tz_z" == "Z" ]]; then
+      __DateTime_parseISO_offset=0
+    elif [[ -n "$__DateTime_parseISO_tz_sign" ]]; then
+      __DateTime_parseISO_offset=$(( 10#$__DateTime_parseISO_tz_h * 3600 \
+                                   + 10#$__DateTime_parseISO_tz_m * 60 ))
+      [[ "$__DateTime_parseISO_tz_sign" == "-" ]] \
+        && __DateTime_parseISO_offset=$(( -__DateTime_parseISO_offset ))
+    else
+      # No explicit tz: treat as local time using current UTC offset.
+      # Approximate: applies today's offset to historical dates (DST-unaware).
+      local __DateTime_parseISO_tz_str
+      printf -v __DateTime_parseISO_tz_str '%(%z)T' -1
+      local __DateTime_parseISO_sign="${__DateTime_parseISO_tz_str:0:1}"
+      __DateTime_parseISO_offset=$(( 10#${__DateTime_parseISO_tz_str:1:2} * 3600 \
+                                   + 10#${__DateTime_parseISO_tz_str:3:2} * 60 ))
+      [[ "$__DateTime_parseISO_sign" == "-" ]] \
+        && __DateTime_parseISO_offset=$(( -__DateTime_parseISO_offset ))
+    fi
+
+    # epoch = naive UTC epoch - tz offset  (e.g. UTC+5 input: subtract 5h to get UTC)
+    __DateTime_parseISO_r=$(( __DateTime_parseISO_utc - __DateTime_parseISO_offset ))
+    return 0
+  fi
+  return 1
+}
+
+# __DateTime_component fmtStr -- reads epoch from _Self, formats via printf builtin.
+# No subshell. Called by all component getters and iso* methods.
+__DateTime_component() {
+  local __DateTime_component_fmt="$1"
+  local __DateTime_component_ep __DateTime_component_r
+  into=__DateTime_component_ep ${_Self:-DateTime}.get epoch
+  printf -v __DateTime_component_r "%($__DateTime_component_fmt)T" "$__DateTime_component_ep"
+  boop.pass "$__DateTime_component_r" ${into:-}
+}
+
+# ============================================================================
+# Constructors
+# ============================================================================
+
+# now -- current UTC time. Uses printf builtin strftime; zero forks.
+DateTime.now() {
+  local _Class="${_Class:-DateTime}"
+  local __DateTime_now_ep __DateTime_now_self
+  printf -v __DateTime_now_ep '%(%s)T' -1
+  into=__DateTime_now_self __boop.new
+  local _Self="$__DateTime_now_self"
+  $_Self.set epoch "$__DateTime_now_ep"
+  boop.pass "$__DateTime_now_self" ${into:-}
+}
+
+# fromEpoch n -- construct directly from a UTC epoch integer. Zero cost.
+DateTime.fromEpoch() {
+  local _Class="${_Class:-DateTime}"
+  local __DateTime_fromEpoch_ep="${1:?DateTime.fromEpoch: epoch required}"
+  local __DateTime_fromEpoch_self
+  into=__DateTime_fromEpoch_self __boop.new
+  local _Self="$__DateTime_fromEpoch_self"
+  $_Self.set epoch "$__DateTime_fromEpoch_ep"
+  boop.pass "$__DateTime_fromEpoch_self" ${into:-}
+}
+
+# utc "YYYY-MM-DD[ HH:MM:SS]" -- parse as UTC. Pure bash; zero subshells.
+# This is the fast path for server/log contexts where times are always UTC.
+DateTime.utc() {
+  local _Class="${_Class:-DateTime}"
+  local __DateTime_utc_str="${1:?DateTime.utc: date string required}"
+  [[ "$__DateTime_utc_str" =~ \
+    ^([0-9]{4})-([0-9]{2})-([0-9]{2})([T\ ]([0-9]{2}):([0-9]{2}):([0-9]{2}))?$ ]] \
+    || _Crash "DateTime.utc: expected YYYY-MM-DD[T HH:MM:SS], got '$__DateTime_utc_str'"
+
+  local __DateTime_utc_ep
+  __DateTime_epochFromUTC __DateTime_utc_ep \
+    "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" \
+    "${BASH_REMATCH[5]:-0}" "${BASH_REMATCH[6]:-0}" "${BASH_REMATCH[7]:-0}"
+
+  local __DateTime_utc_self
+  into=__DateTime_utc_self __boop.new
+  local _Self="$__DateTime_utc_self"
+  $_Self.set epoch "$__DateTime_utc_ep"
+  boop.pass "$__DateTime_utc_self" ${into:-}
+}
+
+# parse "str" -- parse a date string.
+# ISO 8601 (with or without time, with or without timezone): pure bash, zero forks.
+# Any other format: 'date -d' called once at construction; all subsequent ops free.
+DateTime.parse() {
+  local _Class="${_Class:-DateTime}"
+  local __DateTime_parse_str="${1:?DateTime.parse: date string required}"
+  local __DateTime_parse_ep __DateTime_parse_self
+
+  if ! __DateTime_parseISO __DateTime_parse_ep "$__DateTime_parse_str"; then
+    # Non-ISO format: one subshell here, nothing after.
+    __DateTime_parse_ep=$(date -d "$__DateTime_parse_str" +%s 2>/dev/null) \
+      || _Crash "DateTime.parse: cannot parse '$__DateTime_parse_str'"
+  fi
+
+  into=__DateTime_parse_self __boop.new
+  local _Self="$__DateTime_parse_self"
+  $_Self.set epoch "$__DateTime_parse_ep"
+  boop.pass "$__DateTime_parse_self" ${into:-}
+}
+
+# ============================================================================
+# Getters
+# ============================================================================
+
+# epoch -- return the stored UTC epoch integer.
+DateTime.epoch() {
+  local _Self="${_Self:-}" _Class="${_Class:-DateTime}"
+  local __DateTime_epoch_v
+  into=__DateTime_epoch_v $_Self.get epoch
+  boop.pass "$__DateTime_epoch_v" ${into:-}
+}
+
+# format "strftime-fmt" -- format via printf %(...)T builtin; no subshell.
+# Accepts any strftime(3) format string.
+DateTime.format() {
+  local _Self="${_Self:-}" _Class="${_Class:-DateTime}"
+  local __DateTime_format_fmt="${1:?DateTime.format: format string required}"
+  local __DateTime_format_ep __DateTime_format_r
+  into=__DateTime_format_ep $_Self.get epoch
+  printf -v __DateTime_format_r "%($__DateTime_format_fmt)T" "$__DateTime_format_ep"
+  boop.pass "$__DateTime_format_r" ${into:-}
+}
+
+# Component getters -- all via printf builtin; zero subshells.
+# month/day/hour/minute/second return zero-padded strings (matching strftime).
+DateTime.year()    { local _Self="${_Self:-}" _Class="${_Class:-DateTime}"; __DateTime_component '%Y'; }
+DateTime.month()   { local _Self="${_Self:-}" _Class="${_Class:-DateTime}"; __DateTime_component '%m'; }
+DateTime.day()     { local _Self="${_Self:-}" _Class="${_Class:-DateTime}"; __DateTime_component '%d'; }
+DateTime.hour()    { local _Self="${_Self:-}" _Class="${_Class:-DateTime}"; __DateTime_component '%H'; }
+DateTime.minute()  { local _Self="${_Self:-}" _Class="${_Class:-DateTime}"; __DateTime_component '%M'; }
+DateTime.second()  { local _Self="${_Self:-}" _Class="${_Class:-DateTime}"; __DateTime_component '%S'; }
+# weekday: ISO 8601 day of week — 1=Monday through 7=Sunday.
+DateTime.weekday() { local _Self="${_Self:-}" _Class="${_Class:-DateTime}"; __DateTime_component '%u'; }
+
+# iso -- full ISO 8601 datetime string (YYYY-MM-DDTHH:MM:SS). No subshell.
+DateTime.iso() {
+  local _Self="${_Self:-}" _Class="${_Class:-DateTime}"
+  local __DateTime_iso_ep __DateTime_iso_r
+  into=__DateTime_iso_ep $_Self.get epoch
+  printf -v __DateTime_iso_r '%(%Y-%m-%dT%H:%M:%S)T' "$__DateTime_iso_ep"
+  boop.pass "$__DateTime_iso_r" ${into:-}
+}
+
+# isoDate -- "YYYY-MM-DD". No subshell.
+DateTime.isoDate() {
+  local _Self="${_Self:-}" _Class="${_Class:-DateTime}"
+  local __DateTime_isoDate_ep __DateTime_isoDate_r
+  into=__DateTime_isoDate_ep $_Self.get epoch
+  printf -v __DateTime_isoDate_r '%(%Y-%m-%d)T' "$__DateTime_isoDate_ep"
+  boop.pass "$__DateTime_isoDate_r" ${into:-}
+}
+
+# isoTime -- "HH:MM:SS". No subshell.
+DateTime.isoTime() {
+  local _Self="${_Self:-}" _Class="${_Class:-DateTime}"
+  local __DateTime_isoTime_ep __DateTime_isoTime_r
+  into=__DateTime_isoTime_ep $_Self.get epoch
+  printf -v __DateTime_isoTime_r '%(%H:%M:%S)T' "$__DateTime_isoTime_ep"
+  boop.pass "$__DateTime_isoTime_r" ${into:-}
+}
+
+# ============================================================================
+# Arithmetic — pure bash integer math on epoch; each returns a new DateTime.
+# Negative values work: addDays -7 subtracts a week.
+# ============================================================================
+
+DateTime.addSeconds() {
+  local _Self="${_Self:-}" _Class="${_Class:-DateTime}"
+  local __DateTime_addSeconds_n="${1:?DateTime.addSeconds: n required}"
+  local __DateTime_addSeconds_ep
+  into=__DateTime_addSeconds_ep $_Self.get epoch
+  into=${into:-} DateTime.fromEpoch $(( __DateTime_addSeconds_ep + __DateTime_addSeconds_n ))
+}
+
+DateTime.addMinutes() {
+  local _Self="${_Self:-}" _Class="${_Class:-DateTime}"
+  local __DateTime_addMinutes_n="${1:?DateTime.addMinutes: n required}"
+  local __DateTime_addMinutes_ep
+  into=__DateTime_addMinutes_ep $_Self.get epoch
+  into=${into:-} DateTime.fromEpoch $(( __DateTime_addMinutes_ep + __DateTime_addMinutes_n * 60 ))
+}
+
+DateTime.addHours() {
+  local _Self="${_Self:-}" _Class="${_Class:-DateTime}"
+  local __DateTime_addHours_n="${1:?DateTime.addHours: n required}"
+  local __DateTime_addHours_ep
+  into=__DateTime_addHours_ep $_Self.get epoch
+  into=${into:-} DateTime.fromEpoch $(( __DateTime_addHours_ep + __DateTime_addHours_n * 3600 ))
+}
+
+DateTime.addDays() {
+  local _Self="${_Self:-}" _Class="${_Class:-DateTime}"
+  local __DateTime_addDays_n="${1:?DateTime.addDays: n required}"
+  local __DateTime_addDays_ep
+  into=__DateTime_addDays_ep $_Self.get epoch
+  into=${into:-} DateTime.fromEpoch $(( __DateTime_addDays_ep + __DateTime_addDays_n * 86400 ))
+}
+
+# ============================================================================
+# Difference — return signed integer (self minus other). Pure bash.
+# ============================================================================
+
+# diffSeconds other -- (self.epoch - other.epoch).
+DateTime.diffSeconds() {
+  local _Self="${_Self:-}" _Class="${_Class:-DateTime}"
+  local __DateTime_diffSeconds_other="${1:?DateTime.diffSeconds: other DateTime required}"
+  local __DateTime_diffSeconds_a __DateTime_diffSeconds_b
+  into=__DateTime_diffSeconds_a $_Self.get epoch
+  into=__DateTime_diffSeconds_b $__DateTime_diffSeconds_other.get epoch
+  boop.pass $(( __DateTime_diffSeconds_a - __DateTime_diffSeconds_b )) ${into:-}
+}
+
+# diffDays other -- (self.epoch - other.epoch) / 86400, truncated toward zero.
+DateTime.diffDays() {
+  local _Self="${_Self:-}" _Class="${_Class:-DateTime}"
+  local __DateTime_diffDays_other="${1:?DateTime.diffDays: other DateTime required}"
+  local __DateTime_diffDays_a __DateTime_diffDays_b
+  into=__DateTime_diffDays_a $_Self.get epoch
+  into=__DateTime_diffDays_b $__DateTime_diffDays_other.get epoch
+  boop.pass $(( (__DateTime_diffDays_a - __DateTime_diffDays_b) / 86400 )) ${into:-}
+}
+
+# ============================================================================
+# Comparison -- exit codes only. Pure bash integer comparison.
+# ============================================================================
+
+DateTime.before() {
+  local _Self="${_Self:-}" _Class="${_Class:-DateTime}"
+  local __DateTime_before_other="${1:?DateTime.before: other DateTime required}"
+  local __DateTime_before_a __DateTime_before_b
+  into=__DateTime_before_a $_Self.get epoch
+  into=__DateTime_before_b $__DateTime_before_other.get epoch
+  (( __DateTime_before_a < __DateTime_before_b ))
+}
+
+DateTime.after() {
+  local _Self="${_Self:-}" _Class="${_Class:-DateTime}"
+  local __DateTime_after_other="${1:?DateTime.after: other DateTime required}"
+  local __DateTime_after_a __DateTime_after_b
+  into=__DateTime_after_a $_Self.get epoch
+  into=__DateTime_after_b $__DateTime_after_other.get epoch
+  (( __DateTime_after_a > __DateTime_after_b ))
+}
+
+DateTime.equals() {
+  local _Self="${_Self:-}" _Class="${_Class:-DateTime}"
+  local __DateTime_equals_other="${1:?DateTime.equals: other DateTime required}"
+  local __DateTime_equals_a __DateTime_equals_b
+  into=__DateTime_equals_a $_Self.get epoch
+  into=__DateTime_equals_b $__DateTime_equals_other.get epoch
+  (( __DateTime_equals_a == __DateTime_equals_b ))
+}
+
+# ============================================================================
+# Class Declaration
+# ============================================================================
+
+boopClass DateTime '
+  has:epoch
+  public:now,fromEpoch,utc,parse
+  public:epoch,format
+  public:year,month,day,hour,minute,second,weekday
+  public:iso,isoDate,isoTime
+  public:addSeconds,addMinutes,addHours,addDays
+  public:diffSeconds,diffDays
+  public:before,after,equals
+'
