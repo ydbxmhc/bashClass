@@ -151,14 +151,13 @@ __DateTime_component() {
 # Constructors
 # ============================================================================
 
-# now -- current UTC time. Uses printf builtin strftime; zero forks.
+# now -- current UTC time. Uses EPOCHSECONDS (bash 5.0+); zero forks.
 DateTime.now() {
   local _Class="${_Class:-DateTime}"
-  local __DateTime_now_ep __DateTime_now_self
-  printf -v __DateTime_now_ep '%(%s)T' -1
+  local __DateTime_now_self
   into=__DateTime_now_self __boop.new
   local _Self="$__DateTime_now_self"
-  $_Self.set epoch "$__DateTime_now_ep"
+  $_Self.set epoch "$EPOCHSECONDS"
   boop.pass "$__DateTime_now_self" ${into:-}
 }
 
