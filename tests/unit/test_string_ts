@@ -1,0 +1,294 @@
+#!/bin/bash
+set -uo pipefail
+
+# Text.String tests
+#
+# Classification: UNIT (Text.String class)
+# Covers: constructor, read/raw getters, bare mutators (in-place),
+#         -ed forms (new object), do pipeline, read-only queries,
+#         edge cases.
+
+. boop TestSuite Text::String
+
+into=t TestSuite name="String Tests"
+
+# ============================================================================
+# Constructor and getters
+# ============================================================================
+
+$t.section "constructor and getters"
+
+into=s Text.String.new "hello"
+$t.assert_ok   "isa Text.String"     $s.isa Text.String
+into=v $s.read;  $t.assert_eq "read returns value"    "$v" "hello"
+into=v $s.raw;   $t.assert_eq "raw returns original"  "$v" "hello"
+into=v $s.length; $t.assert_eq "length"               "$v" "5"
+$t.assert_ok   "isEmpty false"     bash -c '. boop Text::String; into=s Text.String.new "x"; $s.isEmpty && exit 1 || exit 0'
+$t.assert_ok   "isEmpty true"      bash -c '. boop Text::String; into=s Text.String.new "";  $s.isEmpty'
+
+# ============================================================================
+# Bare mutators — in place, exit code only
+# ============================================================================
+
+$t.section "bare mutators"
+
+into=s Text.String.new "  hello world  "
+$s.trim
+into=v $s.read; $t.assert_eq "trim" "$v" "hello world"
+into=v $s.raw;  $t.assert_eq "trim does not change raw" "$v" "  hello world  "
+
+into=s Text.String.new "hello"
+$s.upcase
+into=v $s.read; $t.assert_eq "upcase" "$v" "HELLO"
+
+into=s Text.String.new "HELLO"
+$s.downcase
+into=v $s.read; $t.assert_eq "downcase" "$v" "hello"
+
+into=s Text.String.new "hello world"
+$s.capitalize
+into=v $s.read; $t.assert_eq "capitalize" "$v" "Hello world"
+
+into=s Text.String.new "Hello World"
+$s.decapitalize
+into=v $s.read; $t.assert_eq "decapitalize" "$v" "hello World"
+
+into=s Text.String.new "hello"
+$s.reverse
+into=v $s.read; $t.assert_eq "reverse" "$v" "olleh"
+
+into=s Text.String.new "hello"
+$s.append " world"
+into=v $s.read; $t.assert_eq "append" "$v" "hello world"
+
+into=s Text.String.new "world"
+$s.prepend "hello "
+into=v $s.read; $t.assert_eq "prepend" "$v" "hello world"
+
+into=s Text.String.new "hello world hello"
+$s.replace "hello" "bye"
+into=v $s.read; $t.assert_eq "replace all occurrences" "$v" "bye world bye"
+
+into=s Text.String.new "hello"
+$s.lpad 8
+into=v $s.read; $t.assert_eq "lpad default char" "$v" "   hello"
+
+into=s Text.String.new "hello"
+$s.lpad 8 "*"
+into=v $s.read; $t.assert_eq "lpad custom char" "$v" "***hello"
+
+into=s Text.String.new "hello"
+$s.rpad 8
+into=v $s.read; $t.assert_eq "rpad default char" "$v" "hello   "
+
+into=s Text.String.new "hello"
+$s.rpad 8 "-"
+into=v $s.read; $t.assert_eq "rpad custom char" "$v" "hello---"
+
+into=s Text.String.new "hi"
+$s.center 8
+into=v $s.read; $t.assert_eq "center even padding" "$v" "   hi   "
+
+into=s Text.String.new "hi"
+$s.center 7
+into=v $s.read; $t.assert_eq "center odd padding (extra right)" "$v" "  hi   "
+
+into=s Text.String.new "the quick brown fox jumps over the lazy dog"
+$s.fold 15
+into=v $s.read
+$t.assert_contains "fold wraps lines" "$v" $'\n'
+$t.assert_ok "fold: no line exceeds width" bash -c '
+  . boop Text::String
+  into=s Text.String.new "the quick brown fox jumps over the lazy dog"
+  $s.fold 15
+  into=v $s.read
+  while IFS= read -r line; do
+    (( ${#line} <= 15 )) || exit 1
+  done <<< "$v"
+'
+
+# pad already-wide string is a no-op
+into=s Text.String.new "hello world"
+$s.lpad 5
+into=v $s.read; $t.assert_eq "lpad no-op when already wide" "$v" "hello world"
+
+# ============================================================================
+# -ed forms — new object, $self unchanged
+# ============================================================================
+
+$t.section "-ed forms"
+
+into=s Text.String.new "  hello  "
+into=s2 $s.trimmed
+into=v $s2.read;  $t.assert_eq "trimmed returns new object"   "$v" "hello"
+into=v $s.read;   $t.assert_eq "trimmed leaves original intact" "$v" "  hello  "
+$t.assert_ok "trimmed returns Text.String" $s2.isa Text.String
+
+into=s Text.String.new "hello"
+into=s2 $s.upcased
+into=v $s2.read; $t.assert_eq "upcased" "$v" "HELLO"
+into=v $s.read;  $t.assert_eq "upcased: original unchanged" "$v" "hello"
+
+into=s Text.String.new "HELLO"
+into=s2 $s.downcased
+into=v $s2.read; $t.assert_eq "downcased" "$v" "hello"
+
+into=s Text.String.new "hello world"
+into=s2 $s.capitalized
+into=v $s2.read; $t.assert_eq "capitalized" "$v" "Hello world"
+
+into=s Text.String.new "Hello"
+into=s2 $s.decapitalized
+into=v $s2.read; $t.assert_eq "decapitalized" "$v" "hello"
+
+into=s Text.String.new "hello"
+into=s2 $s.reversed
+into=v $s2.read; $t.assert_eq "reversed" "$v" "olleh"
+into=v $s.read;  $t.assert_eq "reversed: original unchanged" "$v" "hello"
+
+into=s Text.String.new "hello"
+into=s2 $s.appended " world"
+into=v $s2.read; $t.assert_eq "appended" "$v" "hello world"
+into=v $s.read;  $t.assert_eq "appended: original unchanged" "$v" "hello"
+
+into=s Text.String.new "world"
+into=s2 $s.prepended "hello "
+into=v $s2.read; $t.assert_eq "prepended" "$v" "hello world"
+
+into=s Text.String.new "hello"
+into=s2 $s.replaced "l" "r"
+into=v $s2.read; $t.assert_eq "replaced" "$v" "herro"
+
+into=s Text.String.new "hi"
+into=s2 $s.lpadded 6
+into=v $s2.read; $t.assert_eq "lpadded" "$v" "    hi"
+
+into=s Text.String.new "hi"
+into=s2 $s.rpadded 6
+into=v $s2.read; $t.assert_eq "rpadded" "$v" "hi    "
+
+into=s Text.String.new "hi"
+into=s2 $s.centered 6
+into=v $s2.read; $t.assert_eq "centered" "$v" "  hi  "
+
+into=s Text.String.new "hello world foo bar"
+into=s2 $s.folded 10
+into=v $s2.read
+$t.assert_contains "folded wraps" "$v" $'\n'
+into=v $s.read; $t.assert_eq "folded: original unchanged" "$v" "hello world foo bar"
+
+# ============================================================================
+# raw persists through mutations
+# ============================================================================
+
+$t.section "raw persists through mutations"
+
+into=s Text.String.new "original"
+$s.upcase
+$s.append "!"
+into=v $s.read; $t.assert_eq "read reflects mutations"  "$v" "ORIGINAL!"
+into=v $s.raw;  $t.assert_eq "raw never changes"        "$v" "original"
+
+# ============================================================================
+# Read-only queries
+# ============================================================================
+
+$t.section "read-only queries"
+
+into=s Text.String.new "hello world"
+$t.assert_ok   "contains: found"     $s.contains "world"
+$t.assert_ok   "contains: not found returns 1" bash -c '. boop Text::String; into=s Text.String.new "hello"; $s.contains "xyz" && exit 1 || exit 0'
+$t.assert_ok   "startsWith: yes"     $s.startsWith "hello"
+$t.assert_ok   "startsWith: no"      bash -c '. boop Text::String; into=s Text.String.new "hello"; $s.startsWith "world" && exit 1 || exit 0'
+$t.assert_ok   "endsWith: yes"       $s.endsWith "world"
+$t.assert_ok   "endsWith: no"        bash -c '. boop Text::String; into=s Text.String.new "hello"; $s.endsWith "hello world" && exit 1 || exit 0'
+
+into=v $s.indexOf "world"; $t.assert_eq "indexOf found"     "$v" "6"
+into=v $s.indexOf "xyz";   $t.assert_eq "indexOf not found" "$v" "-1"
+into=v $s.indexOf "hello"; $t.assert_eq "indexOf at start"  "$v" "0"
+
+into=s Text.String.new "hello world"
+into=v $s.substr 6;    $t.assert_eq "substr from offset"         "$v" "world"
+into=v $s.substr 0 5;  $t.assert_eq "substr with length"         "$v" "hello"
+into=v $s.substr 6 3;  $t.assert_eq "substr offset+length"       "$v" "wor"
+
+into=s Text.String.new "hello"
+into=v $s.length; $t.assert_eq "length" "$v" "5"
+
+# ============================================================================
+# do — bare pipeline
+# ============================================================================
+
+$t.section "do: bare pipeline"
+
+into=s Text.String.new "  HELLO WORLD  "
+$s.do "trim,downcase,capitalize"
+into=v $s.read; $t.assert_eq "bare pipeline" "$v" "Hello world"
+
+into=s Text.String.new "hi"
+$s.do "lpad:8,rpad:12"
+into=v $s.read; $t.assert_eq "bare pipeline with args" "$v" "      hi    "
+
+into=s Text.String.new "hello world"
+$s.do "replace:world:earth,upcase"
+into=v $s.read; $t.assert_eq "bare pipeline with multi-arg op" "$v" "HELLO EARTH"
+
+# ============================================================================
+# do — -ed pipeline
+# ============================================================================
+
+$t.section "do: -ed pipeline"
+
+into=s Text.String.new "  HELLO  "
+into=s2 $s.do "trimmed,downcased,capitalized"
+into=v $s2.read; $t.assert_eq "-ed pipeline result"    "$v" "Hello"
+into=v $s.read;  $t.assert_eq "-ed pipeline: original unchanged" "$v" "  HELLO  "
+$t.assert_ok "-ed pipeline returns Text.String" $s2.isa Text.String
+
+into=s Text.String.new "hi"
+into=s2 $s.do "lpadded:8,rpadded:12"
+into=v $s2.read; $t.assert_eq "-ed pipeline with args" "$v" "      hi    "
+
+# ============================================================================
+# do — error cases
+# ============================================================================
+
+$t.section "do: error cases"
+
+$t.assert_fail "mixed pipeline crashes" \
+  bash -c '. boop Text::String; into=s Text.String.new "hi"; $s.do "trim,downcased"'
+
+$t.assert_fail "unknown op crashes" \
+  bash -c '. boop Text::String; into=s Text.String.new "hi"; $s.do "trim,explode"'
+
+$t.assert_fail "empty pipeline crashes" \
+  bash -c '. boop Text::String; into=s Text.String.new "hi"; $s.do ""'
+
+# ============================================================================
+# Edge cases
+# ============================================================================
+
+$t.section "edge cases"
+
+into=s Text.String.new ""
+$t.assert_ok   "empty string: isEmpty"  $s.isEmpty
+into=v $s.length; $t.assert_eq "empty string: length 0" "$v" "0"
+$s.upcase
+into=v $s.read; $t.assert_eq "upcase empty" "$v" ""
+$s.trim
+into=v $s.read; $t.assert_eq "trim empty" "$v" ""
+
+into=s Text.String.new "a"
+$s.center 1
+into=v $s.read; $t.assert_eq "center: already at width is no-op" "$v" "a"
+
+into=s Text.String.new "hello"
+$s.replace "x" "y"
+into=v $s.read; $t.assert_eq "replace: no match is no-op" "$v" "hello"
+
+into=s Text.String.new "hello"
+into=s2 $s.trimmed
+into=s3 $s2.upcased
+into=v $s3.read; $t.assert_eq "chain -ed forms manually" "$v" "HELLO"
+
+$t.summary
