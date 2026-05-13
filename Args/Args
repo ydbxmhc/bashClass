@@ -353,8 +353,8 @@ Args.parse() {
   local __Args_parse_schema="${1:-}"; shift
   [[ -n "$__Args_parse_schema" ]] || _Crash "Args.parse: schema required"
 
-  # Effective delimiter for array/map values and _ArgsRemaining
-  local __Args_parse_d="${_Delimiter:-$'\n'}"
+  # Effective record separator for _ArgsRemaining in object mode
+  local __Args_parse_d="${_EOL:-$'\n'}"
 
   # Working tables -- global for duration of parse, cleaned up after phase 5
   declare -gA __Args_alias_map=()

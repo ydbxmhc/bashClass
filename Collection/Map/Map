@@ -157,7 +157,7 @@ Collection.Map.has() {
 Collection.Map.keys() {
   local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
   local -n __Collection_Map_keys_keys="__boop_keys_${_Self}"
-  local __Collection_Map_keys_d="${_Delimiter:-$_EOL}"
+  local __Collection_Map_keys_d="${_EOL:-$'\n'}"
   local __Collection_Map_keys_out
   _Trace "keys: ${#__Collection_Map_keys_keys[@]} key(s)"
   if ! [[ -n "${__Collection_Map_keys_keys[@]:-}" ]]; then
@@ -184,7 +184,7 @@ Collection.Map.values() {
     boop.pass "" ${into:-}
     return
   fi
-  local __Collection_Map_values_d="${_Delimiter:-$_EOL}"
+  local __Collection_Map_values_d="${_EOL:-$'\n'}"
   local -a __Collection_Map_values_buf=()
   local __Collection_Map_values_k
   for __Collection_Map_values_k in "${__Collection_Map_values_keys[@]}"; do
@@ -208,15 +208,16 @@ Collection.Map.toArray() {
     boop.pass "" ${into:-}
     return
   fi
-  local __Collection_Map_toArray_d="${_Delimiter:-$_EOL}"
+  local __Collection_Map_toArray_eol="${_EOL:-$'\n'}"
+  local __Collection_Map_toArray_delim="${_Delimiter:-=}"
   local -a __Collection_Map_toArray_buf=()
   local __Collection_Map_toArray_key
   for __Collection_Map_toArray_key in "${__Collection_Map_toArray_keys[@]}"; do
-    __Collection_Map_toArray_buf+=("$__Collection_Map_toArray_key=${__Collection_Map_toArray_arr[$__Collection_Map_toArray_key]}")
+    __Collection_Map_toArray_buf+=("$__Collection_Map_toArray_key${__Collection_Map_toArray_delim}${__Collection_Map_toArray_arr[$__Collection_Map_toArray_key]}")
   done
   local __Collection_Map_toArray_out
-  printf -v __Collection_Map_toArray_out "%s${__Collection_Map_toArray_d}" "${__Collection_Map_toArray_buf[@]}"
-  __Collection_Map_toArray_out="${__Collection_Map_toArray_out%"${__Collection_Map_toArray_d}"}"
+  printf -v __Collection_Map_toArray_out "%s${__Collection_Map_toArray_eol}" "${__Collection_Map_toArray_buf[@]}"
+  __Collection_Map_toArray_out="${__Collection_Map_toArray_out%"${__Collection_Map_toArray_eol}"}"
   boop.pass "$__Collection_Map_toArray_out" ${into:-}
 }
 

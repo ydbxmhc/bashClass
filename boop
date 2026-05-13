@@ -122,25 +122,34 @@ declare -g _OutMode="${_OutMode:-auto}"
 # (no trailing whitespace, no extra argument).
 #
 # Usage:
-#   _EOL=$'\n'   # default — newline after each value (CLI-friendly)
-#   _EOL=""      # raw — no trailing newline (pipe-friendly)
+#   _EOL=$'\n'     # default -- newline after each value (CLI-friendly)
+#   _EOL=""        # raw -- no trailing newline (pipe-friendly)
+#   _EOL=$'\r\n'   # Windows-style line endings
+#
+# Also used as the record separator for multi-value returns: arrays
+# join elements on _EOL, maps join records (key+value pairs) on _EOL.
 declare -g _EOL="${_EOL:-$'\n'}"
 
-# _Delimiter — element separator for multi-value return strings.
+# _Delimiter -- field separator within a record.
 #
-# Used by Map.keys, Map.values, Map.toArray, List.toArray, List.slice,
-# Config.keys, Config.sections, and similar methods that join multiple
-# values into a single string. Defaults to _EOL when not set, so the
-# common case (newline-separated) requires no configuration.
+# Separates key from value inside a single record (e.g. in Map.toArray,
+# Config.toFlat). Each method picks its own sensible default when
+# _Delimiter is unset -- Map uses '=', a CSV parser would use ',', a
+# URL parser would use '&' or '='. The caller overrides per-call to
+# change the field separator without touching _EOL.
 #
-# Set it to override the separator without changing _EOL:
-#   _Delimiter=$'\t'    # tab-separated values
-#   _Delimiter=$'\r\n'  # CRLF (Windows-style)
-#   _Delimiter='|'      # pipe-separated
+# Relationship to _EOL:
+#   _EOL       = record boundary (between entries)
+#   _Delimiter = field boundary (within an entry, e.g. key from value)
+#
+# Usage:
+#   _Delimiter=':'  into=out $map.toArray   # host:localhost\nport:8080
+#   _Delimiter='|'  into=out $cfg.toFlat    # theme|dark\nhost|localhost
+#
+# Default: empty (unset). Methods fall back to their context-appropriate
+# default. This is intentional -- "not configured" is a valid state that
+# means "use whatever makes sense for this operation."
 declare -g _Delimiter="${_Delimiter:-}"
-
-# TODO: See TODO.md "Configurable Baked-Wrapper Typecast Behavior"
-# TODO: See TODO.md "Argument-Parsing Object"
 
 # ============================================================================
 # GLOBALS - Log Levels
@@ -815,13 +824,17 @@ _OutMode() {
 # valid value, while no argument falls back to the current setting.
 _EOL() { boop.pass "${1-$_EOL}" ${into:-_EOL}; }
 
-# _Delimiter — get or set the element separator for multi-value returns.
+# _Delimiter -- get or set the field separator.
+#
+# When called with no argument and _Delimiter is unset, returns empty
+# (not _EOL). This reflects the "not configured" state -- methods that
+# need a field separator provide their own context-appropriate default.
 #
 # Works as both a variable and a function:
-#   _Delimiter=$'\t'    # set directly
-#   _Delimiter $'\t'    # set via function (also prints new value)
+#   _Delimiter='='      # set directly
+#   _Delimiter ':'      # set via function (also prints new value)
 #   into=d _Delimiter   # read without side effects
-_Delimiter() { boop.pass "${1-${_Delimiter:-$_EOL}}" ${into:-_Delimiter}; }
+_Delimiter() { boop.pass "${1-${_Delimiter:-}}" ${into:-_Delimiter}; }
 
 # ============================================================================
 # VALUE ENCODING/DECODING
