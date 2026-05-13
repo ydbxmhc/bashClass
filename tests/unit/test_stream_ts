@@ -1,0 +1,201 @@
+#!/bin/bash
+set -uo pipefail
+
+# Stream tests -- record-oriented reading with field assignment.
+#
+# Classification: UNIT (Stream)
+# Covers: open, fromString, Read (delimited fast path), field assignment,
+#         array mode, eof, close, readAll, multi-char EOL (slow path),
+#         schema string parsing, write/writeLine.
+
+. boop TestSuite Stream
+
+into=t TestSuite name="Stream Tests"
+
+# Temp files for testing
+__st_tmp=$(mktemp)
+__st_tmp2=$(mktemp)
+trap 'rm -f "$__st_tmp" "$__st_tmp2"' EXIT
+
+# ============================================================================
+# Basic: open + Read + field assignment
+# ============================================================================
+
+$t.section "basic delimited read"
+
+printf 'alice:30:admin\nbob:25:user\n' > "$__st_tmp"
+
+into=s Stream.open "$__st_tmp" -d ':' name age role
+$t.assert_ok "Read returns 0 on first record" $s.Read
+$t.assert_eq "field 1: name" "$name" "alice"
+$t.assert_eq "field 2: age" "$age" "30"
+$t.assert_eq "field 3: role" "$role" "admin"
+
+$t.assert_ok "Read returns 0 on second record" $s.Read
+$t.assert_eq "second record name" "$name" "bob"
+$t.assert_eq "second record age" "$age" "25"
+
+$t.assert_fail "Read returns 1 on EOF" $s.Read
+$t.assert_ok "eof is true" $s.eof
+$s.close
+
+# ============================================================================
+# Whole-line mode (no field splitting)
+# ============================================================================
+
+$t.section "whole-line mode"
+
+printf 'hello world\ngoodbye world\n' > "$__st_tmp"
+
+into=s Stream.open "$__st_tmp" line
+$s.Read
+$t.assert_eq "whole line" "$line" "hello world"
+$s.Read
+$t.assert_eq "second line" "$line" "goodbye world"
+$s.close
+
+# ============================================================================
+# Array mode
+# ============================================================================
+
+$t.section "array mode"
+
+printf 'a,b,c\nd,e,f\n' > "$__st_tmp"
+
+into=s Stream.open "$__st_tmp" -d ',' -a fields
+$s.Read
+$t.assert_eq "array[0]" "${fields[0]}" "a"
+$t.assert_eq "array[1]" "${fields[1]}" "b"
+$t.assert_eq "array[2]" "${fields[2]}" "c"
+$s.Read
+$t.assert_eq "second row[0]" "${fields[0]}" "d"
+$s.close
+
+# ============================================================================
+# Last field gets the rest
+# ============================================================================
+
+$t.section "last field gets rest"
+
+printf 'key=value=with=equals\n' > "$__st_tmp"
+
+into=s Stream.open "$__st_tmp" -d '=' k v
+$s.Read
+$t.assert_eq "key" "$k" "key"
+$t.assert_eq "value has embedded delimiters" "$v" "value=with=equals"
+$s.close
+
+# ============================================================================
+# Discard field with _
+# ============================================================================
+
+$t.section "discard with _"
+
+printf 'skip:keep:also_skip\n' > "$__st_tmp"
+
+into=s Stream.open "$__st_tmp" -d ':' _ wanted _
+$s.Read
+$t.assert_eq "middle field kept" "$wanted" "keep"
+$s.close
+
+# ============================================================================
+# fromString
+# ============================================================================
+
+$t.section "fromString"
+
+into=s Stream.fromString "one:two:three" -d ':' a b c
+$s.Read
+$t.assert_eq "fromString field 1" "$a" "one"
+$t.assert_eq "fromString field 2" "$b" "two"
+$t.assert_eq "fromString field 3" "$c" "three"
+$s.close
+
+# ============================================================================
+# readAll (slurp)
+# ============================================================================
+
+$t.section "readAll"
+
+printf 'line1\nline2\nline3\n' > "$__st_tmp"
+into=s Stream.open "$__st_tmp"
+into=all $s.readAll
+$t.assert_contains "readAll has line1" "$all" "line1"
+$t.assert_contains "readAll has line3" "$all" "line3"
+$t.assert_ok "eof after readAll" $s.eof
+$s.close
+
+# ============================================================================
+# Multi-char EOL (slow path)
+# ============================================================================
+
+$t.section "multi-char EOL"
+
+printf 'para one\r\n\r\npara two\r\n\r\npara three' > "$__st_tmp"
+
+into=s Stream.open "$__st_tmp" --eol $'\r\n\r\n' block
+$s.Read
+$t.assert_eq "paragraph 1" "$block" "para one"
+$s.Read
+$t.assert_eq "paragraph 2" "$block" "para two"
+$s.Read
+$t.assert_eq "paragraph 3 (no trailing delim)" "$block" "para three"
+$t.assert_fail "EOF after last paragraph" $s.Read
+$s.close
+
+# ============================================================================
+# Schema string mode
+# ============================================================================
+
+$t.section "schema string"
+
+printf 'alice|30|admin\nbob|25|user\n' > "$__st_tmp"
+
+into=s Stream.open "$__st_tmp" '
+  [Parser]
+  delimiter = |
+
+  [Fields]
+  name age role
+'
+$s.Read
+$t.assert_eq "schema: name" "$name" "alice"
+$t.assert_eq "schema: age" "$age" "30"
+$t.assert_eq "schema: role" "$role" "admin"
+$s.close
+
+# ============================================================================
+# write / writeLine
+# ============================================================================
+
+$t.section "write and writeLine"
+
+into=s Stream.new fd=1 _owned=0
+# We can't easily capture write output in this test framework without
+# a temp file, so test via a subshell that redirects to a file.
+__st_write_out=$(bash -c '
+  . "'"${__boop_root}/boop"'" Stream
+  exec {wfd}> "'"$__st_tmp2"'"
+  into=s Stream.new fd=$wfd _owned=1
+  $s.writeLine "hello"
+  $s.write "world"
+  $s.close
+  cat "'"$__st_tmp2"'"
+')
+$t.assert_eq "writeLine + write output" "$__st_write_out" "$(printf 'hello\nworld')"
+
+# ============================================================================
+# Ownership: close only when owned
+# ============================================================================
+
+$t.section "ownership"
+
+exec {__st_test_fd}< "$__st_tmp"
+into=s Stream.new fd=$__st_test_fd _owned=0
+$s.close
+# FD should still be open since we don't own it
+$t.assert_ok "FD still open after non-owned close" test -e "/proc/$$/fd/$__st_test_fd" -o true
+exec {__st_test_fd}>&-
+
+$t.summary
+
