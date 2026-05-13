@@ -4,6 +4,96 @@ Completed work items, extracted from TODO.md. Most recent first.
 
 ---
 
+## Text.String Class
+
+**Completed:** 2026-05-13
+
+String objects with mutating and non-mutating method variants. Two
+families: bare verbs (trim, upcase, ...) mutate in place; -ed forms
+(trimmed, upcased, ...) return new objects. Pipeline method `do`
+executes a comma-separated chain in one call. All operations are pure
+bash parameter expansion -- zero forks. 76 tests.
+
+---
+
+## DateTime Class
+
+**Completed:** 2026-05-13
+
+Date/time objects storing UTC epoch internally. Construction from
+ISO 8601 or epoch is zero-fork (pure bash arithmetic). Only
+`DateTime.parse` with non-ISO input spawns one subshell (date -d)
+at construction; everything after is free. Arithmetic (addDays,
+addHours), comparison (before, after, equals), diff, and formatting
+all via printf builtin strftime. 71 tests.
+
+---
+
+## Signal Class
+
+**Completed:** 2026-05-12
+
+Managed per-signal callback stacks layered on top of bash's single-slot
+trap. LIFO dispatch, extra-arg forwarding, error resilience (one bad
+handler doesn't break the chain). Rejects KILL/STOP/DEBUG/RETURN with
+clear error messages. Internalizes pre-existing traps at load time.
+All methods are class-level (no instances). 46 tests using real signals
+(USR1, USR2) plus delivery verification in isolated subshells.
+
+---
+
+## Parse Config Files as Data
+
+**Completed:** 2026-05-12
+
+`__boop.parseConfig` reads `.boopIndex` and `.boop.cfg` line-by-line
+instead of sourcing them as bash scripts. Handles old formats
+(`[Key]="Value"`, `__boop_classPath["Key"]="Value"`) and new canonical
+`Key=Value`. First-write-wins semantics. Unrecognized lines emit
+`_Warn`. No eval, no source, no code execution for machine-managed
+config files.
+
+---
+
+## JSON Key Order Preservation
+
+**Completed:** 2026-05-12
+
+Stringify now tracks each leaf key in a companion indexed array
+(`__boop_keys_${doc}`) alongside the Fast data hash. When present,
+stringify iterates the ordered array so object keys appear in the
+same order as the original JSON. Raw Fast objects (no keys array)
+fall back to hash iteration. Also added `Data.JSON.validate` --
+subshell-free validity check without crashing. 67 tests total.
+
+---
+
+## Stderr Redirection Audit
+
+**Completed:** 2026-05-12
+
+All three categories addressed:
+- Class file load guards: replaced by `boop.init` (no more
+  `&& return 2>/dev/null`)
+- TestSuite assert_ok/assert_fail: stderr captured to temp file,
+  emitted via `_Debug`
+- boop import fallback: stderr captured and emitted via `_Debug`
+- Signal class: all four `2>/dev/null` removed; stderr let through
+- DateTime.parse: `date -d` stderr let through
+
+---
+
+## test_all Auto-Logging
+
+**Completed:** 2026-05-08
+
+`tests/test_all` now does `exec > >(tee "$__ta_log") 2>&1` at the
+top, writing all output to `test_all.log` at the repo root. Every
+run leaves a log for later inspection without needing to remember
+to pipe manually.
+
+---
+
 ## Mixin System
 
 **Completed:** 2026-05
