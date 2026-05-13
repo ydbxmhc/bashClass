@@ -1074,6 +1074,7 @@ boop                                    root — new, get, set, isa, mixes, true
 | [docs/Math.md](docs/Math.md) | Arithmetic internals, precision, and the chunk algorithm |
 | [docs/Container.md](docs/Container.md) | Container and Iterator API |
 | [docs/String.md](docs/String.md) | Text.String API reference — mutators, -ed forms, pipelines, mixin usage |
+| [docs/DateTime.md](docs/DateTime.md) | DateTime API reference — constructors, formatting, arithmetic, comparison, DST notes |
 | [TODO.md](TODO.md) | Roadmap and open design questions |
 
 ---
