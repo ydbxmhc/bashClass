@@ -663,6 +663,121 @@ into=v $pi.val
 
 ---
 
+## Two Kinds of Classes
+
+Not all classes in this framework are the same kind of thing. Understanding
+the distinction matters for using the library well, for knowing when to reach
+for a class and when to stay with raw bash, and for writing your own.
+
+### Capability Classes
+
+Some classes exist because bash genuinely can't do the thing without them.
+`Math` implements arbitrary-precision arithmetic — bash's built-in `$(( ))`
+is limited to 64-bit signed integers; there's no inline way to multiply
+123456789 by 987654321 and get the right answer. `Data.JSON` implements a
+recursive descent parser in pure bash; there's no parameter expansion for
+that. `Collection.List`, `Map`, `Set`, `Stack`, `Queue` are data structures
+that bash has no native concept of.
+
+For these classes, the question is not "is this worth the overhead?" It is
+either the class or it's not happening. The overhead is the price of admission,
+and the capability is the whole point.
+
+### Convenience Classes
+
+Other classes exist because bash *can* do the thing, but the repetition and
+inconsistency across callers is where the problems live.
+
+`Text.String` is the clearest example. Every operation it provides —
+trimming whitespace, changing case, padding, finding substrings — is already
+available in bash through parameter expansion, built-in operators, and
+arithmetic:
+
+```bash
+# These do what $s.trim, $s.upcase, $s.contains do:
+v="${v#"${v%%[![:space:]]*}"}"
+v="${v%"${v##*[![:space:]]}"}"
+v="${v^^}"
+[[ "$v" == *"$needle"* ]]
+```
+
+Using `Text.String` is **strictly slower** than the inline forms for any
+individual operation. The overhead comes from multiple layers: object
+creation (a descriptor allocation and two property writes), method dispatch
+(MRO lookup, function frame entry), and property access (hash operations
+rather than variable access). For a single `trim` on a one-off string,
+inline parameter expansion beats it by an order of magnitude.
+
+So why does the class exist?
+
+**Code reuse.** If the same trim-downcase-replace pattern appears in five
+constructors, those five copies accumulate bugs independently. One
+implementation tested once and shared everywhere is worth more than the
+cycles saved by inlining. The framework's own internals are the primary
+beneficiaries.
+
+**Multi-step pipelines.** The `do` method amortizes dispatch overhead across
+all operations in the chain:
+
+```bash
+# Five -ed chains: five object allocations, five dispatch calls
+into=s2 $s.trimmed
+into=s3 $s2.downcased
+into=s4 $s3.capitalized
+into=s5 $s4.replaced "foo" "bar"
+into=s6 $s5.rpadded 40
+
+# One -ed do: one object allocation, one do dispatch, five bare calls
+into=s2 $s.do "trimmed,downcased,capitalized,replaced:foo:bar,rpadded:40"
+```
+
+**Non-hot code paths.** Constructors, configuration loading, output
+formatting — these run once or a handful of times. At that frequency the
+overhead is immeasurable in practice. The readability and correctness
+benefits are real; the performance cost is not.
+
+**Mixin composition.** A class that mixes in `Text.String` inherits the
+full manipulation surface on its own string-valued property without
+reimplementing any of it. The overhead is paid once in the class's methods
+where string manipulation already dominates the cost.
+
+### When to Avoid Convenience Classes
+
+- **Inside tight loops.** Processing thousands of strings in a loop: use
+  parameter expansion. The per-call overhead accumulates into something
+  measurable.
+- **In framework internals.** The `boop` runtime, `Args.parse`, and other
+  framework-level code avoid framework abstractions to keep their own
+  overhead minimal. Using a convenience class inside the plumbing creates
+  recursive overhead.
+- **For a single one-shot transform.** `${v^^}` is one character and zero
+  overhead. Creating a `Text.String` object to call `upcase` once and
+  discard the result is not worth the ceremony.
+
+The rule of thumb: if you would reach for a private helper function to avoid
+repeating string logic across several callers, reach for the convenience class
+instead.
+
+### Naming Reflects Usage Frequency
+
+Convenience classes in this framework follow the same naming principle as
+well-designed languages: name length tracks usage frequency. Common
+operations get short names (`trim`, `read`, `get`). Rare operations get
+longer names (`decapitalize`, `indexOf`, `keysUnder`).
+
+The `Text.String` API illustrates this: `trim` is four characters because
+you'll type it constantly; `decapitalize` is twelve because you won't. The
+asymmetry is intentional. A longer name costs the reader attention at the
+call site, which is the right trade when the operation is uncommon enough
+that the longer name aids recognition.
+
+This principle extends to method naming across the framework. When you see a
+short method name, it signals high-frequency use. When you see a long one,
+it signals that the operation is specialized enough to warrant the explicit
+statement.
+
+---
+
 ## Writing a Class
 
 Here's a minimal working class:
@@ -955,6 +1070,7 @@ boop                                    root — new, get, set, isa, mixes, true
 | [docs/Map.md](docs/Map.md) | Complete Map API reference |
 | [docs/Math.md](docs/Math.md) | Arithmetic internals, precision, and the chunk algorithm |
 | [docs/Container.md](docs/Container.md) | Container and Iterator API |
+| [docs/String.md](docs/String.md) | Text.String API reference — mutators, -ed forms, pipelines, mixin usage |
 | [TODO.md](TODO.md) | Roadmap and open design questions |
 
 ---
