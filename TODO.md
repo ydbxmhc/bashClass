@@ -196,97 +196,137 @@ use case emerges that List can't serve.
 
 ## I/O Classes (Phase 5)
 
-### Design: Two-Layer Delimiter Architecture
+### Current State (what's done)
 
-`_EOL` and `_Delimiter` are the universal IO-control variables across
-the framework. They default to `$'\n'` and `${_EOL}` respectively,
-and are set inline on commands that need them changed. Two layers
-handle them:
+The **output side** is complete. All multi-value methods (List.toArray,
+Map.keys, Map.values, Map.toArray, Config.keys, Config.toFlat, etc.)
+respect the two IO-control variables with correct semantics:
 
-**Layer 1 -- the fast path (current, single-char optimized):**
-- Used directly in `printf`, parameter expansion, `read -d`
-- Zero overhead beyond what bash already does
-- This is what Map.keys, List.toArray, boop.pass, Config.keys, etc.
-  use today and will continue to use
-- The standard: every method that joins or splits respects these
-  variables. Rigorous application throughout the common codebase.
-- Single characters are the common case and should stay fast.
+- `_EOL` = record separator (between entries). Default: `$'\n'`.
+  Arrays join elements on `_EOL`. Maps join records on `_EOL`.
+- `_Delimiter` = field separator (within a record, e.g. key from value).
+  Default: empty (unset). Each method picks its own context-appropriate
+  fallback (Map uses `=`, Config uses `=`, a CSV parser would use `,`).
 
-**Layer 2 -- the IO class (complex path, multi-char capable):**
-- Mixes in Text.String for string-manipulation toolkit
-- Internal double-buffer: pre-loads chunks (~8KB) from an FD into a
-  bash variable, scans for the delimiter using parameter expansion,
-  returns one "record" at a time, refills when exhausted
-- Handles multi-character `_EOL` (paragraph mode with `$'\n\n'`,
-  CRLF sequences, arbitrary byte patterns)
-- Handles multi-character `_Delimiter` (e.g. `$',\r\n'` to split
-  on comma-CRLF within a record)
-- Exposed as a `Read` method (capital R) on the IO class, possibly
-  also as a `_Read` Tier 2 helper for framework-internal use
-- The caller sets `_EOL` and `_Delimiter` the same way regardless
-  of which layer executes -- the intent is expressed identically
+Multi-character values work on the output side (tested with `$'\r\n'`).
+Single-character is the fast path; multi-char just works because
+`printf -v` and string concatenation don't care about length.
 
-**The hybrid principle:**
-- Single-char delimiter + data fits in a variable: fast path (no IO class)
-- Multi-char delimiter, streaming data, or paragraph mode: IO class Read
-- Same variable names, same caller intent, different execution paths
+The **input side** is NOT built. Config.load, __boop.parseConfig, and
+similar methods still use hardcoded `while IFS= read -r line` (newline
+records, `=` field separator). These work for the common case but don't
+respect `_EOL`/`_Delimiter` for custom formats.
+
+### What needs building: the IO class
+
+A class (or small family of classes under `IO/`) that handles the
+complex input path — multi-character delimiters, streaming reads,
+buffered I/O. The output side stays as-is (fast path, already done).
+
+**Core concept: `Read` method with double-buffer scanning.**
+
+```
+IO.File.open "/path/to/file" mode=read
+# or
+into=reader IO.Reader.new fd=$some_fd
+
+# Then:
+_EOL=$'\n\n' into=paragraph $reader.Read    # paragraph mode
+_EOL=$'\r\n' into=line $reader.Read         # CRLF line mode
+_EOL=$'\n'   into=line $reader.Read         # normal line mode (fast path)
+```
+
+**Algorithm for multi-char `_EOL` scanning:**
+
+1. Maintain an internal buffer string (pre-loaded ~8KB from the FD
+   via `read -N 8192`)
+2. On each `Read` call, scan the buffer for `_EOL` using
+   `${buffer%%"$eol"*}` (parameter expansion finds the first match)
+3. If found: return everything before the match, advance the buffer
+   past the match + delimiter length
+4. If not found: append more data from the FD to the buffer, retry
+5. If FD is exhausted and buffer is non-empty: return the remainder
+   (final record without trailing delimiter)
+6. If FD is exhausted and buffer is empty: return empty, signal EOF
+
+**Fast-path optimization:** when `_EOL` is a single character, skip
+the buffer entirely and use `read -d "$eol"` directly. This is the
+common case and costs nothing extra.
+
+**Field splitting within a record:**
+
+After `Read` returns a record, the caller (or a helper) splits on
+`_Delimiter` for key/value parsing:
+```bash
+into=record $reader.Read
+key="${record%%"${_Delimiter:-=}"*}"
+value="${record#*"${_Delimiter:-=}"}"
+```
+This splits on the first occurrence of `_Delimiter`, leaving subsequent
+occurrences in the value (same semantics as `IFS='=' read -r k v`).
+
+**Text.String mixin integration:**
+
+The IO class mixes in Text.String so that records returned by `Read`
+are String objects with trim/split/replace available immediately:
+```bash
+into=line $reader.Read
+$line.trim
+into=fields $line.split ","    # hypothetical split method
+```
+
+**Relationship to existing code:**
+
+Once the IO class exists, `Config.load` and `__boop.parseConfig` can
+optionally delegate to it for the read loop. For the common case
+(newline-delimited, `=` field separator) they'd still use the fast
+path (`read -r`). The IO class is for when the caller needs something
+the fast path can't do.
+
+**Classes in the family:**
+
+- `IO::File` — wraps a persistent FD. open/close/read/readLine/
+  readAll/write/seek/tell/eof. The `Read` method lives here.
+- `IO::Buffer` — in-memory accumulator. The double-buffer backing
+  store for Read. Also useful standalone for building output strings
+  efficiently before flushing.
+- `IO::Pipe` — bidirectional channel via named FIFO. Deferred until
+  File and Buffer are proven.
+- `IO::Reader` — possibly a lighter "just the read side" without
+  file management. TBD whether this is separate or just File in
+  read-only mode.
 
 **Null bytes:**
-Bash variables cannot hold `\0` (C string terminator). `read` stops at
-null. The only way to handle binary with embedded nulls is byte-by-byte
-via `read -N 1` with `LC_ALL=C`, never storing in a variable. This is
-possible but painful and slow. Document the limitation clearly; don't
-pretend to solve it unless a real use case demands it.
 
-### File
-Wraps a persistent file descriptor opened with `exec {fd}<>file`.
-Interface: `open`, `close`, `read`, `readLine`, `readAll`, `write`,
-`seek`, `tell`, `eof`.
+Bash variables cannot hold `\0`. Document clearly. The IO class
+operates on text (everything except null). Binary data with embedded
+nulls requires byte-by-byte `read -N 1` with `LC_ALL=C` and is out
+of scope for the initial implementation.
 
-### Buffer
-Accumulates writes in a string variable, flushes on demand or at
-a size threshold. The internal double-buffer for Read lives here.
-
-### Pipe
-Bidirectional in-memory channel using bash's `exec {rfd}<> <(...)` or
-a named FIFO. Needs design work.
-
-### Read utilities
-`mapfile`/`readarray` for bulk line-array reads. `read -t 0` for
-non-blocking poll. `read -N n` for exact byte counts. Wrap as static
-methods on an `IO` namespace class.
-
-### Consistency audit needed
-Every method in the framework that joins or splits values should be
-verified to respect `_Delimiter` (for multi-value) and `_EOL` (for
-output termination) consistently. Current coverage is good but not
-audited for completeness.
-
-### Internal descriptor separator
+### Internal descriptor separator (low priority)
 
 The framework uses comma as the internal separator for method lists,
 property lists, and mixin lists in class descriptors (`|methods=a,b,c|`).
 This effectively reserves comma as unusable in method/property names.
-Low priority, but worth considering an alternative character (unit
-separator `$'\x1f'`? pipe? something else?) at some point. Same
-applies to Taggable's comma-separated tag storage.
+Worth considering an alternative character (unit separator `$'\x1f'`?
+pipe? something else?) at some point. Same applies to Taggable's
+comma-separated tag storage.
 
-### Short-term: respect _EOL/_Delimiter in user-facing I/O
+### Short-term: respect _EOL/_Delimiter in user-facing input (deferred)
 
 Config.load, Config.loadINI, __boop.parseConfig, and __boop.new all
 use hardcoded delimiters for user-facing data. The fix is to default
 to the current character but read from the variable:
 
-- Record splitting: `while IFS= read -r -d "${_EOL:-$'\n'}" line`
+- Record splitting: `while IFS= read -r -d "${_EOL:0:1}" line`
   (note: `read -d` only supports single-char; multi-char _EOL is
-  Phase 5 IO class territory)
+  IO class territory)
 - Field splitting (key=value): `IFS="${_Delimiter:-=}" read -r k v`
   where the first occurrence of _Delimiter separates key from value
-  and subsequent occurrences remain in the value (bash `read` with
-  two variables does this naturally)
 
-This preserves current behavior (defaults are `\n` and `=`) while
-opening the door for callers who set _Delimiter to `:` or `|`.
+This preserves current behavior while opening the door for callers
+who set _Delimiter to `:` or `|`. Deferred until the IO class exists
+to handle the multi-char case properly.
 
 ---
 
