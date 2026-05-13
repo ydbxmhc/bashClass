@@ -301,20 +301,26 @@ Stream.Read() {
         break
       fi
 
-      # Try to read more from FD
-      local __Stream_Read_chunk=""
-      if IFS= read -r -N 8192 -u "$__Stream_Read_fd" __Stream_Read_chunk; then
-        __Stream_Read_buf+="$__Stream_Read_chunk"
-      else
-        # FD exhausted
-        if [[ -n "$__Stream_Read_buf" ]]; then
+      # Try to read more from FD. read -N returns non-zero when it hits EOF
+      # even if it did read some bytes (file shorter than requested size).
+      # Always add whatever was read to the buffer before checking exit code.
+      local __Stream_Read_chunk="" __Stream_Read_rrc=0
+      IFS= read -r -N 8192 -u "$__Stream_Read_fd" __Stream_Read_chunk || __Stream_Read_rrc=$?
+      __Stream_Read_buf+="$__Stream_Read_chunk"
+      if (( __Stream_Read_rrc != 0 )); then
+        # FD exhausted — scan once more, then take remainder or signal EOF
+        if [[ "$__Stream_Read_buf" == *"$__Stream_Read_eol"* ]]; then
+          __Stream_Read_record="${__Stream_Read_buf%%"$__Stream_Read_eol"*}"
+          __Stream_Read_buf="${__Stream_Read_buf#*"$__Stream_Read_eol"}"
+          __boop.set _buf "$__Stream_Read_buf"
+        elif [[ -n "$__Stream_Read_buf" ]]; then
           __Stream_Read_record="$__Stream_Read_buf"
           __Stream_Read_buf=""
           __boop.set _buf ""
-          break
         else
           __boop.set _eof "1"; return 1
         fi
+        break
       fi
     done
   fi

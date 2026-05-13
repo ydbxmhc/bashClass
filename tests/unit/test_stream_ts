@@ -35,8 +35,9 @@ $t.assert_ok "Read returns 0 on second record" $s.Read
 $t.assert_eq "second record name" "$name" "bob"
 $t.assert_eq "second record age" "$age" "25"
 
-$t.assert_fail "Read returns 1 on EOF" $s.Read
-$t.assert_ok "eof is true" $s.eof
+$s.Read; __st_rc=$?
+$t.assert_ne "Read returns non-zero at EOF" "$__st_rc" "0"
+$t.assert_ok "eof is true after final Read" $s.eof
 $s.close
 
 # ============================================================================
