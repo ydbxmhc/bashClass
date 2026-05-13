@@ -291,7 +291,7 @@ Collection.List.slice() {
   local -i __Collection_List_slice_count=$(( __Collection_List_slice_end - __Collection_List_slice_start ))
   (( __Collection_List_slice_count <= 0 )) && { boop.pass "" ${into:-}; return; }
   _Debug "slice: [$__Collection_List_slice_start:$__Collection_List_slice_end] -> $__Collection_List_slice_count element(s)"
-  local __Collection_List_slice_d="${_Delimiter:-$_EOL}"
+  local __Collection_List_slice_d="${_EOL:-$'\n'}"
   local __Collection_List_slice_out
   printf -v __Collection_List_slice_out "%s${__Collection_List_slice_d}" "${__Collection_List_slice_arr[@]:$__Collection_List_slice_start:$__Collection_List_slice_count}"
   __Collection_List_slice_out="${__Collection_List_slice_out%"${__Collection_List_slice_d}"}"
@@ -313,7 +313,7 @@ Collection.List.slice() {
 Collection.List.toArray() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_toArray_arr="__boop_data_${_Self}"
-  local __Collection_List_toArray_d="${_Delimiter:-$_EOL}"
+  local __Collection_List_toArray_d="${_EOL:-$'\n'}"
   local __Collection_List_toArray_out
   _Trace "toArray: ${#__Collection_List_toArray_arr[@]} element(s)"
   if ! [[ -n "${__Collection_List_toArray_arr[@]:-}" ]]; then

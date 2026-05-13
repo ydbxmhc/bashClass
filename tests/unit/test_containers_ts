@@ -610,10 +610,10 @@ into=v3 $dlist2.next;  $t.assert_eq "implicit next 2 = b" "$v3" "b"
 into=v4 $exiter.next;  $t.assert_eq "explicit next 2 = b" "$v4" "b"
 
 # ============================================================================
-# _Delimiter: custom element separator
+# _EOL / _Delimiter: custom separators
 # ============================================================================
 
-$t.section "_Delimiter: List.toArray"
+$t.section "_EOL: List.toArray"
 
 into=dl List
 $dl.push "alpha" "beta" "gamma"
@@ -621,37 +621,43 @@ $dl.push "alpha" "beta" "gamma"
 into=v $dl.toArray
 $t.assert_eq "default delimiter is newline" "$v" "$(printf 'alpha\nbeta\ngamma')"
 
-_Delimiter=$'\t' into=v $dl.toArray
-$t.assert_eq "tab delimiter"   "$v" "$(printf 'alpha\tbeta\tgamma')"
+_EOL=$'\t' into=v $dl.toArray
+$t.assert_eq "tab EOL"   "$v" "$(printf 'alpha\tbeta\tgamma')"
 
-_Delimiter=$'|' into=v $dl.toArray
-$t.assert_eq "pipe delimiter"  "$v" "alpha|beta|gamma"
+_EOL=$'|' into=v $dl.toArray
+$t.assert_eq "pipe EOL"  "$v" "alpha|beta|gamma"
 
-_Delimiter=$'\r\n' into=v $dl.toArray
-$t.assert_eq "CRLF delimiter"  "$v" "$(printf 'alpha\r\nbeta\r\ngamma')"
+_EOL=$'\r\n' into=v $dl.toArray
+$t.assert_eq "CRLF EOL"  "$v" "$(printf 'alpha\r\nbeta\r\ngamma')"
 
-$t.section "_Delimiter: List.slice"
+$t.section "_EOL: List.slice"
 
-into=v _Delimiter=$'|' $dl.slice 0 2
-$t.assert_eq "slice with pipe delimiter" "$v" "alpha|beta"
+into=v _EOL=$'|' $dl.slice 0 2
+$t.assert_eq "slice with pipe EOL" "$v" "alpha|beta"
 
-$t.section "_Delimiter: Map.keys / values / toArray"
+$t.section "_EOL/_Delimiter: Map.keys / values / toArray"
 
 into=dm Map
 $dm.setAt host localhost
 $dm.setAt port 8080
 $dm.setAt user admin
 
-_Delimiter=$'|' into=v $dm.keys
+_EOL=$'|' into=v $dm.keys
 $t.assert_eq "Map.keys pipe"     "$v" "host|port|user"
 
-_Delimiter=$'|' into=v $dm.values
+_EOL=$'|' into=v $dm.values
 $t.assert_eq "Map.values pipe"   "$v" "localhost|8080|admin"
 
-_Delimiter=$'|' into=v $dm.toArray
-$t.assert_eq "Map.toArray pipe"  "$v" "host=localhost|port=8080|user=admin"
+# Map.toArray uses _EOL between records and _Delimiter for key/value field.
+# Default _Delimiter is '=' so records look like key=value.
+_EOL=$'|' into=v $dm.toArray
+$t.assert_eq "Map.toArray pipe EOL"  "$v" "host=localhost|port=8080|user=admin"
 
-_Delimiter=$'\r\n' into=v $dm.keys
+# Custom _Delimiter changes the field separator within each record.
+_EOL=$'|' _Delimiter=':' into=v $dm.toArray
+$t.assert_eq "Map.toArray pipe EOL + colon delim" "$v" "host:localhost|port:8080|user:admin"
+
+_EOL=$'\r\n' into=v $dm.keys
 $t.assert_eq "Map.keys CRLF"     "$v" "$(printf 'host\r\nport\r\nuser')"
 
 $t.summary

@@ -114,7 +114,7 @@ Collection.Map.Fast.keys() {
   local __Collection_Map_Fast_keys_out=""
   local __Collection_Map_Fast_keys_k
   for __Collection_Map_Fast_keys_k in "${!__Collection_Map_Fast_keys_data[@]}"; do
-    [[ -n "$__Collection_Map_Fast_keys_out" ]] && __Collection_Map_Fast_keys_out+="${_Delimiter}"
+    [[ -n "$__Collection_Map_Fast_keys_out" ]] && __Collection_Map_Fast_keys_out+="${_EOL:-$'\n'}"
     __Collection_Map_Fast_keys_out+="$__Collection_Map_Fast_keys_k"
   done
   boop.pass "$__Collection_Map_Fast_keys_out" "${into:-}"
@@ -133,7 +133,7 @@ Collection.Map.Fast.keysUnder() {
   local __Collection_Map_Fast_ku_out="" __Collection_Map_Fast_ku_k
   for __Collection_Map_Fast_ku_k in "${!__Collection_Map_Fast_ku_data[@]}"; do
     [[ "$__Collection_Map_Fast_ku_k" == "${__Collection_Map_Fast_ku_prefix}${__Collection_Map_Fast_ku_sep}"* ]] || continue
-    [[ -n "$__Collection_Map_Fast_ku_out" ]] && __Collection_Map_Fast_ku_out+="${_Delimiter}"
+    [[ -n "$__Collection_Map_Fast_ku_out" ]] && __Collection_Map_Fast_ku_out+="${_EOL:-$'\n'}"
     __Collection_Map_Fast_ku_out+="$__Collection_Map_Fast_ku_k"
   done
   boop.pass "$__Collection_Map_Fast_ku_out" "${into:-}"
@@ -163,8 +163,8 @@ Collection.Map.Fast.toString() {
   local -n __Collection_Map_Fast_ts_data="__boop_data_${_Self}"
   local __Collection_Map_Fast_ts_out="" __Collection_Map_Fast_ts_k
   for __Collection_Map_Fast_ts_k in "${!__Collection_Map_Fast_ts_data[@]}"; do
-    [[ -n "$__Collection_Map_Fast_ts_out" ]] && __Collection_Map_Fast_ts_out+="${_Delimiter}"
-    __Collection_Map_Fast_ts_out+="${__Collection_Map_Fast_ts_k}=${__Collection_Map_Fast_ts_data[$__Collection_Map_Fast_ts_k]}"
+    [[ -n "$__Collection_Map_Fast_ts_out" ]] && __Collection_Map_Fast_ts_out+="${_EOL:-$'\n'}"
+    __Collection_Map_Fast_ts_out+="${__Collection_Map_Fast_ts_k}${_Delimiter:-=}${__Collection_Map_Fast_ts_data[$__Collection_Map_Fast_ts_k]}"
   done
   boop.pass "$__Collection_Map_Fast_ts_out" "${into:-}"
 }

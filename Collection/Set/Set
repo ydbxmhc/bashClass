@@ -70,7 +70,7 @@ Collection.Set.isEmpty() {
 Collection.Set.toArray() {
   local _Self="${_Self:-Collection.Set}" _Class="${_Class:-Collection.Set}"
   local -n __Collection_Set_toArray_d="__Collection_Set_data_${_Self}"
-  local __Collection_Set_toArray_delim="${_Delimiter:-$_EOL}"
+  local __Collection_Set_toArray_delim="${_EOL:-$'\n'}"
   _Trace "toArray: ${#__Collection_Set_toArray_d[@]} member(s)"
   if (( ${#__Collection_Set_toArray_d[@]} == 0 )); then
     boop.pass "" ${into:-}

@@ -76,7 +76,7 @@ Serializable.fromJSON() {
   # Walk keys and restore properties (skip _class)
   local __Serializable_fromJSON_keys __Serializable_fromJSON_key
   local __Serializable_fromJSON_val
-  local _Delimiter=$'\n'
+  local _EOL=$'\n'
   into=__Serializable_fromJSON_keys _Delegate $__Serializable_fromJSON_parsed.keys
 
   while IFS= read -r __Serializable_fromJSON_key; do

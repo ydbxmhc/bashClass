@@ -262,6 +262,32 @@ verified to respect `_Delimiter` (for multi-value) and `_EOL` (for
 output termination) consistently. Current coverage is good but not
 audited for completeness.
 
+### Internal descriptor separator
+
+The framework uses comma as the internal separator for method lists,
+property lists, and mixin lists in class descriptors (`|methods=a,b,c|`).
+This effectively reserves comma as unusable in method/property names.
+Low priority, but worth considering an alternative character (unit
+separator `$'\x1f'`? pipe? something else?) at some point. Same
+applies to Taggable's comma-separated tag storage.
+
+### Short-term: respect _EOL/_Delimiter in user-facing I/O
+
+Config.load, Config.loadINI, __boop.parseConfig, and __boop.new all
+use hardcoded delimiters for user-facing data. The fix is to default
+to the current character but read from the variable:
+
+- Record splitting: `while IFS= read -r -d "${_EOL:-$'\n'}" line`
+  (note: `read -d` only supports single-char; multi-char _EOL is
+  Phase 5 IO class territory)
+- Field splitting (key=value): `IFS="${_Delimiter:-=}" read -r k v`
+  where the first occurrence of _Delimiter separates key from value
+  and subsequent occurrences remain in the value (bash `read` with
+  two variables does this naturally)
+
+This preserves current behavior (defaults are `\n` and `=`) while
+opening the door for callers who set _Delimiter to `:` or `|`.
+
 ---
 
 ## Return System Filesystem Mode

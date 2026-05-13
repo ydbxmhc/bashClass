@@ -471,4 +471,206 @@ _Self="$__ta_obj2" Args.parse '
 '
 into=__ta_v $__ta_obj2.get flavor; $t.assert_eq "object context default" "$__ta_v" "vanilla"
 
+# ============================================================================
+# Args.parse — array type marker []
+# ============================================================================
+
+$t.section "Args.parse: array type marker []"
+
+# Multiple occurrences build an indexed array
+unset tags
+Args.parse '
+  [Options]
+  tags[]
+' --tags alpha --tags beta --tags gamma
+$t.assert_eq "array[0]" "${tags[0]}" "alpha"
+$t.assert_eq "array[1]" "${tags[1]}" "beta"
+$t.assert_eq "array[2]" "${tags[2]}" "gamma"
+$t.assert_eq "array length" "${#tags[@]}" "3"
+
+# Array with no occurrences is declared but empty
+unset items
+Args.parse '
+  [Options]
+  items[]
+'
+$t.assert_eq "empty array length" "${#items[@]}" "0"
+
+# Required array: satisfied by at least one value
+unset required_list
+Args.parse '
+  [Options]
+  : required_list[]
+' --required_list one
+$t.assert_eq "required array satisfied" "${required_list[0]}" "one"
+
+# Required array: crashes when absent
+$t.assert_fail "required array crashes when absent" bash -c \
+  '. boop Args; Args.parse "
+[Options]
+: missing[]
+"'
+
+# Duplicate scalar still crashes (arrays allow repeats, scalars do not)
+$t.assert_fail "duplicate scalar still crashes with array defined" bash -c \
+  '. boop Args; Args.parse "
+[Options]
+scalar
+" --scalar a --scalar b'
+
+# ============================================================================
+# Args.parse — map type marker {}
+# ============================================================================
+
+$t.section "Args.parse: map type marker {}"
+
+# k=v pairs populate associative array
+unset opts
+Args.parse '
+  [Options]
+  opts{}
+' --opts color=red --opts size=large
+$t.assert_eq "map key color" "${opts[color]}" "red"
+$t.assert_eq "map key size"  "${opts[size]}"  "large"
+
+# Bare key sets value to 1
+unset flags
+Args.parse '
+  [Options]
+  flags{}
+' --flags verbose --flags debug
+$t.assert_eq "bare key verbose" "${flags[verbose]}" "1"
+$t.assert_eq "bare key debug"   "${flags[debug]}"   "1"
+
+# Map with no occurrences is empty
+unset empty_map
+Args.parse '
+  [Options]
+  empty_map{}
+'
+$t.assert_eq "empty map length" "${#empty_map[@]}" "0"
+
+# Duplicate map key crashes
+$t.assert_fail "duplicate map key crashes" bash -c \
+  '. boop Args; Args.parse "
+[Options]
+env{}
+" --env KEY=first --env KEY=second'
+
+# Required map: satisfied by at least one k=v
+unset required_map
+Args.parse '
+  [Options]
+  : required_map{}
+' --required_map x=1
+$t.assert_eq "required map satisfied" "${required_map[x]}" "1"
+
+# Required map: crashes when absent
+$t.assert_fail "required map crashes when absent" bash -c \
+  '. boop Args; Args.parse "
+[Options]
+: missing_map{}
+"'
+
+# ============================================================================
+# Args.parse — scalar file-load <
+# ============================================================================
+
+$t.section "Args.parse: scalar file-load <"
+
+# Write a temp file and load it as a scalar
+__ta_tmpfile=$(mktemp)
+printf 'hello world' > "$__ta_tmpfile"
+
+unset content
+Args.parse '
+  [Options]
+  content<
+' --content "$__ta_tmpfile"
+$t.assert_eq "scalar file-load content" "$content" "hello world"
+rm -f "$__ta_tmpfile"
+
+# Multi-line file: entire content including newlines
+__ta_tmpfile=$(mktemp)
+printf 'line1\nline2\nline3' > "$__ta_tmpfile"
+unset multiline
+Args.parse '
+  [Options]
+  multiline<
+' --multiline "$__ta_tmpfile"
+$t.assert_eq "scalar file-load multiline" "$multiline" "$(printf 'line1\nline2\nline3')"
+rm -f "$__ta_tmpfile"
+
+# Missing file crashes
+$t.assert_fail "scalar file-load missing file crashes" bash -c \
+  '. boop Args; Args.parse "
+[Options]
+data<
+" --data /nonexistent/path/file.txt'
+
+# ============================================================================
+# Args.parse — array file-load []<
+# ============================================================================
+
+$t.section "Args.parse: array file-load []<"
+
+# Each line of the file becomes one array element
+__ta_tmpfile=$(mktemp)
+printf 'alpha\nbeta\ngamma\n' > "$__ta_tmpfile"
+unset lines
+Args.parse '
+  [Options]
+  lines[]<
+' --lines "$__ta_tmpfile"
+$t.assert_eq "array file-load [0]" "${lines[0]}" "alpha"
+$t.assert_eq "array file-load [1]" "${lines[1]}" "beta"
+$t.assert_eq "array file-load [2]" "${lines[2]}" "gamma"
+$t.assert_eq "array file-load length" "${#lines[@]}" "3"
+rm -f "$__ta_tmpfile"
+
+# Two file-load invocations append elements from both files
+__ta_tmpfile=$(mktemp)
+__ta_tmpfile2=$(mktemp)
+printf 'from_file1\n' > "$__ta_tmpfile"
+printf 'from_file2\n' > "$__ta_tmpfile2"
+unset twofiles
+Args.parse '
+  [Options]
+  twofiles[]<
+' --twofiles "$__ta_tmpfile" --twofiles "$__ta_tmpfile2"
+$t.assert_eq "two-file array [0]" "${twofiles[0]}" "from_file1"
+$t.assert_eq "two-file array [1]" "${twofiles[1]}" "from_file2"
+rm -f "$__ta_tmpfile" "$__ta_tmpfile2"
+
+# ============================================================================
+# Args.parse — map file-load {}<
+# ============================================================================
+
+$t.section "Args.parse: map file-load {}<"
+
+# File contains k=v lines → map entries
+__ta_tmpfile=$(mktemp)
+printf 'host=localhost\nport=5432\ndbname=mydb\n' > "$__ta_tmpfile"
+unset db
+Args.parse '
+  [Options]
+  db{}<
+' --db "$__ta_tmpfile"
+$t.assert_eq "map file-load host"   "${db[host]}"   "localhost"
+$t.assert_eq "map file-load port"   "${db[port]}"   "5432"
+$t.assert_eq "map file-load dbname" "${db[dbname]}" "mydb"
+rm -f "$__ta_tmpfile"
+
+# Bare-key lines in file → value "1"
+__ta_tmpfile=$(mktemp)
+printf 'verbose\ndebug\n' > "$__ta_tmpfile"
+unset boolmap
+Args.parse '
+  [Options]
+  boolmap{}<
+' --boolmap "$__ta_tmpfile"
+$t.assert_eq "map file bare-key verbose" "${boolmap[verbose]}" "1"
+$t.assert_eq "map file bare-key debug"   "${boolmap[debug]}"   "1"
+rm -f "$__ta_tmpfile"
+
 $t.summary
