@@ -386,5 +386,10 @@ Text.String.do() {
 
 boopClass Text.String '
   has:value,raw
-  public:new,read,raw,length,isEmpty,contains,startsWith,endsWith,indexOf,substr,trim,upcase,downcase,capitalize,decapitalize,replace,reverse,append,prepend,lpad,rpad,center,fold,trimmed,upcased,downcased,capitalized,decapitalized,replaced,reversed,appended,prepended,lpadded,rpadded,centered,folded,do
+  public:new,read,raw,length,isEmpty,contains,startsWith,endsWith,indexOf,substr
+  public:trim,upcase,downcase,capitalize,decapitalize,replace,reverse
+  public:append,prepend,lpad,rpad,center,fold
+  public:trimmed,upcased,downcased,capitalized,decapitalized,replaced,reversed
+  public:appended,prepended,lpadded,rpadded,centered,folded
+  public:do
 '
