@@ -11,16 +11,33 @@
 #   [Options]     -- global options
 #   [Subcommands] -- valid subcommands: name [| alias...]  [# description]
 #   [SubcmdName]  -- options specific to that subcommand
+#   [Parser]      -- parser-behavior toggles (bareKV)
 #
 # Option line syntax:
-#   [: ] varName [| alias...]  [= [default] | :]
-#   Leading :   → required
-#   Trailing =  → takes a value; "= default" sets the default
-#   Trailing :  → takes a value (no default)
-#   No sigil    → boolean (absent → "", present → "1")
+#   [: ] varName[TYPE][<] [| alias...]  [= [default] | :]
 #
-# First entry is the variable name (valid bash identifier, no hyphens).
-# Remaining entries are CLI aliases (may contain hyphens).
+#   Leading :        → required
+#   TYPE suffix:
+#     (none)         → scalar (string); duplicate crashes
+#     []             → array; each occurrence appends (no duplicate check)
+#     {}             → map; each occurrence is k=v or bare k (boolean)
+#   < suffix         → load value from file rather than using it directly
+#   Trailing =       → takes a value; "= default" sets the default
+#   Trailing :       → takes a value (no default)
+#   No value sigil   → boolean (absent → "", present → "1")
+#
+# Arrays and maps always take a value (the type marker implies it).
+# Maps accept k=v (sets key k to value v) or bare k (sets key k to "1").
+# Duplicate scalar/boolean options crash. Duplicate map keys crash.
+# Arrays allow unlimited repetition.
+#
+# File loading (<): the CLI value is treated as a filename.
+#   scalar< -- entire file content slurped into the variable
+#   []<     -- each line of the file appended as one array element
+#   {}<     -- each non-empty line parsed as k=v or bare k into the map
+#
+# First entry in an option line is the variable name (valid bash identifier,
+# no hyphens). Remaining entries are CLI aliases (may contain hyphens).
 # Single-char entries map to -x; multi-char entries map to --name.
 #
 # Subcommand-scoped options (defined under [SubcmdName]) are only accepted
@@ -28,14 +45,19 @@
 # option before the subcommand or under the wrong subcommand is a hard error.
 #
 # Scope-write mode (no into=):
-#   Sets $varName for each option, $_Action (subcommand if any),
-#   $__Args_orig (original args array), $_ArgsRemaining (remaining positionals array).
+#   Scalars/booleans: $varName set to value or ""
+#   Arrays:           $varName declared as indexed bash array (declare -ga)
+#   Maps:             $varName declared as associative bash array (declare -gA)
+#   Also sets: $_Action (subcommand), $__Args_orig (original args),
+#              $_ArgsRemaining (remaining positionals array).
 #   To restore $@: set -- "${_ArgsRemaining[@]}"
 #
 # Object mode (into=):
 #   Returns a Config object. Requires Config installed. Scope vars not set.
-#   Access: $obj.get varName  /  $obj.get _action  /  $obj.get _remaining
-#   _remaining is delimiter-separated (default: newline).
+#   Scalars/booleans: $obj.get varName → string
+#   Arrays:           $obj.get varName → _Delimiter-separated string
+#   Maps:             $obj.get varName.key → string per key
+#   Also: $obj.get _action / $obj.get _remaining (delimiter-separated)
 
 . boop
 
@@ -119,7 +141,8 @@ __Args.parseSubcmdLine() {
 }
 
 # Parse one option definition line. Populates __Args_alias_map, __Args_takes_val,
-# __Args_required, __Args_defaults, __Args_varlist, __Args_var_scope.
+# __Args_required, __Args_defaults, __Args_varlist, __Args_var_scope,
+# __Args_types, __Args_fileload.
 # $1 = scope (subcommand name for scoped options, "" for global)
 # $2 = raw line
 __Args.parseOptLine() {
@@ -153,7 +176,8 @@ __Args.parseOptLine() {
     __Args_pol_line="${BASH_REMATCH[1]}"
   fi
 
-  # Split on | -- first part is the variable name, rest are aliases
+  # Split on | -- first part is the variable name (with optional type markers),
+  # rest are CLI aliases
   local __Args_pol_varName="" __Args_pol_part __Args_pol_rest="$__Args_pol_line"
   while [[ -n "$__Args_pol_rest" ]]; do
     if [[ "$__Args_pol_rest" == *'|'* ]]; then
@@ -167,15 +191,30 @@ __Args.parseOptLine() {
     [[ -z "$__Args_pol_part" ]] && continue
 
     if [[ -z "$__Args_pol_varName" ]]; then
+      # Detect and strip type markers: []< {}}< [] {} <
+      # Order matters: check compound markers before simple ones.
+      local __Args_pol_type="" __Args_pol_fl=0
+      case "$__Args_pol_part" in
+        *'[]<') __Args_pol_type="array"; __Args_pol_fl=1; __Args_pol_part="${__Args_pol_part%'[]<'}" ;;
+        *'{}<') __Args_pol_type="map";   __Args_pol_fl=1; __Args_pol_part="${__Args_pol_part%'{}<'}" ;;
+        *'[]')  __Args_pol_type="array";                  __Args_pol_part="${__Args_pol_part%'[]'}"  ;;
+        *'{}')  __Args_pol_type="map";                    __Args_pol_part="${__Args_pol_part%'{}'}"  ;;
+        *'<')   __Args_pol_fl=1;                          __Args_pol_part="${__Args_pol_part%'<'}"   ;;
+      esac
+
       [[ "$__Args_pol_part" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || \
         _Crash "Args: '$__Args_pol_part' is not a valid variable name (hyphens only allowed in aliases)"
       __Args_pol_varName="$__Args_pol_part"
       __Args_varlist+=("$__Args_pol_varName")
-      __Args_takes_val[$__Args_pol_varName]=$__Args_pol_takesVal
       __Args_required[$__Args_pol_varName]=$__Args_pol_required
       __Args_defaults[$__Args_pol_varName]="$__Args_pol_default"
       __Args_descriptions[$__Args_pol_varName]="$__Args_pol_desc"
       __Args_var_scope[$__Args_pol_varName]="$__Args_pol_scope"
+      __Args_types[$__Args_pol_varName]="$__Args_pol_type"
+      [[ $__Args_pol_fl -eq 1 ]] && __Args_fileload[$__Args_pol_varName]=1
+      # Arrays, maps, and file-loads always take a value; enforce regardless of sigil.
+      [[ -n "$__Args_pol_type" || $__Args_pol_fl -eq 1 ]] && __Args_pol_takesVal=1
+      __Args_takes_val[$__Args_pol_varName]=$__Args_pol_takesVal
     fi
 
     # Single-char → -x, multi-char → --name
@@ -199,17 +238,13 @@ __Args.printHelp() {
 # ============================================================================
 # __Args.schemaLine -- parse a single [Parser] section line.
 #
-# [Parser] is the schema section for parser-behavior toggles. Only one
-# key is currently recognized:
+# [Parser] is the schema section for parser-behavior toggles. Recognized keys:
 #
-#   bareKV=true  -- accept bare 'key=value' positional args as though
-#                   they had been written '--key=value'. Intended for
-#                   boop-style constructors where the caller writes
-#                   `MyClass foo=bar` and the method forwards directly
-#                   to Args.parse. Default: false (strict CLI behavior).
+#   bareKV = true  -- accept bare 'key=value' positional args as '--key=value'.
+#                     For boop-style constructors: `MyClass foo=bar` forwarded
+#                     directly to Args.parse. Default: false (strict CLI).
 #
-# Unknown keys crash to catch typos -- this is framework config, not
-# user-supplied data.
+# Unknown keys crash to catch typos.
 __Args.schemaLine() {
   local __Args_sl_line="${1%%#*}"
   __Args_sl_line="${__Args_sl_line%"${__Args_sl_line##*[![:space:]]}"}"
@@ -224,7 +259,7 @@ __Args.schemaLine() {
   case "$__Args_sl_key" in
     bareKV)
       case "$__Args_sl_val" in
-        true|1|yes|on)   __Args_parser_bareKV=1 ;;
+        true|1|yes|on)     __Args_parser_bareKV=1 ;;
         false|0|no|off|'') __Args_parser_bareKV=0 ;;
         *) _Crash "Args.parse: [Parser] bareKV expects true|false, got '$__Args_sl_val'" ;;
       esac
@@ -234,12 +269,81 @@ __Args.schemaLine() {
 }
 
 # ============================================================================
-# __Args_setVar -- store a parsed option value into the working table.
-# Routing (object/class property, declare -g, Config) happens once after
-# all parsing is complete. NOTE: _Class is intentionally not declared local
-# in Args.parse so that the caller's _Class is visible via dynamic scoping.
+# __Args_setVar -- store a scalar/boolean value into the working table.
+# Array and map values are handled inline in phase 3 (they need special logic).
 __Args_setVar() {
   __Args_values[$1]="$2"
+}
+
+# __Args_applyValue -- store one parsed option value, respecting type.
+# Called from both the long-option and short-option paths in phase 3.
+# $1 = varName  $2 = raw CLI value  $3 = CLI key (for error messages)
+# Reads: __Args_types, __Args_fileload, __Args_values, __Args_parse_d (caller local)
+__Args_applyValue() {
+  local __Args_av_vn="$1" __Args_av_raw="$2" __Args_av_key="$3"
+  local __Args_av_type="${__Args_types[$__Args_av_vn]:-}"
+  local __Args_av_fl="${__Args_fileload[$__Args_av_vn]:-0}"
+
+  if [[ "$__Args_av_type" == "array" ]]; then
+    if [[ "$__Args_av_fl" == "1" ]]; then
+      # Load each line of the file as one array element
+      [[ -f "$__Args_av_raw" ]] || \
+        _Crash "Args.parse: $__Args_av_key: file not found: '$__Args_av_raw'"
+      local __Args_av_line
+      while IFS= read -r __Args_av_line; do
+        __Args_values[$__Args_av_vn]+="${__Args_values[$__Args_av_vn]:+${__Args_parse_d}}${__Args_av_line}"
+      done < "$__Args_av_raw"
+    else
+      __Args_values[$__Args_av_vn]+="${__Args_values[$__Args_av_vn]:+${__Args_parse_d}}${__Args_av_raw}"
+    fi
+
+  elif [[ "$__Args_av_type" == "map" ]]; then
+    # Parse k=v or bare k (boolean). File load reads k=v / bare-k lines.
+    local __Args_av_lines
+    if [[ "$__Args_av_fl" == "1" ]]; then
+      [[ -f "$__Args_av_raw" ]] || \
+        _Crash "Args.parse: $__Args_av_key: file not found: '$__Args_av_raw'"
+      local __Args_av_fline
+      while IFS= read -r __Args_av_fline; do
+        [[ -n "$__Args_av_fline" ]] && __Args_av_lines+="${__Args_av_lines:+$'\n'}${__Args_av_fline}"
+      done < "$__Args_av_raw"
+    else
+      __Args_av_lines="$__Args_av_raw"
+    fi
+    local __Args_av_entry __Args_av_mk __Args_av_mv
+    while IFS= read -r __Args_av_entry; do
+      [[ -n "$__Args_av_entry" ]] || continue
+      if [[ "$__Args_av_entry" == *=* ]]; then
+        __Args_av_mk="${__Args_av_entry%%=*}"
+        __Args_av_mv="${__Args_av_entry#*=}"
+      else
+        __Args_av_mk="$__Args_av_entry"
+        __Args_av_mv="1"
+      fi
+      [[ -z "${__Args_values[${__Args_av_vn}.${__Args_av_mk}]+set}" ]] || \
+        _Crash "Args.parse: $__Args_av_key: duplicate map key '$__Args_av_mk'"
+      __Args_values[${__Args_av_vn}.${__Args_av_mk}]="$__Args_av_mv"
+      # Track key list in sentinel value (delimiter-joined)
+      __Args_values[$__Args_av_vn]+="${__Args_values[$__Args_av_vn]:+${__Args_parse_d}}${__Args_av_mk}"
+    done <<< "$__Args_av_lines"
+
+  elif [[ "$__Args_av_fl" == "1" ]]; then
+    # Scalar file load: slurp entire file (no subshell)
+    [[ -f "$__Args_av_raw" ]] || \
+      _Crash "Args.parse: $__Args_av_key: file not found: '$__Args_av_raw'"
+    local __Args_av_content="" __Args_av_fline __Args_av_first=1
+    while IFS= read -r __Args_av_fline || [[ -n "$__Args_av_fline" ]]; do
+      if (( __Args_av_first )); then
+        __Args_av_content="$__Args_av_fline"; __Args_av_first=0
+      else
+        __Args_av_content+=$'\n'"$__Args_av_fline"
+      fi
+    done < "$__Args_av_raw"
+    __Args_setVar "$__Args_av_vn" "$__Args_av_content"
+
+  else
+    __Args_setVar "$__Args_av_vn" "$__Args_av_raw"
+  fi
 }
 
 # Args.parse -- GNU long + subcommand parser
@@ -248,6 +352,9 @@ __Args_setVar() {
 Args.parse() {
   local __Args_parse_schema="${1:-}"; shift
   [[ -n "$__Args_parse_schema" ]] || _Crash "Args.parse: schema required"
+
+  # Effective delimiter for array/map values and _ArgsRemaining
+  local __Args_parse_d="${_Delimiter:-$'\n'}"
 
   # Working tables -- global for duration of parse, cleaned up after phase 5
   declare -gA __Args_alias_map=()
@@ -262,6 +369,8 @@ Args.parse() {
   declare -g  __Args_usage=""
   declare -gA __Args_seen=()
   declare -gA __Args_values=()
+  declare -gA __Args_types=()     # varname → "array" | "map" | "" (scalar/bool)
+  declare -gA __Args_fileload=()  # varname → "1" if value is a filename to load
   # Parser-behavior flags set by the [Parser] schema section.
   declare -gi __Args_parser_bareKV=0
 
@@ -296,7 +405,12 @@ Args.parse() {
 
   local __Args_parse_v
   for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
-    __Args_setVar "$__Args_parse_v" "${__Args_defaults[$__Args_parse_v]:-}"
+    # Arrays and maps start empty; defaults only apply to scalars
+    if [[ -z "${__Args_types[$__Args_parse_v]:-}" ]]; then
+      __Args_setVar "$__Args_parse_v" "${__Args_defaults[$__Args_parse_v]:-}"
+    else
+      __Args_values[$__Args_parse_v]=""
+    fi
   done
 
   # --- Phase 3: Walk args ---
@@ -324,8 +438,6 @@ Args.parse() {
     fi
 
     # [Parser] bareKV=true: accept bare 'key=value' as '--key=value'.
-    # The rewrite happens before any option-pattern check so the rest
-    # of the loop handles the value exactly like an explicit long option.
     if (( __Args_parser_bareKV )) \
       && [[ "$__Args_parse_arg" != -* && "$__Args_parse_arg" == *=* ]]; then
       __Args_parse_arg="--${__Args_parse_arg}"
@@ -343,8 +455,14 @@ Args.parse() {
       fi
       __Args_parse_vn="${__Args_alias_map[$__Args_parse_key]:-}"
       [[ -n "$__Args_parse_vn" ]] || _Crash "Args.parse: unknown option: $__Args_parse_key"
-      [[ -z "${__Args_seen[$__Args_parse_vn]+set}" ]] || _Crash "Args.parse: duplicate option: $__Args_parse_key"
-      __Args_seen[$__Args_parse_vn]=1
+
+      # Duplicate detection: scalars/booleans only; arrays and maps allow repeats
+      if [[ -z "${__Args_types[$__Args_parse_vn]:-}" ]]; then
+        [[ -z "${__Args_seen[$__Args_parse_vn]+set}" ]] || \
+          _Crash "Args.parse: duplicate option: $__Args_parse_key"
+        __Args_seen[$__Args_parse_vn]=1
+      fi
+
       __Args_parse_scope="${__Args_var_scope[$__Args_parse_vn]:-}"
       if [[ -n "$__Args_parse_scope" ]]; then
         if [[ -z "$_Action" ]]; then
@@ -359,7 +477,7 @@ Args.parse() {
           __Args_parse_val="$1"; shift
         fi
         _Debug "parse: $__Args_parse_key ($__Args_parse_vn) = '$__Args_parse_val'"
-        __Args_setVar "$__Args_parse_vn" "$__Args_parse_val"
+        __Args_applyValue "$__Args_parse_vn" "$__Args_parse_val" "$__Args_parse_key"
       else
         [[ $__Args_parse_hasval -eq 0 ]] || \
           _Crash "Args.parse: $__Args_parse_key is a boolean flag, does not take a value"
@@ -377,8 +495,14 @@ Args.parse() {
         __Args_parse_cluster="${__Args_parse_cluster:1}"
         __Args_parse_cvn="${__Args_alias_map["-${__Args_parse_c}"]:-}"
         [[ -n "$__Args_parse_cvn" ]] || _Crash "Args.parse: unknown option: -${__Args_parse_c}"
-        [[ -z "${__Args_seen[$__Args_parse_cvn]+set}" ]] || _Crash "Args.parse: duplicate option: -${__Args_parse_c}"
-        __Args_seen[$__Args_parse_cvn]=1
+
+        # Duplicate detection: scalars/booleans only
+        if [[ -z "${__Args_types[$__Args_parse_cvn]:-}" ]]; then
+          [[ -z "${__Args_seen[$__Args_parse_cvn]+set}" ]] || \
+            _Crash "Args.parse: duplicate option: -${__Args_parse_c}"
+          __Args_seen[$__Args_parse_cvn]=1
+        fi
+
         __Args_parse_scope="${__Args_var_scope[$__Args_parse_cvn]:-}"
         if [[ -n "$__Args_parse_scope" ]]; then
           if [[ -z "$_Action" ]]; then
@@ -395,7 +519,7 @@ Args.parse() {
             __Args_parse_sv="$1"; shift
           fi
           _Debug "parse: -$__Args_parse_c ($__Args_parse_cvn) = '$__Args_parse_sv'"
-          __Args_setVar "$__Args_parse_cvn" "$__Args_parse_sv"
+          __Args_applyValue "$__Args_parse_cvn" "$__Args_parse_sv" "-$__Args_parse_c"
         else
           _Debug "parse: -$__Args_parse_c ($__Args_parse_cvn) = true"
           __Args_setVar "$__Args_parse_cvn" "1"
@@ -420,28 +544,45 @@ Args.parse() {
   _Debug "parse: done -- action='$_Action', ${#_ArgsRemaining[@]} remaining"
 
   # --- Phase 4: Validate required ---
-  local __Args_parse_missing=""
+  # For scalars: __Args_values[v] is the string value, empty means unset.
+  # For arrays:  __Args_values[v] is the delimiter-joined list, empty means no entries.
+  # For maps:    __Args_values[v] is the delimiter-joined key list, empty means no entries.
+  # The same emptiness check works for all three types.
+  local __Args_parse_missing="" __Args_parse_v_scope
   for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
-    __Args_parse_scope="${__Args_var_scope[$__Args_parse_v]:-}"
-    [[ -n "$__Args_parse_scope" && "$__Args_parse_scope" != "$_Action" ]] && continue
-    if [[ "${__Args_required[$__Args_parse_v]:-0}" == 1 && -z "${__Args_values[$__Args_parse_v]:-}" ]]; then
+    __Args_parse_v_scope="${__Args_var_scope[$__Args_parse_v]:-}"
+    [[ -n "$__Args_parse_v_scope" && "$__Args_parse_v_scope" != "$_Action" ]] && continue
+    if [[ "${__Args_required[$__Args_parse_v]:-0}" == 1 \
+       && -z "${__Args_values[$__Args_parse_v]:-}" ]]; then
       __Args_parse_missing="${__Args_parse_missing:+$__Args_parse_missing, }$__Args_parse_v"
     fi
   done
-  [[ -z "$__Args_parse_missing" ]] || _Crash "Args.parse: required options not provided: $__Args_parse_missing"
+  [[ -z "$__Args_parse_missing" ]] || \
+    _Crash "Args.parse: required options not provided: $__Args_parse_missing"
 
   # --- Phase 5: Route parsed values to their destination ---
-  local __Args_parse_v_scope
-  local __Args_parse_target="${_Self:-${_Class:-}}"
   if [[ -n "${into:-}" ]]; then
     # Object mode: build a Config and return it via into=
     _Require Config
-    local __Args_parse_obj __Args_parse_rem="" __Args_parse_d="${_Delimiter:-$_EOL}"
+    local __Args_parse_obj __Args_parse_rem=""
     into=__Args_parse_obj Config.new
     for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
       __Args_parse_v_scope="${__Args_var_scope[$__Args_parse_v]:-}"
       [[ -z "$__Args_parse_v_scope" || "$__Args_parse_v_scope" == "$_Action" ]] || continue
-      $__Args_parse_obj.set "$__Args_parse_v" "${__Args_values[$__Args_parse_v]:-}"
+      local __Args_parse_typ="${__Args_types[$__Args_parse_v]:-}"
+      if [[ "$__Args_parse_typ" == "map" ]]; then
+        # Store each key as varname.key — consistent with Config/JSON dot notation
+        if [[ -n "${__Args_values[$__Args_parse_v]:-}" ]]; then
+          local __Args_parse_mk
+          while IFS= read -r __Args_parse_mk; do
+            $__Args_parse_obj.set "${__Args_parse_v}.${__Args_parse_mk}" \
+              "${__Args_values[${__Args_parse_v}.${__Args_parse_mk}]}"
+          done <<< "${__Args_values[$__Args_parse_v]}"
+        fi
+      else
+        # Scalars and arrays: arrays are already delimiter-joined strings
+        $__Args_parse_obj.set "$__Args_parse_v" "${__Args_values[$__Args_parse_v]:-}"
+      fi
     done
     if (( ${#_ArgsRemaining[@]} > 0 )); then
       printf -v __Args_parse_rem "%s${__Args_parse_d}" "${_ArgsRemaining[@]}"
@@ -454,24 +595,67 @@ Args.parse() {
     done
     unset _Action _ArgsRemaining
     boop.pass "$__Args_parse_obj" ${into:-}
-  elif [[ -n "$__Args_parse_target" && "$__Args_parse_target" != "Args" ]]; then
-    # Object/class context: route each value to the property system
+
+  elif [[ -n "${_Self:-${_Class:-}}" && "${_Self:-${_Class:-}}" != "Args" ]]; then
+    # Object/class context: route each value to the property system.
+    # Arrays and maps are stored as delimiter-joined strings (same as object mode).
+    local __Args_parse_target="${_Self:-${_Class:-}}"
     for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
       __Args_parse_v_scope="${__Args_var_scope[$__Args_parse_v]:-}"
       [[ -z "$__Args_parse_v_scope" || "$__Args_parse_v_scope" == "$_Action" ]] || continue
-      "$__Args_parse_target".set "$__Args_parse_v" "${__Args_values[$__Args_parse_v]:-}"
+      local __Args_parse_typ="${__Args_types[$__Args_parse_v]:-}"
+      if [[ "$__Args_parse_typ" == "map" ]]; then
+        if [[ -n "${__Args_values[$__Args_parse_v]:-}" ]]; then
+          local __Args_parse_mk
+          while IFS= read -r __Args_parse_mk; do
+            "$__Args_parse_target".set "${__Args_parse_v}.${__Args_parse_mk}" \
+              "${__Args_values[${__Args_parse_v}.${__Args_parse_mk}]}"
+          done <<< "${__Args_values[$__Args_parse_v]}"
+        fi
+      else
+        "$__Args_parse_target".set "$__Args_parse_v" "${__Args_values[$__Args_parse_v]:-}"
+      fi
     done
+
   else
-    # Script context: set global variables
+    # Script context: set global variables with correct bash types.
     for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
-      declare -g "${__Args_parse_v}=${__Args_values[$__Args_parse_v]:-}"
+      __Args_parse_v_scope="${__Args_var_scope[$__Args_parse_v]:-}"
+      [[ -z "$__Args_parse_v_scope" || "$__Args_parse_v_scope" == "$_Action" ]] || continue
+      local __Args_parse_typ="${__Args_types[$__Args_parse_v]:-}"
+      if [[ "$__Args_parse_typ" == "array" ]]; then
+        unset "$__Args_parse_v"
+        declare -ga "$__Args_parse_v"
+        local -n __Args_parse_arr_ref="$__Args_parse_v"
+        __Args_parse_arr_ref=()
+        if [[ -n "${__Args_values[$__Args_parse_v]:-}" ]]; then
+          local __Args_parse_arr_item
+          while IFS= read -r __Args_parse_arr_item; do
+            __Args_parse_arr_ref+=("$__Args_parse_arr_item")
+          done <<< "${__Args_values[$__Args_parse_v]}"
+        fi
+      elif [[ "$__Args_parse_typ" == "map" ]]; then
+        unset "$__Args_parse_v"
+        declare -gA "$__Args_parse_v"
+        local -n __Args_parse_map_ref="$__Args_parse_v"
+        __Args_parse_map_ref=()
+        if [[ -n "${__Args_values[$__Args_parse_v]:-}" ]]; then
+          local __Args_parse_map_key
+          while IFS= read -r __Args_parse_map_key; do
+            __Args_parse_map_ref[$__Args_parse_map_key]="${__Args_values[${__Args_parse_v}.${__Args_parse_map_key}]}"
+          done <<< "${__Args_values[$__Args_parse_v]}"
+        fi
+      else
+        declare -g "${__Args_parse_v}=${__Args_values[$__Args_parse_v]:-}"
+      fi
     done
   fi
 
-  # Cleanup working tables (kept until here so phase 5 can read __Args_var_scope)
+  # Cleanup working tables
   unset __Args_alias_map __Args_takes_val __Args_required __Args_defaults \
         __Args_subcmd_map __Args_varlist __Args_var_scope \
-        __Args_descriptions __Args_subcmd_desc __Args_usage __Args_seen __Args_values \
+        __Args_descriptions __Args_subcmd_desc __Args_usage \
+        __Args_seen __Args_values __Args_types __Args_fileload \
         __Args_parser_bareKV
 }
 
