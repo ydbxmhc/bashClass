@@ -562,6 +562,57 @@ The `. boop ClassName` syntax at the top of a script uses `_Require`
 internally, so it crashes on failure — by design, since a script that
 can't load its classes can't run.
 
+### Framework Version Guard
+
+Scripts can declare a minimum boop version as an argument to the source line:
+
+```bash
+. boop require:1.2+          # crash if running boop < 1.2.0
+. boop require:>=1.1.0       # explicit form; same semantics
+. boop require:1.2+ List Map # version guard and class loads in one line
+```
+
+The `require:` token is processed before any class loads. If the running boop
+does not satisfy the constraint, boop searches `BOOPPATH` and `PATH` for a
+compatible version, includes its path in the crash message if found, and
+crashes either way. There is no silent degradation.
+
+This check uses comparison logic inlined in boop core — it does not depend on
+the SemVer class and fires during framework initialization before any class
+can be loaded. See [docs/SemVer.md](SemVer.md) for the constraint syntax and
+architecture.
+
+### Class Version Declarations
+
+A class can declare its version in the `boopClass` statement:
+
+```bash
+boopClass Math version:1.3.0 '
+  public:add,subtract,...
+'
+```
+
+The version is stored in the registry descriptor and accessible to `_Require`
+for constraint checking:
+
+```bash
+_Require Math 1.2+           # load Math; crash if its declared version < 1.2.0
+```
+
+A version argument to `_Require` is any token starting with a digit, `>`, or
+`<`, or ending with `+`. Class names start with uppercase, so there is no
+ambiguity.
+
+**Class version enforcement requires SemVer to be loaded.** If SemVer is not
+in the registry when `_Require` checks a class version, it warns and
+continues. Load SemVer before any versioned `_Require` call:
+
+```bash
+. boop SemVer Math 1.2+      # SemVer loads first; Math version is enforced
+```
+
+See [docs/SemVer.md](SemVer.md) for the full version system documentation.
+
 ### `.boopIndex` and the Namespace Index
 
 Classes are organized in namespace directories. Each library root

@@ -1067,6 +1067,7 @@ boop                                    root — new, get, set, isa, mixes, true
 | Document | Contents |
 |----------|----------|
 | [docs/boop.md](docs/boop.md) | Full framework reference — return system internals, dispatch mechanics, naming rules, every public function, known gotchas |
+| [docs/SemVer.md](docs/SemVer.md) | Version system — `require:` guard, `_Require` class versions, constraint syntax, architecture |
 | [docs/comparison.md](docs/comparison.md) | boop idioms side-by-side with Python, Ruby, and Go equivalents |
 | [docs/JSON.md](docs/JSON.md) | JSON class: supported types, key conventions, edge cases |
 | [docs/List.md](docs/List.md) | Complete List API reference |
