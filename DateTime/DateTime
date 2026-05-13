@@ -205,7 +205,7 @@ DateTime.parse() {
 
   if ! __DateTime_parseISO __DateTime_parse_ep "$__DateTime_parse_str"; then
     # Non-ISO format: one subshell here, nothing after.
-    __DateTime_parse_ep=$(date -d "$__DateTime_parse_str" +%s 2>/dev/null) \
+    __DateTime_parse_ep=$(date -d "$__DateTime_parse_str" +%s) \
       || _Crash "DateTime.parse: cannot parse '$__DateTime_parse_str'"
   fi
 
