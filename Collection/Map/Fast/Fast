@@ -129,7 +129,7 @@ Collection.Map.Fast.keysUnder() {
   local -n __Collection_Map_Fast_ku_data="__boop_data_${_Self}"
   local __Collection_Map_Fast_ku_prefix="${1:-}"
   local __Collection_Map_Fast_ku_sep=""
-  __boop.parse "$_Self" "sep" __Collection_Map_Fast_ku_sep
+  into=__Collection_Map_Fast_ku_sep __boop.get sep
   local __Collection_Map_Fast_ku_out="" __Collection_Map_Fast_ku_k
   for __Collection_Map_Fast_ku_k in "${!__Collection_Map_Fast_ku_data[@]}"; do
     [[ "$__Collection_Map_Fast_ku_k" == "${__Collection_Map_Fast_ku_prefix}${__Collection_Map_Fast_ku_sep}"* ]] || continue
@@ -147,7 +147,7 @@ Collection.Map.Fast.deleteUnder() {
   local -n __Collection_Map_Fast_du_data="__boop_data_${_Self}"
   local __Collection_Map_Fast_du_prefix="${1:-}"
   local __Collection_Map_Fast_du_sep=""
-  __boop.parse "$_Self" "sep" __Collection_Map_Fast_du_sep
+  into=__Collection_Map_Fast_du_sep __boop.get sep
   local __Collection_Map_Fast_du_k
   for __Collection_Map_Fast_du_k in "${!__Collection_Map_Fast_du_data[@]}"; do
     [[ "$__Collection_Map_Fast_du_k" == "${__Collection_Map_Fast_du_prefix}${__Collection_Map_Fast_du_sep}"* || "$__Collection_Map_Fast_du_k" == "$__Collection_Map_Fast_du_prefix" ]] &&

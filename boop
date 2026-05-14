@@ -1095,55 +1095,22 @@ __boop.deserialize() {
 
 # Retrieve a property value from the object's descriptor.
 # Delegates to parse, which handles decoding and return routing.
-# The ${into:-} passes through the caller's nameref target (if any)
-# so the value lands directly in their variable without touching the global.
+# Read a property value from the object's storage in __boop_static.
+# Returns the value via boop.pass (respects into=).
+# If the property was never set, returns empty string.
 __boop.get() {
   local _Self="${_Self:-}"; local _Class="${_Class:-boop}"
-  __boop.parse "$_Self" "$1" ${into:-}
+  boop.pass "${__boop_static[${_Self}.${1}]:-}" ${into:-}
 }
 
-# __boop.getOrClass -- get a property from the instance; if absent, fall back
-# to the class-level _Property (static default). This is the accessor used
-# by auto-generated instance property wrappers so that class defaults are
-# inherited by instances that haven't set their own value.
-#
-# "Absent" means the property segment doesn't exist in the descriptor at all
-# (never set). An empty value (|prop=|) is a valid explicit value and does
-# NOT trigger the fallback.
-__boop.getOrClass() {
-  local _Self="${_Self:-}" _Class="${_Class:-boop}"
-  local __boop_goc_prop="$1" __boop_goc_val=""
-  # Check instance descriptor
-  if [[ "${__boop_registry[$_Self]:-}" == *"|${__boop_goc_prop}="* ]]; then
-    __boop.parse "$_Self" "$__boop_goc_prop" ${into:-}
-  else
-    # Fall back to class-level _Property
-    local __boop_goc_key="${_Class}.${__boop_goc_prop}"
-    boop.pass "${__boop_static[$__boop_goc_key]:-}" ${into:-}
-  fi
-}
+# __boop.getOrClass -- REMOVED. No implicit fallback.
+# Use $obj.inheritValueFor prop for explicit opt-in inheritance.
 
-# Update a property value in the object's descriptor.
-# The new value is encoded before storage (pipes, equals, percents, etc.
-# are escaped so they don't corrupt the delimiter structure).
-#
-# If the property already exists, its value is replaced in-place via
-# regex match + string substitution on the descriptor. If it doesn't
-# exist, it's appended to the end. This means property order in the
-# descriptor reflects insertion order, with mutations preserving position.
+# Store a property value in the object's storage (__boop_static).
+# Simple hash write — no encoding needed, no descriptor mutation.
 __boop.set() {
   local _Self="${_Self:-}"; local _Class="${_Class:-boop}"
-  local __boop_set_prop="$1" __boop_set_encoded
-  __boop.encode "$2" __boop_set_encoded
-
-  local __boop_set_descriptor="${__boop_registry[$_Self]:-}"
-
-  if [[ "$__boop_set_descriptor" =~ \|${__boop_set_prop}=[^|]* ]]; then
-    local __boop_set_old="${BASH_REMATCH[0]}"
-    __boop_registry[$_Self]="${__boop_set_descriptor/${__boop_set_old}/|${__boop_set_prop}=${__boop_set_encoded}}"
-  else
-    __boop_registry[$_Self]="$__boop_set_descriptor|$__boop_set_prop=$__boop_set_encoded"
-  fi
+  __boop_static["${_Self}.${1}"]="$2"
 }
 
 # Type checking with ancestry walk.
@@ -1238,53 +1205,64 @@ __boop.toString() {
   local _Self="${_Self:-}"; local _Class="${_Class:-boop}"
   local -l prettyPrint; : "${prettyPrint:=false}"
   [[ "${1:-}" == "pretty" ]] && prettyPrint=true
-  local __boop_toString_descriptor="${__boop_registry[$_Self]:-}"
-  local __boop_toString_field __boop_toString_value __boop_toString_decoded __boop_toString_output
 
-  # Both modes iterate the descriptor by matching "|key=value" segments,
-  # then advancing past the match with ${__boop_toString_descriptor#*"${BASH_REMATCH[0]}"}
-  # to consume the string left-to-right without a second regex pass.
+  # Get declared properties from the class descriptor (schema)
+  local __boop_toString_props __boop_toString_trueClass
+  __boop.parse "$_Self" "trueClass" __boop_toString_trueClass
+  : "${__boop_toString_trueClass:=$_Class}"
+  __boop.parse "$__boop_toString_trueClass" "properties" __boop_toString_props
 
+  # Collect all properties: declared first, then any undeclared extras
+  local -a __boop_toString_keys=() __boop_toString_vals=()
+  local -A __boop_toString_seen=()
+  local __boop_toString_field __boop_toString_value
+
+  # Declared properties (always shown, even if empty)
+  if [[ -n "$__boop_toString_props" ]]; then
+    local -a __boop_toString_propArr
+    IFS=',' read -ra __boop_toString_propArr <<< "$__boop_toString_props"
+    for __boop_toString_field in "${__boop_toString_propArr[@]}"; do
+      [[ -n "$__boop_toString_field" ]] || continue
+      __boop_toString_value="${__boop_static[${_Self}.${__boop_toString_field}]:-}"
+      __boop_toString_keys+=("$__boop_toString_field")
+      __boop_toString_vals+=("$__boop_toString_value")
+      __boop_toString_seen[$__boop_toString_field]=1
+    done
+  fi
+
+  # Undeclared properties (dynamic additions)
+  local __boop_toString_k __boop_toString_prefix="${_Self}."
+  for __boop_toString_k in "${!__boop_static[@]}"; do
+    [[ "$__boop_toString_k" == "${__boop_toString_prefix}"* ]] || continue
+    __boop_toString_field="${__boop_toString_k#"$__boop_toString_prefix"}"
+    [[ -n "${__boop_toString_seen[$__boop_toString_field]+set}" ]] && continue
+    __boop_toString_keys+=("$__boop_toString_field")
+    __boop_toString_vals+=("${__boop_static[$__boop_toString_k]}")
+  done
+
+  # Format output
+  local __boop_toString_output
   if [[ "$prettyPrint" != "true" ]]; then
     __boop_toString_output="$_Class($_Self){"
-    while [[ "$__boop_toString_descriptor" =~ \|([^=]+)=([^|]*) ]]; do
-      __boop_toString_field="${BASH_REMATCH[1]}"
-      __boop_toString_value="${BASH_REMATCH[2]}"
-      case "$__boop_toString_field" in
-        class|parent|methods|properties) ;;
-        *)
-          __boop.decode "$__boop_toString_value" __boop_toString_decoded
-          __boop_toString_output="$__boop_toString_output $__boop_toString_field=$__boop_toString_decoded"
-          ;;
-      esac
-      __boop_toString_descriptor="${__boop_toString_descriptor#*"${BASH_REMATCH[0]}"}"
+    local -i __boop_toString_i
+    for (( __boop_toString_i=0; __boop_toString_i < ${#__boop_toString_keys[@]}; __boop_toString_i++ )); do
+      __boop_toString_output="$__boop_toString_output ${__boop_toString_keys[$__boop_toString_i]}=${__boop_toString_vals[$__boop_toString_i]}"
     done
     boop.pass "$__boop_toString_output }" ${into:-}
     return
   fi
 
-  # Pretty print: two-pass for columnar alignment
-  local -i __boop_toString_maxlen=0
-  local -a __boop_toString_keys=() __boop_toString_vals=()
-  while [[ "$__boop_toString_descriptor" =~ \|([^=]+)=([^|]*) ]]; do
-    __boop_toString_field="${BASH_REMATCH[1]}"
-    __boop_toString_value="${BASH_REMATCH[2]}"
-    case "$__boop_toString_field" in
-      class|parent|methods|properties) ;;
-      *)
-        __boop.decode "$__boop_toString_value" __boop_toString_decoded
-        __boop_toString_keys+=("$__boop_toString_field")
-        __boop_toString_vals+=("$__boop_toString_decoded")
-        (( ${#__boop_toString_field} > __boop_toString_maxlen )) && __boop_toString_maxlen=${#__boop_toString_field} || true
-        ;;
-    esac
-    __boop_toString_descriptor="${__boop_toString_descriptor#*"${BASH_REMATCH[0]}"}"
+  # Pretty print: columnar alignment
+  local -i __boop_toString_maxlen=0 __boop_toString_i
+  for (( __boop_toString_i=0; __boop_toString_i < ${#__boop_toString_keys[@]}; __boop_toString_i++ )); do
+    (( ${#__boop_toString_keys[$__boop_toString_i]} > __boop_toString_maxlen )) && \
+      __boop_toString_maxlen=${#__boop_toString_keys[$__boop_toString_i]} || true
   done
 
-  local -i __boop_toString_i
   printf -v __boop_toString_output "%s(%s) {\n" "$_Class" "$_Self"
   for (( __boop_toString_i=0; __boop_toString_i < ${#__boop_toString_keys[@]}; __boop_toString_i++ )); do
-    printf -v __boop_toString_field "  %-${__boop_toString_maxlen}s = %s\n" "${__boop_toString_keys[$__boop_toString_i]}" "${__boop_toString_vals[$__boop_toString_i]}"
+    printf -v __boop_toString_field "  %-${__boop_toString_maxlen}s = %s\n" \
+      "${__boop_toString_keys[$__boop_toString_i]}" "${__boop_toString_vals[$__boop_toString_i]}"
     __boop_toString_output="$__boop_toString_output$__boop_toString_field"
   done
   __boop_toString_output="$__boop_toString_output}"
@@ -1398,19 +1376,14 @@ __boop.new() {
   : "${__boop_new_trueClass:=$_Class}"
   local __boop_new_descriptor="|class=$_Class|trueClass=$__boop_new_trueClass"
 
-  # Parse arguments and encode values.
-  # If a key already exists in the descriptor (e.g., a subclass passes
-  # length= after the caller already passed length=), replace in-place
-  # so parse always finds the correct value. Same logic as set().
-  local __boop_new_encoded __boop_new_prop __boop_new_val
+  # Parse arguments and store values in __boop_static.
+  # The descriptor stays schema-only; values live in the hash.
+  local __boop_new_prop __boop_new_val
   for __boop_new_arg in "$@"; do
-    IFS='=' read -r __boop_new_prop __boop_new_val <<< "$__boop_new_arg"
-    __boop.encode "$__boop_new_val" __boop_new_encoded
-    if [[ "$__boop_new_descriptor" =~ \|${__boop_new_prop}=[^|]* ]]; then
-      __boop_new_descriptor="${__boop_new_descriptor/${BASH_REMATCH[0]}/|${__boop_new_prop}=${__boop_new_encoded}}"
-    else
-      __boop_new_descriptor="$__boop_new_descriptor|$__boop_new_prop=$__boop_new_encoded"
-    fi
+    [[ "$__boop_new_arg" == *=* ]] || continue
+    __boop_new_prop="${__boop_new_arg%%=*}"
+    __boop_new_val="${__boop_new_arg#*=}"
+    __boop_static["${_Self}.${__boop_new_prop}"]="$__boop_new_val"
   done
 
   # Register object
@@ -1479,7 +1452,7 @@ __boop.backfillMethods() {
     # Skip if a method wrapper was already written for this name
     [[ -n "${__boop_backfillMethods_written[$__boop_backfillMethods_prop]+set}" ]] && continue
     [[ "$__boop_backfillMethods_force" != "force" ]] && declare -F "$__boop_backfillMethods_self.$__boop_backfillMethods_prop" >/dev/null && continue
-    printf '%s.%s() { if (($#)); then _Self=%q _Class=%q __boop.set %q "$1"; else _Self=%q _Class=%q __boop.getOrClass %q; fi; }\n' \
+    printf '%s.%s() { if (($#)); then _Self=%q _Class=%q __boop.set %q "$1"; else _Self=%q _Class=%q __boop.get %q; fi; }\n' \
       "$__boop_backfillMethods_self" "$__boop_backfillMethods_prop" \
       "$__boop_backfillMethods_self" "$__boop_backfillMethods_class" "$__boop_backfillMethods_prop" \
       "$__boop_backfillMethods_self" "$__boop_backfillMethods_class" "$__boop_backfillMethods_prop" \

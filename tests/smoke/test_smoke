@@ -41,4 +41,41 @@ $t.assert_ok "isa own class"    $c.isa Cube
 $t.assert_ok "isa parent class" $c.isa Box
 $t.assert_ok "isa root class"   $c.isa boop
 
+# ── Class properties with instance fallback ──
+
+$t.section "Class properties"
+
+Geometry.Box.unit "cm"
+into=v Geometry.Box.unit
+$t.assert_eq "class property set/get" "$v" "cm"
+
+# Instance has its own value — reads its own, not the class
+into=b Box length=5 width=3 height=7
+into=v $b.unit
+$t.assert_eq "instance without value gets empty (no fallback)" "$v" ""
+
+$b.unit "in"
+into=v $b.unit
+$t.assert_eq "instance override" "$v" "in"
+into=v Geometry.Box.unit
+$t.assert_eq "class unchanged after instance override" "$v" "cm"
+
+into=b2 Box length=1 width=1 height=1 unit=""
+into=v $b2.unit
+$t.assert_eq "empty string is a valid explicit value" "$v" ""
+
+# Class properties are independent — subclass doesn't inherit parent's
+Geometry.Box.color "red"
+into=c2 Cube size=3
+into=v $c2.color
+$t.assert_eq "subclass instance has no implicit inheritance" "$v" ""
+
+# But class-level accessor on the parent still works
+into=v Geometry.Box.color
+$t.assert_eq "parent class property still accessible" "$v" "red"
+
+# Clean up
+Geometry.Box.unit ""
+Geometry.Box.color ""
+
 $t.summary

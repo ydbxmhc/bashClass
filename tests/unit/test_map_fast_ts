@@ -18,11 +18,11 @@ $t.section "Construction"
 
 into=doc Fast
 $t.assert_match "constructor returns object ID" "$doc" "_*"
-sep=""; __boop.parse "$doc" "sep" sep
+into=sep $doc.sep
 $t.assert_eq "default separator is ." "$sep" "."
 
 into=doc2 Fast sep="/"
-sep2=""; __boop.parse "$doc2" "sep" sep2
+into=sep2 $doc2.sep
 $t.assert_eq "custom separator" "$sep2" "/"
 
 # ============================================================================
