@@ -94,6 +94,14 @@ Core done. Implementation at `Args/Args`. 71 tests in
 `tests/unit/test_args_ts`. Docs at `docs/Args.md`.
 
 ### Pending
+- **CRLF stripping in file-load** (`__Args_applyValue`): `IFS= read -r`
+  preserves `\r` on Windows-saved files. Every array element, map key,
+  and scalar slurped from a file will have a trailing carriage return.
+  Fix: strip `\r` after each `read` in all three file-load paths
+  (`array[]<`, `map{}<`, scalar `<`). Pattern: `line="${line%$'\r'}"`.
+- **`_Delimiter` fallback inconsistency**: `Args.parse` line ~357 uses
+  `${_Delimiter:-$'\n'}` — hardcodes `$'\n'` instead of `$_EOL` as all
+  other classes do. Change to `${_Delimiter:-$_EOL}`.
 - Schema validation warnings for common mistakes (typos, duplicate
   option names, missing `=` on value-taking options)
 - **Value validators in the schema** (`Args.types` registry):
@@ -396,6 +404,10 @@ implementations when level rises.
 - **Defensive array access policy**: design pass needed to pick a
   consistent policy across all collection classes. See DEVLOG for
   the discussion context.
+- **`Map::Fast` bare `${_Delimiter}`**: three places in `Fast/Fast`
+  (`keys`, `keysUnder`, `toString`) use `${_Delimiter}` with no
+  fallback — silently empty if `_Delimiter` is unset. Change to
+  `${_Delimiter:-$_EOL}` for consistency with all other classes.
 
 ### Games (Card, PlayingCard, Deck, Blackjack)
 - `test_blackjack` coverage audit
@@ -411,6 +423,13 @@ implementations when level rises.
 - **Streamlined betting**: the current bet flow is a plain `read`
   prompt on a bare line. Needs a design pass for something more
   integrated.
+
+### Stream
+- **`_trim` is a stub**: the `trim` schema key is parsed and stored as
+  `_trim` property, but `Stream.Read` never reads or applies it. Need to
+  actually strip trailing whitespace (or just `\r`) from each field/record
+  when `trim=true`. The CRLF use-case (`--eol $'\r\n'` + trim) is the
+  primary motivator.
 
 ### Geometry (Box, Cube)
 - 91 tests passing, no known gaps.
