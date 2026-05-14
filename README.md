@@ -23,7 +23,7 @@ everywhere and stomping over your own globals.
 boop is an answer to that problem. It gives bash some vocabulary it's missing:
 objects with conventionally private state, classes with constructors and inherited
 methods, a return system that avoids subshells, and a namespace-aware class
-loader that scales from a single script to a library of dozens of classes.
+loader that scales from a single script to a library of scores of classes.
 
 ### Scope 
 
@@ -41,7 +41,7 @@ approach, but it can do Math that chokes most `awk` code, and it has a simple
 and convenient method interface. Want PI to a hundred places? Just takes time.
 
 Some of the classes don't really add new functionality; Text::String doesn't
-ireally do smuchg you can't already do in standard bash, but it provides simple,
+really do much you can't already do in standard bash, but it provides simple,
 convenient, memorable methods to do those things on instanced and easily
 organizable data. `$s.trim` edits in place; `$s.trimmed` returns an edited
 result without altering the original. Those are a lot easier than rolling
@@ -89,7 +89,7 @@ Here's a minimal working class:
 
 Greeter.greet() {
   local _Class="${_Class:-Greeter}"                                     # boilerplate
-  local _Self="${_Self:-${_Class}"                                      # convenience
+  local _Self="${_Self:-${_Class}}"                                      # convenience
   local __Greeter_greet_name="I'm a Boop Class"                         # scoped defaults
   [[ "$_Self" == "$_Class" ]] || into=__Greeter_greet_name $_Self.name  # per object name
   boop.pass "Hello, ${__Greeter_greet_name:-World}!" ${into:-}          # standard return
@@ -117,8 +117,8 @@ _EOL=" It's nice to meet you!"$'\n' $b.greet
 # inline subclass
 FancyGreeter.greet() { # overwrite inherited method
   local _Self="${_Self:-}" _Class="${_Class:-FancyGreeter}" __FancyGreeter_greet_tmp
-  into=__FancyGreeter_greet_tmp _Super greet                                  # call parent class's method
-  boop.pass "✨ ${__FancyGreeter_greet_tmp// Class/ +Sublass+} ✨" ${into:-}  # append a fancy sparkle
+  into=__FancyGreeter_greet_tmp _Super greet                                    # call parent class's method
+  boop.pass "✨ ${__FancyGreeter_greet_tmp// Class/ +Subclass+} ✨" ${into:-}  # append a fancy sparkle
 }
 boopClass FancyGreeter isa:Greeter has:name public:greet
 
@@ -135,17 +135,12 @@ The output:
 Hello, I'm a Boop Class!
 Hello, from Boop!
 Hello, World! It's nice to meet you!
-✨ Hello, I'm a Boop +Sublass+! ✨
+✨ Hello, I'm a Boop +Subclass+! ✨
 ✨ Hello, from *Fancy*! ✨
 ✨ Hello, World! ✨ It's NICER to meet you!
 ```
 
 ### What Each Piece Does
-
-**`boop.init Greeter || return 0`** is the load guard. `boop.init` returns 1
-if the class is already registered (double-source), which triggers `|| return 0`
-to exit cleanly. It also detects direct execution (`bash Greeter`) and prints
-a helpful message instead of silently doing nothing.
 
 **`local _Class="${_Class:-Greeter}"`** reads `_Class` from the calling scope
 (set by a baked wrapper) and defaults to `Greeter` if not set. This is how
@@ -256,40 +251,6 @@ boop.classPath rebuild
 
 ---
 
-## Five-Minute Tour
-
-```bash
-. boop List Map Config
-```
-
-That one line loads the framework and three classes. Now:
-
-```bash
-# Create a list and push some values
-into=colors List
-$colors.push red green blue
-
-# Get elements by index (negative indices count from the end)
-into=first $colors.get 0     # "red"
-into=last  $colors.get -1    # "blue"
-
-# Create a map (insertion-ordered associative array)
-into=cfg Map
-$cfg.set host localhost
-$cfg.set port 8080
-
-# Retrieve values
-into=h $cfg.get host          # "localhost"
-
-# Type-check any object — walks the full inheritance chain
-$colors.isa List  && echo "yes"   # yes
-$colors.isa boop  && echo "yes"   # yes (everything inherits from boop)
-$colors.isa Map   || echo "no"    # "no" — wrong type
-```
-
-The `into=varname command` syntax is how boop returns values. It is the central
-pattern of the framework and the first thing worth understanding properly.
-
 ---
 
 ## The Return System
@@ -351,8 +312,8 @@ _FatalLevel warn             # treat warnings as fatal (useful in CI)
 All locals in class methods should follow the common naming convention:
 `__ClassName_methodName_varname`. This isn't just aesthetic preference — 
 it prevents nameref collisions when method calls nest. If two levels of the call
-stack both have a local named `name`, a nameref at the inner level will iby design
-correctly and  silently shadow the outer one. The `__ClassName_` prefix makes
+stack both have a local named `name`, a nameref at the inner level will by design
+correctly and silently shadow the outer one. The `__ClassName_` prefix makes
 collisions essentially impossible, especially when coupled with method name.
 
 The naming convention check in `tests/test_all` checks this.
@@ -434,8 +395,8 @@ recursive descent parser in pure bash; there's no parameter expansion for
 that. `Collection.List`, `Map`, `Set`, `Stack`, `Queue` are *recurseable*
 data structures for which bash has no native concept.
 
-These classes keep you from habving to roll your own on concepts you'd
-otherwise usually just reach for a nother language to accomplish. Yes,
+These classes keep you from having to roll your own on concepts you'd
+otherwise usually just reach for another language to accomplish. Yes,
 there's a speed hit for the overhead, but after writing a few scripts
 with Args where the parse schema handles both your help screens and all
 your argument parsing including a LOT of built-in setup, you may wonder
@@ -494,7 +455,7 @@ overhead is immeasurable in practice. The readability and correctness
 benefits are real; the performance cost is probably not. 
 
 **Mixin composition.** A class that mixes in `Text.String` inherits the
-full manipulation surface on its own string-valued property without heving
+full manipulation surface on its own string-valued property without having
 to reimplement any of it. The overhead is paid once in the class's methods
 where string manipulation already dominates the cost.
 
@@ -506,12 +467,12 @@ where string manipulation already dominates the cost.
 - **Framework internals.** The `boop` runtime, `Args.parse`, and other
   framework-level code avoid framework abstractions to keep their own
   overhead minimal. Using a convenience class inside the plumbing creates
-  recursive overhead. If writing classes that need speed, roll youyr own.
-- **For a single one-shot transform.** `${v^^}` is six characteasr and zero
+  recursive overhead. If writing classes that need speed, roll your own.
+- **For a single one-shot transform.** `${v^^}` is six characters and zero
   overhead. Creating a `Text.String` object to call `upcase` once and
   discard the result is maybe not worth the ceremony.
 
-A rule of thumb: if yo'd write function to avoid repeating logic across
+A rule of thumb: if you'd write a function to avoid repeating logic across
 several calls, the convenience class is probably worth it. 
 
 ### Naming Reflects Usage Frequency
@@ -665,30 +626,35 @@ into=sub $fruits.slice 0 1     # "mango\ncherry"
 
 ### Map
 
-An insertion-ordered associative array. Keys come back in the order they
-were added — not in hash order, always insertion order.
+Insertion-ordered associative array. The one thing bash's `declare -A`
+can't do natively is guarantee key order — Map tracks it. Object IDs
+are strings, so Maps nest naturally into Lists (and vice versa) for
+multidimensional structures:
 
 ```bash
-. boop Map
+. boop List Map
 
-into=m Map
-$m.set host localhost
-$m.set port  5432
-$m.set user  admin
+# Build a table: list of maps (rows of named columns)
+into=table List
+for name in Alice Bob Charlie; do
+  into=row Map
+  $row.set name "$name"
+  $row.set role "$(( RANDOM % 2 ? "admin" : "user" ))"
+  $table.push "$row"
+done
 
-into=h $m.get host             # "localhost"
-$m.has port && echo "found"    # found
+# Access a cell by position + key
+into=r $table.get 1
+into=v $r.get name              # "Bob"
 
-# Keys in insertion order
-into=k $m.keys                 # "host\nport\nuser"
-
-# Callback iteration — receives key, then value
-show() { printf "  %s = %s\n" "$1" "$2"; }
-$m.each show
-#   host = localhost
-#   port = 5432
-#   user = admin
+# Iterate in insertion order — keys come back as added
+into=first $table.get 0
+show() { printf "  %s=%s" "$1" "$2"; }
+$first.each show; printf '\n'   # "  name=Alice  role=admin"
 ```
+
+See `docs/Map.md` for the full API (get/set/has/delete/keys/values/
+toArray/each/clear/toString).
 
 ### Map.Fast
 
