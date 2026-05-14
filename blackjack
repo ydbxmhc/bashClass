@@ -66,7 +66,7 @@ BlackjackHand.new() {
 
 BlackjackHand.cardVal() {
   local __BH_cv_rank
-  __boop.parse "$1" "rank" __BH_cv_rank
+  __BH_cv_rank="${__boop_static[${1}.rank]:-}"
   case "$__BH_cv_rank" in
     A)      boop.pass 11 ${into:-} ;;
     J|Q|K)  boop.pass 10 ${into:-} ;;
@@ -81,7 +81,7 @@ BlackjackHand.total() {
   into=__BH_total_len $_Self.length
   for (( __BH_total_i=0; __BH_total_i < __BH_total_len; __BH_total_i++ )); do
     into=__BH_total_card $_Self.getAt $__BH_total_i
-    __boop.parse "$__BH_total_card" "rank" __BH_total_rank
+    __BH_total_rank="${__boop_static[${__BH_total_card}.rank]:-}"
     case "$__BH_total_rank" in
       A)     __BH_total_v=11; (( __BH_total_aces++ )) ;;
       J|Q|K) __BH_total_v=10 ;;
@@ -125,7 +125,7 @@ BlackjackHand.show() {
   local __BH_show_label="${1:-Hand}" __BH_show_view="${2:-opponent}"
   local __BH_show_out="" __BH_show_card __BH_show_str __BH_show_h
   local -i __BH_show_i __BH_show_len
-  __boop.parse "$_Self" hidden __BH_show_h
+  __BH_show_h="${__boop_static[${_Self}.hidden]:-}"
   into=__BH_show_len $_Self.length
   for (( __BH_show_i=0; __BH_show_i < __BH_show_len; __BH_show_i++ )); do
     into=__BH_show_card $_Self.getAt $__BH_show_i
@@ -174,7 +174,7 @@ BlackjackHand.deal() {
 BlackjackHand.hasHidden() {
   local _Self="${_Self:-}" _Class="${_Class:-BlackjackHand}"
   local __BH_hasHidden_h
-  __boop.parse "$_Self" hidden __BH_hasHidden_h
+  __BH_hasHidden_h="${__boop_static[${_Self}.hidden]:-}"
   [[ "${__BH_hasHidden_h:-0}" == "1" ]]
 }
 
@@ -216,7 +216,7 @@ unset simple
 # If hand.hidden=1, card 0 is drawn as a back (face-down).
 draw_cards() {
   local __BJ_dc_hand="$1" __BJ_dc_h
-  __boop.parse "$__BJ_dc_hand" hidden __BJ_dc_h
+  __BJ_dc_h="${__boop_static[${__BJ_dc_hand}.hidden]:-}"
   local -i __BJ_dc_len __BJ_dc_i
   into=__BJ_dc_len $__BJ_dc_hand.length
 
@@ -285,7 +285,7 @@ draw_table() {
     into=__BJ_dt_s $__BJ_dt_dealer.show "Dealer"; printf "  %s\n" "$__BJ_dt_s"
     into=__BJ_dt_s $__BJ_dt_player.show "You" "owner"
     local __BJ_dt_ph
-    __boop.parse "$__BJ_dt_player" hidden __BJ_dt_ph
+    __BJ_dt_ph="${__boop_static[${__BJ_dt_player}.hidden]:-}"
     if [[ "${__BJ_dt_ph:-0}" == "1" ]]; then
       local -i __BJ_dt_ptot; into=__BJ_dt_ptot $__BJ_dt_player.total
       __BJ_dt_s+="  [$__BJ_dt_ptot]"

@@ -1,9 +1,9 @@
 # boop
 
-**Object-oriented programming for bash 5+.** (Mostly 4.3-ish in the core.)
-Real classes, real objects, single inheritance, a namespace system, and a 
-collection library — all in pure bash, requiring no third-party tools and 
-no subshells in the dispatch path.
+**Object-oriented programming for bash 4.3+.**   
+Real classes, real objects, single inheritance (with mixins), a
+namespace system, and a growing library — all in pure bash, requiring
+no third-party tools and no subshells in the dispatch path.
 
 The framework file is called `boop` because fun is a feature.
 
@@ -14,11 +14,13 @@ The framework file is called `boop` because fun is a feature.
 Bash is a glue language. It excels at wiring programs together, not at
 organizing large amounts of logic. When a script grows past a few hundred
 lines, the usual tools — functions, global variables, naming conventions —
-start to fight each other. You end up with prefixed globals and parallel
-arrays and limited ways to pass structured data between functions withouts
-forking a subshell or leaking state everywhere.
+can start to fight each other unless you're *very* careful. You often end
+up with prefixed globals and parallel arrays and limited ways to pass
+structured data between functions without storing it in files, forking 
+subshells to return values or chain together pipelines, or leaking state
+everywhere and stomping over your own globals.
 
-boop is an answer to that problem. It gives bash the vocabulary it's missing:
+boop is an answer to that problem. It gives bash some vocabulary it's missing:
 objects with conventionally private state, classes with constructors and inherited
 methods, a return system that avoids subshells, and a namespace-aware class
 loader that scales from a single script to a library of dozens of classes.
@@ -36,10 +38,10 @@ to optimize for speed in the hot path. The Math class is *arbitrary precision*
 and runs entirely on internal in-memory methods without subshells or pipes or
 any calls to `bc` or `awk` or any other language. It might not be the fastest
 approach, but it can do Math that chokes most `awk` code, and it has a simple
-and convenient method interface.
+and convenient method interface. Want PI to a hundred places? Just takes time.
 
 Some of the classes don't really add new functionality; Text::String doesn't
-do anything you can't already do in standard bash, but it provides simple,
+ireally do smuchg you can't already do in standard bash, but it provides simple,
 convenient, memorable methods to do those things on instanced and easily
 organizable data. `$s.trim` edits in place; `$s.trimmed` returns an edited
 result without altering the original. Those are a lot easier than rolling
@@ -62,11 +64,16 @@ scripts use.
 ## Install
 
 ```bash
-git clone <repo-url> /usr/local/lib/boop # makes a "boopRoot" install
-PATH+=":/usr/local/lib/boop"             # `. boop` works anywhere
+git clone $repoUrl $boopDir # makes a "boopRoot" install
+PATH+=":$pathToBoopDir"     # `. boop` works anywhere
 ```
 
 No build step. No package manager. Just source the framework and start.
+
+Is there more customization and setup you might want? Sure, see below.
+Is it needed? Not usually. You don't even have to add boop to your path
+if your script doesn't load any of the default library classes. Just 
+source it with a full path and build what you need inline.
 
 ---
 
@@ -76,7 +83,6 @@ Here's a minimal working class:
 
 ```bash
 . boop                                        # load the core framework
-boop.init Greeter || return 0                 # set up and prevent reloads
 
 # inherits default constructor and property methods
 # since we didn't need any special behavior for those
@@ -95,24 +101,43 @@ boopClass Greeter 'has:name public:greet'     # register the class
 Use it:
 
 ```bash
+#!/usr/bin/bash
+
 . boop Greeter
 
-Greeter.greet                           # static class method call
+Greeter.greet
 
-into=g Greeter name="from Boop"         # default constructor with property
-into=msg $g.greet                       # object call into var
-printf "%s\n" "$msg"                    # using the returned string
+into=g Greeter name="from Boop"
+into=msg $g.greet
+printf "%s\n" "$msg"
 
-into=b Greeter                          # generic constructor, default name
-_EOL=" nice to meet you!"$'\n' $b.greet # inline custom _EOL
+into=b Greeter
+_EOL=" It's nice to meet you!"$'\n' $b.greet
+
+# inline subclass
+FancyGreeter.greet() { # overwrite inherited method
+  local _Self="${_Self:-}" _Class="${_Class:-FancyGreeter}" __FancyGreeter_greet_tmp
+  into=__FancyGreeter_greet_tmp _Super greet                                  # call parent class's method
+  boop.pass "✨ ${__FancyGreeter_greet_tmp// Class/ +Sublass+} ✨" ${into:-}  # append a fancy sparkle
+}
+boopClass FancyGreeter isa:Greeter has:name public:greet
+
+FancyGreeter.greet
+into=g FancyGreeter name="from *Fancy*"
+into=msg $g.greet
+printf "%s\n" "$msg"
+into=b FancyGreeter
+_EOL=" It's NICER to meet you!"$'\n' $b.greet
 ```
 
 The output:
 ```
-$: ./tst
-Hello, I'm the Boop Greeter Class!
+Hello, I'm a Boop Class!
 Hello, from Boop!
 Hello, World! It's nice to meet you!
+✨ Hello, I'm a Boop +Sublass+! ✨
+✨ Hello, from *Fancy*! ✨
+✨ Hello, World! ✨ It's NICER to meet you!
 ```
 
 ### What Each Piece Does
@@ -141,29 +166,185 @@ on object and class method calls.
 constructor will populate from `key=value` constructor arguments. `public:` lists
 the methods to expose (method dispatch uses this). Everything else is inheritance.
 
-### Subclassing
-
-```bash
-. boop
-boop.init FancyGreeter || return 0
-FancyGreeter.greet() { # overwrite inherited method
-  local _Self="${_Self:-}" _Class="${_Class:-FancyGreeter}" __FancyGreeter_greet_base
-  into=__FancyGreeter_greet_base _Super greet               # call parent class's method
-  boop.pass "✨ ${__FancyGreeter_greet_base} ✨" ${into:-}  # append a fancy sparkle
-}
-
-boopClass FancyGreeter isa:Greeter 'public:new,greet'
-```
-
-`_Super greet` dispatches to the nearest ancestor that implements `greet`.
+**`_Super greet`** dispatches to the nearest ancestor that implements `greet`.
 `_Self` remains bound to the original object throughout, so the parent method
 still operates on the right data. The method resolution order (MRO) cache means
 the lookup cost is paid once per class/method pair and then zero thereafter.
 
 You can also use `_Cast` to dispatch as a specific class, and `_Delegate` to
-redirect method calls to another object entirely.
+redirect method calls to another object entirely for composition.
 
 ---
+
+## The Import System
+
+### Loading Classes
+
+```bash
+# Load framework + classes in one line
+. boop List Map Config
+
+# Classes load their own dependencies
+. boop Cube                    # automatically loads Box (Cube extends Box)
+
+# Load explicitly, crash if not found
+_Require Config
+
+# Load optionally — check the return code
+_Load 'Data::JSON' && _json_available=1
+```
+
+### Namespace Syntax
+
+Classes live in namespace directories. The directory path maps directly to the
+fully-qualified class name:
+
+```
+Collection/List/List           →  Collection::List   (short name: List)
+Collection/Map/Map             →  Collection::Map    (short name: Map)
+Collection/Map/Fast/Fast       →  Collection::Map::Fast
+Data/JSON/JSON                 →  Data::JSON
+```
+
+Use `::` or `/` interchangeably:
+
+```bash
+. boop 'Collection::Map::Fast'
+. boop 'Collection/Map/Fast'    # identical
+```
+
+### Short Names and Aliasing
+
+When a short name is unambiguous across the loaded library, it resolves
+automatically. `List` works because only one class is named `List`. When a name
+would be ambiguous, use the qualified form.
+
+Create explicit aliases with `_Import`:
+
+```bash
+_Import 'Collection::Map::Fast'            # auto-alias: Fast, Map.Fast, Collection.Map.Fast
+_Import 'Collection::Map::Fast' as FastMap # custom alias
+
+into=cache FastMap
+```
+
+The `_AutoAlias` variable controls automatic aliasing behavior: `full` (default),
+`best` (shortest unambiguous name plus FQN), `short` (short name plus FQN only),
+or `none` (explicit only).
+
+### Search Path
+
+For each root in `[ . : BOOPPATH entries : PATH ]`, resolution runs:
+
+1. Explicit `__boop_classPath` override for this name
+2. `.boopIndex` short-name lookup → full namespace → filesystem path
+3. `ClassName/ClassName` directory convention
+4. `ClassName` bare file
+
+```bash
+export BOOPPATH="/opt/shared-libs:/home/user/mylib"
+
+# Register a specific file directly
+boop.classPath set MyClass /path/to/MyClass
+
+# Inspect effective root list
+into=dirs boop.classPath dirs
+
+# Rebuild the short-name index after adding classes
+boop.classPath rebuild
+```
+
+---
+
+## Five-Minute Tour
+
+```bash
+. boop List Map Config
+```
+
+That one line loads the framework and three classes. Now:
+
+```bash
+# Create a list and push some values
+into=colors List
+$colors.push red green blue
+
+# Get elements by index (negative indices count from the end)
+into=first $colors.get 0     # "red"
+into=last  $colors.get -1    # "blue"
+
+# Create a map (insertion-ordered associative array)
+into=cfg Map
+$cfg.set host localhost
+$cfg.set port 8080
+
+# Retrieve values
+into=h $cfg.get host          # "localhost"
+
+# Type-check any object — walks the full inheritance chain
+$colors.isa List  && echo "yes"   # yes
+$colors.isa boop  && echo "yes"   # yes (everything inherits from boop)
+$colors.isa Map   || echo "no"    # "no" — wrong type
+```
+
+The `into=varname command` syntax is how boop returns values. It is the central
+pattern of the framework and the first thing worth understanding properly.
+
+---
+
+## The Return System
+
+Bash has two idiomatic ways to get a value out of a function: print to stdout
+and capture with `$()`, or write to a named global variable. The first spawns a
+subshell — slow, and it breaks assignments made inside the function. The second
+pollutes global scope and is easily clobbered.
+
+boop uses a third way: **namerefs**.
+
+```bash
+into=result $obj.someMethod
+```
+
+`into=result` passes the variable name `result` as an environment variable.
+The method receives it and writes the return value directly into the caller's
+`result` variable via a nameref — no subshell, no global side-channel, no copy.
+The value is available immediately in the caller's scope.
+
+```bash
+# These are all equivalent, but into= is the recommended path:
+into=vol $box.volume         # fast: nameref write, no fork
+vol=$( $box.volume )         # works, but spawns a subshell
+$box.volume; vol="$_Out"     # global side-channel (_Out is overwritten by the next call)
+```
+
+**The rule:** use `into=` everywhere. The only exception is contexts where
+you're already inside a subshell and don't care about the cost.
+
+One important gotcha: `into=` inside a subshell writes to the subshell's copy
+of the variable, not the parent's. The value disappears when the subshell
+exits. boop detects this and emits a warning.
+
+## Logging
+
+Six levels. The default fatality threshold is `crash` — only explicit `_Crash`
+exits the process unless you change it.
+
+```bash
+_Crash "unrecoverable: $reason"    # always exits with stack trace
+_Error "something failed"          # logged; fatal if threshold ≤ error
+_Warn  "something looks wrong"
+_Info  "starting subsystem X"
+_Debug "loop iteration: i=$i"
+_Trace "inside dispatch: class=$_Class method=$method"
+```
+
+Control level globally or per class:
+
+```bash
+_LogLevel debug              # global: show debug and above
+_LogLevel warn  Math         # Math only shows warnings and above
+_FatalLevel warn             # treat warnings as fatal (useful in CI)
+```
 
 ### Local Variable Naming
 
@@ -175,6 +356,65 @@ correctly and  silently shadow the outer one. The `__ClassName_` prefix makes
 collisions essentially impossible, especially when coupled with method name.
 
 The naming convention check in `tests/test_all` checks this.
+
+---
+
+## Objects and Classes
+
+### Creating Objects
+
+All objects are created with the same syntax:
+
+```bash
+into=obj ClassName [property=value ...]
+```
+
+The constructor sets named properties from the arguments and returns the new
+object ID. That ID — something like `_a1b2c3` — is what gets stored in your
+variable, and it is also a callable command for method dispatch.
+
+```bash
+. boop Cube
+
+into=c Cube size=5 unit=cm
+into=vol $c.volume          # 125
+$c.toString pretty
+# Cube(_a1b2c3) {
+#   size   = 5
+#   unit   = cm
+#   length = 5
+#   width  = 5
+#   height = 5
+# }
+```
+
+### Properties
+
+```bash
+into=v $c.get size           # "5"
+$c.set size 10               # mutate in place
+into=v $c.get size           # "10"
+```
+
+Properties are stored as strings — bash has no type system. A value is
+interpreted by context: arithmetic expansion, pattern matching, or string
+operations as needed. `$(( v + 1 ))` treats a property as an integer;
+`[[ $v =~ ^[0-9]+$ ]]` treats it as a pattern.
+
+### Type Checking
+
+`isa` walks the full inheritance chain:
+
+```bash
+$c.isa Cube      # exit 0 — yes
+$c.isa Box       # exit 0 — Cube extends Box
+$c.isa boop      # exit 0 — everything extends boop
+$c.isa List      # exit 1 — no
+
+# Without an argument, isa returns the runtime class name:
+into=cls $c.isa
+echo "$cls"    # "Cube"
+```
 
 ---
 
@@ -292,109 +532,6 @@ short method name, it signals high-frequency use. When you see a long one,
 it signals that the operation is specialized enough to warrant the explicit
 statement. (An exception is internals that you aren't expected to use directly.)
 
-
-## The Import System
-
-### Loading Classes
-
-```bash
-# Load framework + classes in one line
-. boop List Map Config
-
-# Classes load their own dependencies
-. boop Cube                    # automatically loads Box (Cube extends Box)
-
-# Load explicitly, crash if not found
-_Require Config
-
-# Load optionally — check the return code
-_Load 'Data::JSON' && _json_available=1
-```
-
-### Namespace Syntax
-
-Classes live in namespace directories. The directory path maps directly to the
-fully-qualified class name:
-
-```
-Collection/List/List           →  Collection::List   (short name: List)
-Collection/Map/Map             →  Collection::Map    (short name: Map)
-Collection/Map/Fast/Fast       →  Collection::Map::Fast
-Data/JSON/JSON                 →  Data::JSON
-```
-
-Use `::` or `/` interchangeably:
-
-```bash
-. boop 'Collection::Map::Fast'
-. boop 'Collection/Map/Fast'    # identical
-```
-
-### Short Names and Aliasing
-
-When a short name is unambiguous across the loaded library, it resolves
-automatically. `List` works because only one class is named `List`. When a name
-would be ambiguous, use the qualified form.
-
-Create explicit aliases with `_Import`:
-
-```bash
-_Import 'Collection::Map::Fast'            # auto-alias: Fast, Map.Fast, Collection.Map.Fast
-_Import 'Collection::Map::Fast' as FastMap # custom alias
-
-into=cache FastMap
-```
-
-The `_AutoAlias` variable controls automatic aliasing behavior: `full` (default),
-`best` (shortest unambiguous name plus FQN), `short` (short name plus FQN only),
-or `none` (explicit only).
-
-### Search Path
-
-For each root in `[ . : BOOPPATH entries : PATH ]`, resolution runs:
-
-1. Explicit `__boop_classPath` override for this name
-2. `.boopIndex` short-name lookup → full namespace → filesystem path
-3. `ClassName/ClassName` directory convention
-4. `ClassName` bare file
-
-```bash
-export BOOPPATH="/opt/shared-libs:/home/user/mylib"
-
-# Register a specific file directly
-boop.classPath set MyClass /path/to/MyClass
-
-# Inspect effective root list
-into=dirs boop.classPath dirs
-
-# Rebuild the short-name index after adding classes
-boop.classPath rebuild
-```
-
----
-
-## Logging
-
-Six levels. The default fatality threshold is `crash` — only explicit `_Crash`
-exits the process unless you change it.
-
-```bash
-_Crash "unrecoverable: $reason"    # always exits with stack trace
-_Error "something failed"          # logged; fatal if threshold ≤ error
-_Warn  "something looks wrong"
-_Info  "starting subsystem X"
-_Debug "loop iteration: i=$i"
-_Trace "inside dispatch: class=$_Class method=$method"
-```
-
-Control level globally or per class:
-
-```bash
-_LogLevel debug              # global: show debug and above
-_LogLevel warn  Math         # Math only shows warnings and above
-_FatalLevel warn             # treat warnings as fatal (useful in CI)
-```
-
 ---
 
 ## Testing
@@ -486,140 +623,6 @@ boop                                    root — new, get, set, isa, mixes, true
 | [docs/DateTime.md](docs/DateTime.md) | DateTime API reference — constructors, formatting, arithmetic, comparison, DST notes |
 | [TODO.md](TODO.md) | Roadmap and open design questions |
 
----
-
-*Active development. Core framework and included classes are stable. The
-namespace aliasing system (`_Import`, FQN resolution, auto-aliasing) is newly
-implemented and may have rough edges — file issues if something unexpected
-happens.*
----
-
-## Five-Minute Tour
-
-```bash
-. boop List Map Config
-```
-
-That one line loads the framework and three classes. Now:
-
-```bash
-# Create a list and push some values
-into=colors List
-$colors.push red green blue
-
-# Get elements by index (negative indices count from the end)
-into=first $colors.get 0     # "red"
-into=last  $colors.get -1    # "blue"
-
-# Create a map (insertion-ordered associative array)
-into=cfg Map
-$cfg.set host localhost
-$cfg.set port 8080
-
-# Retrieve values
-into=h $cfg.get host          # "localhost"
-
-# Type-check any object — walks the full inheritance chain
-$colors.isa List  && echo "yes"   # yes
-$colors.isa boop  && echo "yes"   # yes (everything inherits from boop)
-$colors.isa Map   || echo "no"    # "no" — wrong type
-```
-
-The `into=varname command` syntax is how boop returns values. It is the central
-pattern of the framework and the first thing worth understanding properly.
-
----
-
-## The Return System
-
-Bash has two idiomatic ways to get a value out of a function: print to stdout
-and capture with `$()`, or write to a named global variable. The first spawns a
-subshell — slow, and it breaks assignments made inside the function. The second
-pollutes global scope and is easily clobbered.
-
-boop uses a third way: **namerefs**.
-
-```bash
-into=result $obj.someMethod
-```
-
-`into=result` passes the variable name `result` as an environment variable.
-The method receives it and writes the return value directly into the caller's
-`result` variable via a nameref — no subshell, no global side-channel, no copy.
-The value is available immediately in the caller's scope.
-
-```bash
-# These are all equivalent, but into= is the recommended path:
-into=vol $box.volume         # fast: nameref write, no fork
-vol=$( $box.volume )         # works, but spawns a subshell
-$box.volume; vol="$_Out"     # global side-channel (_Out is overwritten by the next call)
-```
-
-**The rule:** use `into=` everywhere. The only exception is contexts where
-you're already inside a subshell and don't care about the cost.
-
-One important gotcha: `into=` inside a subshell writes to the subshell's copy
-of the variable, not the parent's. The value disappears when the subshell
-exits. boop detects this and emits a warning.
-
----
-
-## Objects and Classes
-
-### Creating Objects
-
-All objects are created with the same syntax:
-
-```bash
-into=obj ClassName [property=value ...]
-```
-
-The constructor sets named properties from the arguments and returns the new
-object ID. That ID — something like `_a1b2c3` — is what gets stored in your
-variable, and it is also a callable command for method dispatch.
-
-```bash
-. boop Cube
-
-into=c Cube size=5 unit=cm
-into=vol $c.volume          # 125
-$c.toString pretty
-# Cube(_a1b2c3) {
-#   size   = 5
-#   unit   = cm
-#   length = 5
-#   width  = 5
-#   height = 5
-# }
-```
-
-### Properties
-
-```bash
-into=v $c.get size           # "5"
-$c.set size 10               # mutate in place
-into=v $c.get size           # "10"
-```
-
-Properties are stored as strings — bash has no type system. A value is
-interpreted by context: arithmetic expansion, pattern matching, or string
-operations as needed. `$(( v + 1 ))` treats a property as an integer;
-`[[ $v =~ ^[0-9]+$ ]]` treats it as a pattern.
-
-### Type Checking
-
-`isa` walks the full inheritance chain:
-
-```bash
-$c.isa Cube      # exit 0 — yes
-$c.isa Box       # exit 0 — Cube extends Box
-$c.isa boop      # exit 0 — everything extends boop
-$c.isa List      # exit 1 — no
-
-# Without an argument, isa returns the runtime class name:
-into=cls $c.isa
-echo "$cls"    # "Cube"
-```
 
 ---
 

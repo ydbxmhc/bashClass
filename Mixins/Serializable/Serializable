@@ -39,7 +39,7 @@ Serializable.toJSON() {
     IFS=',' read -ra __Serializable_toJSON_arr <<< "$__Serializable_toJSON_props"
     for __Serializable_toJSON_prop in "${__Serializable_toJSON_arr[@]}"; do
       [[ "$__Serializable_toJSON_prop" == _* ]] && continue
-      __boop.parse "$_Self" "$__Serializable_toJSON_prop" __Serializable_toJSON_val
+      __Serializable_toJSON_val="${__boop_static[${_Self}.${__Serializable_toJSON_prop}]:-}"
       # JSON-escape value: backslash first, then quote, then whitespace
       __Serializable_toJSON_val="${__Serializable_toJSON_val//\\/\\\\}"
       __Serializable_toJSON_val="${__Serializable_toJSON_val//\"/\\\"}"
