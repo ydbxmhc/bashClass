@@ -765,7 +765,7 @@ boop.pass() {
   fi
   case "$__boop_pass_mode" in
     nameref)    _Crash "nameref mode requires target variable" ;; # wouldn't be here if it had one!
-    stdout)     printf "%s" "${__boop_pass_val:-}" ${_EOL:-}   ;; # with line ending if set
+    stdout)     printf "%s" "${__boop_pass_val:-}" "${_EOL:-}" ;; # with line ending if set
     global)     _Out="$__boop_pass_val"                        ;; # the fallback default
     filesystem)
       # TODO: boop.passPath from call stack introspection
@@ -1100,6 +1100,27 @@ __boop.deserialize() {
 __boop.get() {
   local _Self="${_Self:-}"; local _Class="${_Class:-boop}"
   __boop.parse "$_Self" "$1" ${into:-}
+}
+
+# __boop.getOrClass -- get a property from the instance; if absent, fall back
+# to the class-level _Property (static default). This is the accessor used
+# by auto-generated instance property wrappers so that class defaults are
+# inherited by instances that haven't set their own value.
+#
+# "Absent" means the property segment doesn't exist in the descriptor at all
+# (never set). An empty value (|prop=|) is a valid explicit value and does
+# NOT trigger the fallback.
+__boop.getOrClass() {
+  local _Self="${_Self:-}" _Class="${_Class:-boop}"
+  local __boop_goc_prop="$1" __boop_goc_val=""
+  # Check instance descriptor
+  if [[ "${__boop_registry[$_Self]:-}" == *"|${__boop_goc_prop}="* ]]; then
+    __boop.parse "$_Self" "$__boop_goc_prop" ${into:-}
+  else
+    # Fall back to class-level _Property
+    local __boop_goc_key="${_Class}.${__boop_goc_prop}"
+    boop.pass "${__boop_static[$__boop_goc_key]:-}" ${into:-}
+  fi
 }
 
 # Update a property value in the object's descriptor.
@@ -1458,7 +1479,7 @@ __boop.backfillMethods() {
     # Skip if a method wrapper was already written for this name
     [[ -n "${__boop_backfillMethods_written[$__boop_backfillMethods_prop]+set}" ]] && continue
     [[ "$__boop_backfillMethods_force" != "force" ]] && declare -F "$__boop_backfillMethods_self.$__boop_backfillMethods_prop" >/dev/null && continue
-    printf '%s.%s() { if (($#)); then _Self=%q _Class=%q __boop.set %q "$1"; else _Self=%q _Class=%q __boop.get %q; fi; }\n' \
+    printf '%s.%s() { if (($#)); then _Self=%q _Class=%q __boop.set %q "$1"; else _Self=%q _Class=%q __boop.getOrClass %q; fi; }\n' \
       "$__boop_backfillMethods_self" "$__boop_backfillMethods_prop" \
       "$__boop_backfillMethods_self" "$__boop_backfillMethods_class" "$__boop_backfillMethods_prop" \
       "$__boop_backfillMethods_self" "$__boop_backfillMethods_class" "$__boop_backfillMethods_prop" \
@@ -1597,6 +1618,30 @@ __boop.registerClass() {
         __boop_methodRegistry["$__boop_registerClass_class.$__boop_registerClass_method"]="$__boop_registerClass_mixinImpl"
         __boop_registerClass_written[$__boop_registerClass_method]=1
       done
+    done
+  fi
+
+  # Class-level property accessors — read/write via _Static.
+  # These provide ClassName.prop as a getter/setter for class-level defaults.
+  # Instance accessors (generated in backfillMethods) fall back to these
+  # when the property is absent from the instance descriptor.
+  local __boop_registerClass_props __boop_registerClass_prop
+  __boop.parse "$__boop_registerClass_class" "properties" __boop_registerClass_props
+  if [[ -n "$__boop_registerClass_props" ]]; then
+    IFS=',' read -ra __boop_registerClass_propArr <<< "$__boop_registerClass_props"
+    for __boop_registerClass_prop in "${__boop_registerClass_propArr[@]}"; do
+      [[ -n "$__boop_registerClass_prop" ]] || continue
+      # Don't overwrite if a method with this name was already written
+      [[ -n "${__boop_registerClass_written[$__boop_registerClass_prop]+set}" ]] && continue
+      # Don't overwrite class author's definition
+      declare -F "$__boop_registerClass_class.$__boop_registerClass_prop" >/dev/null && continue
+      # Class-level property accessor: get with no args, set with one arg.
+      # Uses _Property (keyed as ClassName.propName in __boop_static).
+      printf '%s.%s() { if (($#)); then _Class=%q _Property "%s=$1"; else _Class=%q _Property %q; fi; }\n' \
+        "$__boop_registerClass_class" "$__boop_registerClass_prop" \
+        "$__boop_registerClass_class" "$__boop_registerClass_prop" \
+        "$__boop_registerClass_class" "$__boop_registerClass_prop" \
+        >> "$__boop_registerClass_tmpfile"
     done
   fi
 
