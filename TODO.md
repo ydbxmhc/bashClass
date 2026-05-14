@@ -204,7 +204,61 @@ use case emerges that List can't serve.
 
 ## I/O Classes (Phase 5)
 
-### Current State (what's done)
+### Stream -- Implementation Status
+
+**WIP.** Class exists at `Stream/Stream`, loads, schema parsing works.
+Two test failures remain (eof flag, field assignment in multi-char mode).
+
+### Open Design Question: Buffer Strategy
+
+Current implementation has three separate read paths:
+1. Fixed-width (`-n N`): `read -N` directly from FD
+2. Single-char EOL: `read -d` directly from FD (bypasses buffer)
+3. Multi-char EOL: buffer-scan algorithm
+
+**Recommendation:** keep both paths, but make the buffer the *fallback*:
+- If single-char EOL AND no buffer content pending: use `read -d` (fast)
+- If fixed-width: use `read -N`
+- Otherwise: buffer-scan (handles everything including leftover buffer
+  from a previous multi-char read)
+
+Key insight: check `_buf` first. If there's buffered content from a
+previous read, drain the buffer before falling back to `read -d`. This
+gives correctness AND speed for the common case.
+
+### Performance Concerns in Read
+
+1. **Property access overhead:** every Read call does 8 `__boop.get`
+   calls (hash lookups + boop.pass). For a hot loop, this is significant.
+   Consider caching config in a bash array keyed by stream ID, populated
+   once at construction, read directly in Read without the property system.
+
+2. **The `$#` fast-path check:** design says "if no args, straight into
+   the fast path." Implementation checks `$#` for field overrides but
+   still loads all 8 properties every time. Real optimization: skip
+   property loads entirely when nothing changed since last call.
+
+3. **`eval` in field assignment:** `eval "read -r $fields <<< ..."` is
+   necessary for dynamic variable names but is a potential injection
+   vector. Constructor should validate field names are valid bash
+   identifiers before storing them.
+
+4. **`into=` asymmetry:** when fields are configured, Read assigns to
+   globals directly (via eval read). When no fields configured, uses
+   boop.pass. `into=` only works in no-fields mode. Document clearly.
+
+### Remaining Implementation Work
+
+- Fix eof flag persistence after single-char fast-path EOF
+- Fix field assignment in multi-char EOL path (fields stored but not
+  reaching the eval-read because the variable isn't populated correctly)
+- Add field-name validation in constructor
+- Add `test_stream_ts` to `tests/test_all`
+- Implement `readOnly:` descriptor token (separate from Stream but
+  needed for the property-access model)
+- Consider: `inheritValueFor` utility method on root boop class
+
+### Design: Two-Layer Delimiter Architecture
 
 The **output side** is complete. All multi-value methods (List.toArray,
 Map.keys, Map.values, Map.toArray, Config.keys, Config.toFlat, etc.)
