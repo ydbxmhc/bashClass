@@ -207,9 +207,41 @@ use case emerges that List can't serve.
 ### Stream -- Implementation Status
 
 **WIP.** Class exists at `Stream/Stream`, loads, schema parsing works.
-Two test failures remain (eof flag, field assignment in multi-char mode).
+Tests at `tests/unit/test_stream_ts` (not yet in test_all). Two test
+failures remain. Design doc at `docs/Stream.md`.
 
-### Open Design Question: Buffer Strategy
+**What works:**
+- `Stream.open PATH [options] [fields...]` — opens file, owns FD
+- `Stream.fromString "$data" [options] [fields...]` — here-string FD
+- `Stream.new fd=N [options] [fields...]` — wrap existing FD
+- Schema string parsing (`[Parser]` + `[Fields]` sections)
+- Inline option parsing (`-d`, `--eol`, `-a`, `-t`, `-n`)
+- `Stream.eof`, `Stream.close`, `Stream.readAll`, `Stream.write`,
+  `Stream.writeLine`
+- Multi-char EOL buffer-scan algorithm (the slow path)
+- Single-char EOL fast path via `read -d`
+- Fixed-width path via `read -N`
+- Field assignment via `eval "read -r $fields <<< ..."`
+- Array mode via `eval "read -ra $arrayname <<< ..."`
+
+**What's broken (2 test failures):**
+
+1. **eof flag not persisting after fast-path EOF:** When `read -d`
+   returns non-zero (EOF), the code sets `__boop.set _eof "1"` but
+   the next call to `$s.eof` doesn't see it. Likely cause: the
+   `__boop.set` call happens inside a conditional block where `_Self`
+   might not be correctly inherited. Fix: verify `_Self` is set at
+   the point of the `__boop.set _eof "1"` call.
+
+2. **Field assignment in multi-char EOL path:** The `block` variable
+   (field name) isn't populated after a multi-char-EOL Read. The
+   record IS extracted correctly (the buffer-scan works), but the
+   field-assignment section at the bottom of Read doesn't fire for
+   it. Likely cause: the `__Stream_Read_fields` variable isn't
+   loaded correctly from properties — check that `__boop.get _fields`
+   returns the stored field list after the property-storage refactor.
+
+**Open Design Question: Buffer Strategy**
 
 Current implementation has three separate read paths:
 1. Fixed-width (`-n N`): `read -N` directly from FD
@@ -223,29 +255,81 @@ Current implementation has three separate read paths:
   from a previous multi-char read)
 
 Key insight: check `_buf` first. If there's buffered content from a
-previous read, drain the buffer before falling back to `read -d`. This
+previous read (e.g., the user switched from multi-char to single-char
+mid-stream), drain the buffer before falling back to `read -d`. This
 gives correctness AND speed for the common case.
+
+**Alternative (simpler, discussed with user):** always buffer. The
+`${buf%%"$eol"*}` parameter expansion is fast regardless of delimiter
+length. One code path, one state machine, no edge cases from path
+switching. The performance difference vs `read -d` is real but may
+not matter in practice — Stream is already a convenience class with
+per-call overhead from property lookups.
+
+User's position: "we're largely single-threaded, not much point in
+double-buffering" — meaning the buffer is just a read-ahead string,
+not a concurrent I/O mechanism. The algorithm is:
+1. Buffer has content → scan for delimiter
+2. Found → return chunk before it, trim buffer
+3. Not found → append more from FD, retry
+4. FD exhausted → return remainder or signal EOF
 
 ### Performance Concerns in Read
 
 1. **Property access overhead:** every Read call does 8 `__boop.get`
-   calls (hash lookups + boop.pass). For a hot loop, this is significant.
-   Consider caching config in a bash array keyed by stream ID, populated
-   once at construction, read directly in Read without the property system.
+   calls (hash lookups via `__boop_static`). For a hot loop, this is
+   significant. Consider caching config in local variables on first
+   call, or storing config in a bash array keyed by stream ID that
+   Read accesses directly without the property system.
 
-2. **The `$#` fast-path check:** design says "if no args, straight into
-   the fast path." Implementation checks `$#` for field overrides but
-   still loads all 8 properties every time. Real optimization: skip
-   property loads entirely when nothing changed since last call.
+2. **The `$#` fast-path check:** design says "if no args, straight
+   into the fast path." Implementation checks `$#` for field overrides
+   but still loads all 8 properties every time. Real optimization:
+   skip property loads entirely when nothing changed since last call.
+   Could use a "dirty" flag or just accept the overhead for correctness.
 
 3. **`eval` in field assignment:** `eval "read -r $fields <<< ..."` is
    necessary for dynamic variable names but is a potential injection
-   vector. Constructor should validate field names are valid bash
-   identifiers before storing them.
+   vector. Constructor should validate that field names are valid bash
+   identifiers (match `^[a-zA-Z_][a-zA-Z0-9_]*$` or `_` for discard).
 
 4. **`into=` asymmetry:** when fields are configured, Read assigns to
    globals directly (via eval read). When no fields configured, uses
-   boop.pass. `into=` only works in no-fields mode. Document clearly.
+   boop.pass. `into=` only works in no-fields mode. This is correct
+   per the design (fields mode = multiple assignments, into= = single
+   value return) but should be documented clearly.
+
+### Fixed-Width Mode (not yet implemented)
+
+Design doc describes `[Format NAME]` sections for union-of-structs:
+```
+[Parser]
+mode   = fixed
+switch = type
+
+[Format 00]
+2:type  20:account  30:desc
+
+[Format 01]
+2:type  20:dept
+```
+
+Implementation: constructor builds an offset table from the width:name
+specs. Read pulls exactly `record_length` bytes via `read -N`, then
+slices fields by position: `field="${record:offset:width}"`. For
+format-switching, peek at the discriminator field (known offset), hash-
+lookup the format spec, apply that format's table.
+
+This is Phase 2 of Stream — get delimited mode working first.
+
+### Relationship to Existing Code
+
+Once Stream works, these could optionally delegate to it:
+- `Config.load` / `Config.loadINI` — currently use `while IFS= read -r`
+- `__boop.parseConfig` — same pattern
+- `Serializable.fromJSON` — reads keys from a Map.Fast
+
+These are NOT blockers — they work fine as-is. Stream is additive.
 
 ### Remaining Implementation Work
 
@@ -257,6 +341,28 @@ gives correctness AND speed for the common case.
 - Implement `readOnly:` descriptor token (separate from Stream but
   needed for the property-access model)
 - Consider: `inheritValueFor` utility method on root boop class
+
+### ★ Garbage Collection / Object Lifecycle
+
+Objects live in `__boop_static` (property values) and `__boop_registry`
+(schema descriptors). Currently there is no mechanism to reclaim storage
+when objects are no longer referenced. In a long-running process that
+creates many short-lived objects (e.g. blackjack hands, parsed records,
+temporary Maps), memory grows without bound.
+
+Needs discussion ASAP:
+- Reference counting vs mark-and-sweep vs explicit destroy
+- `$obj.destroy` already removes from `__boop_registry` — needs to also
+  clean `__boop_static` keys matching `${objId}.*`
+- Should destroy be automatic when the last variable holding the ID goes
+  out of scope? (Hard in bash — no destructor hooks on variable unset.)
+- Serialization (`__boop.serialize`) needs to save `__boop_static` alongside
+  the registry for full object persistence. GC interacts with this — do we
+  serialize dead objects? Only live ones? How do we know which are live?
+- Weak references? Probably overkill for bash, but worth noting.
+- Immediate practical concern: the blackjack Platonic Master deck holds 52
+  card objects forever (intentional). But each hand creates a BlackjackHand
+  that's never destroyed — those accumulate across rounds.
 
 ### Design: Two-Layer Delimiter Architecture
 
