@@ -29,6 +29,20 @@
 
 boop.init Testing.TestSuite || return 0
 
+# Timing: detect best available sub-second clock, decided once at load.
+# __TS_now updates __TS_time with the current timestamp. No subshell,
+# no boop.pass, just a global write.
+declare -g __TS_time=""
+__TS_now() { printf -v __TS_time '%(%s.000000)T' -1; }
+if [[ -n "${EPOCHREALTIME:-}" ]]; then
+  __TS_now() { __TS_time="$EPOCHREALTIME"; }
+  _Info "TestSuite: using EPOCHREALTIME for timing"
+  _Debug "TestSuite: bash 5+ detected, microsecond precision available"
+else
+  _Info "TestSuite: using printf strftime for timing (whole-second precision)"
+  _Debug "TestSuite: EPOCHREALTIME unavailable, bash <5.0 or variable unset"
+fi
+
 # ============================================================================
 # Private helpers — _Self inherited from calling scope, not passed as $1
 # ============================================================================
@@ -156,8 +170,9 @@ Testing.TestSuite.new() {
   [[ "$__TS_new_mode" == "immediate" || "$__TS_new_mode" == "queue" ]] || 
     _Crash "TestSuite: mode must be 'immediate' or 'queue', got '$__TS_new_mode'"
 
+  __TS_now
   __TS_new_args=( name="$__TS_new_name" mode="$__TS_new_mode" verbose="$__TS_new_verbose" 
-    passed=0 failed=0 section_name="" section_start="" suite_start="$EPOCHREALTIME" queue="" )
+    passed=0 failed=0 section_name="" section_start="" suite_start="$__TS_time" queue="" )
 
   into=__TS_new_self __boop.new "${__TS_new_args[@]}"
 
@@ -184,13 +199,15 @@ Testing.TestSuite.section() {
   # Print elapsed time for the section that just ended, if verbose + immediate
   if [[ -n "$__TS_sec_prev_start" && "$__TS_sec_verbose" == "1" ]]; then
     into=__TS_sec_mode $_Self.get mode
+    __TS_now
     [[ "$__TS_sec_mode" == "immediate" ]] && \
-      printf "  [%.3fs]\n" "$(( ${EPOCHREALTIME//.} - ${__TS_sec_prev_start//.} ))e-6"
+      printf "  [%.3fs]\n" "$(( ${__TS_time//.} - ${__TS_sec_prev_start//.} ))e-6"
   fi
 
   [[ "$__TS_sec_verbose" == "1" ]] && printf '\n--- %s [%(%H:%M:%S)T] ---\n' "$__TS_sec_name" -1
   $_Self.set section_name "$__TS_sec_name"
-  $_Self.set section_start "$EPOCHREALTIME"
+  __TS_now
+  $_Self.set section_start "$__TS_time"
 }
 
 # ============================================================================
@@ -247,7 +264,8 @@ Testing.TestSuite.run() {
   into=__TS_run_sec_start $_Self.get section_start
   into=__TS_run_verbose   $_Self.get verbose
   if [[ -n "$__TS_run_sec_start" && "$__TS_run_verbose" == "1" ]]; then
-    printf "  [%.3fs]\n" "$(( ${EPOCHREALTIME//.} - ${__TS_run_sec_start//.} ))e-6"
+    __TS_now
+    printf "  [%.3fs]\n" "$(( ${__TS_time//.} - ${__TS_run_sec_start//.} ))e-6"
   fi
 }
 
@@ -264,7 +282,8 @@ Testing.TestSuite.summary() {
 
   # Print final section timing if immediate + verbose
   if [[ "$__TS_sum_mode" == "immediate" && -n "$__TS_sum_sec_start" && "$__TS_sum_verbose" == "1" ]]; then
-    printf "  [%.3fs]\n" "$(( ${EPOCHREALTIME//.} - ${__TS_sum_sec_start//.} ))e-6"
+    __TS_now
+    printf "  [%.3fs]\n" "$(( ${__TS_time//.} - ${__TS_sum_sec_start//.} ))e-6"
   fi
 
   local __TS_sum_name __TS_sum_p __TS_sum_f __TS_sum_start
@@ -278,7 +297,8 @@ Testing.TestSuite.summary() {
   printf "  Passed: %d\n" "$__TS_sum_p"
   printf "  Failed: %d\n" "$__TS_sum_f"
   printf "  Total:  %d\n" "$(( __TS_sum_p + __TS_sum_f ))"
-  printf "  Time:   %.3fs\n" "$(( ${EPOCHREALTIME//.} - ${__TS_sum_start//.} ))e-6"
+  __TS_now
+  printf "  Time:   %.3fs\n" "$(( ${__TS_time//.} - ${__TS_sum_start//.} ))e-6"
 
   if (( __TS_sum_f > 0 )); then
     printf "\n  *** %d FAILURES ***\n" "$__TS_sum_f"
