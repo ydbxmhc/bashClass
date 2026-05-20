@@ -149,7 +149,7 @@ __shuf_check() {
     __boop.parse "$__shuf_test_card" "rank" __shuf_test_rank
     __boop.parse "$__shuf_ref_card"  "suit" __shuf_ref_suit
     __boop.parse "$__shuf_test_card" "suit" __shuf_test_suit
-    [[ "$__shuf_ref_rank" != "$__shuf_test_rank" || \
+    [[ "$__shuf_ref_rank" != "$__shuf_test_rank" ||
        "$__shuf_ref_suit" != "$__shuf_test_suit" ]] && (( __shuf_displaced++ ))
   done
   printf "%d" "$__shuf_displaced"

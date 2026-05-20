@@ -61,7 +61,7 @@ Serializable.toJSON() {
 Serializable.fromJSON() {
   local _Self="${_Self:-}" _Class="${_Class:-}"
   local __Serializable_fromJSON_str="${1:-}"
-  [[ -n "$__Serializable_fromJSON_str" ]] || \
+  [[ -n "$__Serializable_fromJSON_str" ]] ||
     _Crash "Serializable.fromJSON: JSON string required"
 
   # Lazy-load Data.JSON — only needed for deserialization
@@ -70,7 +70,7 @@ Serializable.fromJSON() {
   local __Serializable_fromJSON_parsed
   into=__Serializable_fromJSON_parsed _Delegate Data.JSON.parse "$__Serializable_fromJSON_str"
 
-  [[ -n "$__Serializable_fromJSON_parsed" ]] || \
+  [[ -n "$__Serializable_fromJSON_parsed" ]] ||
     _Crash "Serializable.fromJSON: parse returned empty result"
 
   # Walk keys and restore properties (skip _class)
@@ -98,7 +98,7 @@ Serializable.save() {
 
   if [[ -z "$__Serializable_save_file" ]]; then
     into=__Serializable_save_file __boop.get _savefile
-    [[ -n "$__Serializable_save_file" ]] || \
+    [[ -n "$__Serializable_save_file" ]] ||
       _Crash "Serializable.save: no file specified and _savefile not set"
   else
     __boop.set _savefile "$__Serializable_save_file"
@@ -118,13 +118,13 @@ Serializable.load() {
 
   if [[ -z "$__Serializable_load_file" ]]; then
     into=__Serializable_load_file __boop.get _savefile
-    [[ -n "$__Serializable_load_file" ]] || \
+    [[ -n "$__Serializable_load_file" ]] ||
       _Crash "Serializable.load: no file specified and _savefile not set"
   else
     __boop.set _savefile "$__Serializable_load_file"
   fi
 
-  [[ -f "$__Serializable_load_file" ]] || \
+  [[ -f "$__Serializable_load_file" ]] ||
     _Crash "Serializable.load: file not found: '$__Serializable_load_file'"
 
   local __Serializable_load_str

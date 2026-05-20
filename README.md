@@ -98,7 +98,7 @@ Greeter.greet() {
 boopClass Greeter 'has:name public:greet'     # register the class
 ```
 
-Use it:
+Use it (this code is in `sayHi` if you want to try it):
 
 ```bash
 #!/usr/bin/bash

@@ -1,0 +1,208 @@
+#!/bin/bash
+
+# Rigorous blockSize benchmark: 256, 512, 1024, 2048
+# 5 interleaved passes, randomized and uniform data, 3000 records each.
+# Reports min/median/max for each configuration.
+#
+# Usage: bash tests/bench/bench_blocksize_rigorous
+
+. boop Stream
+__boop.setLogLevel warn
+
+ITERS=3000
+PASSES=5
+
+# --- Timing ---
+bench_start() { __bench_start="$EPOCHREALTIME"; }
+bench_end() { printf -v __bench_elapsed "%.3f" "$(( ${EPOCHREALTIME//.} - ${__bench_start//.} ))e-6"; }
+timestamp() { printf '%(%Y-%m-%d %H:%M:%S)T' -1; }
+
+# --- Results storage ---
+# Associative array: results["dataset.mode.blocksize.pass"] = elapsed
+declare -A __bench_results
+
+# --- Data generation (no subshells) ---
+generate_random_data() {
+  local __grd_file="$1" __grd_lines="$2" __grd_delim="${3:-:}"
+  local __grd_i __grd_nfields __grd_flen __grd_f __grd_rec __grd_char __grd_field
+  local __grd_pool="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+  for (( __grd_i=0; __grd_i < __grd_lines; __grd_i++ )); do
+    __grd_nfields=$(( RANDOM % 8 + 1 ))
+    __grd_flen=$(( RANDOM % 60 + 5 ))
+    __grd_char="${__grd_pool:$(( RANDOM % 62 )):1}"
+    printf -v __grd_field '%*s' "$__grd_flen" ''
+    __grd_field="${__grd_field// /$__grd_char}"
+    __grd_rec="$__grd_field"
+    for (( __grd_f=1; __grd_f < __grd_nfields; __grd_f++ )); do
+      __grd_rec+="${__grd_delim}${__grd_field}"
+    done
+    printf '%s\n' "$__grd_rec"
+  done > "$__grd_file"
+}
+
+generate_uniform_data() {
+  local __gud_file="$1" __gud_lines="$2" __gud_nfields="$3" __gud_flen="$4" __gud_delim="${5:-:}"
+  local __gud_i __gud_f __gud_rec __gud_field
+  printf -v __gud_field '%*s' "$__gud_flen" ''
+  __gud_field="${__gud_field// /X}"
+  for (( __gud_i=0; __gud_i < __gud_lines; __gud_i++ )); do
+    __gud_rec="$__gud_field"
+    for (( __gud_f=1; __gud_f < __gud_nfields; __gud_f++ )); do
+      __gud_rec+="${__gud_delim}${__gud_field}"
+    done
+    printf '%s\n' "$__gud_rec"
+  done > "$__gud_file"
+}
+
+# --- Median helper (sorts 5 values, picks middle) ---
+median_of() {
+  local -a __med_sorted
+  IFS=$'\n' read -r -d '' -a __med_sorted < <(printf '%s\n' "$@" | sort -n; printf '\0')
+  printf '%s' "${__med_sorted[$(( ${#__med_sorted[@]} / 2 ))]}"
+}
+
+# --- Generate test data ---
+__bench_tmp1=$(mktemp)
+__bench_tmp2=$(mktemp)
+__bench_tmp3=$(mktemp)
+__bench_tmp4=$(mktemp)
+trap 'rm -f "$__bench_tmp1" "$__bench_tmp2" "$__bench_tmp3" "$__bench_tmp4"' EXIT
+
+printf "[%s] Generating test data (%d records each)...\n" "$(timestamp)" "$ITERS"
+printf "  Random (1-8 fields, 5-65 char fields)..."
+generate_random_data "$__bench_tmp1" "$ITERS" ':'
+printf " done\n"
+printf "  Uniform short (5 fields x 20 chars)..."
+generate_uniform_data "$__bench_tmp2" "$ITERS" 5 20 ':'
+printf " done\n"
+printf "  Uniform long (5 fields x 100 chars)..."
+generate_uniform_data "$__bench_tmp3" "$ITERS" 5 100 ':'
+printf " done\n"
+printf "  Many fields (15 fields x 10 chars)..."
+generate_uniform_data "$__bench_tmp4" "$ITERS" 15 10 ':'
+printf " done\n"
+printf "[%s] Data generation complete.\n\n" "$(timestamp)"
+
+# --- Run benchmarks: interleaved passes ---
+printf "[%s] Running %d passes (interleaved)...\n" "$(timestamp)" "$PASSES"
+
+for (( pass=1; pass <= PASSES; pass++ )); do
+  printf "[%s] --- Pass %d/%d ---\n" "$(timestamp)" "$pass" "$PASSES"
+
+  for bs in 256 512 1024 2048; do
+    printf "  bs=%d: " "$bs"
+
+    # Dataset 1: random, PE mode, whole-line
+    bench_start
+    into=s Stream.new -P "$__bench_tmp1" -D $'\n' --blockSize="$bs" line
+    while $s.Read; do :; done
+    $s.close
+    bench_end
+    __bench_results["random.pe.$bs.$pass"]="$__bench_elapsed"; printf "."
+
+    # Dataset 1: random, regex mode, whole-line
+    bench_start
+    into=s Stream.new -P "$__bench_tmp1" -E $'\n' --blockSize="$bs" line
+    while $s.Read; do :; done
+    $s.close
+    bench_end
+    __bench_results["random.regex.$bs.$pass"]="$__bench_elapsed"; printf "."
+
+    # Dataset 1: random, PE mode, field split
+    bench_start
+    into=s Stream.new -P "$__bench_tmp1" -D $'\n' -f ':' --blockSize="$bs" a b c d e f g h
+    while $s.Read; do :; done
+    $s.close
+    bench_end
+    __bench_results["random.pe_f.$bs.$pass"]="$__bench_elapsed"; printf "."
+
+    # Dataset 2: short uniform, PE mode, field split
+    bench_start
+    into=s Stream.new -P "$__bench_tmp2" -D $'\n' -f ':' --blockSize="$bs" a b c d e
+    while $s.Read; do :; done
+    $s.close
+    bench_end
+    __bench_results["short.pe_f.$bs.$pass"]="$__bench_elapsed"; printf "."
+
+    # Dataset 3: long uniform, PE mode, whole-line
+    bench_start
+    into=s Stream.new -P "$__bench_tmp3" -D $'\n' --blockSize="$bs" line
+    while $s.Read; do :; done
+    $s.close
+    bench_end
+    __bench_results["long.pe.$bs.$pass"]="$__bench_elapsed"; printf "."
+
+    # Dataset 3: long uniform, PE mode, field split
+    bench_start
+    into=s Stream.new -P "$__bench_tmp3" -D $'\n' -f ':' --blockSize="$bs" a b c d e
+    while $s.Read; do :; done
+    $s.close
+    bench_end
+    __bench_results["long.pe_f.$bs.$pass"]="$__bench_elapsed"; printf "."
+
+    # Dataset 4: many fields, PE mode, field split
+    bench_start
+    into=s Stream.new -P "$__bench_tmp4" -D $'\n' -f ':' --blockSize="$bs" f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13 f14
+    while $s.Read; do :; done
+    $s.close
+    bench_end
+    __bench_results["many.pe_f.$bs.$pass"]="$__bench_elapsed"; printf "."
+    printf " done\n"
+  done
+done
+
+printf "[%s] All passes complete.\n\n" "$(timestamp)"
+
+# --- Report results ---
+printf "=== RESULTS (min / median / max across %d passes, %d records each) ===\n\n" "$PASSES" "$ITERS"
+
+report_row() {
+  local __rr_label="$1" __rr_key_prefix="$2"
+  printf "  %-35s" "$__rr_label"
+  for bs in 256 512 1024 2048; do
+    local -a __rr_vals=()
+    for (( p=1; p <= PASSES; p++ )); do
+      __rr_vals+=("${__bench_results[${__rr_key_prefix}.$bs.$p]}")
+    done
+    local __rr_min __rr_med __rr_max
+    IFS=$'\n' read -r -d '' -a __rr_sorted < <(printf '%s\n' "${__rr_vals[@]}" | sort -n; printf '\0')
+    __rr_min="${__rr_sorted[0]}"
+    __rr_med="${__rr_sorted[$(( PASSES / 2 ))]}"
+    __rr_max="${__rr_sorted[$(( PASSES - 1 ))]}"
+    printf " %s/%s/%s" "$__rr_min" "$__rr_med" "$__rr_max"
+  done
+  printf "\n"
+}
+
+printf "%-35s %15s %15s %15s %15s\n" "" "bs=256" "bs=512" "bs=1024" "bs=2048"
+printf "%-35s %15s %15s %15s %15s\n" "" "min/med/max" "min/med/max" "min/med/max" "min/med/max"
+printf "\n"
+report_row "Random, PE whole-line"       "random.pe"
+report_row "Random, Regex whole-line"    "random.regex"
+report_row "Random, PE + field split"    "random.pe_f"
+report_row "Short, PE + field split"     "short.pe_f"
+report_row "Long, PE whole-line"         "long.pe"
+report_row "Long, PE + field split"      "long.pe_f"
+report_row "Many fields (15), PE + -f"   "many.pe_f"
+
+# --- Baselines ---
+printf "\n=== BASELINES (raw read, single pass) ===\n"
+
+bench_start
+while IFS=':' read -r a b c d e f g h; do :; done < "$__bench_tmp1"
+bench_end; printf "  raw read (random, 8 fields):    %ss\n" "$__bench_elapsed"
+
+bench_start
+while IFS=':' read -r a b c d e; do :; done < "$__bench_tmp2"
+bench_end; printf "  raw read (short, 5 fields):     %ss\n" "$__bench_elapsed"
+
+bench_start
+while IFS=':' read -r a b c d e; do :; done < "$__bench_tmp3"
+bench_end; printf "  raw read (long, 5 fields):      %ss\n" "$__bench_elapsed"
+
+bench_start
+while IFS=':' read -r f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13 f14; do :; done < "$__bench_tmp4"
+bench_end; printf "  raw read (15 fields):           %ss\n" "$__bench_elapsed"
+
+printf "\n[%s] === DONE ===\n" "$(timestamp)"
+

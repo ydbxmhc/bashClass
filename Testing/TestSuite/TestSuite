@@ -200,7 +200,7 @@ Testing.TestSuite.section() {
   if [[ -n "$__TS_sec_prev_start" && "$__TS_sec_verbose" == "1" ]]; then
     into=__TS_sec_mode $_Self.get mode
     __TS_now
-    [[ "$__TS_sec_mode" == "immediate" ]] && \
+    [[ "$__TS_sec_mode" == "immediate" ]] &&
       printf "  [%.3fs]\n" "$(( ${__TS_time//.} - ${__TS_sec_prev_start//.} ))e-6"
   fi
 

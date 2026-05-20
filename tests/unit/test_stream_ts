@@ -1,15 +1,16 @@
 #!/bin/bash
 set -uo pipefail
 
-# Stream tests -- record-oriented reading with field assignment.
+# Stream tests -- buffered record-oriented reader.
 #
 # Classification: UNIT (Stream)
-# Covers: open, fromString, Read (delimited fast path), field assignment,
-#         array mode, eof, close, readAll, multi-char EOL (slow path),
-#         schema string parsing, write/writeLine.
+# Covers: open, fromString, Read (buffered engine), field assignment,
+#         array mode, eof, close, write/writeLine,
+#         single-char EOL (-d), multi-char EOL (-D), char-class EOL (-E),
+#         field delimiters (-f, -F), fixed-width (-n), edge cases.
 
 . boop TestSuite Stream
-
+__boop.setLogLevel trace
 into=t TestSuite name="Stream Tests"
 
 # Temp files for testing
@@ -18,52 +19,180 @@ __st_tmp2=$(mktemp)
 trap 'rm -f "$__st_tmp" "$__st_tmp2"' EXIT
 
 # ============================================================================
-# Basic: open + Read + field assignment
+# Basic: open + Read + field assignment (default newline EOL, IFS fields)
 # ============================================================================
 
 $t.section "basic delimited read"
 
-printf 'alice:30:admin\nbob:25:user\n' > "$__st_tmp"
+printf 'alice 30 admin\nbob 25 user\n' > "$__st_tmp"
 
-into=s Stream.open "$__st_tmp" -d ':' name age role
-$t.assert_ok "Read returns 0 on first record" $s.Read
+_Info "testing Stream.new"
+into=s Stream.new -P "$__st_tmp" name age role
+_Info "testing basic Read"
+$s.read; __st_rc=$?
+_Info "Read returned $__st_rc, name=$name"
+_Info "testing field assignments"
 $t.assert_eq "field 1: name" "$name" "alice"
 $t.assert_eq "field 2: age" "$age" "30"
 $t.assert_eq "field 3: role" "$role" "admin"
 
-$t.assert_ok "Read returns 0 on second record" $s.Read
+$t.assert_ok "read returns 0 on second record" $s.read
 $t.assert_eq "second record name" "$name" "bob"
 $t.assert_eq "second record age" "$age" "25"
+$t.assert_eq "second record role" "$role" "user"
 
-$s.Read; __st_rc=$?
+$s.read; __st_rc=$?
 $t.assert_ne "Read returns non-zero at EOF" "$__st_rc" "0"
 $t.assert_ok "eof is true after final Read" $s.eof
 $s.close
 
 # ============================================================================
-# Whole-line mode (no field splitting)
+# fromString
 # ============================================================================
 
-$t.section "whole-line mode"
+$t.section "fromString equivalent (here-string FD)"
 
-printf 'hello world\ngoodbye world\n' > "$__st_tmp"
-
-into=s Stream.open "$__st_tmp" line
-$s.Read
-$t.assert_eq "whole line" "$line" "hello world"
-$s.Read
-$t.assert_eq "second line" "$line" "goodbye world"
+exec {__st_fsfd}<<< "one two three"
+into=s Stream.new --fd="$__st_fsfd" a b c
+$s.read
+$t.assert_eq "fromString field 1" "$a" "one"
+$t.assert_eq "fromString field 2" "$b" "two"
+$t.assert_eq "fromString field 3" "$c" "three"
 $s.close
 
 # ============================================================================
-# Array mode
+# Single-char EOL with -d (colon as record delimiter)
+# ============================================================================
+
+$t.section "single-char EOL (-d)"
+
+printf 'rec1:rec2:rec3' > "$__st_tmp"
+
+into=s Stream.new -P "$__st_tmp" -d ':' line
+$s.read
+$t.assert_eq "-d colon: record 1" "$line" "rec1"
+$s.read
+$t.assert_eq "-d colon: record 2" "$line" "rec2"
+$s.read
+$t.assert_eq "-d colon: record 3 (no trailing delim)" "$line" "rec3"
+$s.read; __st_rc=$?
+$t.assert_ne "-d colon: EOF after last" "$__st_rc" "0"
+$s.close
+
+# ============================================================================
+# Multi-char exact-string EOL with -D (paragraph mode)
+# ============================================================================
+
+$t.section "multi-char EOL (-D paragraph mode)"
+
+printf 'para one\n\npara two\n\npara three' > "$__st_tmp"
+
+into=s Stream.new -P "$__st_tmp" -D $'\n\n' block
+$s.Read
+$t.assert_eq "paragraph 1" "$block" "para one"
+$s.Read
+$t.assert_eq "paragraph 2" "$block" "para two"
+$s.Read
+$t.assert_eq "paragraph 3 (no trailing delim)" "$block" "para three"
+$s.Read; __st_rc=$?
+$t.assert_ne "EOF after paragraphs" "$__st_rc" "0"
+$s.close
+
+# ============================================================================
+# Multi-char EOL: CRLF with embedded bare LF
+# ============================================================================
+
+$t.section "CRLF EOL with embedded bare LF"
+
+# Record 1 has a bare LF in the middle -- should NOT split there
+printf 'line1\nstill line1\r\nline2\r\n' > "$__st_tmp"
+
+into=s Stream.new -P "$__st_tmp" -D $'\r\n' rec
+$s.Read
+$t.assert_eq "CRLF: record with embedded LF" "$rec" $'line1\nstill line1'
+$s.Read
+$t.assert_eq "CRLF: record 2" "$rec" "line2"
+$s.close
+
+# ============================================================================
+# Char-class EOL with -E (runs collapse)
+# ============================================================================
+
+$t.section "char-class EOL (-E, runs collapse)"
+
+# Mix of \r, \n, \r\n between records -- all collapse to one boundary
+printf 'rec1\r\nrec2\nrec3\rrec4\r\n\nrec5' > "$__st_tmp"
+
+into=s Stream.new -P "$__st_tmp" -E $'\r\n' line
+$s.Read
+$t.assert_eq "-E: record 1" "$line" "rec1"
+$s.Read
+$t.assert_eq "-E: record 2" "$line" "rec2"
+$s.Read
+$t.assert_eq "-E: record 3" "$line" "rec3"
+$s.Read
+$t.assert_eq "-E: record 4" "$line" "rec4"
+$s.Read
+$t.assert_eq "-E: record 5 (after collapsed run)" "$line" "rec5"
+$s.Read; __st_rc=$?
+$t.assert_ne "-E: EOF" "$__st_rc" "0"
+$s.close
+
+# ============================================================================
+# Field delimiter: -f (char class, non-stacking, empties preserved)
+# ============================================================================
+
+$t.section "field delimiter -f (non-stacking)"
+
+printf 'a:b::d\n' > "$__st_tmp"
+
+into=s Stream.new -P "$__st_tmp" -f ':' f1 f2 f3 f4
+$s.Read
+$t.assert_eq "-f: field 1" "$f1" "a"
+$t.assert_eq "-f: field 2" "$f2" "b"
+$t.assert_eq "-f: field 3 (empty between ::)" "$f3" ""
+$t.assert_eq "-f: field 4" "$f4" "d"
+$s.close
+
+# ============================================================================
+# Field delimiter: -F (exact string, non-stacking)
+# ============================================================================
+
+$t.section "field delimiter -F (exact string)"
+
+printf 'alpha<>beta<>gamma\n' > "$__st_tmp"
+
+into=s Stream.new -P "$__st_tmp" -F '<>' x y z
+$s.Read
+$t.assert_eq "-F: field 1" "$x" "alpha"
+$t.assert_eq "-F: field 2" "$y" "beta"
+$t.assert_eq "-F: field 3" "$z" "gamma"
+$s.close
+
+# ============================================================================
+# -F: consecutive delimiters produce empty fields
+# ============================================================================
+
+$t.section "-F consecutive delimiters"
+
+printf 'a<><>b\n' > "$__st_tmp"
+
+into=s Stream.new -P "$__st_tmp" -F '<>' x y z
+$s.Read
+$t.assert_eq "-F consec: field 1" "$x" "a"
+$t.assert_eq "-F consec: field 2 (empty)" "$y" ""
+$t.assert_eq "-F consec: field 3" "$z" "b"
+$s.close
+
+# ============================================================================
+# Array mode (-a)
 # ============================================================================
 
 $t.section "array mode"
 
 printf 'a,b,c\nd,e,f\n' > "$__st_tmp"
 
-into=s Stream.open "$__st_tmp" -d ',' -a fields
+into=s Stream.new -P "$__st_tmp" -f ',' -a fields
 $s.Read
 $t.assert_eq "array[0]" "${fields[0]}" "a"
 $t.assert_eq "array[1]" "${fields[1]}" "b"
@@ -80,7 +209,7 @@ $t.section "last field gets rest"
 
 printf 'key=value=with=equals\n' > "$__st_tmp"
 
-into=s Stream.open "$__st_tmp" -d '=' k v
+into=s Stream.new -P "$__st_tmp" -f '=' k v
 $s.Read
 $t.assert_eq "key" "$k" "key"
 $t.assert_eq "value has embedded delimiters" "$v" "value=with=equals"
@@ -92,77 +221,45 @@ $s.close
 
 $t.section "discard with _"
 
-printf 'skip:keep:also_skip\n' > "$__st_tmp"
+printf 'skip keep also_skip\n' > "$__st_tmp"
 
-into=s Stream.open "$__st_tmp" -d ':' _ wanted _
-$s.Read
+into=s Stream.new -P "$__st_tmp" _ wanted _
+$s.read
 $t.assert_eq "middle field kept" "$wanted" "keep"
 $s.close
 
 # ============================================================================
-# fromString
+# Fixed-width mode (-n)
 # ============================================================================
 
-$t.section "fromString"
+$t.section "fixed-width (-n)"
 
-into=s Stream.fromString "one:two:three" -d ':' a b c
+printf 'AAABBBCCC' > "$__st_tmp"
+
+into=s Stream.new -P "$__st_tmp" -n 3 chunk
 $s.Read
-$t.assert_eq "fromString field 1" "$a" "one"
-$t.assert_eq "fromString field 2" "$b" "two"
-$t.assert_eq "fromString field 3" "$c" "three"
+$t.assert_eq "fixed 3: chunk 1" "$chunk" "AAA"
+$s.Read
+$t.assert_eq "fixed 3: chunk 2" "$chunk" "BBB"
+$s.Read
+$t.assert_eq "fixed 3: chunk 3" "$chunk" "CCC"
+$s.Read; __st_rc=$?
+$t.assert_ne "fixed 3: EOF" "$__st_rc" "0"
 $s.close
 
 # ============================================================================
-# readAll (slurp)
+# Fixed-width: partial final record
 # ============================================================================
 
-$t.section "readAll"
+$t.section "fixed-width partial final"
 
-printf 'line1\nline2\nline3\n' > "$__st_tmp"
-into=s Stream.open "$__st_tmp"
-into=all $s.readAll
-$t.assert_contains "readAll has line1" "$all" "line1"
-$t.assert_contains "readAll has line3" "$all" "line3"
-$t.assert_ok "eof after readAll" $s.eof
-$s.close
+printf 'AAABB' > "$__st_tmp"
 
-# ============================================================================
-# Multi-char EOL (slow path)
-# ============================================================================
-
-$t.section "multi-char EOL"
-
-printf 'para one\r\n\r\npara two\r\n\r\npara three' > "$__st_tmp"
-
-into=s Stream.open "$__st_tmp" --eol $'\r\n\r\n' block
+into=s Stream.new -P "$__st_tmp" -n 3 chunk
 $s.Read
-$t.assert_eq "paragraph 1" "$block" "para one"
+$t.assert_eq "fixed partial: chunk 1" "$chunk" "AAA"
 $s.Read
-$t.assert_eq "paragraph 2" "$block" "para two"
-$s.Read
-$t.assert_eq "paragraph 3 (no trailing delim)" "$block" "para three"
-$t.assert_fail "EOF after last paragraph" $s.Read
-$s.close
-
-# ============================================================================
-# Schema string mode
-# ============================================================================
-
-$t.section "schema string"
-
-printf 'alice|30|admin\nbob|25|user\n' > "$__st_tmp"
-
-into=s Stream.open "$__st_tmp" '
-  [Parser]
-  delimiter = |
-
-  [Fields]
-  name age role
-'
-$s.Read
-$t.assert_eq "schema: name" "$name" "alice"
-$t.assert_eq "schema: age" "$age" "30"
-$t.assert_eq "schema: role" "$role" "admin"
+$t.assert_eq "fixed partial: final short chunk" "$chunk" "BB"
 $s.close
 
 # ============================================================================
@@ -171,32 +268,476 @@ $s.close
 
 $t.section "write and writeLine"
 
-into=s Stream.new fd=1 _owned=0
-# We can't easily capture write output in this test framework without
-# a temp file, so test via a subshell that redirects to a file.
-__st_write_out=$(bash -c '
-  . "'"${__boop_root}/boop"'" Stream
-  exec {wfd}> "'"$__st_tmp2"'"
-  into=s Stream.new fd=$wfd _owned=1
-  $s.writeLine "hello"
-  $s.write "world"
-  $s.close
-  cat "'"$__st_tmp2"'"
-')
-$t.assert_eq "writeLine + write output" "$__st_write_out" "$(printf 'hello\nworld')"
-
-# ============================================================================
-# Ownership: close only when owned
-# ============================================================================
-
-$t.section "ownership"
-
-exec {__st_test_fd}< "$__st_tmp"
-into=s Stream.new fd=$__st_test_fd _owned=0
+exec {__st_wfd}> "$__st_tmp2"
+into=s Stream.new --fd="$__st_wfd"
+$s.write "hello"
+$s.writeLine "world"
 $s.close
-# FD should still be open since we don't own it
-$t.assert_ok "FD still open after non-owned close" test -e "/proc/$$/fd/$__st_test_fd" -o true
-exec {__st_test_fd}>&-
+__st_write_out=$(cat "$__st_tmp2")
+$t.assert_eq "write + writeLine" "$__st_write_out" "$(printf 'helloworld\n')"
 
+# ============================================================================
+# Empty records (consecutive delimiters)
+# ============================================================================
+
+$t.section "empty records"
+
+printf '::content:\n' > "$__st_tmp"
+
+into=s Stream.new -P "$__st_tmp" -d ':' rec
+$s.read
+$t.assert_eq "empty record 1" "$rec" ""
+$s.read
+$t.assert_eq "empty record 2" "$rec" ""
+$s.read
+$t.assert_eq "content record" "$rec" "content"
+$s.close
+
+# ============================================================================
+# Final record without trailing delimiter
+# ============================================================================
+
+$t.section "final record no trailing delim"
+
+printf 'first\nsecond\nthird' > "$__st_tmp"
+
+into=s Stream.new -P "$__st_tmp" line
+$s.read
+$t.assert_eq "line 1" "$line" "first"
+$s.read
+$t.assert_eq "line 2" "$line" "second"
+$s.read
+$t.assert_eq "line 3 (no trailing newline)" "$line" "third"
+$s.read; __st_rc=$?
+$t.assert_ne "EOF after unterminated final" "$__st_rc" "0"
+$s.close
+
+# ============================================================================
+# blockSize override (small buffer forces multiple fills)
+# ============================================================================
+
+$t.section "blockSize override"
+
+printf 'abcdefghij\nklmnopqrst\n' > "$__st_tmp"
+
+into=s Stream.new -P "$__st_tmp" -D $'\n' --blockSize=4 line
+$s.Read
+$t.assert_eq "small blockSize: line 1" "$line" "abcdefghij"
+$s.Read
+$t.assert_eq "small blockSize: line 2" "$line" "klmnopqrst"
+$s.close
+
+# ============================================================================
+# Whole-line mode (single field name, no splitting)
+# ============================================================================
+
+$t.section "whole-line mode"
+
+printf 'hello world\ngoodbye world\n' > "$__st_tmp"
+
+into=s Stream.new -P "$__st_tmp" line
+$s.read
+$t.assert_eq "whole line 1" "$line" "hello world"
+$s.read
+$t.assert_eq "whole line 2" "$line" "goodbye world"
+$s.close
+
+# ============================================================================
+# _EOL framework default respected
+# ============================================================================
+
+$t.section "_EOL framework default"
+
+printf 'rec1|rec2|rec3' > "$__st_tmp"
+
+_EOL='|' into=s Stream.new -P "$__st_tmp" line
+$s.read
+$t.assert_eq "_EOL=|: record 1" "$line" "rec1"
+$s.read
+$t.assert_eq "_EOL=|: record 2" "$line" "rec2"
+$s.read
+$t.assert_eq "_EOL=|: record 3" "$line" "rec3"
+$s.close
+printf '\n' >&2  # (manual newline -- _EOL='|' during construction leaves log without trailing LF)
+
+# ============================================================================
+# -D with -f: multi-char record EOL + char-class field delimiter
+# ============================================================================
+
+$t.section "combined -D and -f"
+
+printf 'name:age:role\r\nalice:30:admin\r\nbob:25:user' > "$__st_tmp"
+
+into=s Stream.new -P "$__st_tmp" -D $'\r\n' -f ':' name age role
+$s.Read
+$t.assert_eq "header name" "$name" "name"
+$s.Read
+$t.assert_eq "data name" "$name" "alice"
+$t.assert_eq "data age" "$age" "30"
+$s.Read
+$t.assert_eq "last record name" "$name" "bob"
+$s.close
+
+# ============================================================================
+# EDGE CASES: empty and degenerate inputs
+# ============================================================================
+
+$t.section "empty file"
+
+: > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" line
+$s.read; __st_rc=$?
+$t.assert_ne "empty file: Read returns non-zero" "$__st_rc" "0"
+$t.assert_ok "empty file: eof true" $s.eof
+$s.close
+
+# ---
+
+$t.section "file with only delimiters"
+
+printf ':::' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -d ':' rec
+$s.read
+$t.assert_eq "only delims: record 1 (empty)" "$rec" ""
+$s.read
+$t.assert_eq "only delims: record 2 (empty)" "$rec" ""
+$s.read
+$t.assert_eq "only delims: record 3 (empty)" "$rec" ""
+$s.read; __st_rc=$?
+$t.assert_ne "only delims: EOF after last" "$__st_rc" "0"
+$s.close
+
+# ---
+
+$t.section "single-byte file"
+
+printf 'X' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" line
+$s.read
+$t.assert_eq "single byte: content" "$line" "X"
+$s.read; __st_rc=$?
+$t.assert_ne "single byte: EOF after" "$__st_rc" "0"
+$s.close
+
+# ---
+
+$t.section "delimiter at very start of file"
+
+printf '\nfirst\nsecond\n' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" line
+$s.read
+$t.assert_eq "leading delim: first record is empty" "$line" ""
+$s.read
+$t.assert_eq "leading delim: second record" "$line" "first"
+$s.read
+$t.assert_eq "leading delim: third record" "$line" "second"
+$s.close
+
+# ============================================================================
+# EDGE CASES: blockSize stress
+# ============================================================================
+
+$t.section "blockSize=1 (pathological)"
+
+printf 'hello\nworld\n' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -D $'\n' --blockSize=1 line
+$s.Read
+$t.assert_eq "blockSize=1: line 1" "$line" "hello"
+$s.Read
+$t.assert_eq "blockSize=1: line 2" "$line" "world"
+$s.close
+
+# ---
+
+$t.section "record spanning multiple fills"
+
+# 50-char record with blockSize=8 means ~7 fills per record
+printf '%0.s_' {1..50}; printf '\n' > "$__st_tmp"
+printf '%50s\n' "x" >> "$__st_tmp"
+# Rewrite properly
+printf '%s\n%s\n' "$(printf '%0.s_' {1..50})" "$(printf '%0.sX' {1..50})" > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -D $'\n' --blockSize=8 line
+$s.Read
+$t.assert_eq "spanning: record 1 length" "${#line}" "50"
+$s.Read
+$t.assert_eq "spanning: record 2 length" "${#line}" "50"
+$s.close
+
+# ---
+
+$t.section "multi-char EOL split across buffer boundary"
+
+# blockSize=4, EOL is "XY". Place "XY" so X lands at end of one fill, Y at start of next.
+# "abcXYdef" with blockSize=4: first fill="abcX", second fill="Ydef"
+printf 'abcXYdef' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -D "XY" --blockSize=4 rec
+$s.Read
+$t.assert_eq "split EOL: record 1" "$rec" "abc"
+$s.Read
+$t.assert_eq "split EOL: record 2 (remainder)" "$rec" "def"
+$s.close
+
+# ============================================================================
+# EDGE CASES: field assignment edge cases
+# ============================================================================
+
+$t.section "all fields are discard (_)"
+
+printf 'a:b:c\n' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -f ':' _ _ _
+$t.assert_ok "all discard: Read succeeds" $s.Read
+$s.close
+
+# ---
+
+$t.section "single discard field"
+
+printf 'throwaway\n' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" _
+$t.assert_ok "single discard: Read succeeds" $s.read
+$s.close
+
+# ---
+
+$t.section "field override on Read"
+
+printf 'one:two:three\nfour:five:six\n' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -f ':' a b c
+$s.Read
+$t.assert_eq "override: normal read a" "$a" "one"
+# Override fields for one read
+$s.Read x y z
+$t.assert_eq "override: overridden x" "$x" "four"
+$t.assert_eq "override: overridden y" "$y" "five"
+$t.assert_eq "override: overridden z" "$z" "six"
+$s.close
+
+# ---
+
+$t.section "-F delimiter is substring of data"
+
+printf 'hello<>world<>foo<>bar\n' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -F '<>' a b c d
+$s.Read
+$t.assert_eq "substr delim: a" "$a" "hello"
+$t.assert_eq "substr delim: b" "$b" "world"
+$t.assert_eq "substr delim: c" "$c" "foo"
+$t.assert_eq "substr delim: d (last)" "$d" "bar"
+$s.close
+
+# ---
+
+$t.section "-f with multi-char set"
+
+printf 'a:b|c,d\n' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -f ':|,' f1 f2 f3 f4
+$s.Read
+$t.assert_eq "multi-char set: f1" "$f1" "a"
+$t.assert_eq "multi-char set: f2" "$f2" "b"
+$t.assert_eq "multi-char set: f3" "$f3" "c"
+$t.assert_eq "multi-char set: f4" "$f4" "d"
+$s.close
+
+# ============================================================================
+# EDGE CASES: direct mode with custom IFS
+# ============================================================================
+
+$t.section "direct mode respects IFS"
+
+printf 'a:b:c\n' > "$__st_tmp"
+IFS=':' into=s Stream.new -P "$__st_tmp" x y z
+IFS=':' $s.read
+$t.assert_eq "custom IFS: x" "$x" "a"
+$t.assert_eq "custom IFS: y" "$y" "b"
+$t.assert_eq "custom IFS: z" "$z" "c"
+$s.close
+
+# ---
+
+$t.section "direct mode with -d non-newline"
+
+printf 'rec1|rec2|rec3' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -d '|' line
+$s.read
+$t.assert_eq "direct -d |: record 1" "$line" "rec1"
+$s.read
+$t.assert_eq "direct -d |: record 2" "$line" "rec2"
+$s.read
+$t.assert_eq "direct -d |: record 3" "$line" "rec3"
+$s.close
+
+# ---
+
+$t.section "direct mode -d with IFS field splitting"
+
+printf 'alice 30 admin|bob 25 user|' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -d '|' name age role
+$s.read
+$t.assert_eq "direct -d + IFS: name" "$name" "alice"
+$t.assert_eq "direct -d + IFS: age" "$age" "30"
+$t.assert_eq "direct -d + IFS: role" "$role" "admin"
+$s.read
+$t.assert_eq "direct -d + IFS: name 2" "$name" "bob"
+$s.close
+
+# ============================================================================
+# EDGE CASES: -E with single char
+# ============================================================================
+
+$t.section "-E with single char (collapsing)"
+
+printf 'a\n\n\nb\nc' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -E $'\n' line
+$s.Read
+$t.assert_eq "-E single char: record 1" "$line" "a"
+$s.Read
+$t.assert_eq "-E single char: record 2 (collapsed runs)" "$line" "b"
+$s.Read
+$t.assert_eq "-E single char: record 3" "$line" "c"
+$s.close
+
+# ============================================================================
+# EDGE CASES: high bytes and control chars
+# ============================================================================
+
+$t.section "binary-ish data (high bytes, control chars)"
+
+printf '\x01\x02\x03\n\xff\xfe\xfd\n' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" line
+$s.read
+$t.assert_eq "binary: record 1 length" "${#line}" "3"
+$s.read
+$t.assert_eq "binary: record 2 length" "${#line}" "3"
+$s.close
+
+# ============================================================================
+# EDGE CASES: PE mode interactions
+# ============================================================================
+
+$t.section "PE mode: -D and -F both multi-char"
+
+printf 'a<>b<>c\r\nd<>e<>f\r\n' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -D $'\r\n' -F '<>' x y z
+$s.Read
+$t.assert_eq "PE both multi: x" "$x" "a"
+$t.assert_eq "PE both multi: y" "$y" "b"
+$t.assert_eq "PE both multi: z" "$z" "c"
+$s.Read
+$t.assert_eq "PE both multi: x row2" "$x" "d"
+$s.close
+
+# ============================================================================
+# EDGE CASES: calling Read after close
+# ============================================================================
+
+$t.section "Read after close"
+
+printf 'data\n' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" line
+$s.read
+$s.close
+# After close, the FD is gone. Read should fail (EOF or error).
+$s.read; __st_rc=$?
+$t.assert_ne "Read after close: returns non-zero" "$__st_rc" "0"
+
+# ============================================================================
+# EDGE CASES: very long record
+# ============================================================================
+
+$t.section "very long record (bigger than blockSize)"
+
+# 10000 chars, blockSize=1024
+printf '%10000s' ' ' | tr ' ' 'A' > "$__st_tmp"
+printf '\n' >> "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -D $'\n' --blockSize=1024 line
+$s.Read
+$t.assert_eq "long record: length" "${#line}" "10000"
+$s.close
+
+# ============================================================================
+# EDGE CASES: fixed-width interactions
+# ============================================================================
+
+$t.section "fixed-width with blockSize smaller than nchars"
+
+printf 'AAAAABBBBBCCCCC' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -n 5 --blockSize=3 chunk
+$s.Read
+$t.assert_eq "fixed < blockSize: chunk 1" "$chunk" "AAAAA"
+$s.Read
+$t.assert_eq "fixed < blockSize: chunk 2" "$chunk" "BBBBB"
+$s.Read
+$t.assert_eq "fixed < blockSize: chunk 3" "$chunk" "CCCCC"
+$s.Read; __st_rc=$?
+$t.assert_ne "fixed < blockSize: EOF" "$__st_rc" "0"
+$s.close
+
+# ============================================================================
+# EDGE CASES: _EOL framework default with multi-char value
+# ============================================================================
+
+$t.section "_EOL multi-char framework default"
+
+printf 'rec1\r\nrec2\r\nrec3' > "$__st_tmp"
+_EOL=$'\r\n' into=s Stream.new -P "$__st_tmp" line
+$s.Read
+$t.assert_eq "_EOL CRLF: record 1" "$line" "rec1"
+$s.Read
+$t.assert_eq "_EOL CRLF: record 2" "$line" "rec2"
+$s.Read
+$t.assert_eq "_EOL CRLF: record 3" "$line" "rec3"
+$s.close
+
+# ============================================================================
+# -W: collapsing field delimiter (runs collapse)
+# ============================================================================
+
+$t.section "-W collapsing field delimiter"
+
+printf 'a  b\t\tc   d\n' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -W $' \t' f1 f2 f3 f4
+$s.Read
+$t.assert_eq "-W whitespace: f1" "$f1" "a"
+$t.assert_eq "-W whitespace: f2" "$f2" "b"
+$t.assert_eq "-W whitespace: f3" "$f3" "c"
+$t.assert_eq "-W whitespace: f4" "$f4" "d"
+$s.close
+
+# ---
+
+$t.section "-W vs -f: consecutive delimiters"
+
+printf 'a::b:::c\n' > "$__st_tmp"
+
+# -W collapses runs
+into=s Stream.new -P "$__st_tmp" -W ':' x y z
+$s.Read
+$t.assert_eq "-W collapse: x" "$x" "a"
+$t.assert_eq "-W collapse: y" "$y" "b"
+$t.assert_eq "-W collapse: z (last gets rest)" "$z" "c"
+$s.close
+
+# -f preserves empties (for comparison)
+into=s Stream.new -P "$__st_tmp" -f ':' x y z
+$s.Read
+$t.assert_eq "-f non-stack: x" "$x" "a"
+$t.assert_eq "-f non-stack: y (empty)" "$y" ""
+$t.assert_eq "-f non-stack: z (rest)" "$z" "b:::c"
+$s.close
+
+# ---
+
+$t.section "-W with IFS chars passed in"
+
+printf 'one   two\t\tthree    four\n' > "$__st_tmp"
+into=s Stream.new -P "$__st_tmp" -W "$IFS" a b c d
+$s.Read
+$t.assert_eq "-W IFS: a" "$a" "one"
+$t.assert_eq "-W IFS: b" "$b" "two"
+$t.assert_eq "-W IFS: c" "$c" "three"
+$t.assert_eq "-W IFS: d" "$d" "four"
+$s.close
+
+# ============================================================================
 $t.summary
 

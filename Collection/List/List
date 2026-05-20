@@ -109,7 +109,7 @@ Collection.List.setAt() {
   local -n __Collection_List_setAt_arr="__boop_data_${_Self}"
   local -i __Collection_List_setAt_len=0; (( ${#__Collection_List_setAt_arr[@]} )) && __Collection_List_setAt_len=${#__Collection_List_setAt_arr[@]}
   (( __Collection_List_setAt_idx < 0 )) && (( __Collection_List_setAt_idx += __Collection_List_setAt_len ))
-  (( __Collection_List_setAt_idx < 0 || __Collection_List_setAt_idx > __Collection_List_setAt_len )) && \
+  (( __Collection_List_setAt_idx < 0 || __Collection_List_setAt_idx > __Collection_List_setAt_len )) &&
     _Crash "List index out of range: $1 (length: $__Collection_List_setAt_len)"
   _Trace "setAt: [$__Collection_List_setAt_idx] = '$__Collection_List_setAt_val'"
   __Collection_List_setAt_arr[$__Collection_List_setAt_idx]="$__Collection_List_setAt_val"
@@ -137,7 +137,7 @@ Collection.List.delete() {
   local -n __Collection_List_del_arr="__boop_data_${_Self}"
   local -i __Collection_List_del_len=0; (( ${#__Collection_List_del_arr[@]} )) && __Collection_List_del_len=${#__Collection_List_del_arr[@]}
   (( __Collection_List_del_idx < 0 )) && (( __Collection_List_del_idx += __Collection_List_del_len ))
-  (( __Collection_List_del_idx < 0 || __Collection_List_del_idx >= __Collection_List_del_len )) && \
+  (( __Collection_List_del_idx < 0 || __Collection_List_del_idx >= __Collection_List_del_len )) &&
     _Crash "List index out of range: $1 (length: $__Collection_List_del_len)"
   _Debug "delete: [$__Collection_List_del_idx], length now $(( __Collection_List_del_len - 1 ))"
   unset '__Collection_List_del_arr[$__Collection_List_del_idx]'

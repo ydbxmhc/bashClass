@@ -1,9 +1,10 @@
 # Stream
 
-A record-oriented reader/writer wrapping a file descriptor. Handles
-delimited and fixed-width formats with multi-character delimiter support.
-Parsing is configured once at construction; each `Read` call executes
-the pre-built contract with zero per-iteration overhead.
+A record-oriented reader wrapping a file descriptor. Parsing is
+configured once at construction; each `Read` call executes the
+pre-built contract. Supports single-char delimiters (via bash `read`
+directly), multi-char exact-string delimiters, and char-class
+delimiters with run-collapsing.
 
 ## Loading
 
@@ -16,125 +17,133 @@ the pre-built contract with zero per-iteration overhead.
 ## Quick Start
 
 ```bash
-# Simple: read lines, split on colon, assign fields
-into=s Stream.open "/etc/passwd" -d ':' user _ uid gid desc home shell
-while $s.Read; do
+# Direct mode: read lines, IFS splits on colon
+into=s Stream.new -P "/etc/passwd"
+while IFS=':' $s.read user _ uid gid desc home shell; do
   printf "%s lives at %s\n" "$user" "$home"
 done
 $s.close
 
-# Array mode: CSV into an array each iteration
-into=s Stream.open "data.csv" -d ',' -a row
+# Buffered mode: -f for char-class field splitting
+into=s Stream.new -P "data.csv" -f ',' name age city
 while $s.Read; do
-  printf "first col: %s\n" "${row[0]}"
+  printf "%s is %s\n" "$name" "$age"
 done
 $s.close
 
-# Whole-line (no field splitting)
-into=s Stream.open "log.txt" line
+# Buffered mode: CRLF records with colon-separated fields
+into=s Stream.new -P "windows.log" -D $'\r\n' -f ':' ts level msg
 while $s.Read; do
-  printf "%s\n" "$line"
+  printf "[%s] %s\n" "$level" "$msg"
 done
+$s.close
 ```
 
 ---
 
 ## Construction
 
-Two forms: inline arguments (simple) or schema string (complex).
+```bash
+into=s Stream.new [options] [field names...]
+```
 
-### Inline (simple formats)
+The constructor determines the **parse mode** based on the options
+given and locks it for the object's lifetime. Three modes exist:
+
+| Mode | When chosen | How it reads |
+|------|-------------|--------------|
+| **direct** | Single-char EOL, no `-f`/`-F` | `read -d` from FD directly |
+| **regex** | Char-class EOL (`-E`) or char-class field delim (`-f`) | Buffered, regex match |
+| **pe** | Multi-char exact-string EOL (`-D`) or exact-string field delim (`-F`) | Buffered, parameter expansion |
+
+### Source options (mutually exclusive with fallback)
+
+| Option | Meaning |
+|--------|---------|
+| `-P PATH` / `--path=PATH` | Open file for reading |
+| `-u FD` / `--fd=FD` | Use an already-open FD |
+| *(neither)* | Dup stdin |
+
+### Record delimiter options (mutually exclusive)
+
+| Option | Meaning | Mode |
+|--------|---------|------|
+| `-d CHAR` | Single-char EOL, exact | direct |
+| `-D STRING` | Multi-char EOL, exact string, non-stacking | pe |
+| `-E CHARS` | EOL char class -- any char in set, runs collapse | regex |
+| *(default)* | `${_EOL:-\n}`. Length determines mode. | auto |
+
+### Field delimiter options (mutually exclusive)
+
+| Option | Meaning | Mode |
+|--------|---------|------|
+| `-f CHARS` | Any single char in set, non-stacking (empties preserved) | regex |
+| `-F STRING` | Exact multi-char string, non-stacking | pe |
+| `-W CHARS` | Char class, stacking (runs of delimiters collapse into one boundary) | regex |
+| *(default, direct mode)* | IFS splitting -- user controls IFS | direct |
+| *(default, buffered mode)* | Defaults to record delimiter (one field per record) | buffered |
+
+`-W` is the buffered-mode equivalent of IFS whitespace behavior. Use
+`-W "$IFS"` to get collapsing-whitespace field splitting in buffered mode.
+Unlike IFS, `-W` treats ALL chars in the set identically (no special
+whitespace vs non-whitespace distinction).
+
+**Note:** Stream does NOT read the `_Delimiter` framework global. Use
+`-f`, `-F`, or `-W` explicitly. If you want `_Delimiter`'s value, pass
+it: `-f "$_Delimiter"`.
+
+### Other options
+
+| Option | Meaning |
+|--------|---------|
+| `-a NAME` | Array mode: all fields into named array |
+| `-n N` / `-N N` | Fixed-width: read exactly N chars per record |
+| `-t N` | Timeout in seconds (direct mode: passed to `read`) |
+| `-b N` / `--blockSize=N` | Buffer fill size (default: 1024). Buffered modes only. |
+
+### Positional arguments
+
+Everything after the options that isn't recognized as an option is a
+**field name**. Field names must be valid bash identifiers. The last
+field gets "the rest" (same as bash `read`). Use `_` to discard a field.
 
 ```bash
-into=s Stream.open PATH [options] [field names...]
-into=s Stream.new fd=N [options] [field names...]
-into=s Stream.fromString "$data" [options] [field names...]
-```
-
-Options:
-- `-d CHAR` -- field delimiter (default: `${_Delimiter}`, fallback `=`)
-- `--eol STR` -- record delimiter (default: `${_EOL}`, fallback `\n`)
-- `-a NAME` -- array mode: all fields into `$NAME` indexed array
-- `-n N` -- read exactly N characters (fixed-width record, no EOL scan)
-- `-t N` -- timeout in seconds (0 = non-blocking poll)
-
-Positional args after options are field variable names. Last variable
-gets "the rest" (same as bash `read`). `_` discards a field.
-
-### Schema string (complex formats)
-
-```bash
-into=s Stream.open "batch.dat" '
-  [Parser]
-  eol       = \n
-  delimiter = |
-  mode      = delimited
-
-  [Fields]
-  name age city country
-'
-```
-
-The schema is a single-quoted multi-line string parsed the same way
-Args parses its schema -- line by line, section headers in brackets,
-comments with `#`. Sections:
-
-#### `[Parser]`
-
-| Key | Default | Meaning |
-|-----|---------|---------|
-| `eol` | `\n` | Record delimiter. Multi-char OK. |
-| `delimiter` | (context) | Field delimiter. |
-| `mode` | `delimited` | `delimited` or `fixed` |
-| `switch` | (none) | Field name used as format discriminator |
-| `trim` | `false` | Trim trailing whitespace from fields |
-
-#### `[Fields]` (delimited mode)
-
-Space-separated field names on one line. `_` discards. Last field
-gets the remainder.
-
-```
-user _ uid gid desc home shell
-```
-
-#### `[Format NAME]` (fixed-width mode)
-
-Each token is `WIDTH:FIELDNAME`. Fields are extracted by position.
-Multiple `[Format]` sections define a union-of-structs layout; the
-`switch` key in `[Parser]` names the discriminator field.
-
-```
-[Parser]
-mode   = fixed
-switch = type
-
-[Format 00]
-2:type  20:account  30:desc
-
-[Format 01]
-2:type  20:dept
-
-[Format 09]
-2:type  20:user  10:role
+into=s Stream.new -P "data.csv" -f ',' name age _ city
+#                                       ^^^^ ^^^ ^ ^^^^
+#                                       f1   f2  discard  f3 (gets remainder)
 ```
 
 ---
 
 ## Methods
 
-### `$s.Read`
+### `$s.read` (direct mode)
 
-Read one record and assign fields per the construction contract.
+Thin wrapper around bash's `read` builtin. Available only on direct-mode
+objects (no `-D`, `-E`, `-f`, `-F`, `-W`, `-n`). IFS does field splitting.
+Behaves exactly like `read` with the FD pre-wired.
 
-**No arguments (hot path):** executes the pre-built parsing logic.
-One `(( $# ))` check -- if no args, straight into the fast path.
+Returns 0 on success, 1 on EOF.
 
-**With arguments (override):** temporarily overrides field names or
-options for this one read. Useful when a stream has mixed record
-types that can't be fully described by a static schema.
+```bash
+while $s.read; do
+  # fields populated via IFS splitting
+done
 
-Returns exit code 0 on success, 1 on EOF.
+# With custom IFS:
+while IFS=':' $s.read; do ...
+```
+
+### `$s.Read [field_override...]` (buffered mode)
+
+Buffered framework reader. Available only on buffered-mode objects
+(constructed with `-D`, `-E`, `-f`, `-F`, `-W`, or `-n`). Field
+splitting uses the configured delimiter, NOT IFS.
+
+- **No arguments (hot path):** uses the pre-configured field names.
+- **With arguments:** temporarily overrides field names for this one read.
+
+Returns 0 on success, 1 on EOF.
 
 ```bash
 while $s.Read; do
@@ -142,108 +151,227 @@ while $s.Read; do
 done
 ```
 
+**Only one of `$s.read` or `$s.Read` is available per object.** Calling
+the wrong one returns an error. The constructor logs which is live.
+
+### `$s.eof`
+
+Returns exit code 0 if the stream is exhausted. Use after a Read
+returns non-zero to distinguish EOF from error.
+
+### `$s.close`
+
+Close the stream's FD. Always closes -- there is no ownership tracking.
+If you passed in an FD you still need, don't call close.
+
 ### `$s.write STR`
 
 Write a string to the stream's FD. No delimiter appended.
 
 ### `$s.writeLine STR`
 
-Write a string followed by `_EOL` to the stream's FD.
-
-### `$s.eof`
-
-Exit 0 if the FD is exhausted and the internal buffer is empty.
-
-### `$s.close`
-
-Close the FD if the stream owns it (opened via `Stream.open`).
-No-op if the FD was passed in (caller owns it).
-
-### `$s.readAll`
-
-Drain the FD and return everything as a single string. Ignores
-record/field delimiters -- pure slurp.
+Write a string followed by the record EOL to the stream's FD.
 
 ---
 
-## Internal: The Read Algorithm
+## The CRLF Contract
 
-### Fast path (single-char EOL)
+**This is important.** When the record delimiter is set to an exact
+multi-char string (e.g. `\r\n` via `-D`), the delimiter must match
+IN FULL to trigger a record boundary. A bare `\n` inside the record
+is just data -- it does NOT split the record.
 
-When `_EOL` is one character, `Read` uses bash's `read -d` builtin
-directly. Zero buffering overhead. This is the common case.
+This means:
+- `-D $'\r\n'` with data `"line1\nstill line1\r\nline2\r\n"` produces
+  two records: `"line1\nstill line1"` and `"line2"`.
+- The embedded `\n` is preserved in the first record.
 
-```bash
-IFS="$delimiter" read -r -d "$eol" -u "$fd" field1 field2 ...
+If you want ANY newline-like character to split records (bare LF, bare
+CR, CRLF all treated as boundaries), use `-E $'\r\n'` instead. That's
+char-class mode with run-collapsing -- any sequence of CR and/or LF
+characters constitutes one record boundary.
+
+---
+
+## Parse Modes in Detail
+
+### Direct Mode
+
+The constructor pre-builds a complete `read` argument array:
+```
+(-r -d "$eol" -u "$fd" field1 field2 field3)
 ```
 
-### Slow path (multi-char EOL)
-
-When `_EOL` is longer than one character, `Read` maintains an internal
-buffer string and scans for the delimiter using parameter expansion:
-
-1. `tail = buffer contents not yet consumed`
-2. `match = ${tail%%"$eol"*}` -- everything before first occurrence
-3. If `match` is shorter than `tail`: found. Extract record, trim buffer.
-4. If equal: not found. Append more from FD (`read -N 8192`), retry.
-5. FD exhausted + buffer non-empty: return remainder (final record).
-6. FD exhausted + buffer empty: EOF.
-
-### Fixed-width path
-
-No delimiter scanning. Each `Read` pulls exactly `record_length` bytes
-(`read -N $len`), then slices into fields by offset:
-
+Each `$s.Read` call is literally:
 ```bash
-field="${record:offset:width}"
+read "${args[@]}"
 ```
 
-Pure parameter expansion. O(1) per field.
+One builtin call. No buffering, no string manipulation, no overhead
+beyond method dispatch. IFS splitting works exactly as it does with
+bare `read` -- the user controls IFS, we don't touch it.
 
-### Format-switching
+**When to use:** simple line-oriented parsing where `read` does
+everything you need. This is the default for newline-delimited data
+with no multi-char delimiter options.
 
-After extracting the record, peek at the discriminator field (always
-at a known offset in fixed-width mode). Hash-lookup the format spec.
-Apply that format's offset/width table to assign fields.
+### Regex Mode (buffered)
+
+Used when `-E` (char-class EOL) or `-f` (char-class field delimiter)
+is specified. The constructor builds anchored regexes:
+
+- Record regex: `^([^CHARS]*)[CHARS]+` (captures record, consumes delimiter run)
+- Field regex: `^([^CHARS]*)[CHARS]` (captures one field, consumes one delimiter char)
+
+Each Read:
+1. Apply record regex to buffer
+2. No match? Fill buffer from FD, retry
+3. Match? Extract record from `BASH_REMATCH[1]`, advance buffer
+4. Split record into fields using field regex + nameref assignment
+
+### PE Mode (buffered)
+
+Used when `-D` (exact-string EOL) or `-F` (exact-string field delimiter)
+is specified. Uses parameter expansion:
+
+- Record extraction: `${buf%%"$eol"*}` (everything before first EOL)
+- Buffer advance: `${buf#*"$eol"}` (everything after first EOL)
+- Field extraction: same pattern with field delimiter
+
+Handles arbitrary multi-char delimiters that can't be expressed as
+regex character classes (e.g. `<>`, `::`, `\r\n`).
 
 ---
 
-## Ownership and Lifecycle
+## Field Assignment
 
-- `Stream.open PATH` -- Stream opens the FD, owns it, closes on `$s.close`
-  or object destruction.
-- `Stream.new fd=N` -- caller owns the FD. Stream reads/writes it but
-  never closes it.
-- `Stream.fromString "$data"` -- Stream creates a here-string FD
-  internally, owns it.
+Fields are assigned via **nameref** -- no `eval`, no `read <<<`, no
+IFS manipulation in buffered modes. The field names array is stored
+as a real bash indexed array (not a joined string).
 
----
+```bash
+# Internal assignment loop (simplified):
+for vname in "${fields[@]}"; do
+  [[ "$vname" == "_" ]] && continue
+  local -n ref="$vname"
+  ref="$value"
+done
+```
 
-## Relationship to _EOL and _Delimiter
-
-The stream reads `_EOL` and `_Delimiter` at construction time and
-stores them as properties. Subsequent changes to the global variables
-do not affect an already-opened stream -- the contract is locked in
-at open time. This is intentional: a stream's parsing behavior should
-not change mid-read because someone set a global elsewhere.
-
-Per-read overrides (via arguments to `Read`) are the escape hatch for
-streams that need to change behavior mid-flight.
+In direct mode, `read` handles field assignment natively (field names
+are passed directly as arguments to `read`).
 
 ---
 
-## Performance Notes
+## Performance
 
-- **Hot path:** `Read` with no arguments, single-char EOL, delimited
-  mode. One `read` builtin call per record. As fast as a bare
-  `while read` loop with the same IFS/delimiter settings.
-- **Multi-char EOL:** adds one string scan per record (parameter
-  expansion, no fork). Cost is proportional to buffer size, not
-  record count.
-- **Fixed-width:** one `read -N` per record, then N parameter
-  expansions for N fields. No scanning, no delimiter search.
-- **Object overhead:** one boop method dispatch per `Read` call.
-  For bulk processing (millions of records), consider the raw
-  `read` builtin with the same IFS settings. Stream is for
-  convenience and correctness, not for beating raw bash.
+### Overhead
+
+Stream adds per-record overhead from method dispatch and data access.
+Benchmarks on 1000 records:
+
+| Mode | Time | vs raw `read` |
+|------|------|---------------|
+| Direct (whole line) | ~1.4s | ~10x |
+| Direct (IFS split, 5 fields) | ~1.4s | ~7x |
+| Buffered PE (whole line) | ~2.3s | ~16x |
+| Buffered PE (5 fields, -f) | ~3.2s | ~17x |
+| Buffered regex (-E) | ~1.7s | ~12x |
+
+The overhead is dominated by method dispatch and hash lookups, not by
+the parsing algorithm. For bulk processing (millions of records), use
+raw `read`. Stream is for convenience and correctness on structured
+data -- hundreds to low thousands of records.
+
+### Block Size
+
+Benchmarking shows block size has negligible impact in the 256-2048
+range. Default is 1024. Override with `--blockSize=N` if you have a
+specific reason (e.g. very long records where a larger buffer avoids
+multiple refills).
+
+### Optimization: `__Stream_data`
+
+Stream stores per-object configuration in a single global associative
+array (`__Stream_data`) with compound keys (`"${objId}.property"`).
+This eliminates the `__boop.get` function call overhead that would
+otherwise dominate the hot path. The property system is still used
+for introspection but not in the read loop.
+
+---
+
+## Null Bytes
+
+Bash variables cannot hold `\0`. Stream operates on text only.
+Binary data with embedded nulls is out of scope.
+
+---
+
+## Examples
+
+### CSV with header
+
+```bash
+into=s Stream.new -P "data.csv" -f ','
+$s.Read header_line  # first record into a single variable
+# Now read data rows with known fields:
+while $s.Read name age city; do
+  printf "%s (%s) from %s\n" "$name" "$age" "$city"
+done
+$s.close
+```
+
+### Paragraph mode (double-newline separated)
+
+```bash
+into=s Stream.new -P "document.txt" -D $'\n\n' paragraph
+while $s.Read; do
+  printf "=== PARAGRAPH ===\n%s\n\n" "$paragraph"
+done
+$s.close
+```
+
+### Mixed line endings (any CR/LF combination)
+
+```bash
+into=s Stream.new -P "messy.log" -E $'\r\n' line
+while $s.Read; do
+  process_line "$line"
+done
+$s.close
+```
+
+### Fixed-width records
+
+```bash
+into=s Stream.new -P "mainframe.dat" -n 80 record
+while $s.Read; do
+  # Slice fields by position
+  type="${record:0:2}"
+  account="${record:2:20}"
+  amount="${record:22:10}"
+done
+$s.close
+```
+
+### Array mode
+
+```bash
+into=s Stream.new -P "data.tsv" -f $'\t' -a row
+while $s.Read; do
+  printf "columns: %d, first: %s\n" "${#row[@]}" "${row[0]}"
+done
+$s.close
+```
+
+### Writing
+
+```bash
+exec {fd}> "output.txt"
+into=s Stream.new --fd="$fd"
+$s.writeLine "header line"
+$s.writeLine "data line 1"
+$s.write "no newline after this"
+$s.close
+```
 

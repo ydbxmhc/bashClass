@@ -1,0 +1,231 @@
+#!/bin/bash
+
+# Stream benchmarks -- comparative timing against raw read, and
+# standalone benchmarks for features only Stream provides.
+#
+# Usage: bash tests/bench/bench_stream
+#
+# Each benchmark runs N iterations and reports wall-clock time.
+# Results are relative -- absolute times depend on the machine.
+
+. boop Stream
+
+__boop.setLogLevel warn
+
+# --- Config ---
+LINES=1000
+FIELDS=5
+DELIM=':'
+
+# --- Generate test data ---
+__bench_tmp=$(mktemp)
+trap 'rm -f "$__bench_tmp" "$__bench_tmp2"' EXIT
+
+# Delimited data: 1000 lines, 5 colon-separated fields
+for (( i=0; i < LINES; i++ )); do
+  printf 'field1%sfield2%sfield3%sfield4%sfield5\n' "$DELIM" "$DELIM" "$DELIM" "$DELIM"
+done > "$__bench_tmp"
+
+__bench_filesize=$(wc -c < "$__bench_tmp")
+printf "Test data: %d lines, %d bytes, delimiter='%s'\n\n" "$LINES" "$__bench_filesize" "$DELIM"
+
+# --- Timing helper ---
+__bench_start=""
+__bench_label=""
+bench_start() {
+  __bench_label="$1"
+  __bench_start="$EPOCHREALTIME"
+}
+bench_end() {
+  local __bench_end="$EPOCHREALTIME"
+  local __bench_elapsed
+  printf -v __bench_elapsed "%.3f" "$(( ${__bench_end//.} - ${__bench_start//.} ))e-6"
+  printf "  %-50s %ss\n" "$__bench_label" "$__bench_elapsed"
+}
+
+# ============================================================================
+printf "=== COMPARATIVE: Stream vs raw read (same task) ===\n\n"
+# ============================================================================
+
+# --- Benchmark 1: read lines, no field splitting ---
+
+bench_start "raw read: whole lines ($LINES lines)"
+while IFS= read -r line; do
+  :
+done < "$__bench_tmp"
+bench_end
+
+bench_start "Stream direct: whole lines ($LINES lines)"
+into=s Stream.new -P "$__bench_tmp" line
+while $s.Read; do
+  :
+done
+$s.close
+bench_end
+
+printf "\n"
+
+# --- Benchmark 2: read lines with IFS field splitting ---
+
+bench_start "raw read: IFS split into 5 fields ($LINES lines)"
+while IFS="$DELIM" read -r a b c d e; do
+  :
+done < "$__bench_tmp"
+bench_end
+
+bench_start "Stream direct: IFS split -d newline ($LINES lines)"
+IFS="$DELIM" into=s Stream.new -P "$__bench_tmp" a b c d e
+while IFS="$DELIM" $s.Read; do
+  :
+done
+$s.close
+bench_end
+
+printf "\n"
+
+# --- Benchmark 3: read with non-newline record delimiter ---
+
+# Generate colon-delimited records (no newlines)
+__bench_tmp2=$(mktemp)
+for (( i=0; i < LINES; i++ )); do
+  printf 'record_%04d|' "$i"
+done > "$__bench_tmp2"
+
+bench_start "raw read -d '|': $LINES records"
+while IFS= read -r -d '|' rec; do
+  :
+done < "$__bench_tmp2"
+bench_end
+
+bench_start "Stream direct -d '|': $LINES records"
+into=s Stream.new -P "$__bench_tmp2" -d '|' rec
+while $s.Read; do
+  :
+done
+$s.close
+bench_end
+
+printf "\n"
+
+# ============================================================================
+printf "=== STREAM-ONLY: features raw read can't do ===\n\n"
+# ============================================================================
+
+# --- Benchmark 4: multi-char EOL (CRLF) ---
+
+__bench_tmp_crlf=$(mktemp)
+trap 'rm -f "$__bench_tmp" "$__bench_tmp2" "$__bench_tmp_crlf"' EXIT
+for (( i=0; i < LINES; i++ )); do
+  printf 'line_%04d\r\n' "$i"
+done > "$__bench_tmp_crlf"
+
+bench_start "Stream -D CRLF: $LINES records (buffered pe)"
+into=s Stream.new -P "$__bench_tmp_crlf" -D $'\r\n' line
+while $s.Read; do
+  :
+done
+$s.close
+bench_end
+
+printf "\n"
+
+# --- Benchmark 5: char-class EOL with collapsing ---
+
+bench_start "Stream -E (collapse CR/LF): $LINES records (buffered regex)"
+into=s Stream.new -P "$__bench_tmp_crlf" -E $'\r\n' line
+while $s.Read; do
+  :
+done
+$s.close
+bench_end
+
+printf "\n"
+
+# --- Benchmark 6: char-class field delimiter (-f) ---
+
+bench_start "Stream -f ':' field split: $LINES records, 5 fields (buffered)"
+into=s Stream.new -P "$__bench_tmp" -f "$DELIM" a b c d e
+while $s.Read; do
+  :
+done
+$s.close
+bench_end
+
+printf "\n"
+
+# --- Benchmark 7: exact-string field delimiter (-F) ---
+
+# Generate data with multi-char delimiter
+__bench_tmp_mc=$(mktemp)
+trap 'rm -f "$__bench_tmp" "$__bench_tmp2" "$__bench_tmp_crlf" "$__bench_tmp_mc"' EXIT
+for (( i=0; i < LINES; i++ )); do
+  printf 'alpha<>beta<>gamma<>delta<>epsilon\n' 
+done > "$__bench_tmp_mc"
+
+bench_start "Stream -F '<>' field split: $LINES records, 5 fields (buffered pe)"
+into=s Stream.new -P "$__bench_tmp_mc" -F '<>' a b c d e
+while $s.Read; do
+  :
+done
+$s.close
+bench_end
+
+printf "\n"
+
+# --- Benchmark 8: fixed-width reads ---
+
+__bench_tmp_fixed=$(mktemp)
+trap 'rm -f "$__bench_tmp" "$__bench_tmp2" "$__bench_tmp_crlf" "$__bench_tmp_mc" "$__bench_tmp_fixed"' EXIT
+# 1000 records of 20 chars each
+for (( i=0; i < LINES; i++ )); do
+  printf '%020d' "$i"
+done > "$__bench_tmp_fixed"
+
+bench_start "Stream -n 20 fixed-width: $LINES records (buffered)"
+into=s Stream.new -P "$__bench_tmp_fixed" -n 20 chunk
+while $s.Read; do
+  :
+done
+$s.close
+bench_end
+
+printf "\n"
+
+# --- Benchmark 9: small blockSize stress ---
+
+bench_start "Stream blockSize=64: $LINES lines (many refills)"
+into=s Stream.new -P "$__bench_tmp" -D $'\n' --blockSize=64 line
+while $s.Read; do
+  :
+done
+$s.close
+bench_end
+
+bench_start "Stream blockSize=8192: $LINES lines (few refills)"
+into=s Stream.new -P "$__bench_tmp" -D $'\n' --blockSize=8192 line
+while $s.Read; do
+  :
+done
+$s.close
+bench_end
+
+printf "\n"
+
+# --- Benchmark 10: combined -D and -f (CRLF records, colon fields) ---
+
+__bench_tmp_combo=$(mktemp)
+trap 'rm -f "$__bench_tmp" "$__bench_tmp2" "$__bench_tmp_crlf" "$__bench_tmp_mc" "$__bench_tmp_fixed" "$__bench_tmp_combo"' EXIT
+for (( i=0; i < LINES; i++ )); do
+  printf 'name%sage%srole%sdept%sid\r\n' "$DELIM" "$DELIM" "$DELIM" "$DELIM"
+done > "$__bench_tmp_combo"
+
+bench_start "Stream -D CRLF -f ':': $LINES records, 5 fields"
+into=s Stream.new -P "$__bench_tmp_combo" -D $'\r\n' -f "$DELIM" a b c d e
+while $s.Read; do
+  :
+done
+$s.close
+bench_end
+
+printf "\n=== DONE ===\n"
+

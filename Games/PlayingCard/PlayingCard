@@ -54,7 +54,7 @@ Games.PlayingCard.render() {
   local __Games_PlayingCard_render_fg=$'\033[30;47m'       # black on white
   local __Games_PlayingCard_render_suit_fg=$'\033[30;47m'  # default: black
   local __Games_PlayingCard_render_rs=$'\033[0m'
-  if [[ "$__Games_PlayingCard_render_suit" == '♥' || \
+  if [[ "$__Games_PlayingCard_render_suit" == '♥' ||
         "$__Games_PlayingCard_render_suit" == '♦' ]]; then
     __Games_PlayingCard_render_suit_fg=$'\033[31;47m'      # red on white
   fi

@@ -64,22 +64,22 @@ __Data_JSON_skipWS() {
 # Appends the decoded UTF-8 bytes to __Data_JSON_strResult.
 __Data_JSON_parseUnicode() {
   local __Data_JSON_pu_hex="${__Data_JSON_src:__Data_JSON_pos:4}"
-  [[ "$__Data_JSON_pu_hex" =~ ^[0-9A-Fa-f]{4}$ ]] || \
+  [[ "$__Data_JSON_pu_hex" =~ ^[0-9A-Fa-f]{4}$ ]] ||
     __Data_JSON_fail "Data.JSON: invalid \\u escape: '$__Data_JSON_pu_hex'" || return 1
   (( __Data_JSON_pos += 4 ))
   local -i __Data_JSON_pu_code=$((16#$__Data_JSON_pu_hex))
 
   # High surrogate: expect a low surrogate to follow as \uXXXX
   if (( __Data_JSON_pu_code >= 0xD800 && __Data_JSON_pu_code <= 0xDBFF )); then
-    [[ "${__Data_JSON_src:__Data_JSON_pos:2}" == '\u' ]] || \
+    [[ "${__Data_JSON_src:__Data_JSON_pos:2}" == '\u' ]] ||
       __Data_JSON_fail "Data.JSON: unpaired high surrogate \\u$__Data_JSON_pu_hex" || return 1
     (( __Data_JSON_pos += 2 ))
     local __Data_JSON_pu_lowHex="${__Data_JSON_src:__Data_JSON_pos:4}"
-    [[ "$__Data_JSON_pu_lowHex" =~ ^[0-9A-Fa-f]{4}$ ]] || \
+    [[ "$__Data_JSON_pu_lowHex" =~ ^[0-9A-Fa-f]{4}$ ]] ||
       __Data_JSON_fail "Data.JSON: invalid \\u escape in surrogate pair: '$__Data_JSON_pu_lowHex'" || return 1
     (( __Data_JSON_pos += 4 ))
     local -i __Data_JSON_pu_low=$((16#$__Data_JSON_pu_lowHex))
-    (( __Data_JSON_pu_low >= 0xDC00 && __Data_JSON_pu_low <= 0xDFFF )) || \
+    (( __Data_JSON_pu_low >= 0xDC00 && __Data_JSON_pu_low <= 0xDFFF )) ||
       __Data_JSON_fail "Data.JSON: invalid low surrogate \\u$__Data_JSON_pu_lowHex" || return 1
     __Data_JSON_pu_code=$(( 0x10000 + ((__Data_JSON_pu_code - 0xD800) << 10) + (__Data_JSON_pu_low - 0xDC00) ))
   elif (( __Data_JSON_pu_code >= 0xDC00 && __Data_JSON_pu_code <= 0xDFFF )); then
@@ -182,7 +182,7 @@ __Data_JSON_parseNumber() {
 __Data_JSON_parseValue() {
   local __Data_JSON_parseValue_prefix="$1"
   __Data_JSON_skipWS
-  (( __Data_JSON_pos < __Data_JSON_len )) || \
+  (( __Data_JSON_pos < __Data_JSON_len )) ||
     __Data_JSON_fail "Data.JSON: unexpected end of input" || return 1
 
   local __Data_JSON_parseValue_c="${__Data_JSON_src:__Data_JSON_pos:1}"
@@ -205,14 +205,14 @@ __Data_JSON_parseValue() {
       while :; do
         __Data_JSON_skipWS
         # Key
-        [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == '"' ]] || \
+        [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == '"' ]] ||
           __Data_JSON_fail "Data.JSON: expected '\"' for object key" || return 1
         (( __Data_JSON_pos++ ))
         __Data_JSON_parseString || return 1
         local __Data_JSON_parseValue_key="$__Data_JSON_strResult"
         __Data_JSON_skipWS
         # Colon
-        [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == ":" ]] || \
+        [[ "${__Data_JSON_src:__Data_JSON_pos:1}" == ":" ]] ||
           __Data_JSON_fail "Data.JSON: expected ':'" || return 1
         (( __Data_JSON_pos++ ))
         # Value
@@ -266,21 +266,21 @@ __Data_JSON_parseValue() {
       ;;
     't')
       # true
-      [[ "${__Data_JSON_src:__Data_JSON_pos:4}" == "true" ]] || \
+      [[ "${__Data_JSON_src:__Data_JSON_pos:4}" == "true" ]] ||
         __Data_JSON_fail "Data.JSON: invalid token" || return 1
       (( __Data_JSON_pos += 4 ))
       __Data_JSON_storeLeaf "$__Data_JSON_parseValue_prefix" "true"
       ;;
     'f')
       # false
-      [[ "${__Data_JSON_src:__Data_JSON_pos:5}" == "false" ]] || \
+      [[ "${__Data_JSON_src:__Data_JSON_pos:5}" == "false" ]] ||
         __Data_JSON_fail "Data.JSON: invalid token" || return 1
       (( __Data_JSON_pos += 5 ))
       __Data_JSON_storeLeaf "$__Data_JSON_parseValue_prefix" "false"
       ;;
     'n')
       # null
-      [[ "${__Data_JSON_src:__Data_JSON_pos:4}" == "null" ]] || \
+      [[ "${__Data_JSON_src:__Data_JSON_pos:4}" == "null" ]] ||
         __Data_JSON_fail "Data.JSON: invalid token" || return 1
       (( __Data_JSON_pos += 4 ))
       __Data_JSON_storeLeaf "$__Data_JSON_parseValue_prefix" ""

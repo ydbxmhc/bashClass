@@ -1,6 +1,32 @@
-# boop Framework — Development Log
+# boop Framework -- Development Log
 
 Completed work items, extracted from TODO.md. Most recent first.
+
+---
+
+## Stream Class -- Core Implementation
+
+**Completed:** 2026-05-20
+
+Record-oriented reader wrapping a file descriptor. Three parse modes
+(direct/regex/pe) chosen at construction and locked for the object's life.
+
+- Constructor parses options via Args into a Config object
+- Direct mode: pre-built `read` args array, one builtin call per record
+- Buffered modes: regex or parameter expansion for record/field extraction
+- Field assignment via nameref (no eval, no `read <<<`)
+- Field names stored as real arrays (`__boop_data_${_Self}_fields`)
+- Object data in `__Stream_data` global associative array (eliminates
+  `__boop.get` overhead -- 2-3x speedup over property system)
+- Record delimiters: `-d` (single char), `-D` (exact string), `-E` (char class, collapsing)
+- Field delimiters: `-f` (char class, non-stacking), `-F` (exact string)
+- Fixed-width mode (`-n N`)
+- Field-name validation (rejects non-identifiers)
+- 138 tests passing (unit + edge cases)
+- Benchmarks at `tests/bench/bench_stream` and `tests/bench/bench_blocksize_rigorous`
+- Args `[Exclusive]` section added for mutual exclusion validation
+- Removed unnecessary continuation backslashes across entire codebase (45 instances)
+- Logging format updated: timestamp + right-justified 7-char level tag
 
 ---
 

@@ -342,10 +342,10 @@ __boop.log() {
   [[ "$__boop_log_caller" =~ ^_(Error|Warn|Info|Debug|Trace)$ ]] &&
     __boop_log_caller="${FUNCNAME[3]:-main}"
 
-  # Format: [LEVEL] caller: message
+  # Format: timestamp [LEVEL] caller: message
   local __boop_log_label="${__boop_logLevelName[$__boop_log_level]:-LOG}"
-  printf '[%s] %s: ' "$__boop_log_label" "$__boop_log_caller"
-  printf '%s' "$@" $'\n'
+  printf '%(%Y-%m-%d %H:%M:%S)T %7s %s: ' -1 "[$__boop_log_label]" "$__boop_log_caller"
+  printf '%s' "$@" "${_EOL}"
 
   # Fatality check. Same hot/cold resolution as the log threshold above,
   # but against __boop_classFatalLevel / __boop_fatalLevel. If the message
@@ -1032,7 +1032,7 @@ __boop.methodResolve() {
   local __boop_methodResolve_class="$1" __boop_methodResolve_method="$2"
   local -n __boop_methodResolve_out="$3"
 
-  [[ -n "${__boop_registry[$__boop_methodResolve_class]:-}" ]] || \
+  [[ -n "${__boop_registry[$__boop_methodResolve_class]:-}" ]] ||
     _Crash "Unknown class: '$__boop_methodResolve_class'"
 
   # Cache key — same cache as dispatch, they share the registry
@@ -1045,7 +1045,7 @@ __boop.methodResolve() {
   while [[ -n "$__boop_methodResolve_current" ]]; do
     __boop_methodResolve_out="${__boop_methodRegistry[$__boop_methodResolve_current.$__boop_methodResolve_method]:-}"
     if [[ -n "$__boop_methodResolve_out" ]]; then
-      [[ "$__boop_methodResolve_current" != "$__boop_methodResolve_class" ]] && \
+      [[ "$__boop_methodResolve_current" != "$__boop_methodResolve_class" ]] &&
         __boop_methodRegistry[$__boop_methodResolve_cachekey]="$__boop_methodResolve_out"
       return
     fi
@@ -1255,7 +1255,7 @@ __boop.toString() {
   # Pretty print: columnar alignment
   local -i __boop_toString_maxlen=0 __boop_toString_i
   for (( __boop_toString_i=0; __boop_toString_i < ${#__boop_toString_keys[@]}; __boop_toString_i++ )); do
-    (( ${#__boop_toString_keys[$__boop_toString_i]} > __boop_toString_maxlen )) && \
+    (( ${#__boop_toString_keys[$__boop_toString_i]} > __boop_toString_maxlen )) &&
       __boop_toString_maxlen=${#__boop_toString_keys[$__boop_toString_i]} || true
   done
 
@@ -1468,7 +1468,7 @@ __boop.backfillMethods() {
     for __boop_backfillMethods_mixin in "${__boop_backfillMethods_mArr[@]}"; do
       [[ -n "$__boop_backfillMethods_mixin" ]] || continue
       __boop_backfillMethods_mmethods=""
-      [[ "${__boop_mixin_registry[$__boop_backfillMethods_mixin]:-}" =~ \|methods=([^|]*)\| ]] && \
+      [[ "${__boop_mixin_registry[$__boop_backfillMethods_mixin]:-}" =~ \|methods=([^|]*)\| ]] &&
         __boop_backfillMethods_mmethods="${BASH_REMATCH[1]}"
       [[ -n "$__boop_backfillMethods_mmethods" ]] || continue
       local __boop_backfillMethods_mMArr; IFS=',' read -ra __boop_backfillMethods_mMArr <<< "$__boop_backfillMethods_mmethods"
@@ -1572,7 +1572,7 @@ __boop.registerClass() {
     for __boop_registerClass_mixin in "${__boop_registerClass_mArr[@]}"; do
       [[ -n "$__boop_registerClass_mixin" ]] || continue
       __boop_registerClass_mixinMethods=""
-      [[ "${__boop_mixin_registry[$__boop_registerClass_mixin]:-}" =~ \|methods=([^|]*)\| ]] && \
+      [[ "${__boop_mixin_registry[$__boop_registerClass_mixin]:-}" =~ \|methods=([^|]*)\| ]] &&
         __boop_registerClass_mixinMethods="${BASH_REMATCH[1]}"
       [[ -n "$__boop_registerClass_mixinMethods" ]] || continue
       local __boop_registerClass_mMethodArr; IFS=',' read -ra __boop_registerClass_mMethodArr <<< "$__boop_registerClass_mixinMethods"
@@ -2545,7 +2545,7 @@ __boop.checkClassVersion() {
     return 0
   fi
   if [[ -n "${__boop_registry[SemVer]+set}" ]]; then
-    SemVer.satisfies "$__boop_ccv_ver" "$__boop_ccv_con" || \
+    SemVer.satisfies "$__boop_ccv_ver" "$__boop_ccv_con" ||
       _Crash "_Require: '$__boop_ccv_class' v${__boop_ccv_ver} does not satisfy '$__boop_ccv_con'"
   else
     _Warn "_Require: SemVer not loaded, skipping version check for '$__boop_ccv_class $__boop_ccv_con'"
@@ -2648,7 +2648,7 @@ __boopClass.registerMethods() {
     for __boopClass_rm_entry in "${__boopClass_rm_customArr[@]}"; do
       __boopClass_rm_mname="${__boopClass_rm_entry%%=*}"
       __boopClass_rm_impl="${__boopClass_rm_entry#*=}"
-      [[ -n "$__boopClass_rm_mname" && -n "$__boopClass_rm_impl" ]] || \
+      [[ -n "$__boopClass_rm_mname" && -n "$__boopClass_rm_impl" ]] ||
         _Crash "boopClass: bad custom entry '$__boopClass_rm_entry' — expected name=impl"
       __boop.registerMethod "$__boopClass_rm_class" "$__boopClass_rm_mname" "$__boopClass_rm_impl"
     done
@@ -2772,10 +2772,10 @@ boopClass() {
     local __boopClass_mArr; IFS=',' read -ra __boopClass_mArr <<< "$__boopClass_mixins"
     for __boopClass_mixin in "${__boopClass_mArr[@]}"; do
       [[ -n "$__boopClass_mixin" ]] || continue
-      [[ -n "${__boop_mixin_registry[$__boopClass_mixin]+set}" ]] || \
+      [[ -n "${__boop_mixin_registry[$__boopClass_mixin]+set}" ]] ||
         _Crash "boopClass: mixin '$__boopClass_mixin' not registered — load it before the class"
       local __boopClass_mMethods=""
-      [[ "${__boop_mixin_registry[$__boopClass_mixin]}" =~ \|methods=([^|]*)\| ]] && \
+      [[ "${__boop_mixin_registry[$__boopClass_mixin]}" =~ \|methods=([^|]*)\| ]] &&
         __boopClass_mMethods="${BASH_REMATCH[1]}"
       __boopClass_mixinMethods="${__boopClass_mixinMethods:+$__boopClass_mixinMethods,}$__boopClass_mMethods"
     done
@@ -2800,7 +2800,7 @@ boopExtend() {
   local __boopClass_class __boopClass_parent __boopClass_public __boopClass_custom __boopClass_has __boopClass_version
   __boopClass.parseTokens "$@"
   [[ -n "$__boopClass_class" ]] || _Crash "boopExtend: no class name given"
-  [[ -n "${__boop_registry[$__boopClass_class]+set}" ]] || \
+  [[ -n "${__boop_registry[$__boopClass_class]+set}" ]] ||
     _Crash "boopExtend: class '$__boopClass_class' not registered"
 
   local __boopExtend_newMethods

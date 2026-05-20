@@ -112,7 +112,7 @@ __Signal.ensure() {
        "$__Signal__ensure_sig"; then
       __Signal_installed[$__Signal__ensure_sig]=1
     else
-      (( __Signal_strict )) && \
+      (( __Signal_strict )) &&
         _Warn "Signal: '${__Signal__ensure_sig}' is not a valid signal name on this platform; callbacks will be registered but no trap will be installed"
     fi
   fi

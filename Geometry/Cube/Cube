@@ -63,7 +63,7 @@ Geometry.Cube.new() {
   # Args enforced presence via ':'; validate the value is a positive integer.
   # Once Args grows a types registry with 'int+' (see TODO: Args / Value
   # validators), this check moves into the schema.
-  [[ "$__Geometry_Cube_new_size" =~ ^[1-9][0-9]*$ ]] || \
+  [[ "$__Geometry_Cube_new_size" =~ ^[1-9][0-9]*$ ]] ||
     _Crash "Cube: size requires a positive integer, got '$__Geometry_Cube_new_size'"
   _Debug "new: size=$__Geometry_Cube_new_size"
   into=__Geometry_Cube_new_self _Super new \

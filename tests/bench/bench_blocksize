@@ -1,0 +1,158 @@
+#!/bin/bash
+
+# Buffer size stress test -- find the optimal _DefaultBlockSize.
+#
+# Tests various block sizes against different record lengths to find
+# the sweet spot. The tradeoff: smaller buffers mean shorter strings
+# for parameter expansion (faster scan), but more read(2) syscalls.
+#
+# Usage: bash tests/bench/bench_blocksize
+
+. boop Stream
+
+__boop.setLogLevel warn
+
+LINES=500
+
+# Timing helper
+__bench_start=""
+bench_start() { __bench_start="$EPOCHREALTIME"; }
+bench_end() {
+  local __bench_end="$EPOCHREALTIME"
+  printf "%.3f" "$(( ${__bench_end//.} - ${__bench_start//.} ))e-6"
+}
+
+printf "=== Buffer Size vs Record Length (PE mode, -D newline) ===\n"
+printf "%-12s" "blockSize"
+for reclen in 20 50 100 200 500 1000; do
+  printf "%10s" "${reclen}ch"
+done
+printf "\n"
+
+for blockSize in 32 64 128 256 512 1024 2048 4096 8192 16384; do
+  printf "%-12s" "$blockSize"
+
+  for reclen in 20 50 100 200 500 1000; do
+    # Generate test data: LINES records of reclen chars each
+    tmp=$(mktemp)
+    local_line=$(printf '%*s' "$reclen" '' | tr ' ' 'X')
+    for (( i=0; i < LINES; i++ )); do
+      printf '%s\n' "$local_line"
+    done > "$tmp"
+
+    bench_start
+    into=s Stream.new -P "$tmp" -D $'\n' --blockSize="$blockSize" line
+    while $s.Read; do :; done
+    $s.close
+    elapsed=$(bench_end)
+    printf "%10s" "${elapsed}s"
+
+    rm -f "$tmp"
+  done
+  printf "\n"
+done
+
+printf "\n=== Buffer Size vs Record Length (regex mode, -E newline) ===\n"
+printf "%-12s" "blockSize"
+for reclen in 20 50 100 200 500 1000; do
+  printf "%10s" "${reclen}ch"
+done
+printf "\n"
+
+for blockSize in 32 64 128 256 512 1024 2048 4096 8192 16384; do
+  printf "%-12s" "$blockSize"
+
+  for reclen in 20 50 100 200 500 1000; do
+    tmp=$(mktemp)
+    local_line=$(printf '%*s' "$reclen" '' | tr ' ' 'X')
+    for (( i=0; i < LINES; i++ )); do
+      printf '%s\n' "$local_line"
+    done > "$tmp"
+
+    bench_start
+    into=s Stream.new -P "$tmp" -E $'\n' --blockSize="$blockSize" line
+    while $s.Read; do :; done
+    $s.close
+    elapsed=$(bench_end)
+    printf "%10s" "${elapsed}s"
+
+    rm -f "$tmp"
+  done
+  printf "\n"
+done
+
+printf "\n=== Buffer Size with field splitting (-f ':', 5 fields, PE mode) ===\n"
+printf "%-12s" "blockSize"
+for reclen in 20 50 100 200; do
+  printf "%10s" "${reclen}ch"
+done
+printf "\n"
+
+for blockSize in 32 64 128 256 512 1024 2048 4096 8192; do
+  printf "%-12s" "$blockSize"
+
+  for reclen in 20 50 100 200; do
+    tmp=$(mktemp)
+    # Build a record of approximately reclen chars with 5 colon-separated fields
+    local_flen=$(( (reclen - 4) / 5 ))
+    local_field=$(printf '%*s' "$local_flen" '' | tr ' ' 'A')
+    for (( i=0; i < LINES; i++ )); do
+      printf '%s:%s:%s:%s:%s\n' "$local_field" "$local_field" "$local_field" "$local_field" "$local_field"
+    done > "$tmp"
+
+    bench_start
+    into=s Stream.new -P "$tmp" -D $'\n' -f ':' a b c d e --blockSize="$blockSize"
+    while $s.Read; do :; done
+    $s.close
+    elapsed=$(bench_end)
+    printf "%10s" "${elapsed}s"
+
+    rm -f "$tmp"
+  done
+  printf "\n"
+done
+
+printf "\n=== Buffer Size with varying field count (-f ':', PE mode, reclen=100) ===\n"
+printf "%-12s" "blockSize"
+for nfields in 1 3 5 10 20; do
+  printf "%10s" "${nfields}fld"
+done
+printf "\n"
+
+for blockSize in 64 128 256 512 1024 2048 4096 8192; do
+  printf "%-12s" "$blockSize"
+
+  for nfields in 1 3 5 10 20; do
+    tmp=$(mktemp)
+    # Build records with nfields colon-separated fields, ~100 chars total
+    local_flen=$(( (100 - nfields + 1) / nfields ))
+    (( local_flen < 1 )) && local_flen=1
+    local_field=$(printf '%*s' "$local_flen" '' | tr ' ' 'B')
+    for (( i=0; i < LINES; i++ )); do
+      local_rec="$local_field"
+      for (( f=1; f < nfields; f++ )); do
+        local_rec+=":$local_field"
+      done
+      printf '%s\n' "$local_rec"
+    done > "$tmp"
+
+    # Build field name list
+    local_names=""
+    for (( f=0; f < nfields; f++ )); do
+      local_names+="f$f "
+    done
+
+    bench_start
+    into=s Stream.new -P "$tmp" -D $'\n' -f ':' $local_names --blockSize="$blockSize"
+    while $s.Read; do :; done
+    $s.close
+    elapsed=$(bench_end)
+    printf "%10s" "${elapsed}s"
+
+    rm -f "$tmp"
+  done
+  printf "\n"
+done
+
+printf "\n=== DONE ===\n"
+
