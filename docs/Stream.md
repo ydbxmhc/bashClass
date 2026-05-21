@@ -97,6 +97,7 @@ it: `-f "$_Delimiter"`.
 | Option | Meaning |
 |--------|---------|
 | `-a NAME` | Array mode: all fields into named array |
+| `-x` | Expose: generate `$o.fieldname` accessors, store field values on the object |
 | `-n N` / `-N N` | Fixed-width: read exactly N chars per record |
 | `-t N` | Timeout in seconds (direct mode: passed to `read`) |
 | `-b N` / `--blockSize=N` | Buffer fill size (default: 1024). Buffered modes only. |
@@ -121,27 +122,33 @@ into=s Stream.new -P "data.csv" -f ',' name age _ city
 
 Thin wrapper around bash's `read` builtin. Available only on direct-mode
 objects (no `-D`, `-E`, `-f`, `-F`, `-W`, `-n`). IFS does field splitting.
-Behaves exactly like `read` with the FD pre-wired.
 
 Returns 0 on success, 1 on EOF.
+
+**LSP divergence from raw `read`:** When the final record has no trailing
+delimiter (common with files that lack a trailing newline), raw `read`
+returns non-zero even though it read data -- causing `while read; do`
+loops to skip the last record. Stream handles this: if `read` returns
+non-zero but data was read, `$s.read` returns 0 (so your loop body
+runs) and sets EOF internally (so the next call returns 1). This means
+`while $s.read; do` always processes every record, including unterminated
+final records. You do NOT need the `|| [[ -n "$line" ]]` workaround.
 
 ```bash
 while $s.read; do
   # fields populated via IFS splitting
+  # EVERY record is processed, including the last one without trailing newline
 done
 
 # With custom IFS:
 while IFS=':' $s.read; do ...
 ```
 
-### `$s.Read [field_override...]` (buffered mode)
+### `$s.Read` (buffered mode)
 
 Buffered framework reader. Available only on buffered-mode objects
 (constructed with `-D`, `-E`, `-f`, `-F`, `-W`, or `-n`). Field
 splitting uses the configured delimiter, NOT IFS.
-
-- **No arguments (hot path):** uses the pre-configured field names.
-- **With arguments:** temporarily overrides field names for this one read.
 
 Returns 0 on success, 1 on EOF.
 
@@ -153,6 +160,44 @@ done
 
 **Only one of `$s.read` or `$s.Read` is available per object.** Calling
 the wrong one returns an error. The constructor logs which is live.
+
+### `$s.next`
+
+Convenience method: calls `$s.read` or `$s.Read` depending on the
+object's mode. Use when you don't care about mode and don't need
+maximum speed (adds one branch per call).
+
+```bash
+while $s.next; do ...
+```
+
+### `$s.field INDEX_OR_NAME`
+
+Return a field value by numeric index or field name. Works with both
+array mode (`-a`) and named fields with `-x` (expose).
+
+```bash
+into=v $s.field 0       # first field by index
+into=v $s.field name    # field by name (requires -x or named fields)
+```
+
+### `$s.fieldCount`
+
+Return the number of fields from the last read. Use to iterate safely
+without running off the end.
+
+```bash
+into=n $s.fieldCount
+for (( i=0; i < n; i++ )); do
+  into=v $s.field $i
+  ...
+done
+```
+
+### `$s.buffered`
+
+Returns exit code 0 if this stream uses the buffered engine (pe or
+regex mode). Exit code 1 if direct mode.
 
 ### `$s.eof`
 

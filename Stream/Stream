@@ -310,7 +310,45 @@ Stream.read() {
     fi
     return 0
   else
+    # LSP DIVERGENCE: bash's read returns non-zero on EOF even if it read
+    # partial data (final record without trailing delimiter). We set eof
+    # regardless, but return 0 if data was actually read -- so the caller's
+    # loop body runs for the last record. This differs from raw read where
+    # you'd need: while read line || [[ -n "$line" ]]; do
     __boop_static["${_Self}.eof"]="1"
+    # Check if read actually populated data (array mode or named fields)
+    local __Stream_read_arrname="${__boop_static[${_Self}.array]}"
+    if [[ -n "$__Stream_read_arrname" ]]; then
+      local -n __Stream_read_check="$__Stream_read_arrname"
+      if (( ${#__Stream_read_check[@]} )); then
+        # Data was read -- expose if needed, return success this time
+        if [[ -n "${__boop_static[${_Self}.expose]}" ]]; then
+          local -n __Stream_read_fa="${__boop_static[${_Self}.fields]}"
+          local __Stream_read_fname
+          for __Stream_read_fname in "${__Stream_read_fa[@]}"; do
+            [[ "$__Stream_read_fname" == "_" ]] && continue
+            __boop_static["${_Self}.${__Stream_read_fname}"]="${!__Stream_read_fname}"
+          done
+        fi
+        return 0
+      fi
+    else
+      # Named fields mode: check first field variable
+      local -n __Stream_read_fa="${__boop_static[${_Self}.fields]}"
+      if (( ${#__Stream_read_fa[@]} )); then
+        local -n __Stream_read_first="${__Stream_read_fa[0]}"
+        if [[ -n "$__Stream_read_first" ]]; then
+          if [[ -n "${__boop_static[${_Self}.expose]}" ]]; then
+            local __Stream_read_fname
+            for __Stream_read_fname in "${__Stream_read_fa[@]}"; do
+              [[ "$__Stream_read_fname" == "_" ]] && continue
+              __boop_static["${_Self}.${__Stream_read_fname}"]="${!__Stream_read_fname}"
+            done
+          fi
+          return 0
+        fi
+      fi
+    fi
     return 1
   fi
 }
@@ -539,6 +577,53 @@ Stream.next() {
   fi
 }
 
+# field -- return a field value by index or name.
+# Numeric arg: direct array index. String arg: look up position in fields array.
+# Works with both -a (array mode) and named fields (-x expose).
+Stream.field() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  local __Stream_field_key="$1"
+  local __Stream_field_arrname="${__boop_static[${_Self}.array]}"
+
+  # If array mode, index directly
+  if [[ -n "$__Stream_field_arrname" ]]; then
+    local -n __Stream_field_arr="$__Stream_field_arrname"
+    if [[ "$__Stream_field_key" =~ ^[0-9]+$ ]]; then
+      boop.pass "${__Stream_field_arr[$__Stream_field_key]:-}" ${into:-}
+    else
+      # Name lookup: find index in fields list, then access array
+      local -n __Stream_field_names="${__boop_static[${_Self}.fields]}"
+      local -i __Stream_field_i=0
+      local __Stream_field_name
+      for __Stream_field_name in "${__Stream_field_names[@]}"; do
+        if [[ "$__Stream_field_name" == "$__Stream_field_key" ]]; then
+          boop.pass "${__Stream_field_arr[$__Stream_field_i]:-}" ${into:-}
+          return
+        fi
+        (( __Stream_field_i++ ))
+      done
+      boop.pass "" ${into:-}
+    fi
+  else
+    # Named fields with -x: read from __boop_static
+    boop.pass "${__boop_static[${_Self}.${__Stream_field_key}]:-}" ${into:-}
+  fi
+}
+
+# fieldCount -- return the number of fields from the last read.
+Stream.fieldCount() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  local __Stream_fc_arrname="${__boop_static[${_Self}.array]}"
+  if [[ -n "$__Stream_fc_arrname" ]]; then
+    local -n __Stream_fc_arr="$__Stream_fc_arrname"
+    boop.pass "${#__Stream_fc_arr[@]}" ${into:-}
+  else
+    # Named fields: count from the fields array
+    local -n __Stream_fc_fields="${__boop_static[${_Self}.fields]}"
+    boop.pass "${#__Stream_fc_fields[@]}" ${into:-}
+  fi
+}
+
 Stream.close() {
   local _Self="${_Self:-}" _Class="${_Class:-Stream}"
   if [[ -n "${__boop_static[${_Self}.fd]}" ]]; then
@@ -561,7 +646,8 @@ Stream.writeLine() {
 # Class Declaration
 # ============================================================================
 
-boopClass Stream \
-  'has:fd,path,eol,eolMode,fdelim,fdelimMode,parseMode,expose,fields,readArgs,array,timeout,nchars,blockSize,buf,eof,recRe,fieldRe' \
-  'public:new,read,Read,next,eof,buffered,close,write,writeLine'
+boopClass Stream '
+  has:fd,path,eol,eolMode,fdelim,fdelimMode,parseMode,expose,fields,readArgs,array,timeout,nchars,blockSize,buf,eof,recRe,fieldRe
+  public:new,read,Read,next,field,fieldCount,eof,buffered,close,write,writeLine
+'
 
