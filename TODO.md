@@ -405,10 +405,11 @@ Changes needed:
   integrated.
 
 ### Stream
-- **`_trim` implementation**: parsed/stored but not applied in Read.
-- **`_Delimiter` inline prefix semantics**: does `_Delimiter` map to
-  `-f` or `-F`? Needs a policy decision. Noted, not blocking.
-- **Documentation**: `docs/Stream.md` needs complete rewrite.
+- **`-R "$regex"` field splitting**: designed, not yet implemented.
+- **Open mode (`-m read|write|append|rw`)**: constructor always opens
+  read; write/append/rw modes not yet wired.
+- **`into=` scope leak**: `into=` from caller leaks into Args.parse
+  inside Stream.new. Workaround exists; needs framework-level fix.
 
 ### Geometry (Box, Cube)
 - 91 tests passing, no known gaps.

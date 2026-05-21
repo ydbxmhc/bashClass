@@ -220,6 +220,7 @@ $t.assert_eq "default applied with no args"  "$name" "default"
 
 $t.section "Args.parse: object mode (into=)"
 
+unset name verbose
 into=cfg Args.parse '
 [Subcommands]
 build | b
