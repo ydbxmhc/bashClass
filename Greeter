@@ -1,0 +1,16 @@
+
+. boop                                        # load the core framework
+#boop.init Greeter || return 0                 # set up and prevent reloads
+
+# inherits default constructor and property methods
+# since we didn't need any special behavior for those
+
+Greeter.greet() {
+  local _Self="${_Self:-}" _Class="${_Class:-Greeter}"            # boilerplate 
+  local __Greeter_greet_name="I'm a Boop Class"                   # scoped defaults
+  [[ -n "${_Self:-}" ]] && into=__Greeter_greet_name $_Self.name  # per object name
+  boop.pass "Hello, ${__Greeter_greet_name:-World}!" ${into:-}    # standard return
+}
+
+boopClass Greeter 'has:name public:greet'                         # register the class
+

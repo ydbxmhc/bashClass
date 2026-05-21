@@ -81,7 +81,7 @@ Args.getOpts() {
   for (( __Args_getOpts_i = 0; __Args_getOpts_i < ${#__Args_getOpts_optstr}; __Args_getOpts_i++ )); do
     __Args_getOpts_ch="${__Args_getOpts_optstr:$__Args_getOpts_i:1}"
     [[ "$__Args_getOpts_ch" == ":" ]] && continue
-    [[ "${__Args_getOpts_optstr:$(( __Args_getOpts_i + 1 )):1}" == ":" ]] && \
+    [[ "${__Args_getOpts_optstr:$(( __Args_getOpts_i + 1 )):1}" == ":" ]] &&
       __Args_getOpts_takes[$__Args_getOpts_ch]=1
   done
 
@@ -136,7 +136,7 @@ __Args.parseSubcmdLine() {
     [[ -z "$__Args_psl_canonical" ]] && __Args_psl_canonical="$__Args_psl_part"
     __Args_subcmd_map[$__Args_psl_part]="$__Args_psl_canonical"
   done
-  [[ -n "$__Args_psl_canonical" && -n "$__Args_psl_desc" ]] && \
+  [[ -n "$__Args_psl_canonical" && -n "$__Args_psl_desc" ]] &&
     __Args_subcmd_desc[$__Args_psl_canonical]="$__Args_psl_desc"
 }
 
@@ -202,7 +202,7 @@ __Args.parseOptLine() {
         *'<')   __Args_pol_fl=1;                          __Args_pol_part="${__Args_pol_part%'<'}"   ;;
       esac
 
-      [[ "$__Args_pol_part" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || \
+      [[ "$__Args_pol_part" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] ||
         _Crash "Args: '$__Args_pol_part' is not a valid variable name (hyphens only allowed in aliases)"
       __Args_pol_varName="$__Args_pol_part"
       __Args_varlist+=("$__Args_pol_varName")
@@ -287,7 +287,7 @@ __Args_applyValue() {
   if [[ "$__Args_av_type" == "array" ]]; then
     if [[ "$__Args_av_fl" == "1" ]]; then
       # Load each line of the file as one array element
-      [[ -f "$__Args_av_raw" ]] || \
+      [[ -f "$__Args_av_raw" ]] ||
         _Crash "Args.parse: $__Args_av_key: file not found: '$__Args_av_raw'"
       local __Args_av_line
       while IFS= read -r __Args_av_line; do
@@ -301,7 +301,7 @@ __Args_applyValue() {
     # Parse k=v or bare k (boolean). File load reads k=v / bare-k lines.
     local __Args_av_lines
     if [[ "$__Args_av_fl" == "1" ]]; then
-      [[ -f "$__Args_av_raw" ]] || \
+      [[ -f "$__Args_av_raw" ]] ||
         _Crash "Args.parse: $__Args_av_key: file not found: '$__Args_av_raw'"
       local __Args_av_fline
       while IFS= read -r __Args_av_fline; do
@@ -320,7 +320,7 @@ __Args_applyValue() {
         __Args_av_mk="$__Args_av_entry"
         __Args_av_mv="1"
       fi
-      [[ -z "${__Args_values[${__Args_av_vn}.${__Args_av_mk}]+set}" ]] || \
+      [[ -z "${__Args_values[${__Args_av_vn}.${__Args_av_mk}]+set}" ]] ||
         _Crash "Args.parse: $__Args_av_key: duplicate map key '$__Args_av_mk'"
       __Args_values[${__Args_av_vn}.${__Args_av_mk}]="$__Args_av_mv"
       # Track key list in sentinel value (delimiter-joined)
@@ -329,7 +329,7 @@ __Args_applyValue() {
 
   elif [[ "$__Args_av_fl" == "1" ]]; then
     # Scalar file load: slurp entire file (no subshell)
-    [[ -f "$__Args_av_raw" ]] || \
+    [[ -f "$__Args_av_raw" ]] ||
       _Crash "Args.parse: $__Args_av_key: file not found: '$__Args_av_raw'"
     local __Args_av_content="" __Args_av_fline __Args_av_first=1
     while IFS= read -r __Args_av_fline || [[ -n "$__Args_av_fline" ]]; do
@@ -373,6 +373,8 @@ Args.parse() {
   declare -gA __Args_fileload=()  # varname → "1" if value is a filename to load
   # Parser-behavior flags set by the [Parser] schema section.
   declare -gi __Args_parser_bareKV=0
+  # Mutual exclusion groups from [Exclusive] section.
+  declare -ga __Args_exclusive=()
 
   # --- Phase 1: Parse schema ---
   _Debug "parse: parsing schema"
@@ -390,6 +392,7 @@ Args.parse() {
       Subcommands) __Args.parseSubcmdLine "$__Args_parse_ln" ;;
       Options)     __Args.parseOptLine "" "$__Args_parse_ln" ;;
       Parser)      __Args.schemaLine "$__Args_parse_ln" ;;
+      Exclusive)   __Args_exclusive+=("${__Args_parse_ln%%#*}") ;;
       *)           __Args.parseOptLine "$__Args_parse_section" "$__Args_parse_ln" ;;
     esac
   done <<< "$__Args_parse_schema"
@@ -458,7 +461,7 @@ Args.parse() {
 
       # Duplicate detection: scalars/booleans only; arrays and maps allow repeats
       if [[ -z "${__Args_types[$__Args_parse_vn]:-}" ]]; then
-        [[ -z "${__Args_seen[$__Args_parse_vn]+set}" ]] || \
+        [[ -z "${__Args_seen[$__Args_parse_vn]+set}" ]] ||
           _Crash "Args.parse: duplicate option: $__Args_parse_key"
         __Args_seen[$__Args_parse_vn]=1
       fi
@@ -479,7 +482,7 @@ Args.parse() {
         _Debug "parse: $__Args_parse_key ($__Args_parse_vn) = '$__Args_parse_val'"
         __Args_applyValue "$__Args_parse_vn" "$__Args_parse_val" "$__Args_parse_key"
       else
-        [[ $__Args_parse_hasval -eq 0 ]] || \
+        [[ $__Args_parse_hasval -eq 0 ]] ||
           _Crash "Args.parse: $__Args_parse_key is a boolean flag, does not take a value"
         _Debug "parse: $__Args_parse_key ($__Args_parse_vn) = true"
         __Args_setVar "$__Args_parse_vn" "1"
@@ -498,7 +501,7 @@ Args.parse() {
 
         # Duplicate detection: scalars/booleans only
         if [[ -z "${__Args_types[$__Args_parse_cvn]:-}" ]]; then
-          [[ -z "${__Args_seen[$__Args_parse_cvn]+set}" ]] || \
+          [[ -z "${__Args_seen[$__Args_parse_cvn]+set}" ]] ||
             _Crash "Args.parse: duplicate option: -${__Args_parse_c}"
           __Args_seen[$__Args_parse_cvn]=1
         fi
@@ -557,8 +560,35 @@ Args.parse() {
       __Args_parse_missing="${__Args_parse_missing:+$__Args_parse_missing, }$__Args_parse_v"
     fi
   done
-  [[ -z "$__Args_parse_missing" ]] || \
+  [[ -z "$__Args_parse_missing" ]] ||
     _Crash "Args.parse: required options not provided: $__Args_parse_missing"
+
+  # --- Phase 4b: Validate mutual exclusion groups ---
+  local __Args_parse_group __Args_parse_gvar __Args_parse_grest
+  local __Args_parse_set_names __Args_parse_set_count
+  for __Args_parse_group in "${__Args_exclusive[@]+"${__Args_exclusive[@]}"}"; do
+    __Args_parse_set_names="" __Args_parse_set_count=0
+    __Args_parse_grest="$__Args_parse_group"
+    while [[ -n "$__Args_parse_grest" ]]; do
+      if [[ "$__Args_parse_grest" == *'|'* ]]; then
+        __Args_parse_gvar="${__Args_parse_grest%%|*}"
+        __Args_parse_grest="${__Args_parse_grest#*|}"
+      else
+        __Args_parse_gvar="$__Args_parse_grest"
+        __Args_parse_grest=""
+      fi
+      # Strip whitespace
+      __Args_parse_gvar="${__Args_parse_gvar#"${__Args_parse_gvar%%[![:space:]]*}"}"
+      __Args_parse_gvar="${__Args_parse_gvar%"${__Args_parse_gvar##*[![:space:]]}"}"
+      [[ -z "$__Args_parse_gvar" ]] && continue
+      if [[ -n "${__Args_values[$__Args_parse_gvar]:-}" ]]; then
+        (( __Args_parse_set_count++ ))
+        __Args_parse_set_names="${__Args_parse_set_names:+$__Args_parse_set_names, }$__Args_parse_gvar"
+      fi
+    done
+    (( __Args_parse_set_count <= 1 )) ||
+      _Crash "Args.parse: mutually exclusive options used together: $__Args_parse_set_names"
+  done
 
   # --- Phase 5: Route parsed values to their destination ---
   if [[ -n "${into:-}" ]]; then
@@ -590,9 +620,6 @@ Args.parse() {
     fi
     $__Args_parse_obj.set _action    "$_Action"
     $__Args_parse_obj.set _remaining "$__Args_parse_rem"
-    for __Args_parse_v in "${__Args_parse_vars[@]+"${__Args_parse_vars[@]}"}"; do
-      unset "$__Args_parse_v"
-    done
     unset _Action _ArgsRemaining
     boop.pass "$__Args_parse_obj" ${into:-}
 
@@ -656,7 +683,7 @@ Args.parse() {
         __Args_subcmd_map __Args_varlist __Args_var_scope \
         __Args_descriptions __Args_subcmd_desc __Args_usage \
         __Args_seen __Args_values __Args_types __Args_fileload \
-        __Args_parser_bareKV
+        __Args_parser_bareKV __Args_exclusive
 }
 
 # ============================================================================

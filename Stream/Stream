@@ -1,0 +1,653 @@
+#!/bin/bash
+
+# Stream -- record-oriented reader wrapping a file descriptor.
+#
+# Two read methods, mutually exclusive per object:
+#
+#   $s.read (lowercase)
+#     Thin wrapper around bash's read builtin. IFS does field splitting.
+#     Behaves exactly like read with the FD pre-wired.
+#     NOTE: does NOT use _Delimiter. Set IFS for field splitting.
+#
+#   $s.Read (uppercase)
+#     Buffered framework reader. -f/-F/-W does field splitting.
+#     IFS is NOT used. Multi-char record delimiters, char-class delimiters,
+#     fixed-width records, regex/PE field extraction.
+#     NOTE: does NOT use IFS. Use -f/-F/-W for field splitting.
+#
+# The constructor determines which method is live based on the options given.
+# The other method is replaced with an error stub on the object.
+#
+# Triggers buffered mode (Read): -D, -E, -f, -F, -W, -n.
+# Otherwise: direct mode (read).
+#
+# Record delimiter options (mutually exclusive):
+#   -d CHAR    Single-char EOL.
+#   -D STRING  Multi-char EOL, exact string match, non-stacking.
+#   -E CHARS   EOL char class -- any char in set, runs collapse.
+#   (default)  ${_EOL:-\n}.
+#
+# Field delimiter options (mutually exclusive, buffered mode only):
+#   -f CHARS   Any single char in set, non-stacking (empties preserved).
+#   -F STRING  Exact multi-char string, non-stacking.
+#   -W CHARS   Char class, stacking (runs collapse).
+#
+# Stream does NOT read the _Delimiter framework global.
+# Use -f/-F/-W explicitly. If you want _Delimiter's value: -f "$_Delimiter".
+#
+# Inheritance: boop -> Stream
+#
+# Usage (direct):
+#   into=s Stream.new -P "/etc/passwd"
+#   while IFS=':' $s.read user _ uid gid desc home shell; do
+#     printf "%s -> %s\n" "$user" "$shell"
+#   done
+#   $s.close
+#
+# Usage (buffered):
+#   into=s Stream.new -P "/etc/passwd" -f ':' user _ uid gid desc home shell
+#   while $s.Read; do
+#     printf "%s -> %s\n" "$user" "$shell"
+#   done
+#   $s.close
+
+. boop Args
+
+boop.init Stream || return 0
+
+: "${_DefaultBlockSize:=1024}"
+
+# ============================================================================
+# Stream.new
+# ============================================================================
+
+Stream.new() {
+  local __Stream_schema="
+    [Parser]
+      bareKV = true
+
+    [Options]
+      __Stream_new_fd        | fd        | u      =
+      __Stream_new_path      | path      | P      =
+      __Stream_new_eolChar   | eolChar   | d      =
+      __Stream_new_eolString | eolString | D      =
+      __Stream_new_eolClass  | eolClass  | E      =
+      __Stream_new_fdelimSet | fdelimSet | f      =
+      __Stream_new_fdelimStr | fdelimStr | F      =
+      __Stream_new_fdelimCol | fdelimCol | W      =
+      __Stream_new_expose    | expose    | x
+      __Stream_new_array     | array     | a      =
+      __Stream_new_timeout   | timeout   | t      =
+      __Stream_new_nchars    | nchars    | n | N  =
+      __Stream_new_blockSize | blockSize | b      = ${_BlockSize:-${_DefaultBlockSize:-1024}}
+
+    [Exclusive]
+      __Stream_new_eolChar | __Stream_new_eolString | __Stream_new_eolClass
+      __Stream_new_fdelimSet | __Stream_new_fdelimStr | __Stream_new_fdelimCol
+  "
+  local __Stream_new_self _Class="${_Class:-Stream}"
+  into=__Stream_new_self __boop.new
+
+  # Parse options into a Config object
+  local __Stream_new_opts
+  into=__Stream_new_opts _Class='' Args.parse "$__Stream_schema" "$@"
+
+  # Read parsed values
+  local __Stream_new_fd __Stream_new_path
+  local __Stream_new_eolChar __Stream_new_eolString __Stream_new_eolClass
+  local __Stream_new_fdelimSet __Stream_new_fdelimStr __Stream_new_fdelimCol
+  local __Stream_new_array __Stream_new_timeout __Stream_new_nchars
+  local __Stream_new_blockSize __Stream_new_remaining
+  local __Stream_new_expose
+  into=__Stream_new_fd        $__Stream_new_opts.get __Stream_new_fd
+  into=__Stream_new_path      $__Stream_new_opts.get __Stream_new_path
+  into=__Stream_new_eolChar   $__Stream_new_opts.get __Stream_new_eolChar
+  into=__Stream_new_eolString $__Stream_new_opts.get __Stream_new_eolString
+  into=__Stream_new_eolClass  $__Stream_new_opts.get __Stream_new_eolClass
+  into=__Stream_new_fdelimSet $__Stream_new_opts.get __Stream_new_fdelimSet
+  into=__Stream_new_fdelimStr $__Stream_new_opts.get __Stream_new_fdelimStr
+  into=__Stream_new_fdelimCol $__Stream_new_opts.get __Stream_new_fdelimCol
+  into=__Stream_new_expose    $__Stream_new_opts.get __Stream_new_expose
+  into=__Stream_new_array     $__Stream_new_opts.get __Stream_new_array
+  into=__Stream_new_timeout   $__Stream_new_opts.get __Stream_new_timeout
+  into=__Stream_new_nchars    $__Stream_new_opts.get __Stream_new_nchars
+  into=__Stream_new_blockSize $__Stream_new_opts.get __Stream_new_blockSize
+  into=__Stream_new_remaining $__Stream_new_opts.get _remaining
+
+  # --- Resolve FD ---
+  if [[ -n "$__Stream_new_fd" ]]; then
+    _Info "new: fd=$__Stream_new_fd provided directly"
+  elif [[ -n "$__Stream_new_path" ]]; then
+    if exec {__Stream_new_fd}< "$__Stream_new_path"; then
+      _Info "new: opened '$__Stream_new_path' as fd=$__Stream_new_fd"
+    else
+      _Error "Stream.new: unable to open '$__Stream_new_path'"
+      return 1
+    fi
+  else
+    exec {__Stream_new_fd}<&0
+    _Info "new: stdin dup'd as fd=$__Stream_new_fd"
+  fi
+
+  # --- Determine record EOL ---
+  local __Stream_new_eol="${_EOL:-$'\n'}" __Stream_new_eol_mode='char'
+  if [[ -n "$__Stream_new_eolChar" ]]; then
+    __Stream_new_eol="$__Stream_new_eolChar"
+  elif [[ -n "$__Stream_new_eolClass" ]]; then
+    __Stream_new_eol="$__Stream_new_eolClass"
+    __Stream_new_eol_mode='class'
+  elif [[ -n "$__Stream_new_eolString" ]]; then
+    __Stream_new_eol="$__Stream_new_eolString"
+    __Stream_new_eol_mode='string'
+  elif (( ${#__Stream_new_eol} > 1 )); then
+    __Stream_new_eol_mode='string'
+  fi
+  _Debug "new: eol mode=$__Stream_new_eol_mode val=$(printf '%q' "$__Stream_new_eol")"
+
+  # --- Determine field delimiter ---
+  local __Stream_new_fdelim='' __Stream_new_fdelim_mode='none'
+  if [[ -n "$__Stream_new_fdelimStr" ]]; then
+    __Stream_new_fdelim="$__Stream_new_fdelimStr"
+    __Stream_new_fdelim_mode="string"
+  elif [[ -n "$__Stream_new_fdelimCol" ]]; then
+    __Stream_new_fdelim="$__Stream_new_fdelimCol"
+    __Stream_new_fdelim_mode="collapse"
+  elif [[ -n "$__Stream_new_fdelimSet" ]]; then
+    __Stream_new_fdelim="$__Stream_new_fdelimSet"
+    __Stream_new_fdelim_mode="class"
+  fi
+  _Debug "new: fdelim mode=$__Stream_new_fdelim_mode val=$(printf '%q' "$__Stream_new_fdelim")"
+
+  # --- Store field names as a real array ---
+  local _Self="$__Stream_new_self"
+  local __Stream_new_fields_arr="__boop_data_${_Self}_fields"
+  declare -ga "$__Stream_new_fields_arr=()"
+  if [[ -n "$__Stream_new_remaining" ]]; then
+    local __Stream_new_f
+    while IFS= read -r __Stream_new_f; do
+      if [[ "$__Stream_new_f" =~ ^(_|[a-zA-Z_][a-zA-Z0-9_]*)$  ]]; then
+        declare -ga "$__Stream_new_fields_arr+=( $__Stream_new_f )" # *slightly* better than an eval
+      else
+        _Error "Stream.new: invalid field name '$__Stream_new_f' (must be a valid identifier or '_')"
+        return 1
+      fi
+    done <<< "$__Stream_new_remaining"
+  fi
+  local -n __Stream_new_fa="$__Stream_new_fields_arr"
+
+  # --- Choose parse mode ---
+  local __Stream_new_parseMode
+  if [[ -z "$__Stream_new_nchars"             &&
+        "$__Stream_new_eol_mode"    == "char" &&
+        "$__Stream_new_fdelim_mode" == "none" ]]; then
+    __Stream_new_parseMode="direct"
+  elif [[ " $__Stream_new_fdelim_mode $__Stream_new_eol_mode " =~ " string " ]]; then
+    __Stream_new_parseMode="pe"
+  else
+    __Stream_new_parseMode="regex"
+  fi
+
+  # In buffered mode with no field delimiter, default fdelim to record delimiter
+  if [[ ("$__Stream_new_parseMode" == "pe" || "$__Stream_new_parseMode" == "regex") && "$__Stream_new_fdelim_mode" == "none" ]]; then
+    __Stream_new_fdelim="$__Stream_new_eol"
+    if [[ "$__Stream_new_eol_mode" == "class" ]]; then
+      __Stream_new_fdelim_mode="class"
+    else
+      __Stream_new_fdelim_mode="string"
+    fi
+    if (( ${#__Stream_new_fa[@]} > 1 )); then
+      _Warn "new: multi-char EOL with no field delimiter and ${#__Stream_new_fa[@]} fields -- only first field will be populated per record"
+    fi
+    _Debug "new: fdelim defaulted to record delimiter"
+  fi
+
+  _Info "new: parseMode=$__Stream_new_parseMode"
+
+  # --- Build pre-compiled read args for direct mode ---
+  local __Stream_new_readArgs_name="__boop_data_${_Self}_readArgs"
+  declare -ga "$__Stream_new_readArgs_name=()"
+  if [[ "$__Stream_new_parseMode" == "direct" ]]; then
+    local -n __Stream_new_ra="$__Stream_new_readArgs_name"
+    __Stream_new_ra=(-r)
+    [[ "$__Stream_new_eol" != $'\n' ]] && __Stream_new_ra+=(-d "$__Stream_new_eol")
+    __Stream_new_ra+=(-u "$__Stream_new_fd")
+    [[ -n "$__Stream_new_timeout" ]] && __Stream_new_ra+=(-t "$__Stream_new_timeout")
+    if [[ -n "$__Stream_new_array" ]]; then
+      __Stream_new_ra+=(-a "$__Stream_new_array")
+    elif (( ${#__Stream_new_fa[@]} )); then
+      __Stream_new_ra+=("${__Stream_new_fa[@]}")
+    fi
+    _Debug "new: readArgs=(${__Stream_new_ra[*]})"
+  fi
+
+  # --- Build regex for buffered modes ---
+  local __Stream_new_recRe='' __Stream_new_fieldRe=''
+  if [[ "$__Stream_new_parseMode" == "pe" || "$__Stream_new_parseMode" == "regex" ]]; then
+    if [[ "$__Stream_new_eol_mode" == "class" ]]; then
+      local __Stream_new_eol_cc
+      into=__Stream_new_eol_cc __Stream._scrubCharClass "$__Stream_new_eol"
+      __Stream_new_recRe="^([^${__Stream_new_eol_cc}]*)[${__Stream_new_eol_cc}]+"
+    fi
+    if [[ "$__Stream_new_fdelim_mode" == "class" ]]; then
+      local __Stream_new_fdelim_cc
+      into=__Stream_new_fdelim_cc __Stream._scrubCharClass "$__Stream_new_fdelim"
+      __Stream_new_fieldRe="^([^${__Stream_new_fdelim_cc}]*)[${__Stream_new_fdelim_cc}]"
+    elif [[ "$__Stream_new_fdelim_mode" == "collapse" ]]; then
+      local __Stream_new_fdelim_cc
+      into=__Stream_new_fdelim_cc __Stream._scrubCharClass "$__Stream_new_fdelim"
+      __Stream_new_fieldRe="^([^${__Stream_new_fdelim_cc}]*)[${__Stream_new_fdelim_cc}]+"
+    fi
+    _Debug "new: recRe='$__Stream_new_recRe' fieldRe='$__Stream_new_fieldRe'"
+  fi
+
+  # --- Store all properties in __boop_static (standard property system) ---
+  # Clean names (no underscore prefix) so $o.propertyName accessors work.
+  __boop.set fd         "$__Stream_new_fd"
+  __boop.set path       "$__Stream_new_path"
+  __boop.set eol        "$__Stream_new_eol"
+  __boop.set eolMode    "$__Stream_new_eol_mode"
+  __boop.set fdelim     "$__Stream_new_fdelim"
+  __boop.set fdelimMode "$__Stream_new_fdelim_mode"
+  __boop.set parseMode  "$__Stream_new_parseMode"
+  __boop.set expose     "$__Stream_new_expose"
+  __boop.set array      "$__Stream_new_array"
+  __boop.set timeout    "$__Stream_new_timeout"
+  __boop.set nchars     "$__Stream_new_nchars"
+  __boop.set blockSize  "$__Stream_new_blockSize"
+  __boop.set recRe      "$__Stream_new_recRe"
+  __boop.set fieldRe    "$__Stream_new_fieldRe"
+  __boop.set fields     "$__Stream_new_fields_arr"
+  __boop.set readArgs   "$__Stream_new_readArgs_name"
+  __boop.set eof        "0"
+  __boop.set buf        ""
+
+  # --- Generate field accessors if -x (expose) is set ---
+  if [[ -n "$__Stream_new_expose" ]]; then
+    local __Stream_new_fname
+    for __Stream_new_fname in "${__Stream_new_fa[@]}"; do
+      [[ "$__Stream_new_fname" == "_" ]] && continue
+      eval "${_Self}.${__Stream_new_fname}() { boop.pass \"\${__boop_static[${_Self}.${__Stream_new_fname}]}\" \${into:-}; }"
+    done
+    _Debug "new: field accessors generated for: ${__Stream_new_fa[*]}"
+  fi
+
+  # --- Disable the inapplicable read method on this object ---
+  if [[ "$__Stream_new_parseMode" == "direct" ]]; then
+    eval "${_Self}.Read() { _Error \"Stream: this object uses direct read (lowercase). Use \\\$s.read, not \\\$s.Read.\"; return 1; }"
+    _Info "new: $_Self is direct-mode. \$s.read is live, \$s.Read disabled."
+    _Info "new: NOTE: \$s.read does NOT use _Delimiter. Set IFS for field splitting."
+  else
+    eval "${_Self}.read() { _Error \"Stream: this object uses buffered Read (uppercase). Use \\\$s.Read, not \\\$s.read.\"; return 1; }"
+    _Info "new: $_Self is buffered-mode ($__Stream_new_parseMode). \$s.Read is live, \$s.read disabled."
+    _Info "new: NOTE: \$s.Read does NOT use IFS. Use -f/-F/-W for field splitting."
+  fi
+
+  _Info "new: $_Self ready (fd=$__Stream_new_fd fields=${__Stream_new_remaining//$'\n'/ })"
+  boop.pass "$_Self" ${into:-}
+}
+
+# ============================================================================
+# Stream.read (lowercase) -- direct mode, thin wrapper around read
+# ============================================================================
+
+Stream.read() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  # PERFORMANCE: bypass __boop.get -- access __boop_static directly.
+  # This breaks encapsulation for speed. If the property storage mechanism
+  # changes, this must be updated. See TODO: GC / object lifecycle.
+  [[ "${__boop_static[${_Self}.eof]}" == "1" ]] && return 1
+
+  local -n __Stream_read_args="${__boop_static[${_Self}.readArgs]}"
+  if read "${__Stream_read_args[@]}"; then
+    # If -x (expose), copy field values to __boop_static for accessor methods
+    if [[ -n "${__boop_static[${_Self}.expose]}" ]]; then
+      local -n __Stream_read_fa="${__boop_static[${_Self}.fields]}"
+      local __Stream_read_fname
+      for __Stream_read_fname in "${__Stream_read_fa[@]}"; do
+        [[ "$__Stream_read_fname" == "_" ]] && continue
+        __boop_static["${_Self}.${__Stream_read_fname}"]="${!__Stream_read_fname}"
+      done
+    fi
+    return 0
+  else
+    # LSP DIVERGENCE: bash's read returns non-zero on EOF even if it read
+    # partial data (final record without trailing delimiter). We set eof
+    # regardless, but return 0 if data was actually read -- so the caller's
+    # loop body runs for the last record. This differs from raw read where
+    # you'd need: while read line || [[ -n "$line" ]]; do
+    __boop_static["${_Self}.eof"]="1"
+    # Check if read actually populated data (array mode or named fields)
+    local __Stream_read_arrname="${__boop_static[${_Self}.array]}"
+    if [[ -n "$__Stream_read_arrname" ]]; then
+      local -n __Stream_read_check="$__Stream_read_arrname"
+      if (( ${#__Stream_read_check[@]} )); then
+        # Data was read -- expose if needed, return success this time
+        if [[ -n "${__boop_static[${_Self}.expose]}" ]]; then
+          local -n __Stream_read_fa="${__boop_static[${_Self}.fields]}"
+          local __Stream_read_fname
+          for __Stream_read_fname in "${__Stream_read_fa[@]}"; do
+            [[ "$__Stream_read_fname" == "_" ]] && continue
+            __boop_static["${_Self}.${__Stream_read_fname}"]="${!__Stream_read_fname}"
+          done
+        fi
+        return 0
+      fi
+    else
+      # Named fields mode: check first field variable
+      local -n __Stream_read_fa="${__boop_static[${_Self}.fields]}"
+      if (( ${#__Stream_read_fa[@]} )); then
+        local -n __Stream_read_first="${__Stream_read_fa[0]}"
+        if [[ -n "$__Stream_read_first" ]]; then
+          if [[ -n "${__boop_static[${_Self}.expose]}" ]]; then
+            local __Stream_read_fname
+            for __Stream_read_fname in "${__Stream_read_fa[@]}"; do
+              [[ "$__Stream_read_fname" == "_" ]] && continue
+              __boop_static["${_Self}.${__Stream_read_fname}"]="${!__Stream_read_fname}"
+            done
+          fi
+          return 0
+        fi
+      fi
+    fi
+    return 1
+  fi
+}
+
+# ============================================================================
+# Stream.Read (uppercase) -- buffered mode, framework field splitting
+# ============================================================================
+
+Stream.Read() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  # PERFORMANCE: bypass __boop.get -- access __boop_static directly.
+  # This breaks encapsulation for speed. If the property storage mechanism
+  # changes, this must be updated. See TODO: GC / object lifecycle.
+  [[ "${__boop_static[${_Self}.eof]}" == "1" ]] && return 1
+
+  local __Stream_Read_fd="${__boop_static[${_Self}.fd]}"
+  local __Stream_Read_eol="${__boop_static[${_Self}.eol]}"
+  local __Stream_Read_eolMode="${__boop_static[${_Self}.eolMode]}"
+  local __Stream_Read_fdelim="${__boop_static[${_Self}.fdelim]}"
+  local __Stream_Read_fdelimMode="${__boop_static[${_Self}.fdelimMode]}"
+  local __Stream_Read_array="${__boop_static[${_Self}.array]}"
+  local __Stream_Read_buf="${__boop_static[${_Self}.buf]}"
+  local __Stream_Read_nchars="${__boop_static[${_Self}.nchars]}"
+  local __Stream_Read_blockSize="${__boop_static[${_Self}.blockSize]}"
+  local __Stream_Read_recRe="${__boop_static[${_Self}.recRe]}"
+  local __Stream_Read_fieldRe="${__boop_static[${_Self}.fieldRe]}"
+
+  local -n __Stream_Read_fields="${__boop_static[${_Self}.fields]}"
+
+  # --- Extract record from buffer ---
+  local __Stream_Read_record=""
+  local __Stream_fill_exhausted=0
+
+  if [[ -n "$__Stream_Read_nchars" ]]; then
+    while (( ${#__Stream_Read_buf} < __Stream_Read_nchars && ! __Stream_fill_exhausted )); do
+      __Stream._fillBuffer
+    done
+    if (( ${#__Stream_Read_buf} < __Stream_Read_nchars )); then
+      if [[ -n "$__Stream_Read_buf" ]]; then
+        __Stream_Read_record="$__Stream_Read_buf"
+        __boop_static["${_Self}.buf"]=""
+        __boop_static["${_Self}.eof"]="1"
+      else
+        __boop_static["${_Self}.eof"]="1"; return 1
+      fi
+    else
+      __Stream_Read_record="${__Stream_Read_buf:0:$__Stream_Read_nchars}"
+      __Stream_Read_buf="${__Stream_Read_buf:$__Stream_Read_nchars}"
+      __boop_static["${_Self}.buf"]="$__Stream_Read_buf"
+    fi
+
+  elif [[ "$__Stream_Read_eolMode" == "class" ]]; then
+    while true; do
+      if [[ "$__Stream_Read_buf" =~ $__Stream_Read_recRe ]]; then
+        __Stream_Read_record="${BASH_REMATCH[1]}"
+        __Stream_Read_buf="${__Stream_Read_buf:${#BASH_REMATCH[0]}}"
+        __boop_static["${_Self}.buf"]="$__Stream_Read_buf"
+        break
+      fi
+      if (( __Stream_fill_exhausted )); then
+        if [[ -n "$__Stream_Read_buf" ]]; then
+          __Stream_Read_record="$__Stream_Read_buf"
+          __boop_static["${_Self}.buf"]=""
+          __boop_static["${_Self}.eof"]="1"
+        else
+          __boop_static["${_Self}.eof"]="1"; return 1
+        fi
+        break
+      fi
+      __Stream._fillBuffer
+    done
+
+  else
+    while true; do
+      if [[ "$__Stream_Read_buf" == *"$__Stream_Read_eol"* ]]; then
+        __Stream_Read_record="${__Stream_Read_buf%%"$__Stream_Read_eol"*}"
+        __Stream_Read_buf="${__Stream_Read_buf#*"$__Stream_Read_eol"}"
+        __boop_static["${_Self}.buf"]="$__Stream_Read_buf"
+        break
+      fi
+      if (( __Stream_fill_exhausted )); then
+        if [[ -n "$__Stream_Read_buf" ]]; then
+          __Stream_Read_record="$__Stream_Read_buf"
+          __boop_static["${_Self}.buf"]=""
+          __boop_static["${_Self}.eof"]="1"
+        else
+          __boop_static["${_Self}.eof"]="1"; return 1
+        fi
+        break
+      fi
+      __Stream._fillBuffer
+    done
+  fi
+
+  # --- Field assignment ---
+  if (( ! ${#__Stream_Read_fields[@]} )) && [[ -z "$__Stream_Read_array" ]]; then
+    boop.pass "$__Stream_Read_record" ${into:-}
+    return 0
+  fi
+
+  if [[ -n "$__Stream_Read_array" ]]; then
+    __Stream._splitToArray "$__Stream_Read_array" "$__Stream_Read_record" "$__Stream_Read_fdelim" "$__Stream_Read_fdelimMode" "$__Stream_Read_fieldRe"
+    return 0
+  fi
+
+  # Named fields: split and assign via nameref
+  local __Stream_Read_rest="$__Stream_Read_record"
+  local -i __Stream_Read_ndx=0
+  local -i __Stream_Read_last_idx=$(( ${#__Stream_Read_fields[@]} - 1 ))
+  local __Stream_Read_vname __Stream_Read_val
+
+  for __Stream_Read_vname in "${__Stream_Read_fields[@]}"; do
+    if (( __Stream_Read_ndx == __Stream_Read_last_idx )); then
+      __Stream_Read_val="$__Stream_Read_rest"
+    elif [[ ("$__Stream_Read_fdelimMode" == "class" || "$__Stream_Read_fdelimMode" == "collapse") && -n "$__Stream_Read_fieldRe" ]]; then
+      if [[ "$__Stream_Read_rest" =~ $__Stream_Read_fieldRe ]]; then
+        __Stream_Read_val="${BASH_REMATCH[1]}"
+        __Stream_Read_rest="${__Stream_Read_rest:${#BASH_REMATCH[0]}}"
+      else
+        __Stream_Read_val="$__Stream_Read_rest"
+        __Stream_Read_rest=""
+      fi
+    elif [[ "$__Stream_Read_fdelimMode" == "string" ]]; then
+      if [[ "$__Stream_Read_rest" == *"$__Stream_Read_fdelim"* ]]; then
+        __Stream_Read_val="${__Stream_Read_rest%%"$__Stream_Read_fdelim"*}"
+        __Stream_Read_rest="${__Stream_Read_rest#*"$__Stream_Read_fdelim"}"
+      else
+        __Stream_Read_val="$__Stream_Read_rest"
+        __Stream_Read_rest=""
+      fi
+    else
+      __Stream_Read_val="$__Stream_Read_rest"
+      __Stream_Read_rest=""
+    fi
+
+    if [[ "$__Stream_Read_vname" != "_" ]]; then
+      local -n __Stream_Read_ref="$__Stream_Read_vname"
+      __Stream_Read_ref="$__Stream_Read_val"
+    fi
+    (( __Stream_Read_ndx++ ))
+  done
+
+  # If -x (expose), copy field values to __boop_static for accessor methods
+  if [[ -n "${__boop_static[${_Self}.expose]}" ]]; then
+    for __Stream_Read_vname in "${__Stream_Read_fields[@]}"; do
+      [[ "$__Stream_Read_vname" == "_" ]] && continue
+      __boop_static["${_Self}.${__Stream_Read_vname}"]="${!__Stream_Read_vname}"
+    done
+  fi
+
+  return 0
+}
+
+# ============================================================================
+# Internal helpers
+# ============================================================================
+
+__Stream._scrubCharClass() {
+  local __Stream_bc_str="$1" __Stream_bc_tmp
+  for c in ']' '^' '-'; do
+    __Stream_bc_tmp="${__Stream_bc_str//$c/}"
+    [[ "${#__Stream_bc_str}" == "${#__Stream_bc_tmp}" ]] && continue
+    case "$c" in
+      ']') __Stream_bc_str="]$__Stream_bc_tmp" ;;
+        *) __Stream_bc_str="$__Stream_bc_tmp$c" ;;
+    esac
+  done
+  boop.pass "$__Stream_bc_str" ${into:-}
+}
+
+__Stream._fillBuffer() {
+  local __Stream_fill_chunk="" __Stream_fill_rc=0
+  IFS= read -r -N "$__Stream_Read_blockSize" -u "$__Stream_Read_fd" __Stream_fill_chunk || __Stream_fill_rc=$?
+  __Stream_Read_buf+="$__Stream_fill_chunk"
+  (( __Stream_fill_rc != 0 )) && __Stream_fill_exhausted=1
+}
+
+__Stream._splitToArray() {
+  local __Stream_sa_arrname="$1" __Stream_sa_record="$2"
+  local __Stream_sa_delim="$3" __Stream_sa_mode="$4" __Stream_sa_re="$5"
+  local __Stream_sa_rest="$__Stream_sa_record"
+  local -n __Stream_sa_arr="$__Stream_sa_arrname"
+  __Stream_sa_arr=()
+
+  if [[ ("$__Stream_sa_mode" == "class" || "$__Stream_sa_mode" == "collapse") && -n "$__Stream_sa_re" ]]; then
+    while [[ "$__Stream_sa_rest" =~ $__Stream_sa_re ]]; do
+      __Stream_sa_arr+=("${BASH_REMATCH[1]}")
+      __Stream_sa_rest="${__Stream_sa_rest:${#BASH_REMATCH[0]}}"
+    done
+    __Stream_sa_arr+=("$__Stream_sa_rest")
+  elif [[ "$__Stream_sa_mode" == "string" ]]; then
+    while [[ "$__Stream_sa_rest" == *"$__Stream_sa_delim"* ]]; do
+      __Stream_sa_arr+=("${__Stream_sa_rest%%"$__Stream_sa_delim"*}")
+      __Stream_sa_rest="${__Stream_sa_rest#*"$__Stream_sa_delim"}"
+    done
+    __Stream_sa_arr+=("$__Stream_sa_rest")
+  else
+    __Stream_sa_arr+=("$__Stream_sa_rest")
+  fi
+}
+
+# ============================================================================
+# Utility methods
+# ============================================================================
+
+Stream.eof() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  [[ "${__boop_static[${_Self}.eof]}" == "1" ]]
+}
+
+# buffered -- exit 0 if this stream uses the internal buffer engine
+Stream.buffered() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  # Intentional negation: more efficient than testing two positive modes (pe/regex)
+  [[ "${__boop_static[${_Self}.parseMode]}" != "direct" ]]
+}
+
+# next -- call the appropriate read method for this object.
+# Convenience for when you don't care about mode and don't need max speed.
+Stream.next() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  if [[ "${__boop_static[${_Self}.parseMode]}" == "direct" ]]; then
+    $_Self.read
+  else
+    $_Self.Read
+  fi
+}
+
+# field -- return a field value by index or name.
+# Numeric arg: direct array index. String arg: look up position in fields array.
+# Works with both -a (array mode) and named fields (-x expose).
+Stream.field() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  local __Stream_field_key="$1"
+  local __Stream_field_arrname="${__boop_static[${_Self}.array]}"
+
+  # If array mode, index directly
+  if [[ -n "$__Stream_field_arrname" ]]; then
+    local -n __Stream_field_arr="$__Stream_field_arrname"
+    if [[ "$__Stream_field_key" =~ ^[0-9]+$ ]]; then
+      boop.pass "${__Stream_field_arr[$__Stream_field_key]:-}" ${into:-}
+    else
+      # Name lookup: find index in fields list, then access array
+      local -n __Stream_field_names="${__boop_static[${_Self}.fields]}"
+      local -i __Stream_field_i=0
+      local __Stream_field_name
+      for __Stream_field_name in "${__Stream_field_names[@]}"; do
+        if [[ "$__Stream_field_name" == "$__Stream_field_key" ]]; then
+          boop.pass "${__Stream_field_arr[$__Stream_field_i]:-}" ${into:-}
+          return
+        fi
+        (( __Stream_field_i++ ))
+      done
+      boop.pass "" ${into:-}
+    fi
+  else
+    # Named fields with -x: read from __boop_static
+    boop.pass "${__boop_static[${_Self}.${__Stream_field_key}]:-}" ${into:-}
+  fi
+}
+
+# fieldCount -- return the number of fields from the last read.
+Stream.fieldCount() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  local __Stream_fc_arrname="${__boop_static[${_Self}.array]}"
+  if [[ -n "$__Stream_fc_arrname" ]]; then
+    local -n __Stream_fc_arr="$__Stream_fc_arrname"
+    boop.pass "${#__Stream_fc_arr[@]}" ${into:-}
+  else
+    # Named fields: count from the fields array
+    local -n __Stream_fc_fields="${__boop_static[${_Self}.fields]}"
+    boop.pass "${#__Stream_fc_fields[@]}" ${into:-}
+  fi
+}
+
+Stream.close() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  if [[ -n "${__boop_static[${_Self}.fd]}" ]]; then
+    eval "exec ${__boop_static[${_Self}.fd]}>&-"
+    _Info "close: fd=${__boop_static[${_Self}.fd]} closed"
+  fi
+}
+
+Stream.write() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  printf '%s' "$1" >&"${__boop_static[${_Self}.fd]}"
+}
+
+Stream.writeLine() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  printf '%s%s' "$1" "${__boop_static[${_Self}.eol]:-$'\n'}" >&"${__boop_static[${_Self}.fd]}"
+}
+
+# ============================================================================
+# Class Declaration
+# ============================================================================
+
+boopClass Stream '
+  has:fd,path,eol,eolMode,fdelim,fdelimMode,parseMode,expose,fields,readArgs,array,timeout,nchars,blockSize,buf,eof,recRe,fieldRe
+  public:new,read,Read,next,field,fieldCount,eof,buffered,close,write,writeLine
+'
+

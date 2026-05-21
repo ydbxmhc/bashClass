@@ -121,15 +121,10 @@ Collection.Container.isEmpty() {
 # Uses __boop.set (descriptor property) not Container.set (data storage).
 __Collection_Container._ensureIterator() {
   local __Collection_Container_ensureIterator_self="$1" __Collection_Container_ensureIterator_class="$2" __Collection_Container_ensureIterator_target="$3"
-  local __Collection_Container_ensureIterator_iter
-  __boop.parse "$__Collection_Container_ensureIterator_self" "_iterator" __Collection_Container_ensureIterator_iter
+  local __Collection_Container_ensureIterator_iter="${__boop_static[${__Collection_Container_ensureIterator_self}._iterator]:-}"
   if [[ -z "$__Collection_Container_ensureIterator_iter" ]]; then
     into=__Collection_Container_ensureIterator_iter Iterator target="$__Collection_Container_ensureIterator_self" target_class="$__Collection_Container_ensureIterator_class"
-    # Store in descriptor, not in container data
-    local __Collection_Container_ensureIterator_encoded
-    __boop.encode "$__Collection_Container_ensureIterator_iter" __Collection_Container_ensureIterator_encoded
-    local __Collection_Container_ensureIterator_desc="${__boop_registry[$__Collection_Container_ensureIterator_self]:-}"
-    __boop_registry[$__Collection_Container_ensureIterator_self]="$__Collection_Container_ensureIterator_desc|_iterator=$__Collection_Container_ensureIterator_encoded"
+    __boop_static["${__Collection_Container_ensureIterator_self}._iterator"]="$__Collection_Container_ensureIterator_iter"
   fi
   local -n __Collection_Container_ensureIterator_ref="$__Collection_Container_ensureIterator_target"
   __Collection_Container_ensureIterator_ref="$__Collection_Container_ensureIterator_iter"
@@ -226,7 +221,7 @@ Collection.Container.toString() {
   [[ "${1:-}" == "pretty" ]] && prettyPrint=true
   local __Collection_Container_ts_len __Collection_Container_ts_type
   into=__Collection_Container_ts_len $_Self.length
-  __boop.parse "$_Self" "type" __Collection_Container_ts_type
+  into=__Collection_Container_ts_type __boop.get type
 
   if [[ "$prettyPrint" != "true" ]]; then
     boop.pass "$_Class($_Self){ type=$__Collection_Container_ts_type length=$__Collection_Container_ts_len }" ${into:-}
@@ -286,7 +281,7 @@ boopClass Collection.Container public:new,destroy,length,clear,has,getAt,setAt,d
 __boop.itemFrom() {
   local _Self="${_Self:-${_Class:-boop}}" _Class="${_Class:-boop}"
   local __boop_itemFrom_cursor __boop_itemFrom_class
-  __boop.parse "$_Self" "$1" __boop_itemFrom_cursor
+  local __boop_itemFrom_cursor="${__boop_static[${_Self}.${1}]:-}"
   [[ -n "$__boop_itemFrom_cursor" ]] || { boop.pass "" ${into:-}; return; }
   __boop.parse "$__boop_itemFrom_cursor" "class" __boop_itemFrom_class
   shift
@@ -303,7 +298,7 @@ __boop.itemFrom() {
 __boop.setOn() {
   local _Self="${_Self:-${_Class:-boop}}" _Class="${_Class:-boop}"
   local __boop_setOn_cursor __boop_setOn_class
-  __boop.parse "$_Self" "$1" __boop_setOn_cursor
+  local __boop_setOn_cursor="${__boop_static[${_Self}.${1}]:-}"
   [[ -n "$__boop_setOn_cursor" ]] || _Crash "setOn: property '$1' is empty"
   __boop.parse "$__boop_setOn_cursor" "class" __boop_setOn_class
   shift
@@ -390,8 +385,8 @@ Iterator.new() {
 __Iterator._targetLen() {
   local __Iterator_targetLen_self="$1"
   local __Iterator_targetLen_target __Iterator_targetLen_tclass
-  __boop.parse "$__Iterator_targetLen_self" "target" __Iterator_targetLen_target
-  __boop.parse "$__Iterator_targetLen_self" "target_class" __Iterator_targetLen_tclass
+  __Iterator_targetLen_target="${__boop_static[${__Iterator_targetLen_self}.target]:-}"
+  __Iterator_targetLen_tclass="${__boop_static[${__Iterator_targetLen_self}.target_class]:-}"
   local -n __Iterator_targetLen_out="$2"
 
   if [[ "$__Iterator_targetLen_tclass" == "Collection.Map" ]]; then
@@ -414,7 +409,7 @@ __Iterator._targetLen() {
 Iterator.hasNext() {
   local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
   local __Iter_hn_pos
-  __boop.parse "$_Self" "position" __Iter_hn_pos
+  __Iter_hn_pos="${__boop_static[${_Self}.position]:-}"
   : "${__Iter_hn_pos:=-1}"
   local -i __Iter_hn_len
   __Iterator._targetLen "$_Self" __Iter_hn_len
@@ -424,7 +419,7 @@ Iterator.hasNext() {
 Iterator.hasPrev() {
   local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
   local __Iter_hp_pos
-  __boop.parse "$_Self" "position" __Iter_hp_pos
+  __Iter_hp_pos="${__boop_static[${_Self}.position]:-}"
   : "${__Iter_hp_pos:=-1}"
   (( __Iter_hp_pos > 0 )) && return 0 || return 1
 }
@@ -432,7 +427,7 @@ Iterator.hasPrev() {
 Iterator.next() {
   local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
   local __Iter_next_pos
-  __boop.parse "$_Self" "position" __Iter_next_pos
+  __Iter_next_pos="${__boop_static[${_Self}.position]:-}"
   : "${__Iter_next_pos:=-1}"
   local -i __Iter_next_len
   __Iterator._targetLen "$_Self" __Iter_next_len
@@ -443,8 +438,8 @@ Iterator.next() {
   $_Self.set position "$(( ++__Iter_next_pos ))"
 
   local __Iter_next_target __Iter_next_tclass
-  __boop.parse "$_Self" "target" __Iter_next_target
-  __boop.parse "$_Self" "target_class" __Iter_next_tclass
+  __Iter_next_target="${__boop_static[${_Self}.target]:-}"
+  __Iter_next_tclass="${__boop_static[${_Self}.target_class]:-}"
 
   if [[ "$__Iter_next_tclass" == "Collection.Map" ]]; then
     local -n __Iter_next_snap="__boop_iterkeys_${_Self}"
@@ -460,7 +455,7 @@ Iterator.next() {
 Iterator.prev() {
   local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
   local __Iter_prev_pos
-  __boop.parse "$_Self" "position" __Iter_prev_pos
+  __Iter_prev_pos="${__boop_static[${_Self}.position]:-}"
   : "${__Iter_prev_pos:=-1}"
 
   (( __Iter_prev_pos > 0 )) || 
@@ -469,8 +464,8 @@ Iterator.prev() {
   $_Self.set position "$(( --__Iter_prev_pos ))"
 
   local __Iter_prev_target __Iter_prev_tclass
-  __boop.parse "$_Self" "target" __Iter_prev_target
-  __boop.parse "$_Self" "target_class" __Iter_prev_tclass
+  __Iter_prev_target="${__boop_static[${_Self}.target]:-}"
+  __Iter_prev_tclass="${__boop_static[${_Self}.target_class]:-}"
 
   if [[ "$__Iter_prev_tclass" == "Collection.Map" ]]; then
     local -n __Iter_prev_snap="__boop_iterkeys_${_Self}"
@@ -486,7 +481,7 @@ Iterator.prev() {
 Iterator.current() {
   local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
   local __Iter_cur_pos
-  __boop.parse "$_Self" "position" __Iter_cur_pos
+  __Iter_cur_pos="${__boop_static[${_Self}.position]:-}"
   : "${__Iter_cur_pos:=-1}"
   local -i __Iter_cur_len
   __Iterator._targetLen "$_Self" __Iter_cur_len
@@ -495,8 +490,8 @@ Iterator.current() {
     _Crash "Iterator: cursor not on an element"
 
   local __Iter_cur_target __Iter_cur_tclass
-  __boop.parse "$_Self" "target" __Iter_cur_target
-  __boop.parse "$_Self" "target_class" __Iter_cur_tclass
+  __Iter_cur_target="${__boop_static[${_Self}.target]:-}"
+  __Iter_cur_tclass="${__boop_static[${_Self}.target_class]:-}"
 
   if [[ "$__Iter_cur_tclass" == "Collection.Map" ]]; then
     local -n __Iter_cur_snap="__boop_iterkeys_${_Self}"
@@ -512,7 +507,7 @@ Iterator.current() {
 Iterator.index() {
   local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
   local __Iter_idx_pos
-  __boop.parse "$_Self" "position" __Iter_idx_pos
+  __Iter_idx_pos="${__boop_static[${_Self}.position]:-}"
   : "${__Iter_idx_pos:=-1}"
   local -i __Iter_idx_len
   __Iterator._targetLen "$_Self" __Iter_idx_len
@@ -521,7 +516,7 @@ Iterator.index() {
     _Crash "Iterator: cursor not on an element"
 
   local __Iter_idx_tclass
-  __boop.parse "$_Self" "target_class" __Iter_idx_tclass
+  __Iter_idx_tclass="${__boop_static[${_Self}.target_class]:-}"
 
   if [[ "$__Iter_idx_tclass" == "Collection.Map" ]]; then
     local -n __Iter_idx_snap="__boop_iterkeys_${_Self}"

@@ -339,11 +339,11 @@ Text.String.do() {
   for __Text_String_do_op in "${__Text_String_do_ops[@]}"; do
     __Text_String_do_name="${__Text_String_do_op%%:*}"
     if [[ -n "${__Text_String_mutators[$__Text_String_do_name]+set}" ]]; then
-      [[ "$__Text_String_do_type" == "ed" ]] && \
+      [[ "$__Text_String_do_type" == "ed" ]] &&
         _Crash "Text.String.do: type mismatch — bare '$__Text_String_do_name' after -ed op"
       __Text_String_do_type="bare"
     elif [[ -n "${__Text_String_ed_to_bare[$__Text_String_do_name]+set}" ]]; then
-      [[ "$__Text_String_do_type" == "bare" ]] && \
+      [[ "$__Text_String_do_type" == "bare" ]] &&
         _Crash "Text.String.do: type mismatch — -ed '$__Text_String_do_name' after bare op"
       __Text_String_do_type="ed"
     else

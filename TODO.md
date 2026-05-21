@@ -94,6 +94,14 @@ Core done. Implementation at `Args/Args`. 71 tests in
 `tests/unit/test_args_ts`. Docs at `docs/Args.md`.
 
 ### Pending
+- **CRLF stripping in file-load** (`__Args_applyValue`): `IFS= read -r`
+  preserves `\r` on Windows-saved files. Every array element, map key,
+  and scalar slurped from a file will have a trailing carriage return.
+  Fix: strip `\r` after each `read` in all three file-load paths
+  (`array[]<`, `map{}<`, scalar `<`). Pattern: `line="${line%$'\r'}"`.
+- **`_Delimiter` fallback inconsistency**: `Args.parse` line ~357 uses
+  `${_Delimiter:-$'\n'}` — hardcodes `$'\n'` instead of `$_EOL` as all
+  other classes do. Change to `${_Delimiter:-$_EOL}`.
 - Schema validation warnings for common mistakes (typos, duplicate
   option names, missing `=` on value-taking options)
 - **Value validators in the schema** (`Args.types` registry):
@@ -196,137 +204,104 @@ use case emerges that List can't serve.
 
 ## I/O Classes (Phase 5)
 
-### Current State (what's done)
+### Stream -- Current Status
 
-The **output side** is complete. All multi-value methods (List.toArray,
-Map.keys, Map.values, Map.toArray, Config.keys, Config.toFlat, etc.)
-respect the two IO-control variables with correct semantics:
+**Core complete.** 138 tests passing (`tests/unit/test_stream_ts`).
+Benchmarks at `tests/bench/bench_stream` and `tests/bench/bench_blocksize_rigorous`.
 
-- `_EOL` = record separator (between entries). Default: `$'\n'`.
-  Arrays join elements on `_EOL`. Maps join records on `_EOL`.
-- `_Delimiter` = field separator (within a record, e.g. key from value).
-  Default: empty (unset). Each method picks its own context-appropriate
-  fallback (Map uses `=`, Config uses `=`, a CSV parser would use `,`).
+Three parse modes, chosen at construction:
+- **direct**: single-char EOL, delegates to `read -d` from FD. Full
+  `read` compatibility. Pre-built args array, one call per record.
+- **regex**: buffered, char-class EOL (`-E`). Regex extracts records.
+- **pe**: buffered, exact-string EOL (`-D`) or exact-string field
+  delimiter (`-F`). Parameter expansion extracts records/fields.
 
-Multi-character values work on the output side (tested with `$'\r\n'`).
-Single-character is the fast path; multi-char just works because
-`printf -v` and string concatenation don't care about length.
+Field assignment via nameref (no eval, no `read <<<`). Field names
+stored as real arrays (`__boop_data_${_Self}_fields`). Object data
+stored in `__Stream_data` global associative array with compound keys
+for fast access (eliminates `__boop.get` overhead in hot path).
 
-The **input side** is NOT built. Config.load, __boop.parseConfig, and
-similar methods still use hardcoded `while IFS= read -r line` (newline
-records, `=` field separator). These work for the common case but don't
-respect `_EOL`/`_Delimiter` for custom formats.
+### Stream -- Remaining Work
 
-### What needs building: the IO class
+- ~~**Documentation rewrite**~~ done
+- ~~**Add `test_stream_ts` to `tests/test_all`**~~ done
+- ~~**Field-name validation**~~ done
+- ~~**`-W CHARS` (collapsing field delimiter)**~~ done
+- ~~**`_trim`**~~ removed (not needed; use String or parameter expansion post-read)
+- ~~**IFS classification in buffered mode**~~ moot (read/Read split eliminates the question)
+- ~~**`_Delimiter` semantics**~~ resolved (Stream does not use it; document only)
+- **`-R "$regex"` (custom field regex)**: designed, not implemented.
+  User-provided regex for field splitting. Escape hatch for complex cases.
+- **Multi-FD I/O model**: each Stream object has up to three FDs:
+  - `in` -- read source (default: stdin dup)
+  - `out` -- write target (default: stdout dup)
+  - `err` -- object-level logging/errors (default: stderr dup)
+  Each independently configurable via:
+  - `--fd-in N` / `--fd-out N` / `--fd-err N` (explicit FDs)
+  - `--path-in FILE` / `--path-out FILE` / `--path-err FILE` (open paths)
+  - `-u N` defaults to `--fd-in` unless `-m write|append|rw`
+  - `-P FILE` defaults to `--path-in` unless `-m write|append`
+  - `-m read|write|append|rw` controls open mode for `-P`/`-u` shortcuts
+  - `--in=none` / `--out=none` to explicitly close/disable a direction
+  Read methods use `in`. Write methods use `out`. Both can coexist.
+  If both `in` and `out` point to the same FD (e.g. socket), that's valid.
+  Shell redirections on the constructor call persist (existing behavior).
+  No sigil parsing (`>>`, `<` etc.) -- that's shell syntax, not ours.
+  Design with Stream::Socket in mind (bidirectional on one FD).
+- **Non-blocking reads**: for pipes/sockets where blocking is unacceptable.
+  Direct mode: `read -t 0` polls. Buffered mode: `read -t $timeout -N`
+  on fill, work with partial buffer. Needs a third return state beyond
+  0 (success) and 1 (EOF) -- "no complete record yet, try again."
+  Options: return code 2, or a `wouldBlock` property, or a dedicated
+  `$s.poll` / `$s.tryRead` method. Essential for Stream::Socket.
+- **`into=` leak through dynamic scoping**: `into=` from the caller leaks
+  into Args.parse. Workaround: explicit `into=__local _Class='' Args.parse`.
+  Needs a framework-level solution (TODO: scope isolation for `into=`).
 
-A class (or small family of classes under `IO/`) that handles the
-complex input path — multi-character delimiters, streaming reads,
-buffered I/O. The output side stays as-is (fast path, already done).
+### Stream -- Performance Notes
 
-**Core concept: `Read` method with double-buffer scanning.**
+Benchmarking shows blockSize has negligible impact in the 256-2048 range.
+The dominant cost is per-record overhead (method dispatch, hash lookups,
+regex/PE operations). The `__Stream_data` optimization (eliminating
+`__boop.get` calls) provided 2-3x speedup.
 
-```
-IO.File.open "/path/to/file" mode=read
-# or
-into=reader IO.Reader.new fd=$some_fd
+Further optimization opportunities:
+- Reduce per-record hash lookups (currently ~5 per buffered Read)
+- Pre-build combined record+field regex at construction (one `=~` per Read)
+- Consider caching the entire read-args array for buffered mode too
+- Profile the nameref field assignment loop vs alternatives
 
-# Then:
-_EOL=$'\n\n' into=paragraph $reader.Read    # paragraph mode
-_EOL=$'\r\n' into=line $reader.Read         # CRLF line mode
-_EOL=$'\n'   into=line $reader.Read         # normal line mode (fast path)
-```
+### ★ Garbage Collection / Object Lifecycle
 
-**Algorithm for multi-char `_EOL` scanning:**
+Objects live in `__boop_static` (property values), `__boop_registry`
+(schema descriptors), and class-specific stores (`__Stream_data`,
+`__boop_data_*` arrays). Currently no mechanism to reclaim storage.
 
-1. Maintain an internal buffer string (pre-loaded ~8KB from the FD
-   via `read -N 8192`)
-2. On each `Read` call, scan the buffer for `_EOL` using
-   `${buffer%%"$eol"*}` (parameter expansion finds the first match)
-3. If found: return everything before the match, advance the buffer
-   past the match + delimiter length
-4. If not found: append more data from the FD to the buffer, retry
-5. If FD is exhausted and buffer is non-empty: return the remainder
-   (final record without trailing delimiter)
-6. If FD is exhausted and buffer is empty: return empty, signal EOF
+Needs discussion:
+- `$obj.destroy` must clean: `__boop_registry`, `__boop_static` keys,
+  `__Stream_data` keys matching `${objId}.*`, field arrays, readArgs arrays
+- Reference counting vs explicit destroy
+- Serialization interaction (do we serialize dead objects?)
+- Immediate concern: blackjack hands accumulate without bound
 
-**Fast-path optimization:** when `_EOL` is a single character, skip
-the buffer entirely and use `read -d "$eol"` directly. This is the
-common case and costs nothing extra.
+### Two-Layer Delimiter Architecture
 
-**Field splitting within a record:**
+The **output side** is complete (`_EOL` + `_Delimiter` respected by all
+multi-value methods). The **input side** is now handled by Stream for
+the complex cases. Existing code (`Config.load`, `__boop.parseConfig`)
+works fine as-is with hardcoded delimiters -- Stream is additive, not
+a replacement.
 
-After `Read` returns a record, the caller (or a helper) splits on
-`_Delimiter` for key/value parsing:
-```bash
-into=record $reader.Read
-key="${record%%"${_Delimiter:-=}"*}"
-value="${record#*"${_Delimiter:-=}"}"
-```
-This splits on the first occurrence of `_Delimiter`, leaving subsequent
-occurrences in the value (same semantics as `IFS='=' read -r k v`).
+### Fixed-Width Field Parsing (Phase 2 of Stream)
 
-**Text.String mixin integration:**
-
-The IO class mixes in Text.String so that records returned by `Read`
-are String objects with trim/split/replace available immediately:
-```bash
-into=line $reader.Read
-$line.trim
-into=fields $line.split ","    # hypothetical split method
-```
-
-**Relationship to existing code:**
-
-Once the IO class exists, `Config.load` and `__boop.parseConfig` can
-optionally delegate to it for the read loop. For the common case
-(newline-delimited, `=` field separator) they'd still use the fast
-path (`read -r`). The IO class is for when the caller needs something
-the fast path can't do.
-
-**Classes in the family:**
-
-- `IO::File` — wraps a persistent FD. open/close/read/readLine/
-  readAll/write/seek/tell/eof. The `Read` method lives here.
-- `IO::Buffer` — in-memory accumulator. The double-buffer backing
-  store for Read. Also useful standalone for building output strings
-  efficiently before flushing.
-- `IO::Pipe` — bidirectional channel via named FIFO. Deferred until
-  File and Buffer are proven.
-- `IO::Reader` — possibly a lighter "just the read side" without
-  file management. TBD whether this is separate or just File in
-  read-only mode.
-
-**Null bytes:**
-
-Bash variables cannot hold `\0`. Document clearly. The IO class
-operates on text (everything except null). Binary data with embedded
-nulls requires byte-by-byte `read -N 1` with `LC_ALL=C` and is out
-of scope for the initial implementation.
+Deferred. Design: `[Format NAME]` sections with `WIDTH:FIELDNAME` tokens.
+Constructor builds offset table, Read slices by position. Format-switching
+via discriminator field. Separate method from delimited Read.
 
 ### Internal descriptor separator (low priority)
 
-The framework uses comma as the internal separator for method lists,
-property lists, and mixin lists in class descriptors (`|methods=a,b,c|`).
-This effectively reserves comma as unusable in method/property names.
-Worth considering an alternative character (unit separator `$'\x1f'`?
-pipe? something else?) at some point. Same applies to Taggable's
-comma-separated tag storage.
-
-### Short-term: respect _EOL/_Delimiter in user-facing input (deferred)
-
-Config.load, Config.loadINI, __boop.parseConfig, and __boop.new all
-use hardcoded delimiters for user-facing data. The fix is to default
-to the current character but read from the variable:
-
-- Record splitting: `while IFS= read -r -d "${_EOL:0:1}" line`
-  (note: `read -d` only supports single-char; multi-char _EOL is
-  IO class territory)
-- Field splitting (key=value): `IFS="${_Delimiter:-=}" read -r k v`
-  where the first occurrence of _Delimiter separates key from value
-
-This preserves current behavior while opening the door for callers
-who set _Delimiter to `:` or `|`. Deferred until the IO class exists
-to handle the multi-char case properly.
+Comma reserved in method/property/mixin names. Consider `$'\x1f'` or
+pipe as alternative. Same applies to Taggable's comma-separated storage.
 
 ---
 
@@ -378,6 +353,37 @@ implementations when level rises.
 
 ## Per-Class Work
 
+### Class Properties (static/instance fallback)
+
+**Design decision (settled):** No implicit fallback. Java/C#/Ruby model.
+
+- `$obj.prop` reads the instance's own value from `__boop_static["${objId}.${prop}"]`
+- `ClassName.prop` reads the class value from `__boop_static["${className}.${prop}"]`
+- These are independent. Setting one doesn't affect the other.
+- If a developer wants inherited defaults, they call `$obj.inheritValueFor prop`
+  in their constructor — explicit, not magic.
+
+**`inheritValueFor`** — utility method on root `boop`. Walks the chain:
+instance → class → parent class → ... → root. Sets the local property
+to the first value found. Easy to call in a constructor for opt-in
+inheritance.
+
+**Core refactor (in progress):** property values are moving OUT of the
+descriptor string and INTO `__boop_static`. The descriptor becomes
+schema-only (`|class=X|parent=Y|methods=...|properties=...|`). This
+makes get/set a single hash lookup instead of a regex parse, eliminates
+encode/decode for values, and cleanly separates "what properties exist"
+from "what values they hold."
+
+Changes needed:
+- `__boop.new` — write initial values to `__boop_static["${objId}.${prop}"]`
+- `__boop.get` — read from `__boop_static["${_Self}.${prop}"]`
+- `__boop.set` — write to `__boop_static["${_Self}.${prop}"]`
+- `toString` / `inspect` — read values from `__boop_static`
+- `encode`/`decode` — may become unnecessary for property values
+- Descriptor format — drop `|prop=value|` segments
+- Instance accessor in `backfillMethods` — use `__boop.get` (no fallback)
+
 ### boop (root class)
 - `setOn` coverage: method exists, test coverage unclear
 - `boop_install` bootstrap script (see Namespace design in DEVLOG)
@@ -396,6 +402,10 @@ implementations when level rises.
 - **Defensive array access policy**: design pass needed to pick a
   consistent policy across all collection classes. See DEVLOG for
   the discussion context.
+- **`Map::Fast` bare `${_Delimiter}`**: three places in `Fast/Fast`
+  (`keys`, `keysUnder`, `toString`) use `${_Delimiter}` with no
+  fallback — silently empty if `_Delimiter` is unset. Change to
+  `${_Delimiter:-$_EOL}` for consistency with all other classes.
 
 ### Games (Card, PlayingCard, Deck, Blackjack)
 - `test_blackjack` coverage audit
@@ -411,6 +421,12 @@ implementations when level rises.
 - **Streamlined betting**: the current bet flow is a plain `read`
   prompt on a bare line. Needs a design pass for something more
   integrated.
+
+### Stream
+- **`-R "$regex"` field splitting**: designed, not yet implemented.
+- **Multi-FD I/O model**: see I/O Classes section above for full design.
+- **`into=` scope leak**: `into=` from caller leaks into Args.parse
+  inside Stream.new. Workaround exists; needs framework-level fix.
 
 ### Geometry (Box, Cube)
 - 91 tests passing, no known gaps.

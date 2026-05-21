@@ -342,10 +342,10 @@ __boop.log() {
   [[ "$__boop_log_caller" =~ ^_(Error|Warn|Info|Debug|Trace)$ ]] &&
     __boop_log_caller="${FUNCNAME[3]:-main}"
 
-  # Format: [LEVEL] caller: message
+  # Format: timestamp [LEVEL] caller: message
   local __boop_log_label="${__boop_logLevelName[$__boop_log_level]:-LOG}"
-  printf '[%s] %s: ' "$__boop_log_label" "$__boop_log_caller"
-  printf '%s' "$@" $'\n'
+  printf '%(%Y-%m-%d %H:%M:%S)T %7s %s: ' -1 "[$__boop_log_label]" "$__boop_log_caller"
+  printf '%s' "$@" "${_EOL}"
 
   # Fatality check. Same hot/cold resolution as the log threshold above,
   # but against __boop_classFatalLevel / __boop_fatalLevel. If the message
@@ -765,7 +765,7 @@ boop.pass() {
   fi
   case "$__boop_pass_mode" in
     nameref)    _Crash "nameref mode requires target variable" ;; # wouldn't be here if it had one!
-    stdout)     printf "%s" "${__boop_pass_val:-}" ${_EOL:-}   ;; # with line ending if set
+    stdout)     printf "%s" "${__boop_pass_val:-}" "${_EOL:-}" ;; # with line ending if set
     global)     _Out="$__boop_pass_val"                        ;; # the fallback default
     filesystem)
       # TODO: boop.passPath from call stack introspection
@@ -1032,7 +1032,7 @@ __boop.methodResolve() {
   local __boop_methodResolve_class="$1" __boop_methodResolve_method="$2"
   local -n __boop_methodResolve_out="$3"
 
-  [[ -n "${__boop_registry[$__boop_methodResolve_class]:-}" ]] || \
+  [[ -n "${__boop_registry[$__boop_methodResolve_class]:-}" ]] ||
     _Crash "Unknown class: '$__boop_methodResolve_class'"
 
   # Cache key — same cache as dispatch, they share the registry
@@ -1045,7 +1045,7 @@ __boop.methodResolve() {
   while [[ -n "$__boop_methodResolve_current" ]]; do
     __boop_methodResolve_out="${__boop_methodRegistry[$__boop_methodResolve_current.$__boop_methodResolve_method]:-}"
     if [[ -n "$__boop_methodResolve_out" ]]; then
-      [[ "$__boop_methodResolve_current" != "$__boop_methodResolve_class" ]] && \
+      [[ "$__boop_methodResolve_current" != "$__boop_methodResolve_class" ]] &&
         __boop_methodRegistry[$__boop_methodResolve_cachekey]="$__boop_methodResolve_out"
       return
     fi
@@ -1095,34 +1095,22 @@ __boop.deserialize() {
 
 # Retrieve a property value from the object's descriptor.
 # Delegates to parse, which handles decoding and return routing.
-# The ${into:-} passes through the caller's nameref target (if any)
-# so the value lands directly in their variable without touching the global.
+# Read a property value from the object's storage in __boop_static.
+# Returns the value via boop.pass (respects into=).
+# If the property was never set, returns empty string.
 __boop.get() {
   local _Self="${_Self:-}"; local _Class="${_Class:-boop}"
-  __boop.parse "$_Self" "$1" ${into:-}
+  boop.pass "${__boop_static[${_Self}.${1}]:-}" ${into:-}
 }
 
-# Update a property value in the object's descriptor.
-# The new value is encoded before storage (pipes, equals, percents, etc.
-# are escaped so they don't corrupt the delimiter structure).
-#
-# If the property already exists, its value is replaced in-place via
-# regex match + string substitution on the descriptor. If it doesn't
-# exist, it's appended to the end. This means property order in the
-# descriptor reflects insertion order, with mutations preserving position.
+# __boop.getOrClass -- REMOVED. No implicit fallback.
+# Use $obj.inheritValueFor prop for explicit opt-in inheritance.
+
+# Store a property value in the object's storage (__boop_static).
+# Simple hash write — no encoding needed, no descriptor mutation.
 __boop.set() {
   local _Self="${_Self:-}"; local _Class="${_Class:-boop}"
-  local __boop_set_prop="$1" __boop_set_encoded
-  __boop.encode "$2" __boop_set_encoded
-
-  local __boop_set_descriptor="${__boop_registry[$_Self]:-}"
-
-  if [[ "$__boop_set_descriptor" =~ \|${__boop_set_prop}=[^|]* ]]; then
-    local __boop_set_old="${BASH_REMATCH[0]}"
-    __boop_registry[$_Self]="${__boop_set_descriptor/${__boop_set_old}/|${__boop_set_prop}=${__boop_set_encoded}}"
-  else
-    __boop_registry[$_Self]="$__boop_set_descriptor|$__boop_set_prop=$__boop_set_encoded"
-  fi
+  __boop_static["${_Self}.${1}"]="$2"
 }
 
 # Type checking with ancestry walk.
@@ -1217,53 +1205,64 @@ __boop.toString() {
   local _Self="${_Self:-}"; local _Class="${_Class:-boop}"
   local -l prettyPrint; : "${prettyPrint:=false}"
   [[ "${1:-}" == "pretty" ]] && prettyPrint=true
-  local __boop_toString_descriptor="${__boop_registry[$_Self]:-}"
-  local __boop_toString_field __boop_toString_value __boop_toString_decoded __boop_toString_output
 
-  # Both modes iterate the descriptor by matching "|key=value" segments,
-  # then advancing past the match with ${__boop_toString_descriptor#*"${BASH_REMATCH[0]}"}
-  # to consume the string left-to-right without a second regex pass.
+  # Get declared properties from the class descriptor (schema)
+  local __boop_toString_props __boop_toString_trueClass
+  __boop.parse "$_Self" "trueClass" __boop_toString_trueClass
+  : "${__boop_toString_trueClass:=$_Class}"
+  __boop.parse "$__boop_toString_trueClass" "properties" __boop_toString_props
 
+  # Collect all properties: declared first, then any undeclared extras
+  local -a __boop_toString_keys=() __boop_toString_vals=()
+  local -A __boop_toString_seen=()
+  local __boop_toString_field __boop_toString_value
+
+  # Declared properties (always shown, even if empty)
+  if [[ -n "$__boop_toString_props" ]]; then
+    local -a __boop_toString_propArr
+    IFS=',' read -ra __boop_toString_propArr <<< "$__boop_toString_props"
+    for __boop_toString_field in "${__boop_toString_propArr[@]}"; do
+      [[ -n "$__boop_toString_field" ]] || continue
+      __boop_toString_value="${__boop_static[${_Self}.${__boop_toString_field}]:-}"
+      __boop_toString_keys+=("$__boop_toString_field")
+      __boop_toString_vals+=("$__boop_toString_value")
+      __boop_toString_seen[$__boop_toString_field]=1
+    done
+  fi
+
+  # Undeclared properties (dynamic additions)
+  local __boop_toString_k __boop_toString_prefix="${_Self}."
+  for __boop_toString_k in "${!__boop_static[@]}"; do
+    [[ "$__boop_toString_k" == "${__boop_toString_prefix}"* ]] || continue
+    __boop_toString_field="${__boop_toString_k#"$__boop_toString_prefix"}"
+    [[ -n "${__boop_toString_seen[$__boop_toString_field]+set}" ]] && continue
+    __boop_toString_keys+=("$__boop_toString_field")
+    __boop_toString_vals+=("${__boop_static[$__boop_toString_k]}")
+  done
+
+  # Format output
+  local __boop_toString_output
   if [[ "$prettyPrint" != "true" ]]; then
     __boop_toString_output="$_Class($_Self){"
-    while [[ "$__boop_toString_descriptor" =~ \|([^=]+)=([^|]*) ]]; do
-      __boop_toString_field="${BASH_REMATCH[1]}"
-      __boop_toString_value="${BASH_REMATCH[2]}"
-      case "$__boop_toString_field" in
-        class|parent|methods|properties) ;;
-        *)
-          __boop.decode "$__boop_toString_value" __boop_toString_decoded
-          __boop_toString_output="$__boop_toString_output $__boop_toString_field=$__boop_toString_decoded"
-          ;;
-      esac
-      __boop_toString_descriptor="${__boop_toString_descriptor#*"${BASH_REMATCH[0]}"}"
+    local -i __boop_toString_i
+    for (( __boop_toString_i=0; __boop_toString_i < ${#__boop_toString_keys[@]}; __boop_toString_i++ )); do
+      __boop_toString_output="$__boop_toString_output ${__boop_toString_keys[$__boop_toString_i]}=${__boop_toString_vals[$__boop_toString_i]}"
     done
     boop.pass "$__boop_toString_output }" ${into:-}
     return
   fi
 
-  # Pretty print: two-pass for columnar alignment
-  local -i __boop_toString_maxlen=0
-  local -a __boop_toString_keys=() __boop_toString_vals=()
-  while [[ "$__boop_toString_descriptor" =~ \|([^=]+)=([^|]*) ]]; do
-    __boop_toString_field="${BASH_REMATCH[1]}"
-    __boop_toString_value="${BASH_REMATCH[2]}"
-    case "$__boop_toString_field" in
-      class|parent|methods|properties) ;;
-      *)
-        __boop.decode "$__boop_toString_value" __boop_toString_decoded
-        __boop_toString_keys+=("$__boop_toString_field")
-        __boop_toString_vals+=("$__boop_toString_decoded")
-        (( ${#__boop_toString_field} > __boop_toString_maxlen )) && __boop_toString_maxlen=${#__boop_toString_field} || true
-        ;;
-    esac
-    __boop_toString_descriptor="${__boop_toString_descriptor#*"${BASH_REMATCH[0]}"}"
+  # Pretty print: columnar alignment
+  local -i __boop_toString_maxlen=0 __boop_toString_i
+  for (( __boop_toString_i=0; __boop_toString_i < ${#__boop_toString_keys[@]}; __boop_toString_i++ )); do
+    (( ${#__boop_toString_keys[$__boop_toString_i]} > __boop_toString_maxlen )) &&
+      __boop_toString_maxlen=${#__boop_toString_keys[$__boop_toString_i]} || true
   done
 
-  local -i __boop_toString_i
   printf -v __boop_toString_output "%s(%s) {\n" "$_Class" "$_Self"
   for (( __boop_toString_i=0; __boop_toString_i < ${#__boop_toString_keys[@]}; __boop_toString_i++ )); do
-    printf -v __boop_toString_field "  %-${__boop_toString_maxlen}s = %s\n" "${__boop_toString_keys[$__boop_toString_i]}" "${__boop_toString_vals[$__boop_toString_i]}"
+    printf -v __boop_toString_field "  %-${__boop_toString_maxlen}s = %s\n" \
+      "${__boop_toString_keys[$__boop_toString_i]}" "${__boop_toString_vals[$__boop_toString_i]}"
     __boop_toString_output="$__boop_toString_output$__boop_toString_field"
   done
   __boop_toString_output="$__boop_toString_output}"
@@ -1377,19 +1376,14 @@ __boop.new() {
   : "${__boop_new_trueClass:=$_Class}"
   local __boop_new_descriptor="|class=$_Class|trueClass=$__boop_new_trueClass"
 
-  # Parse arguments and encode values.
-  # If a key already exists in the descriptor (e.g., a subclass passes
-  # length= after the caller already passed length=), replace in-place
-  # so parse always finds the correct value. Same logic as set().
-  local __boop_new_encoded __boop_new_prop __boop_new_val
+  # Parse arguments and store values in __boop_static.
+  # The descriptor stays schema-only; values live in the hash.
+  local __boop_new_prop __boop_new_val
   for __boop_new_arg in "$@"; do
-    IFS='=' read -r __boop_new_prop __boop_new_val <<< "$__boop_new_arg"
-    __boop.encode "$__boop_new_val" __boop_new_encoded
-    if [[ "$__boop_new_descriptor" =~ \|${__boop_new_prop}=[^|]* ]]; then
-      __boop_new_descriptor="${__boop_new_descriptor/${BASH_REMATCH[0]}/|${__boop_new_prop}=${__boop_new_encoded}}"
-    else
-      __boop_new_descriptor="$__boop_new_descriptor|$__boop_new_prop=$__boop_new_encoded"
-    fi
+    [[ "$__boop_new_arg" == *=* ]] || continue
+    __boop_new_prop="${__boop_new_arg%%=*}"
+    __boop_new_val="${__boop_new_arg#*=}"
+    __boop_static["${_Self}.${__boop_new_prop}"]="$__boop_new_val"
   done
 
   # Register object
@@ -1474,7 +1468,7 @@ __boop.backfillMethods() {
     for __boop_backfillMethods_mixin in "${__boop_backfillMethods_mArr[@]}"; do
       [[ -n "$__boop_backfillMethods_mixin" ]] || continue
       __boop_backfillMethods_mmethods=""
-      [[ "${__boop_mixin_registry[$__boop_backfillMethods_mixin]:-}" =~ \|methods=([^|]*)\| ]] && \
+      [[ "${__boop_mixin_registry[$__boop_backfillMethods_mixin]:-}" =~ \|methods=([^|]*)\| ]] &&
         __boop_backfillMethods_mmethods="${BASH_REMATCH[1]}"
       [[ -n "$__boop_backfillMethods_mmethods" ]] || continue
       local __boop_backfillMethods_mMArr; IFS=',' read -ra __boop_backfillMethods_mMArr <<< "$__boop_backfillMethods_mmethods"
@@ -1578,7 +1572,7 @@ __boop.registerClass() {
     for __boop_registerClass_mixin in "${__boop_registerClass_mArr[@]}"; do
       [[ -n "$__boop_registerClass_mixin" ]] || continue
       __boop_registerClass_mixinMethods=""
-      [[ "${__boop_mixin_registry[$__boop_registerClass_mixin]:-}" =~ \|methods=([^|]*)\| ]] && \
+      [[ "${__boop_mixin_registry[$__boop_registerClass_mixin]:-}" =~ \|methods=([^|]*)\| ]] &&
         __boop_registerClass_mixinMethods="${BASH_REMATCH[1]}"
       [[ -n "$__boop_registerClass_mixinMethods" ]] || continue
       local __boop_registerClass_mMethodArr; IFS=',' read -ra __boop_registerClass_mMethodArr <<< "$__boop_registerClass_mixinMethods"
@@ -1597,6 +1591,30 @@ __boop.registerClass() {
         __boop_methodRegistry["$__boop_registerClass_class.$__boop_registerClass_method"]="$__boop_registerClass_mixinImpl"
         __boop_registerClass_written[$__boop_registerClass_method]=1
       done
+    done
+  fi
+
+  # Class-level property accessors — read/write via _Static.
+  # These provide ClassName.prop as a getter/setter for class-level defaults.
+  # Instance accessors (generated in backfillMethods) fall back to these
+  # when the property is absent from the instance descriptor.
+  local __boop_registerClass_props __boop_registerClass_prop
+  __boop.parse "$__boop_registerClass_class" "properties" __boop_registerClass_props
+  if [[ -n "$__boop_registerClass_props" ]]; then
+    IFS=',' read -ra __boop_registerClass_propArr <<< "$__boop_registerClass_props"
+    for __boop_registerClass_prop in "${__boop_registerClass_propArr[@]}"; do
+      [[ -n "$__boop_registerClass_prop" ]] || continue
+      # Don't overwrite if a method with this name was already written
+      [[ -n "${__boop_registerClass_written[$__boop_registerClass_prop]+set}" ]] && continue
+      # Don't overwrite class author's definition
+      declare -F "$__boop_registerClass_class.$__boop_registerClass_prop" >/dev/null && continue
+      # Class-level property accessor: get with no args, set with one arg.
+      # Uses _Property (keyed as ClassName.propName in __boop_static).
+      printf '%s.%s() { if (($#)); then _Class=%q _Property "%s=$1"; else _Class=%q _Property %q; fi; }\n' \
+        "$__boop_registerClass_class" "$__boop_registerClass_prop" \
+        "$__boop_registerClass_class" "$__boop_registerClass_prop" \
+        "$__boop_registerClass_class" "$__boop_registerClass_prop" \
+        >> "$__boop_registerClass_tmpfile"
     done
   fi
 
@@ -2527,7 +2545,7 @@ __boop.checkClassVersion() {
     return 0
   fi
   if [[ -n "${__boop_registry[SemVer]+set}" ]]; then
-    SemVer.satisfies "$__boop_ccv_ver" "$__boop_ccv_con" || \
+    SemVer.satisfies "$__boop_ccv_ver" "$__boop_ccv_con" ||
       _Crash "_Require: '$__boop_ccv_class' v${__boop_ccv_ver} does not satisfy '$__boop_ccv_con'"
   else
     _Warn "_Require: SemVer not loaded, skipping version check for '$__boop_ccv_class $__boop_ccv_con'"
@@ -2630,7 +2648,7 @@ __boopClass.registerMethods() {
     for __boopClass_rm_entry in "${__boopClass_rm_customArr[@]}"; do
       __boopClass_rm_mname="${__boopClass_rm_entry%%=*}"
       __boopClass_rm_impl="${__boopClass_rm_entry#*=}"
-      [[ -n "$__boopClass_rm_mname" && -n "$__boopClass_rm_impl" ]] || \
+      [[ -n "$__boopClass_rm_mname" && -n "$__boopClass_rm_impl" ]] ||
         _Crash "boopClass: bad custom entry '$__boopClass_rm_entry' — expected name=impl"
       __boop.registerMethod "$__boopClass_rm_class" "$__boopClass_rm_mname" "$__boopClass_rm_impl"
     done
@@ -2754,10 +2772,10 @@ boopClass() {
     local __boopClass_mArr; IFS=',' read -ra __boopClass_mArr <<< "$__boopClass_mixins"
     for __boopClass_mixin in "${__boopClass_mArr[@]}"; do
       [[ -n "$__boopClass_mixin" ]] || continue
-      [[ -n "${__boop_mixin_registry[$__boopClass_mixin]+set}" ]] || \
+      [[ -n "${__boop_mixin_registry[$__boopClass_mixin]+set}" ]] ||
         _Crash "boopClass: mixin '$__boopClass_mixin' not registered — load it before the class"
       local __boopClass_mMethods=""
-      [[ "${__boop_mixin_registry[$__boopClass_mixin]}" =~ \|methods=([^|]*)\| ]] && \
+      [[ "${__boop_mixin_registry[$__boopClass_mixin]}" =~ \|methods=([^|]*)\| ]] &&
         __boopClass_mMethods="${BASH_REMATCH[1]}"
       __boopClass_mixinMethods="${__boopClass_mixinMethods:+$__boopClass_mixinMethods,}$__boopClass_mMethods"
     done
@@ -2782,7 +2800,7 @@ boopExtend() {
   local __boopClass_class __boopClass_parent __boopClass_public __boopClass_custom __boopClass_has __boopClass_version
   __boopClass.parseTokens "$@"
   [[ -n "$__boopClass_class" ]] || _Crash "boopExtend: no class name given"
-  [[ -n "${__boop_registry[$__boopClass_class]+set}" ]] || \
+  [[ -n "${__boop_registry[$__boopClass_class]+set}" ]] ||
     _Crash "boopExtend: class '$__boopClass_class' not registered"
 
   local __boopExtend_newMethods

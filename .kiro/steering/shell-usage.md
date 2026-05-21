@@ -44,3 +44,22 @@ This ensures:
 - Progress is visible in real time (stdout)
 - Full output is captured in `test_all.log` for review after timeouts
 - `bash -x` shows each command as it executes so you can see what's running
+
+## Prefer Positive Assertions in Conditionals
+
+Test for what things ARE, not what they aren't. Negative conditions
+(`!= "none"`, `!= "char"`, `! -z`) are harder to reason about and
+often mask the actual logic.
+
+```bash
+# BAD: testing what it's NOT
+if [[ "$mode" != "none" && "$mode" != "char" ]]; then
+
+# GOOD: testing what it IS
+if [[ "$mode" == "string" || "$mode" == "class" || "$mode" == "collapse" ]]; then
+```
+
+Exception: a single `[[ -z "$var" ]]` or `[[ -n "$var" ]]` is fine
+for presence/absence checks. The rule targets multi-branch logic where
+negation obscures intent.
+

@@ -428,9 +428,9 @@ __Math.resolve() {
 
   # Object ID — already validated, extract from descriptor
   if [[ "$__Math_resolve_input" == _* && -n "${__boop_registry[$__Math_resolve_input]:-}" ]]; then
-    __boop.parse "$__Math_resolve_input" "digits" __Math_resolve_digits
-    __boop.parse "$__Math_resolve_input" "scale" __Math_resolve_scale
-    __boop.parse "$__Math_resolve_input" "neg" __Math_resolve_neg
+    __Math_resolve_digits="${__boop_static[${__Math_resolve_input}.digits]:-}"
+    __Math_resolve_scale="${__boop_static[${__Math_resolve_input}.scale]:-}"
+    __Math_resolve_neg="${__boop_static[${__Math_resolve_input}.neg]:-}"
     return
   fi
 

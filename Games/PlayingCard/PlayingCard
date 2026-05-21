@@ -32,8 +32,8 @@ Games.PlayingCard.new() {
 Games.PlayingCard.toString() {
   local _Self="${_Self:-${Class:-Games.PlayingCard}}" _Class="${_Class:-Games.PlayingCard}"
   local __Games_PlayingCard_toString_rank __Games_PlayingCard_toString_suit
-  __boop.parse "$_Self" "rank" __Games_PlayingCard_toString_rank
-  __boop.parse "$_Self" "suit" __Games_PlayingCard_toString_suit
+  __Games_PlayingCard_toString_rank="${__boop_static[${_Self}.rank]:-}"
+  __Games_PlayingCard_toString_suit="${__boop_static[${_Self}.suit]:-}"
   boop.pass "${__Games_PlayingCard_toString_rank}${__Games_PlayingCard_toString_suit}" ${into:-}
 }
 
@@ -46,15 +46,15 @@ Games.PlayingCard.toString() {
 Games.PlayingCard.render() {
   local _Self="${_Self:-}" _Class="${_Class:-Games.PlayingCard}"
   local __Games_PlayingCard_render_rank __Games_PlayingCard_render_suit
-  __boop.parse "$_Self" rank __Games_PlayingCard_render_rank
-  __boop.parse "$_Self" suit __Games_PlayingCard_render_suit
+  __Games_PlayingCard_render_rank="${__boop_static[${_Self}.rank]:-}"
+  __Games_PlayingCard_render_suit="${__boop_static[${_Self}.suit]:-}"
 
   # Color palette: black-on-white for structure and non-red suits,
   # red-on-white for hearts and diamonds. Reset clears the line.
   local __Games_PlayingCard_render_fg=$'\033[30;47m'       # black on white
   local __Games_PlayingCard_render_suit_fg=$'\033[30;47m'  # default: black
   local __Games_PlayingCard_render_rs=$'\033[0m'
-  if [[ "$__Games_PlayingCard_render_suit" == '♥' || \
+  if [[ "$__Games_PlayingCard_render_suit" == '♥' ||
         "$__Games_PlayingCard_render_suit" == '♦' ]]; then
     __Games_PlayingCard_render_suit_fg=$'\033[31;47m'      # red on white
   fi
