@@ -12,9 +12,9 @@ into=b Stream.new -P "Bad Poem" -D $'\r\n\r\n' -F $'\r\n' -a B_fields
 lst=( $a $b ) # anonymized array of objects
 for o in "${lst[@]}"; do printf '\n[%s]\n' $o
   while IFS+=$'\r' $o.next; do into=max $o.fieldCount
-    for ((i=0; i<max; i++)); do i
+    for ((i=0; i<max; i++)); do 
       printf '<'; _EOL='' $o.field $i; printf '>\n'
-    done; printf '-EOL-\n'
+    done; printf -- '-EOL-\n'
   done; printf '\n==EOS==\n'
 done
 

@@ -232,10 +232,28 @@ for fast access (eliminates `__boop.get` overhead in hot path).
 - ~~**`_Delimiter` semantics**~~ resolved (Stream does not use it; document only)
 - **`-R "$regex"` (custom field regex)**: designed, not implemented.
   User-provided regex for field splitting. Escape hatch for complex cases.
-- **Open mode (`-m read|write|append|rw`)**: constructor currently always
-  opens for reading. Add mode flag to support write (`>`), append (`>>`),
-  and read-write (`<>`). Write-only objects would disable `read`/`Read`;
-  read-only objects would disable `write`/`writeLine`.
+- **Multi-FD I/O model**: each Stream object has up to three FDs:
+  - `in` -- read source (default: stdin dup)
+  - `out` -- write target (default: stdout dup)
+  - `err` -- object-level logging/errors (default: stderr dup)
+  Each independently configurable via:
+  - `--fd-in N` / `--fd-out N` / `--fd-err N` (explicit FDs)
+  - `--path-in FILE` / `--path-out FILE` / `--path-err FILE` (open paths)
+  - `-u N` defaults to `--fd-in` unless `-m write|append|rw`
+  - `-P FILE` defaults to `--path-in` unless `-m write|append`
+  - `-m read|write|append|rw` controls open mode for `-P`/`-u` shortcuts
+  - `--in=none` / `--out=none` to explicitly close/disable a direction
+  Read methods use `in`. Write methods use `out`. Both can coexist.
+  If both `in` and `out` point to the same FD (e.g. socket), that's valid.
+  Shell redirections on the constructor call persist (existing behavior).
+  No sigil parsing (`>>`, `<` etc.) -- that's shell syntax, not ours.
+  Design with Stream::Socket in mind (bidirectional on one FD).
+- **Non-blocking reads**: for pipes/sockets where blocking is unacceptable.
+  Direct mode: `read -t 0` polls. Buffered mode: `read -t $timeout -N`
+  on fill, work with partial buffer. Needs a third return state beyond
+  0 (success) and 1 (EOF) -- "no complete record yet, try again."
+  Options: return code 2, or a `wouldBlock` property, or a dedicated
+  `$s.poll` / `$s.tryRead` method. Essential for Stream::Socket.
 - **`into=` leak through dynamic scoping**: `into=` from the caller leaks
   into Args.parse. Workaround: explicit `into=__local _Class='' Args.parse`.
   Needs a framework-level solution (TODO: scope isolation for `into=`).
@@ -406,8 +424,7 @@ Changes needed:
 
 ### Stream
 - **`-R "$regex"` field splitting**: designed, not yet implemented.
-- **Open mode (`-m read|write|append|rw`)**: constructor always opens
-  read; write/append/rw modes not yet wired.
+- **Multi-FD I/O model**: see I/O Classes section above for full design.
 - **`into=` scope leak**: `into=` from caller leaks into Args.parse
   inside Stream.new. Workaround exists; needs framework-level fix.
 
