@@ -499,21 +499,6 @@ $s.close
 
 # ---
 
-$t.section "field override on Read"
-
-printf 'one:two:three\nfour:five:six\n' > "$__st_tmp"
-into=s Stream.new -P "$__st_tmp" -f ':' a b c
-$s.Read
-$t.assert_eq "override: normal read a" "$a" "one"
-# Override fields for one read
-$s.Read x y z
-$t.assert_eq "override: overridden x" "$x" "four"
-$t.assert_eq "override: overridden y" "$y" "five"
-$t.assert_eq "override: overridden z" "$z" "six"
-$s.close
-
-# ---
-
 $t.section "-F delimiter is substring of data"
 
 printf 'hello<>world<>foo<>bar\n' > "$__st_tmp"

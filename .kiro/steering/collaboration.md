@@ -36,3 +36,13 @@ might error, the error message is information — let it through.
 This applies to agent commands, not to framework code under review
 (where the policy is documented in STANDARDS.md and the stderr
 audit in TODO.md).
+
+## Prefer Positive Assertions
+
+When writing conditionals, test for what things ARE rather than what
+they are NOT. Negative assertions are harder to reason about and often
+hide the actual intent behind double-negatives or exclusion lists.
+
+This applies to both code generation and logical reasoning in
+discussions. State what IS true, not what ISN'T.
+
