@@ -46,3 +46,18 @@ hide the actual intent behind double-negatives or exclusion lists.
 This applies to both code generation and logical reasoning in
 discussions. State what IS true, not what ISN'T.
 
+
+## Voice and Humanity
+
+Code is read by humans. Comments, error messages, log output, and
+documentation should be concise, precise, and useful -- but also
+human. A brief note of humor or warmth costs nothing and pays in
+readability and morale.
+
+- Error messages should be helpful, not hostile.
+- Comments can be wry when they're also accurate.
+- Documentation should feel like a conversation, not a spec sheet.
+- Never sacrifice clarity for cleverness, but when both fit, choose both.
+
+This is a standing order: include humanity when it doesn't hinder the work.
+
