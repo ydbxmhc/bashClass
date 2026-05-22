@@ -248,6 +248,24 @@ for fast access (eliminates `__boop.get` overhead in hot path).
   Shell redirections on the constructor call persist (existing behavior).
   No sigil parsing (`>>`, `<` etc.) -- that's shell syntax, not ours.
   Design with Stream::Socket in mind (bidirectional on one FD).
+  - **Close direction semantics**: use `<&-` to close `in`, `>&-` for `out`/`err`.
+    Both operators call `close(fd)` at the syscall level, but direction should
+    match the fd's open mode for semantic clarity.
+  - **Granular close**: `$s.closeIn` / `$s.closeOut` as separate methods.
+    `$s.close` closes all open FDs. Half-close is a real pipe use case:
+    write everything, `closeOut` to signal EOF downstream, still read results.
+  - **Write-EOF semantics**: `closeOut` IS the write-EOF signal. No separate
+    `eof_out` state needed. `eof` property remains read-side only
+    ("no more data coming in"). Closing the write fd is the action, not a flag.
+  - **FD deduplication on close**: if `fd_in == fd_out` (bidirectional socket),
+    closing both directions would double-close the same fd number. Guard needed.
+  - **`write()`/`writeLine()` use wrong fd today**: they reference `fd` (the
+    read fd). Works now because there is only one fd. Will silently break when
+    `fd_in` and `fd_out` are separate. Fix during multi-FD implementation.
+  - **Current `eof=1` in `close()` is a stopgap**: conflates "data exhausted"
+    with "fd released by caller." Correct fix when multi-FD lands: nil out
+    `fd_in` and check for nil in read methods. `eof` should stay read-side
+    only and reflect data exhaustion, not caller-initiated close.
 - **Non-blocking reads**: for pipes/sockets where blocking is unacceptable.
   Direct mode: `read -t 0` polls. Buffered mode: `read -t $timeout -N`
   on fill, work with partial buffer. Needs a third return state beyond
