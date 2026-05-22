@@ -465,3 +465,76 @@ All changes must pass the full test suite before committing.
 Currently 514 assertions across 6 TestSuite files.
 
 
+
+---
+
+## Class Variant Conventions (`::Simple` and `::Fast`)
+
+Two naming conventions for class variants with specific optimization
+axes. Not mandatory -- not every class has, needs, or will ever need
+one of these. The convention exists so a reader seeing `Foo`, `Foo::Simple`,
+or `Foo::Fast` in the tree immediately understands what they're looking
+at without having to read the file for a first clue.
+
+### `Class::Simple`
+
+A minimal-dependency variant for use *inside* the dependency graph of
+core classes. Typically a subset of the full API, no dependencies on
+other framework classes beyond the root `boop`, and focused on the one
+or two operations that matter for the intended caller. Examples:
+
+- `Collection::Map::Simple` -- plain key-value hash with set/get/has/keys,
+  no ordering, no delimiters, no Iterator.
+- `Config::Simple` -- flat `key=value` parser with `#` comments and
+  blank-line skipping. No INI sections, no object wrapper, no round-trip.
+
+### `Class::Fast`
+
+An optimized-hot-path variant. Already demonstrated by `Collection::Map::Fast`
+(flat compound-key store, O(1) get/set, no insertion ordering). The
+conventional signal is "this sacrifices features for speed."
+
+### What the convention is NOT
+
+- Not a mandate. Most classes will have neither variant.
+- Not a symmetry requirement. A class can have `::Simple` without
+  `::Fast`, or vice versa.
+- Not the same as inheritance. The variants don't share an inheritance
+  chain -- each implements what it needs directly.
+
+---
+
+## Class Properties (static/instance)
+
+**Design decision (settled):** No implicit fallback. Java/C#/Ruby model.
+
+- `$obj.prop` reads the instance's own value from `__boop_static["${objId}.${prop}"]`
+- `ClassName.prop` reads the class value from `__boop_static["${className}.${prop}"]`
+- These are independent. Setting one doesn't affect the other.
+- If a developer wants inherited defaults, they call `$obj.inheritValueFor prop`
+  in their constructor -- explicit, not magic.
+
+Property values live in `__boop_static`. The descriptor is schema-only
+(`|class=X|parent=Y|methods=...|properties=...|`). Get/set is a single
+hash lookup -- no regex parse, no encode/decode.
+
+
+---
+
+## Constructor Preamble: `into=` Guard
+
+Any constructor (or method) that receives `into=` from its caller AND
+calls other framework code internally must save and clear `into` at
+the top to prevent leakage into subcalls:
+
+```bash
+MyClass.new() {
+  local __MyClass_new_into="${into:-}"; into=''
+  # ... internal work ...
+  boop.pass "$_Self" ${__MyClass_new_into:+$__MyClass_new_into}
+}
+```
+
+See `docs/GOTCHAS.md` "Environment Prefix Leakage" for the full
+explanation of why this is necessary.
+

@@ -61,3 +61,28 @@ readability and morale.
 
 This is a standing order: include humanity when it doesn't hinder the work.
 
+
+## Propose Before Executing
+
+Do not run commands, tests, or scripts without discussing them first.
+Propose what you want to run and why, then wait for approval. When
+debugging, share your hypothesis and ask before executing.
+
+## Re-read Before Editing
+
+The user frequently edits the same files. ALWAYS read the current
+file state before making any changes -- never assume the content
+matches what you last saw. Respect and preserve user edits.
+
+## Debugging Convergence
+
+If a debugging session isn't converging after 2-3 attempts, stop
+and ask for input. Don't spiral with incremental patches. Diagnose
+the root cause, explain what's failing, and propose a fundamentally
+different approach.
+
+## Pull Before Work
+
+At the start of every session, pull from remote before doing anything
+else. The user may have pushed changes between sessions.
+
