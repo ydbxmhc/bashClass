@@ -734,6 +734,7 @@ _Import() {
 # When no target is provided, the global mode governs:
 #   auto       → stdout (default; same as stdout mode)
 #   global     → writes to _Out
+#   reply      → writes to REPLY (bash convention; aligns with read/select/${| })
 #   stdout     → printf to stdout (natural for $() capture)
 #   nameref    → crashes (target is required -- this is intentional)
 #   filesystem → writes to a temp file keyed by caller function name + PID
@@ -766,7 +767,8 @@ boop.pass() {
   case "$__boop_pass_mode" in
     nameref)    _Crash "nameref mode requires target variable" ;; # wouldn't be here if it had one!
     stdout)     printf "%s" "${__boop_pass_val:-}" "${_EOL:-}" ;; # with line ending if set
-    global)     _Out="$__boop_pass_val"                        ;; # the fallback default
+    global)     _Out="$__boop_pass_val"                        ;;
+    reply)      REPLY="$__boop_pass_val"                       ;;
     filesystem)
       # TODO: boop.passPath from call stack introspection
       printf "%s" "$__boop_pass_val" >| "${__boop_tmpdir:-/tmp}/__boop_${FUNCNAME[1]}_$BASHPID"
@@ -787,11 +789,16 @@ boop.pass() {
 #   echo "$_OutMode"    # read mode directly
 #
 # Modes:
-#   auto        default — global in main shell, stdout in subshells
+#   auto        default — stdout (safe for subshell callers)
 #   global      always write to _Out (the default side-channel)
+#   reply       always write to REPLY (bash convention; pairs with read/select/${| })
 #   stdout      always print to stdout (good for CLI use)
 #   nameref     requires into= — crashes without one
 #   filesystem  write to temp file keyed by caller + PID
+#
+# global vs reply: both are globals clobbered on every call and read
+# immediately after. reply aligns with bash's own convention; global
+# predates it. Use whichever fits; switch per-call with _OutMode=reply.
 #
 # Validation: invalid mode crashes immediately with a clear message
 # rather than failing later inside boop.pass.
@@ -801,8 +808,8 @@ boop.pass() {
 #   _EOL=$'\n'
 _OutMode() {
   if [[ -n "${1:-}" ]]; then
-    case "$1" in auto|global|stdout|nameref|filesystem) _OutMode="$1"          ;;
-    *) _Crash "invalid _OutMode: '$1' (auto|global|stdout|nameref|filesystem)" ;;
+    case "$1" in auto|global|reply|stdout|nameref|filesystem) _OutMode="$1"          ;;
+    *) _Crash "invalid _OutMode: '$1' (auto|global|reply|stdout|nameref|filesystem)" ;;
     esac
   fi
   boop.pass "$_OutMode"
