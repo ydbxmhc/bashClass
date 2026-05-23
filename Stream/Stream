@@ -628,6 +628,7 @@ Stream.close() {
   local _Self="${_Self:-}" _Class="${_Class:-Stream}"
   if [[ -n "${__boop_static[${_Self}.fd]}" ]]; then
     eval "exec ${__boop_static[${_Self}.fd]}>&-"
+    __boop_static["${_Self}.eof"]="1"
     _Info "close: fd=${__boop_static[${_Self}.fd]} closed"
   fi
 }

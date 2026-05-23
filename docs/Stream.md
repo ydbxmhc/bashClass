@@ -420,3 +420,44 @@ $s.write "no newline after this"
 $s.close
 ```
 
+
+---
+
+## Design: Two-Layer Delimiter Architecture
+
+`_EOL` and `_Delimiter` are the universal IO-control variables across
+the boop framework. Stream implements the complex (Layer 2) path:
+
+**Layer 1 -- the fast path (single-char, used everywhere):**
+- `printf`, parameter expansion, `read -d` -- zero overhead
+- What Map.keys, List.toArray, boop.pass, Config.keys etc. use
+- Single characters are the common case and stay fast
+
+**Layer 2 -- Stream (multi-char capable):**
+- Internal buffer, scans for delimiter using parameter expansion or regex
+- Handles multi-character `_EOL` (paragraph mode, CRLF, arbitrary patterns)
+- Handles multi-character field delimiters (`-F`, `-W`)
+- Same caller intent (`_EOL`, `-D`, `-E`), different execution path
+
+**The hybrid principle:**
+- Single-char delimiter: direct `read` (no buffering needed)
+- Multi-char delimiter or streaming data: buffered Read
+- Same variable names, same caller intent, different execution paths
+
+Stream does NOT read `_Delimiter` directly (see docs above). The
+framework's `_Delimiter` is an output-side convention. Stream's input-
+side field splitting uses explicit `-f`/`-F`/`-W` options.
+
+## Design: Multi-FD I/O Model (planned)
+
+Each Stream object will have up to three FDs:
+- `in` -- read source (default: stdin dup)
+- `out` -- write target (default: stdout dup)
+- `err` -- object-level logging/errors (default: stderr dup)
+
+Each independently configurable. Shell redirections on the constructor
+persist (existing behavior). No sigil parsing. Designed with
+Stream::Socket in mind (bidirectional on one FD).
+
+See TODO for full option spec (`--fd-in`, `--path-out`, `-m` mode, etc.)
+

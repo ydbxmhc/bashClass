@@ -1,0 +1,145 @@
+#!/bin/bash
+set -uo pipefail
+
+# boopShell -- interactive boop playground.
+#
+# Drops you into a subshell with the framework loaded. _Crash kills
+# the subshell, not your terminal. Exit normally to return to the
+# control menu. History persists between sessions.
+#
+# Usage: ./boopShell
+#        ./boopShell Stream Math   (pre-load classes)
+
+__bs_version="0.1.0"
+__bs_history="${HOME}/.boop_history"
+__bs_preload=("$@")
+__bs_loglevel="warn"
+__bs_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Colors (if terminal supports them)
+__bs_bold=$'\033[1m'
+__bs_dim=$'\033[2m'
+__bs_green=$'\033[32m'
+__bs_cyan=$'\033[36m'
+__bs_yellow=$'\033[33m'
+__bs_reset=$'\033[0m'
+
+__bs_banner() {
+  local __bs_title="boop shell v${__bs_version}"
+  local __bs_subtitle="interactive playground"
+  local -i __bs_width=34
+  local -i __bs_tpad=$(( __bs_width - ${#__bs_title} - 2 ))
+  local -i __bs_spad=$(( __bs_width - ${#__bs_subtitle} - 2 ))
+  printf '\n%s' "${__bs_bold}${__bs_cyan}"
+  printf '  ╔%s╗\n' "$(printf '═%.0s' $(seq 1 $__bs_width))"
+  printf '  ║ %s%*s ║\n' "$__bs_title" "$__bs_tpad" ''
+  printf '  ║ %s%*s ║\n' "$__bs_subtitle" "$__bs_spad" ''
+  printf '  ╚%s╝\n' "$(printf '═%.0s' $(seq 1 $__bs_width))"
+  printf '%s\n' "${__bs_reset}"
+}
+
+__bs_menu() {
+  printf '%s\n' "${__bs_dim}────────────────────────────────────${__bs_reset}"
+  printf '  %s1%s) Enter interactive session\n' "${__bs_green}" "${__bs_reset}"
+  printf '  %s2%s) Load additional classes (current: %s)\n' "${__bs_green}" "${__bs_reset}" "${__bs_preload[*]:-<none>}"
+  printf '  %s3%s) Set log level (current: %s)\n' "${__bs_green}" "${__bs_reset}" "$__bs_loglevel"
+  printf '  %s4%s) Quit\n' "${__bs_green}" "${__bs_reset}"
+  printf '%s\n' "${__bs_dim}────────────────────────────────────${__bs_reset}"
+}
+
+__bs_build_rcfile() {
+  # Build the rcfile content that initializes the subshell
+  local __bs_rc=""
+  __bs_rc+="cd '${__bs_root}'"$'\n'
+  __bs_rc+=". boop"$'\n'
+
+  # Load pre-requested classes
+  if (( ${#__bs_preload[@]} )); then
+    __bs_rc+=". boop ${__bs_preload[*]}"$'\n'
+  fi
+
+  # Set log level
+  __bs_rc+="__boop.setLogLevel ${__bs_loglevel}"$'\n'
+
+  # History
+  __bs_rc+="HISTFILE='${__bs_history}'"$'\n'
+  __bs_rc+="HISTSIZE=1000"$'\n'
+  __bs_rc+="HISTFILESIZE=2000"$'\n'
+  __bs_rc+="history -r"$'\n'
+
+  # Prompt -- shows loaded classes
+  local __bs_prompt_classes="${__bs_preload[*]:-}"
+  if [[ -n "$__bs_prompt_classes" ]]; then
+    __bs_rc+="PS1='${__bs_green}boop${__bs_reset} ${__bs_dim}[${__bs_prompt_classes}]${__bs_reset}> '"$'\n'
+  else
+    __bs_rc+="PS1='${__bs_green}boop${__bs_reset}> '"$'\n'
+  fi
+
+  # Convenience helpers available in the session
+  __bs_rc+='
+# inspect -- dump an objects properties
+inspect() {
+  local obj="${1:?inspect: object ID required}"
+  local key
+  printf "Object: %s\n" "$obj"
+  for key in "${!__boop_static[@]}"; do
+    [[ "$key" == "${obj}."* ]] && printf "  %s = %s\n" "${key#${obj}.}" "${__boop_static[$key]}"
+  done
+}
+
+# classes -- list loaded classes
+classes() {
+  local key
+  for key in "${!__boop_registry[@]}"; do
+    [[ "$key" != __obj_* ]] && printf "%s\n" "$key"
+  done | sort
+}
+
+# objects -- list live objects
+objects() {
+  local key
+  for key in "${!__boop_registry[@]}"; do
+    [[ "$key" == __obj_* ]] && printf "%s (%s)\n" "$key" "${__boop_static[${key}.parseMode]:-${__boop_registry[$key]%%|*}}"
+  done | sort
+}
+'
+
+  __bs_rc+="printf '\\n  Type ${__bs_yellow}inspect \$obj${__bs_reset}, ${__bs_yellow}classes${__bs_reset}, or ${__bs_yellow}objects${__bs_reset} for introspection.\\n'"$'\n'
+  __bs_rc+="printf '  ${__bs_dim}exit${__bs_reset} or ${__bs_dim}Ctrl-D${__bs_reset} to return to menu. ${__bs_dim}_Crash${__bs_reset} is contained.\\n\\n'"$'\n'
+
+  printf '%s' "$__bs_rc"
+}
+
+# === Main loop ===
+
+__bs_banner
+
+while true; do
+  __bs_menu
+  read -p "  ${__bs_bold}>${__bs_reset} " __bs_choice
+  case "${__bs_choice:-}" in
+    1|'')
+      printf '\n  %sStarting session...%s\n\n' "${__bs_dim}" "${__bs_reset}"
+      bash --rcfile <(__bs_build_rcfile) -i
+      __bs_rc=$?
+      printf '\n  %sSession ended (exit code %d)%s\n' "${__bs_dim}" "$__bs_rc" "${__bs_reset}"
+      ;;
+    2)
+      read -p "  Classes to load: " -a __bs_more
+      __bs_preload+=("${__bs_more[@]}")
+      printf '  %sWill load: %s%s\n' "${__bs_dim}" "${__bs_preload[*]}" "${__bs_reset}"
+      ;;
+    3)
+      read -p "  Log level (silent/error/warn/info/debug/trace): " __bs_loglevel
+      printf '  %sSet to: %s%s\n' "${__bs_dim}" "$__bs_loglevel" "${__bs_reset}"
+      ;;
+    4|q|quit|exit)
+      printf '\n  %sBye! Happy hacking.%s\n\n' "${__bs_cyan}" "${__bs_reset}"
+      break
+      ;;
+    *)
+      printf '  %s??%s\n' "${__bs_yellow}" "${__bs_reset}"
+      ;;
+  esac
+done
+

@@ -46,3 +46,43 @@ hide the actual intent behind double-negatives or exclusion lists.
 This applies to both code generation and logical reasoning in
 discussions. State what IS true, not what ISN'T.
 
+
+## Voice and Humanity
+
+Code is read by humans. Comments, error messages, log output, and
+documentation should be concise, precise, and useful -- but also
+human. A brief note of humor or warmth costs nothing and pays in
+readability and morale.
+
+- Error messages should be helpful, not hostile.
+- Comments can be wry when they're also accurate.
+- Documentation should feel like a conversation, not a spec sheet.
+- Never sacrifice clarity for cleverness, but when both fit, choose both.
+
+This is a standing order: include humanity when it doesn't hinder the work.
+
+
+## Propose Before Executing
+
+Do not run commands, tests, or scripts without discussing them first.
+Propose what you want to run and why, then wait for approval. When
+debugging, share your hypothesis and ask before executing.
+
+## Re-read Before Editing
+
+The user frequently edits the same files. ALWAYS read the current
+file state before making any changes -- never assume the content
+matches what you last saw. Respect and preserve user edits.
+
+## Debugging Convergence
+
+If a debugging session isn't converging after 2-3 attempts, stop
+and ask for input. Don't spiral with incremental patches. Diagnose
+the root cause, explain what's failing, and propose a fundamentally
+different approach.
+
+## Pull Before Work
+
+At the start of every session, pull from remote before doing anything
+else. The user may have pushed changes between sessions.
+

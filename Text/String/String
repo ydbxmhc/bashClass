@@ -4,7 +4,7 @@
 #
 # Two method families:
 #   bare verb  (trim, upcase, ...)   -- mutates in place, returns exit code only
-#   -ed form   (trimmed, upcased, .) -- returns a new String object, $self unchanged
+#   -ed form   (trimmed, upcased, .) -- returns the transformed VALUE, $self unchanged
 #
 # Getters:
 #   read  -- current value (reflects mutations)
@@ -289,16 +289,17 @@ Text.String.fold() {
 # ============================================================================
 
 # __Text_String_edNew -- internal helper for -ed forms.
-# Gets current value, applies a bare mutator to a clone, returns the clone.
-# $1 = bare mutator name, remaining args forwarded to the mutator.
+# Gets current value, applies a bare mutator to a temporary clone,
+# returns the RESULTING VALUE (not the clone object). $self unchanged.
 __Text_String_edNew() {
   local __Text_String_edNew_self="${_Self:-Text.String}"
   local __Text_String_edNew_fn="$1"; shift
-  local __Text_String_edNew_v __Text_String_edNew_clone
+  local __Text_String_edNew_v __Text_String_edNew_clone __Text_String_edNew_result
   into=__Text_String_edNew_v "$__Text_String_edNew_self".get value
   into=__Text_String_edNew_clone Text.String.new "$__Text_String_edNew_v"
   _Self="$__Text_String_edNew_clone" "Text.String.$__Text_String_edNew_fn" "$@"
-  boop.pass "$__Text_String_edNew_clone" ${into:-}
+  into=__Text_String_edNew_result "$__Text_String_edNew_clone".get value
+  boop.pass "$__Text_String_edNew_result" ${into:-}
 }
 
 Text.String.trimmed()      { local _Self="${_Self:-Text.String}"; into=${into:-} __Text_String_edNew trim; }
@@ -362,8 +363,8 @@ Text.String.do() {
       fi
     done
   else
-    # -ed pipeline: clone once, apply bare mutators to clone, return clone
-    local __Text_String_do_v __Text_String_do_clone __Text_String_do_bare
+    # -ed pipeline: clone once, apply bare mutators to clone, return value
+    local __Text_String_do_v __Text_String_do_clone __Text_String_do_bare __Text_String_do_result
     into=__Text_String_do_v $_Self.get value
     into=__Text_String_do_clone Text.String.new "$__Text_String_do_v"
     for __Text_String_do_op in "${__Text_String_do_ops[@]}"; do
@@ -376,7 +377,8 @@ Text.String.do() {
         _Self="$__Text_String_do_clone" "Text.String.$__Text_String_do_bare"
       fi
     done
-    boop.pass "$__Text_String_do_clone" ${into:-}
+    into=__Text_String_do_result "$__Text_String_do_clone".get value
+    boop.pass "$__Text_String_do_result" ${into:-}
   fi
 }
 

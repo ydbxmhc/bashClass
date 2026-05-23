@@ -63,3 +63,67 @@ Exception: a single `[[ -z "$var" ]]` or `[[ -n "$var" ]]` is fine
 for presence/absence checks. The rule targets multi-branch logic where
 negation obscures intent.
 
+
+## No Continuation Backslashes (Unless Genuinely Needed)
+
+Operators like `||`, `&&`, and `|` already signal continuation to
+bash. A trailing backslash after them is noise and a trailing-
+whitespace bug waiting to happen.
+
+```bash
+# BAD: unnecessary backslash
+[[ -f "$file" ]] || \
+  _Crash "not found"
+
+# GOOD: operator signals continuation
+[[ -f "$file" ]] ||
+  _Crash "not found"
+```
+
+Backslashes ARE needed when splitting a single command's argument
+list across lines (no operator to signal continuation). But prefer
+keeping argument lists on one line unless they're truly unwieldy.
+
+## No eval -- Prefer Namerefs
+
+Use `local -n` namerefs for dynamic variable assignment. `eval` is
+a last resort for cases namerefs genuinely can't handle.
+
+```bash
+# BAD
+eval "$varname=\"\$value\""
+
+# GOOD
+local -n __ref="$varname"
+__ref="$value"
+```
+
+## No Subshells in Hot Paths
+
+Avoid `$(...)` in loops or frequently-called functions. Use `printf -v`,
+builtins, and parameter expansion instead.
+
+```bash
+# BAD: forks a subshell every iteration
+result=$(some_function)
+
+# GOOD: write to a variable directly
+printf -v result '%s' "$value"
+# or use into= / boop.pass / nameref patterns
+```
+
+## Real Arrays Over Joined Strings
+
+When data is naturally a list, store it as a bash indexed array.
+Don't join into a string and split later -- that introduces delimiter
+fragility. Accept proprietary-named globals (`__boop_data_${_Self}_fields`)
+when a real array is needed across function boundaries.
+
+## IFS Discipline
+
+- Always use `"${array[@]}"` (not `"${array[*]}"`) unless you have a
+  specific reason AND have explicitly set IFS for the join.
+- Never assume IFS is at its default value in framework code.
+- When you must use `[*]`, prefix with `IFS=' '` or whatever the
+  intended join character is.
+
