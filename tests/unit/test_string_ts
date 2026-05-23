@@ -113,67 +113,65 @@ $s.lpad 5
 into=v $s.read; $t.assert_eq "lpad no-op when already wide" "$v" "hello world"
 
 # ============================================================================
-# -ed forms — new object, $self unchanged
+# -ed forms — returns string VALUE, $self unchanged
 # ============================================================================
 
 $t.section "-ed forms"
 
 into=s Text.String.new "  hello  "
-into=s2 $s.trimmed
-into=v $s2.read;  $t.assert_eq "trimmed returns new object"   "$v" "hello"
-into=v $s.read;   $t.assert_eq "trimmed leaves original intact" "$v" "  hello  "
-$t.assert_ok "trimmed returns Text.String" $s2.isa Text.String
+into=v $s.trimmed
+$t.assert_eq "trimmed returns value"          "$v" "hello"
+into=v $s.read; $t.assert_eq "trimmed leaves original intact" "$v" "  hello  "
 
 into=s Text.String.new "hello"
-into=s2 $s.upcased
-into=v $s2.read; $t.assert_eq "upcased" "$v" "HELLO"
+into=v $s.upcased
+$t.assert_eq "upcased" "$v" "HELLO"
 into=v $s.read;  $t.assert_eq "upcased: original unchanged" "$v" "hello"
 
 into=s Text.String.new "HELLO"
-into=s2 $s.downcased
-into=v $s2.read; $t.assert_eq "downcased" "$v" "hello"
+into=v $s.downcased
+$t.assert_eq "downcased" "$v" "hello"
 
 into=s Text.String.new "hello world"
-into=s2 $s.capitalized
-into=v $s2.read; $t.assert_eq "capitalized" "$v" "Hello world"
+into=v $s.capitalized
+$t.assert_eq "capitalized" "$v" "Hello world"
 
 into=s Text.String.new "Hello"
-into=s2 $s.decapitalized
-into=v $s2.read; $t.assert_eq "decapitalized" "$v" "hello"
+into=v $s.decapitalized
+$t.assert_eq "decapitalized" "$v" "hello"
 
 into=s Text.String.new "hello"
-into=s2 $s.reversed
-into=v $s2.read; $t.assert_eq "reversed" "$v" "olleh"
+into=v $s.reversed
+$t.assert_eq "reversed" "$v" "olleh"
 into=v $s.read;  $t.assert_eq "reversed: original unchanged" "$v" "hello"
 
 into=s Text.String.new "hello"
-into=s2 $s.appended " world"
-into=v $s2.read; $t.assert_eq "appended" "$v" "hello world"
+into=v $s.appended " world"
+$t.assert_eq "appended" "$v" "hello world"
 into=v $s.read;  $t.assert_eq "appended: original unchanged" "$v" "hello"
 
 into=s Text.String.new "world"
-into=s2 $s.prepended "hello "
-into=v $s2.read; $t.assert_eq "prepended" "$v" "hello world"
+into=v $s.prepended "hello "
+$t.assert_eq "prepended" "$v" "hello world"
 
 into=s Text.String.new "hello"
-into=s2 $s.replaced "l" "r"
-into=v $s2.read; $t.assert_eq "replaced" "$v" "herro"
+into=v $s.replaced "l" "r"
+$t.assert_eq "replaced" "$v" "herro"
 
 into=s Text.String.new "hi"
-into=s2 $s.lpadded 6
-into=v $s2.read; $t.assert_eq "lpadded" "$v" "    hi"
+into=v $s.lpadded 6
+$t.assert_eq "lpadded" "$v" "    hi"
 
 into=s Text.String.new "hi"
-into=s2 $s.rpadded 6
-into=v $s2.read; $t.assert_eq "rpadded" "$v" "hi    "
+into=v $s.rpadded 6
+$t.assert_eq "rpadded" "$v" "hi    "
 
 into=s Text.String.new "hi"
-into=s2 $s.centered 6
-into=v $s2.read; $t.assert_eq "centered" "$v" "  hi  "
+into=v $s.centered 6
+$t.assert_eq "centered" "$v" "  hi  "
 
 into=s Text.String.new "hello world foo bar"
-into=s2 $s.folded 10
-into=v $s2.read
+into=v $s.folded 10
 $t.assert_contains "folded wraps" "$v" $'\n'
 into=v $s.read; $t.assert_eq "folded: original unchanged" "$v" "hello world foo bar"
 
@@ -240,14 +238,13 @@ into=v $s.read; $t.assert_eq "bare pipeline with multi-arg op" "$v" "HELLO EARTH
 $t.section "do: -ed pipeline"
 
 into=s Text.String.new "  HELLO  "
-into=s2 $s.do "trimmed,downcased,capitalized"
-into=v $s2.read; $t.assert_eq "-ed pipeline result"    "$v" "Hello"
+into=v $s.do "trimmed,downcased,capitalized"
+$t.assert_eq "-ed pipeline result"             "$v" "Hello"
 into=v $s.read;  $t.assert_eq "-ed pipeline: original unchanged" "$v" "  HELLO  "
-$t.assert_ok "-ed pipeline returns Text.String" $s2.isa Text.String
 
 into=s Text.String.new "hi"
-into=s2 $s.do "lpadded:8,rpadded:12"
-into=v $s2.read; $t.assert_eq "-ed pipeline with args" "$v" "      hi    "
+into=v $s.do "lpadded:8,rpadded:12"
+$t.assert_eq "-ed pipeline with args" "$v" "      hi    "
 
 # ============================================================================
 # do — error cases
@@ -287,8 +284,7 @@ $s.replace "x" "y"
 into=v $s.read; $t.assert_eq "replace: no match is no-op" "$v" "hello"
 
 into=s Text.String.new "hello"
-into=s2 $s.trimmed
-into=s3 $s2.upcased
-into=v $s3.read; $t.assert_eq "chain -ed forms manually" "$v" "HELLO"
+into=v $s.do "trimmed,upcased"
+$t.assert_eq "chain -ed forms via do" "$v" "HELLO"
 
 $t.summary

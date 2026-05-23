@@ -36,7 +36,7 @@ if [[ "$__ta_mode" == all || "$__ta_mode" == unit ]]; then
             test_logging_ts test_math_ts test_classpath_ts test_classpath_pbt \
             test_config_ts test_args_ts test_alias_ts test_map_fast_ts test_json_ts \
             test_semver_ts test_stack_ts test_queue_ts test_set_ts test_mixin_ts test_terminal_ts \
-            test_serializable_ts test_playingcard_ts test_signal_ts test_stream_ts; do
+            test_serializable_ts test_playingcard_ts test_signal_ts test_stream_ts test_string_ts; do
     printf '\n%s...\n' "$f"
     "$__ta_dir/unit/$f" || rc=1
   done

@@ -285,7 +285,7 @@ Text.String.fold() {
 }
 
 # ============================================================================
-# -ed forms -- return new String object, $self unchanged
+# -ed forms -- return the mutated string VALUE, $self unchanged
 # ============================================================================
 
 # __Text_String_edNew -- internal helper for -ed forms.
