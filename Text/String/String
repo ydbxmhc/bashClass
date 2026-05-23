@@ -3,8 +3,9 @@
 # Text.String -- string object with mutating and non-mutating method variants.
 #
 # Two method families:
-#   bare verb  (trim, upcase, ...)   -- mutates in place, returns exit code only
+#   bare verb  (trim, upcase, ...)   -- mutates in place, delegates to -ed form
 #   -ed form   (trimmed, upcased, .) -- returns the transformed VALUE, $self unchanged
+#                                       also works statically: Text.String.trimmed "hello"
 #
 # Getters:
 #   read  -- current value (reflects mutations)
@@ -145,176 +146,215 @@ Text.String.substr() {
 }
 
 # ============================================================================
-# Bare mutators -- edit in place, return exit code only
+# -ed forms -- return the mutated string VALUE, $self unchanged
+#
+# With no argument: object copies its own value buffer as input.
+# With argument:    that string is the input (works statically too).
+#
+# Extra-arg forms (appended, replaced, etc.): when called on an object,
+# all positional args are op args and the buffer is input. When called
+# statically ($Self == class), $1 is the input string and remaining
+# args are op args — so `do` can thread values through with explicit input.
 # ============================================================================
 
-Text.String.trim() {
-  local _Self="${_Self:-Text.String}"
-  local __Text_String_trim_v
-  into=__Text_String_trim_v $_Self.get value
-  __Text_String_trim_v="${__Text_String_trim_v#"${__Text_String_trim_v%%[![:space:]]*}"}"
-  __Text_String_trim_v="${__Text_String_trim_v%"${__Text_String_trim_v##*[![:space:]]}"}"
-  $_Self.set value "$__Text_String_trim_v"
+Text.String.trimmed() {
+  local _Self="${_Self:-${_Class:-Text.String}}"
+  local __Text_String_trimmed_v
+  if [[ $# -gt 0 ]]; then __Text_String_trimmed_v="$1"
+  else into=__Text_String_trimmed_v $_Self.get value; fi
+  __Text_String_trimmed_v="${__Text_String_trimmed_v#"${__Text_String_trimmed_v%%[![:space:]]*}"}"
+  __Text_String_trimmed_v="${__Text_String_trimmed_v%"${__Text_String_trimmed_v##*[![:space:]]}"}"
+  boop.pass "$__Text_String_trimmed_v" ${into:-}
 }
 
-Text.String.upcase() {
-  local _Self="${_Self:-Text.String}"
-  local __Text_String_upcase_v
-  into=__Text_String_upcase_v $_Self.get value
-  $_Self.set value "${__Text_String_upcase_v^^}"
+Text.String.upcased() {
+  local _Self="${_Self:-${_Class:-Text.String}}"
+  local __Text_String_upcased_v
+  if [[ $# -gt 0 ]]; then __Text_String_upcased_v="$1"
+  else into=__Text_String_upcased_v $_Self.get value; fi
+  boop.pass "${__Text_String_upcased_v^^}" ${into:-}
 }
 
-Text.String.downcase() {
-  local _Self="${_Self:-Text.String}"
-  local __Text_String_downcase_v
-  into=__Text_String_downcase_v $_Self.get value
-  $_Self.set value "${__Text_String_downcase_v,,}"
+Text.String.downcased() {
+  local _Self="${_Self:-${_Class:-Text.String}}"
+  local __Text_String_downcased_v
+  if [[ $# -gt 0 ]]; then __Text_String_downcased_v="$1"
+  else into=__Text_String_downcased_v $_Self.get value; fi
+  boop.pass "${__Text_String_downcased_v,,}" ${into:-}
 }
 
-Text.String.capitalize() {
-  local _Self="${_Self:-Text.String}"
-  local __Text_String_capitalize_v
-  into=__Text_String_capitalize_v $_Self.get value
-  $_Self.set value "${__Text_String_capitalize_v^}"
+Text.String.capitalized() {
+  local _Self="${_Self:-${_Class:-Text.String}}"
+  local __Text_String_capitalized_v
+  if [[ $# -gt 0 ]]; then __Text_String_capitalized_v="$1"
+  else into=__Text_String_capitalized_v $_Self.get value; fi
+  boop.pass "${__Text_String_capitalized_v^}" ${into:-}
 }
 
-Text.String.decapitalize() {
-  local _Self="${_Self:-Text.String}"
-  local __Text_String_decapitalize_v
-  into=__Text_String_decapitalize_v $_Self.get value
-  $_Self.set value "${__Text_String_decapitalize_v,}"
+Text.String.decapitalized() {
+  local _Self="${_Self:-${_Class:-Text.String}}"
+  local __Text_String_decapitalized_v
+  if [[ $# -gt 0 ]]; then __Text_String_decapitalized_v="$1"
+  else into=__Text_String_decapitalized_v $_Self.get value; fi
+  boop.pass "${__Text_String_decapitalized_v,}" ${into:-}
 }
 
-Text.String.reverse() {
-  local _Self="${_Self:-Text.String}"
-  local __Text_String_reverse_v __Text_String_reverse_r="" __Text_String_reverse_i
-  into=__Text_String_reverse_v $_Self.get value
-  for (( __Text_String_reverse_i = ${#__Text_String_reverse_v} - 1;
-         __Text_String_reverse_i >= 0;
-         __Text_String_reverse_i-- )); do
-    __Text_String_reverse_r+="${__Text_String_reverse_v:$__Text_String_reverse_i:1}"
+Text.String.reversed() {
+  local _Self="${_Self:-${_Class:-Text.String}}"
+  local __Text_String_reversed_v __Text_String_reversed_r="" __Text_String_reversed_i
+  if [[ $# -gt 0 ]]; then __Text_String_reversed_v="$1"
+  else into=__Text_String_reversed_v $_Self.get value; fi
+  for (( __Text_String_reversed_i = ${#__Text_String_reversed_v} - 1;
+         __Text_String_reversed_i >= 0;
+         __Text_String_reversed_i-- )); do
+    __Text_String_reversed_r+="${__Text_String_reversed_v:$__Text_String_reversed_i:1}"
   done
-  $_Self.set value "$__Text_String_reverse_r"
+  boop.pass "$__Text_String_reversed_r" ${into:-}
 }
 
-Text.String.append() {
-  local _Self="${_Self:-Text.String}"
-  local __Text_String_append_v
-  into=__Text_String_append_v $_Self.get value
-  $_Self.set value "${__Text_String_append_v}${1}"
-}
-
-Text.String.prepend() {
-  local _Self="${_Self:-Text.String}"
-  local __Text_String_prepend_v
-  into=__Text_String_prepend_v $_Self.get value
-  $_Self.set value "${1}${__Text_String_prepend_v}"
-}
-
-Text.String.replace() {
-  local _Self="${_Self:-Text.String}"
-  local __Text_String_replace_v __Text_String_replace_from="${1}" __Text_String_replace_to="${2:-}"
-  into=__Text_String_replace_v $_Self.get value
-  $_Self.set value "${__Text_String_replace_v//"$__Text_String_replace_from"/"$__Text_String_replace_to"}"
-}
-
-Text.String.lpad() {
-  local _Self="${_Self:-Text.String}"
-  local __Text_String_lpad_v __Text_String_lpad_w="${1}" __Text_String_lpad_c="${2:- }"
-  into=__Text_String_lpad_v $_Self.get value
-  [[ "$__Text_String_lpad_w" =~ ^[0-9]+$ ]] || _Crash "Text.String.lpad: width must be a non-negative integer"
-  if (( ${#__Text_String_lpad_v} < __Text_String_lpad_w )); then
-    while (( ${#__Text_String_lpad_v} < __Text_String_lpad_w )); do
-      __Text_String_lpad_v="${__Text_String_lpad_c}${__Text_String_lpad_v}"
-    done
-    $_Self.set value "${__Text_String_lpad_v: -$__Text_String_lpad_w}"
+Text.String.appended() {
+  local _Self="${_Self:-${_Class:-Text.String}}"
+  local __Text_String_appended_v __Text_String_appended_sfx
+  if [[ "$_Self" =~ ^__obj_ ]]; then
+    into=__Text_String_appended_v $_Self.get value; __Text_String_appended_sfx="${1:-}"
+  else
+    __Text_String_appended_v="${1:-}"; __Text_String_appended_sfx="${2:-}"
   fi
+  boop.pass "${__Text_String_appended_v}${__Text_String_appended_sfx}" ${into:-}
 }
 
-Text.String.rpad() {
-  local _Self="${_Self:-Text.String}"
-  local __Text_String_rpad_v __Text_String_rpad_w="${1}" __Text_String_rpad_c="${2:- }"
-  into=__Text_String_rpad_v $_Self.get value
-  [[ "$__Text_String_rpad_w" =~ ^[0-9]+$ ]] || _Crash "Text.String.rpad: width must be a non-negative integer"
-  if (( ${#__Text_String_rpad_v} < __Text_String_rpad_w )); then
-    while (( ${#__Text_String_rpad_v} < __Text_String_rpad_w )); do
-      __Text_String_rpad_v="${__Text_String_rpad_v}${__Text_String_rpad_c}"
-    done
-    $_Self.set value "${__Text_String_rpad_v:0:$__Text_String_rpad_w}"
+Text.String.prepended() {
+  local _Self="${_Self:-${_Class:-Text.String}}"
+  local __Text_String_prepended_v __Text_String_prepended_pfx
+  if [[ "$_Self" =~ ^__obj_ ]]; then
+    into=__Text_String_prepended_v $_Self.get value; __Text_String_prepended_pfx="${1:-}"
+  else
+    __Text_String_prepended_v="${1:-}"; __Text_String_prepended_pfx="${2:-}"
   fi
+  boop.pass "${__Text_String_prepended_pfx}${__Text_String_prepended_v}" ${into:-}
 }
 
-Text.String.center() {
-  local _Self="${_Self:-Text.String}"
-  local __Text_String_center_v __Text_String_center_w="${1}" __Text_String_center_c="${2:- }"
-  into=__Text_String_center_v $_Self.get value
-  [[ "$__Text_String_center_w" =~ ^[0-9]+$ ]] || _Crash "Text.String.center: width must be a non-negative integer"
-  local __Text_String_center_total __Text_String_center_l __Text_String_center_r __Text_String_center_i
-  local __Text_String_center_lp="" __Text_String_center_rp=""
-  (( __Text_String_center_total = __Text_String_center_w - ${#__Text_String_center_v} ))
-  (( __Text_String_center_total <= 0 )) && return 0
-  (( __Text_String_center_l = __Text_String_center_total / 2 ))
-  (( __Text_String_center_r = __Text_String_center_total - __Text_String_center_l ))
-  for (( __Text_String_center_i = 0; __Text_String_center_i < __Text_String_center_l; __Text_String_center_i++ )); do
-    __Text_String_center_lp+="$__Text_String_center_c"
-  done
-  for (( __Text_String_center_i = 0; __Text_String_center_i < __Text_String_center_r; __Text_String_center_i++ )); do
-    __Text_String_center_rp+="$__Text_String_center_c"
-  done
-  $_Self.set value "${__Text_String_center_lp}${__Text_String_center_v}${__Text_String_center_rp}"
+Text.String.replaced() {
+  local _Self="${_Self:-${_Class:-Text.String}}"
+  local __Text_String_replaced_v __Text_String_replaced_from __Text_String_replaced_to
+  if [[ "$_Self" =~ ^__obj_ ]]; then
+    into=__Text_String_replaced_v $_Self.get value
+    __Text_String_replaced_from="${1}"; __Text_String_replaced_to="${2:-}"
+  else
+    __Text_String_replaced_v="${1:-}"
+    __Text_String_replaced_from="${2}"; __Text_String_replaced_to="${3:-}"
+  fi
+  boop.pass "${__Text_String_replaced_v//"$__Text_String_replaced_from"/"$__Text_String_replaced_to"}" ${into:-}
 }
 
-Text.String.fold() {
-  local _Self="${_Self:-Text.String}"
-  local __Text_String_fold_v __Text_String_fold_w="${1:-80}"
-  into=__Text_String_fold_v $_Self.get value
-  [[ "$__Text_String_fold_w" =~ ^[1-9][0-9]*$ ]] || _Crash "Text.String.fold: width must be a positive integer"
-  local __Text_String_fold_result="" __Text_String_fold_line="" __Text_String_fold_word
-  for __Text_String_fold_word in $__Text_String_fold_v; do
-    if [[ -z "$__Text_String_fold_line" ]]; then
-      __Text_String_fold_line="$__Text_String_fold_word"
-    elif (( ${#__Text_String_fold_line} + 1 + ${#__Text_String_fold_word} > __Text_String_fold_w )); then
-      __Text_String_fold_result+="${__Text_String_fold_line}"$'\n'
-      __Text_String_fold_line="$__Text_String_fold_word"
+Text.String.lpadded() {
+  local _Self="${_Self:-${_Class:-Text.String}}"
+  local __Text_String_lpadded_v __Text_String_lpadded_w __Text_String_lpadded_c
+  if [[ "$_Self" =~ ^__obj_ ]]; then
+    into=__Text_String_lpadded_v $_Self.get value
+    __Text_String_lpadded_w="${1}"; __Text_String_lpadded_c="${2:- }"
+  else
+    __Text_String_lpadded_v="${1:-}"
+    __Text_String_lpadded_w="${2}"; __Text_String_lpadded_c="${3:- }"
+  fi
+  [[ "$__Text_String_lpadded_w" =~ ^[0-9]+$ ]] || _Crash "Text.String.lpadded: width must be a non-negative integer"
+  if (( ${#__Text_String_lpadded_v} < __Text_String_lpadded_w )); then
+    while (( ${#__Text_String_lpadded_v} < __Text_String_lpadded_w )); do
+      __Text_String_lpadded_v="${__Text_String_lpadded_c}${__Text_String_lpadded_v}"
+    done
+    __Text_String_lpadded_v="${__Text_String_lpadded_v: -$__Text_String_lpadded_w}"
+  fi
+  boop.pass "$__Text_String_lpadded_v" ${into:-}
+}
+
+Text.String.rpadded() {
+  local _Self="${_Self:-${_Class:-Text.String}}"
+  local __Text_String_rpadded_v __Text_String_rpadded_w __Text_String_rpadded_c
+  if [[ "$_Self" =~ ^__obj_ ]]; then
+    into=__Text_String_rpadded_v $_Self.get value
+    __Text_String_rpadded_w="${1}"; __Text_String_rpadded_c="${2:- }"
+  else
+    __Text_String_rpadded_v="${1:-}"
+    __Text_String_rpadded_w="${2}"; __Text_String_rpadded_c="${3:- }"
+  fi
+  [[ "$__Text_String_rpadded_w" =~ ^[0-9]+$ ]] || _Crash "Text.String.rpadded: width must be a non-negative integer"
+  if (( ${#__Text_String_rpadded_v} < __Text_String_rpadded_w )); then
+    while (( ${#__Text_String_rpadded_v} < __Text_String_rpadded_w )); do
+      __Text_String_rpadded_v="${__Text_String_rpadded_v}${__Text_String_rpadded_c}"
+    done
+    __Text_String_rpadded_v="${__Text_String_rpadded_v:0:$__Text_String_rpadded_w}"
+  fi
+  boop.pass "$__Text_String_rpadded_v" ${into:-}
+}
+
+Text.String.centered() {
+  local _Self="${_Self:-${_Class:-Text.String}}"
+  local __Text_String_centered_v __Text_String_centered_w __Text_String_centered_c
+  if [[ "$_Self" =~ ^__obj_ ]]; then
+    into=__Text_String_centered_v $_Self.get value
+    __Text_String_centered_w="${1}"; __Text_String_centered_c="${2:- }"
+  else
+    __Text_String_centered_v="${1:-}"
+    __Text_String_centered_w="${2}"; __Text_String_centered_c="${3:- }"
+  fi
+  [[ "$__Text_String_centered_w" =~ ^[0-9]+$ ]] || _Crash "Text.String.centered: width must be a non-negative integer"
+  local __Text_String_centered_total __Text_String_centered_l __Text_String_centered_r __Text_String_centered_i
+  local __Text_String_centered_lp="" __Text_String_centered_rp=""
+  (( __Text_String_centered_total = __Text_String_centered_w - ${#__Text_String_centered_v} ))
+  if (( __Text_String_centered_total > 0 )); then
+    (( __Text_String_centered_l = __Text_String_centered_total / 2 ))
+    (( __Text_String_centered_r = __Text_String_centered_total - __Text_String_centered_l ))
+    for (( __Text_String_centered_i = 0; __Text_String_centered_i < __Text_String_centered_l; __Text_String_centered_i++ )); do
+      __Text_String_centered_lp+="$__Text_String_centered_c"
+    done
+    for (( __Text_String_centered_i = 0; __Text_String_centered_i < __Text_String_centered_r; __Text_String_centered_i++ )); do
+      __Text_String_centered_rp+="$__Text_String_centered_c"
+    done
+  fi
+  boop.pass "${__Text_String_centered_lp}${__Text_String_centered_v}${__Text_String_centered_rp}" ${into:-}
+}
+
+Text.String.folded() {
+  local _Self="${_Self:-${_Class:-Text.String}}"
+  local __Text_String_folded_v __Text_String_folded_w
+  if [[ "$_Self" =~ ^__obj_ ]]; then
+    into=__Text_String_folded_v $_Self.get value; __Text_String_folded_w="${1:-80}"
+  else
+    __Text_String_folded_v="${1:-}"; __Text_String_folded_w="${2:-80}"
+  fi
+  [[ "$__Text_String_folded_w" =~ ^[1-9][0-9]*$ ]] || _Crash "Text.String.folded: width must be a positive integer"
+  local __Text_String_folded_result="" __Text_String_folded_line="" __Text_String_folded_word
+  for __Text_String_folded_word in $__Text_String_folded_v; do
+    if [[ -z "$__Text_String_folded_line" ]]; then
+      __Text_String_folded_line="$__Text_String_folded_word"
+    elif (( ${#__Text_String_folded_line} + 1 + ${#__Text_String_folded_word} > __Text_String_folded_w )); then
+      __Text_String_folded_result+="${__Text_String_folded_line}"$'\n'
+      __Text_String_folded_line="$__Text_String_folded_word"
     else
-      __Text_String_fold_line+=" $__Text_String_fold_word"
+      __Text_String_folded_line+=" $__Text_String_folded_word"
     fi
   done
-  [[ -n "$__Text_String_fold_line" ]] && __Text_String_fold_result+="$__Text_String_fold_line"
-  $_Self.set value "$__Text_String_fold_result"
+  [[ -n "$__Text_String_folded_line" ]] && __Text_String_folded_result+="$__Text_String_folded_line"
+  boop.pass "$__Text_String_folded_result" ${into:-}
 }
 
 # ============================================================================
-# -ed forms -- return the mutated string VALUE, $self unchanged
+# Bare mutators -- delegate to -ed form, store result back
 # ============================================================================
 
-# __Text_String_edNew -- internal helper for -ed forms.
-# Gets current value, applies a bare mutator to a temporary clone,
-# returns the RESULTING VALUE (not the clone object). $self unchanged.
-__Text_String_edNew() {
-  local __Text_String_edNew_self="${_Self:-Text.String}"
-  local __Text_String_edNew_fn="$1"; shift
-  local __Text_String_edNew_v __Text_String_edNew_clone __Text_String_edNew_result
-  into=__Text_String_edNew_v "$__Text_String_edNew_self".get value
-  into=__Text_String_edNew_clone Text.String.new "$__Text_String_edNew_v"
-  _Self="$__Text_String_edNew_clone" "Text.String.$__Text_String_edNew_fn" "$@"
-  into=__Text_String_edNew_result "$__Text_String_edNew_clone".get value
-  boop.pass "$__Text_String_edNew_result" ${into:-}
-}
-
-Text.String.trimmed()      { local _Self="${_Self:-Text.String}"; into=${into:-} __Text_String_edNew trim; }
-Text.String.upcased()      { local _Self="${_Self:-Text.String}"; into=${into:-} __Text_String_edNew upcase; }
-Text.String.downcased()    { local _Self="${_Self:-Text.String}"; into=${into:-} __Text_String_edNew downcase; }
-Text.String.capitalized()  { local _Self="${_Self:-Text.String}"; into=${into:-} __Text_String_edNew capitalize; }
-Text.String.decapitalized(){ local _Self="${_Self:-Text.String}"; into=${into:-} __Text_String_edNew decapitalize; }
-Text.String.reversed()     { local _Self="${_Self:-Text.String}"; into=${into:-} __Text_String_edNew reverse; }
-Text.String.replaced()     { local _Self="${_Self:-Text.String}"; into=${into:-} __Text_String_edNew replace "$@"; }
-Text.String.appended()     { local _Self="${_Self:-Text.String}"; into=${into:-} __Text_String_edNew append "$@"; }
-Text.String.prepended()    { local _Self="${_Self:-Text.String}"; into=${into:-} __Text_String_edNew prepend "$@"; }
-Text.String.lpadded()      { local _Self="${_Self:-Text.String}"; into=${into:-} __Text_String_edNew lpad "$@"; }
-Text.String.rpadded()      { local _Self="${_Self:-Text.String}"; into=${into:-} __Text_String_edNew rpad "$@"; }
-Text.String.centered()     { local _Self="${_Self:-Text.String}"; into=${into:-} __Text_String_edNew center "$@"; }
-Text.String.folded()       { local _Self="${_Self:-Text.String}"; into=${into:-} __Text_String_edNew fold "$@"; }
+Text.String.trim()        { local _Self="${_Self:-Text.String}"; local __Text_String_trim_v;        into=__Text_String_trim_v        $_Self.trimmed;     $_Self.set value "$__Text_String_trim_v"; }
+Text.String.upcase()      { local _Self="${_Self:-Text.String}"; local __Text_String_upcase_v;      into=__Text_String_upcase_v      $_Self.upcased;     $_Self.set value "$__Text_String_upcase_v"; }
+Text.String.downcase()    { local _Self="${_Self:-Text.String}"; local __Text_String_downcase_v;    into=__Text_String_downcase_v    $_Self.downcased;   $_Self.set value "$__Text_String_downcase_v"; }
+Text.String.capitalize()  { local _Self="${_Self:-Text.String}"; local __Text_String_capitalize_v;  into=__Text_String_capitalize_v  $_Self.capitalized; $_Self.set value "$__Text_String_capitalize_v"; }
+Text.String.decapitalize(){ local _Self="${_Self:-Text.String}"; local __Text_String_decapitalize_v;into=__Text_String_decapitalize_v $_Self.decapitalized;$_Self.set value "$__Text_String_decapitalize_v"; }
+Text.String.reverse()     { local _Self="${_Self:-Text.String}"; local __Text_String_reverse_v;     into=__Text_String_reverse_v     $_Self.reversed;    $_Self.set value "$__Text_String_reverse_v"; }
+Text.String.append()      { local _Self="${_Self:-Text.String}"; local __Text_String_append_v;      into=__Text_String_append_v      $_Self.appended  "$@"; $_Self.set value "$__Text_String_append_v"; }
+Text.String.prepend()     { local _Self="${_Self:-Text.String}"; local __Text_String_prepend_v;     into=__Text_String_prepend_v     $_Self.prepended "$@"; $_Self.set value "$__Text_String_prepend_v"; }
+Text.String.replace()     { local _Self="${_Self:-Text.String}"; local __Text_String_replace_v;     into=__Text_String_replace_v     $_Self.replaced  "$@"; $_Self.set value "$__Text_String_replace_v"; }
+Text.String.lpad()        { local _Self="${_Self:-Text.String}"; local __Text_String_lpad_v;        into=__Text_String_lpad_v        $_Self.lpadded   "$@"; $_Self.set value "$__Text_String_lpad_v"; }
+Text.String.rpad()        { local _Self="${_Self:-Text.String}"; local __Text_String_rpad_v;        into=__Text_String_rpad_v        $_Self.rpadded   "$@"; $_Self.set value "$__Text_String_rpad_v"; }
+Text.String.center()      { local _Self="${_Self:-Text.String}"; local __Text_String_center_v;      into=__Text_String_center_v      $_Self.centered  "$@"; $_Self.set value "$__Text_String_center_v"; }
+Text.String.fold()        { local _Self="${_Self:-Text.String}"; local __Text_String_fold_v;        into=__Text_String_fold_v        $_Self.folded    "$@"; $_Self.set value "$__Text_String_fold_v"; }
 
 # ============================================================================
 # do -- type-homogeneous pipeline executor
@@ -322,7 +362,7 @@ Text.String.folded()       { local _Self="${_Self:-Text.String}"; into=${into:-}
 
 # do "op,op:arg,op:arg:arg"
 #   bare pipeline  → mutates $self in place, returns exit code
-#   -ed pipeline   → returns new String object built on a single clone
+#   -ed pipeline   → threads value through -ed forms, returns final string value
 #   mixed pipeline → crashes
 #
 # Arg separator within an op is ':': replace:foo:bar, lpad:20, center:40:*
@@ -363,22 +403,19 @@ Text.String.do() {
       fi
     done
   else
-    # -ed pipeline: clone once, apply bare mutators to clone, return value
-    local __Text_String_do_v __Text_String_do_clone __Text_String_do_bare __Text_String_do_result
+    # -ed pipeline: thread value through -ed forms with explicit input arg
+    local __Text_String_do_v
     into=__Text_String_do_v $_Self.get value
-    into=__Text_String_do_clone Text.String.new "$__Text_String_do_v"
     for __Text_String_do_op in "${__Text_String_do_ops[@]}"; do
       __Text_String_do_name="${__Text_String_do_op%%:*}"
-      __Text_String_do_bare="${__Text_String_ed_to_bare[$__Text_String_do_name]}"
       if [[ "$__Text_String_do_op" == *:* ]]; then
         IFS=':' read -ra __Text_String_do_opargs <<< "${__Text_String_do_op#*:}"
-        _Self="$__Text_String_do_clone" "Text.String.$__Text_String_do_bare" "${__Text_String_do_opargs[@]}"
+        into=__Text_String_do_v _Self='' _Class='' "Text.String.$__Text_String_do_name" "$__Text_String_do_v" "${__Text_String_do_opargs[@]}"
       else
-        _Self="$__Text_String_do_clone" "Text.String.$__Text_String_do_bare"
+        into=__Text_String_do_v _Self='' _Class='' "Text.String.$__Text_String_do_name" "$__Text_String_do_v"
       fi
     done
-    into=__Text_String_do_result "$__Text_String_do_clone".get value
-    boop.pass "$__Text_String_do_result" ${into:-}
+    boop.pass "$__Text_String_do_v" ${into:-}
   fi
 }
 
