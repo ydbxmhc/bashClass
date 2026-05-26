@@ -18,7 +18,7 @@ Collection.Stack.new() {
   local _Class="${_Class:-Collection.Stack}"
   local __Collection_Stack_new_self __Collection_Stack_new_list
   into=__Collection_Stack_new_self __boop.new "$@"
-  into=__Collection_Stack_new_list Collection.List.new
+  into=__Collection_Stack_new_list _Delegate Collection.List.new
   declare -g "__Collection_Stack_list_${__Collection_Stack_new_self}=${__Collection_Stack_new_list}"
   _Info "new: $__Collection_Stack_new_self"
   boop.pass "$__Collection_Stack_new_self" ${into:-}
@@ -60,6 +60,21 @@ Collection.Stack.isEmpty() {
   local __Collection_Stack_isEmpty_len
   into=__Collection_Stack_isEmpty_len _Self="$__Collection_Stack_isEmpty_l" Collection.List.length
   (( __Collection_Stack_isEmpty_len == 0 ))
+}
+
+# Destroy the internal List and the reference variable.
+# Private hook called by __boop.destroy.
+Collection.Stack._destroy() {
+  local _Self="${_Self:-Collection.Stack}" _Class="${_Class:-Collection.Stack}"
+  local __Collection_Stack_destroy_varname="__Collection_Stack_list_${_Self}"
+  local __Collection_Stack_destroy_list="${!__Collection_Stack_destroy_varname:-}"
+  # Tell the owned List to destroy itself — through its public interface.
+  if [[ -n "$__Collection_Stack_destroy_list" && -n "${__boop_registry[$__Collection_Stack_destroy_list]+set}" ]]; then
+    _Trace "destroy: telling owned List $__Collection_Stack_destroy_list to destroy itself"
+    _Delegate $__Collection_Stack_destroy_list.destroy
+  fi
+  _Trace "destroy: unsetting $__Collection_Stack_destroy_varname"
+  unset "$__Collection_Stack_destroy_varname"
 }
 
 boopClass Collection.Stack version:1.0.0 '

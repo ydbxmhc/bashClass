@@ -348,6 +348,13 @@ Config.fromString() {
   boop.pass "$__Config_fs_self" ${into:-}
 }
 
+# Destroy companion arrays. Private hook called by __boop.destroy.
+Config._destroy() {
+  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  _Trace "destroy: unsetting __boop_config_${_Self}, __boop_config_keys_${_Self}"
+  unset "__boop_config_${_Self}" "__boop_config_keys_${_Self}"
+}
+
 # ============================================================================
 # Class Declaration
 # ============================================================================

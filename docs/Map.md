@@ -119,6 +119,19 @@ $m.isEmpty && printf "empty\n"  # boolean check
 $m.destroy                  # clean up companion array + registry
 ```
 
+### Merging
+
+```bash
+$target.merge $source       # copy all entries from source into target
+```
+
+Existing keys in the target are overwritten with the source's values.
+New keys are appended to the target's insertion order. The source is
+not modified.
+
+Key ordering: if a key exists in both maps, it retains its position in
+the *target's* order. Only keys new to the target are appended at the end.
+
 ### Serialization
 
 ```bash

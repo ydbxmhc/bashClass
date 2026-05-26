@@ -19,7 +19,7 @@ Collection.Queue.new() {
   local _Class="${_Class:-Collection.Queue}"
   local __Collection_Queue_new_self __Collection_Queue_new_list
   into=__Collection_Queue_new_self __boop.new "$@"
-  into=__Collection_Queue_new_list Collection.List.new
+  into=__Collection_Queue_new_list _Delegate Collection.List.new
   declare -g "__Collection_Queue_list_${__Collection_Queue_new_self}=${__Collection_Queue_new_list}"
   _Info "new: $__Collection_Queue_new_self"
   boop.pass "$__Collection_Queue_new_self" ${into:-}
@@ -61,6 +61,21 @@ Collection.Queue.isEmpty() {
   local __Collection_Queue_isEmpty_len
   into=__Collection_Queue_isEmpty_len _Self="$__Collection_Queue_isEmpty_l" Collection.List.length
   (( __Collection_Queue_isEmpty_len == 0 ))
+}
+
+# Destroy the internal List and the reference variable.
+# Private hook called by __boop.destroy.
+Collection.Queue._destroy() {
+  local _Self="${_Self:-Collection.Queue}" _Class="${_Class:-Collection.Queue}"
+  local __Collection_Queue_destroy_varname="__Collection_Queue_list_${_Self}"
+  local __Collection_Queue_destroy_list="${!__Collection_Queue_destroy_varname:-}"
+  # Tell the owned List to destroy itself — through its public interface.
+  if [[ -n "$__Collection_Queue_destroy_list" && -n "${__boop_registry[$__Collection_Queue_destroy_list]+set}" ]]; then
+    _Trace "destroy: telling owned List $__Collection_Queue_destroy_list to destroy itself"
+    _Delegate $__Collection_Queue_destroy_list.destroy
+  fi
+  _Trace "destroy: unsetting $__Collection_Queue_destroy_varname"
+  unset "$__Collection_Queue_destroy_varname"
 }
 
 boopClass Collection.Queue version:1.0.0 '

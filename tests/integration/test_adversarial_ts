@@ -17,7 +17,7 @@ __bench_count="${1:-0}"
 
 . boop TestSuite Cube
 
-into=t TestSuite name="Stress Tests"
+into=t TestSuite name="Adversarial Tests"
 
 # ============================================================================
 # Setup: create base objects

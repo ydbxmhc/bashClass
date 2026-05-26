@@ -166,6 +166,16 @@ into=s   $obj.toString      # human-readable; each class overrides this
 into=s   $obj.inspect       # raw pipe-delimited descriptor
 ```
 
+### Lifecycle
+
+```bash
+$obj.destroy                # tear down: class hook → static keys → wrappers → registry
+```
+
+After `destroy`, the object ID is dead. Class-level cleanup hooks are
+private functions named `ClassName._destroy()` — see docs/boop.md for
+the full protocol.
+
 ---
 
 ## Quick Reference by Class
@@ -197,8 +207,10 @@ into=v $c.volume    # v="64"
 | `Collection.List` | [List.md](List.md) | Ordered indexed array |
 | `Collection.Map` | [Map.md](Map.md) | Insertion-ordered key-value store |
 | `Collection.Map.Fast` | [Map.Fast.md](Map.Fast.md) | Flat compound-key store, O(1) point lookups |
-| `Collection.Stack` | [Stack.md](Stack.md) | LIFO stack |
-| `Collection.Queue` | [Queue.md](Queue.md) | FIFO queue |
+| `Collection.Stack` | [Stack.md](Stack.md) | LIFO stack (composition) |
+| `Collection.Stack.Fast` | [Stack.md](Stack.md) | LIFO stack (List inheritance — lighter) |
+| `Collection.Queue` | [Queue.md](Queue.md) | FIFO queue (composition) |
+| `Collection.Queue.Fast` | [Queue.md](Queue.md) | FIFO queue (List inheritance — lighter) |
 | `Collection.Set` | [Set.md](Set.md) | Unordered unique-value collection |
 
 ```bash
@@ -207,6 +219,13 @@ into=list Collection.List
 $list.push "a" "b" "c"
 into=v $list.getAt -1      # v="c" (negative index)
 into=v $list.pop           # v="c", list now has "a","b"
+
+# Functional: filter, map, reduce, do (pipeline)
+into=nums List; $nums.push 1 2 3 4 5 6
+is_even() { (( $1 % 2 == 0 )); }
+double() { _Result=$(( $1 * 2 )); }
+add() { _Result=$(( $1 + $2 )); }
+into=result $nums.do filter:is_even map:double reduce:add  # result="24"
 
 # Map
 into=map Collection.Map

@@ -157,3 +157,65 @@ amortized O(1) at the cost of complexity.
 
 **Crash on underflow.** Both `dequeue` and `peek` call `_Crash` on an empty
 queue. Check `isEmpty` before calling if underflow is possible.
+
+---
+
+## Collection.Queue.Fast
+
+Inheritance-based alternative. Extends List directly instead of wrapping
+one via composition. Faster (one object, no delegation), but the full
+List API is accessible if a caller ignores the queue contract.
+
+### When to Use Fast
+
+- Performance matters (tight loops, many queue objects)
+- You trust callers to respect the queue interface
+- You want `each`, `toArray`, `toString`, `clear` available on the queue
+- Destroy is simpler (no cascading — it's just one object)
+
+### When to Use the Composition Version
+
+- You need strict encapsulation (internal List is unreachable)
+- You want to guarantee no one calls `pop` or `getAt` by accident
+- API surface discipline matters more than speed
+
+### Usage
+
+```bash
+. boop Collection::Queue::Fast
+
+into=q Collection.Queue.Fast.new
+$q.enqueue "job-1" "job-2" "job-3"
+into=v $q.peek              # "job-1"
+into=v $q.dequeue           # "job-1"
+into=n $q.size              # 2
+
+# Inherited from List — available on Fast, hidden on composition Queue:
+$q.each my_callback
+into=all $q.toArray
+
+# Blocked — errors with a clear message:
+$q.pop                      # ERROR: not a valid queue operation
+$q.unshift "x"             # ERROR: not a valid queue operation
+```
+
+### Blocked Methods
+
+| Method | Why |
+|--------|-----|
+| `pop` | Removes from the back — violates FIFO |
+| `unshift` | Inserts at the front — violates FIFO |
+| `getAt` | Random access — violates FIFO |
+| `setAt` | Random access — violates FIFO |
+| `delete` | Random access — violates FIFO |
+| `slice` | Random access — violates FIFO |
+
+All return exit code 1 and emit `_Error` with guidance on the correct
+method to use.
+
+### Performance Note
+
+`dequeue` is still O(n) — it re-indexes the array after removing the
+front element. This is inherent to bash indexed arrays. The Fast variant
+saves overhead on object creation, method dispatch, and destroy — not on
+the dequeue operation itself.

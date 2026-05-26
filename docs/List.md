@@ -69,6 +69,16 @@ $l.each my_callback         # calls: my_callback 0 "alpha"
 
 If the callback returns non-zero, iteration stops immediately.
 
+### Search
+
+```bash
+$l.contains "banana"             # exit 0 if found, 1 if not
+into=pos $l.indexOf "banana"     # pos="1" (or exit 1 if not found)
+```
+
+Both are O(n) linear scans. `contains` is a thin wrapper over `indexOf`
+that discards the position and returns only the exit code.
+
 ### Iterator (Stateful Cursor)
 
 ```bash
@@ -107,6 +117,97 @@ $l.destroy                  # clean up companion array + registry
 into=s $l.toString          # List(_id)[ "alpha", "beta", "gamma" ]
 into=s $l.toArray           # newline-delimited values
 ```
+
+### Functional Operations
+
+#### filter
+
+Return a new List containing only elements for which the callback returns 0.
+
+```bash
+is_long() { (( ${#1} > 3 )); }
+
+into=names List
+$names.push "Al" "Bob" "Charlie" "Dave" "Elizabeth"
+
+into=long $names.filter is_long
+# long is a new List: ["Charlie", "Dave", "Elizabeth"]
+# $names is unchanged
+```
+
+Callback signature: `callback value` → exit 0 to keep, non-zero to discard.
+
+On an empty list, returns a new empty List (exit 0).
+
+#### map
+
+Return a new List with each element transformed by the callback.
+
+```bash
+upcase() { _Result="${1^^}"; }
+
+into=words List
+$words.push "hello" "world"
+
+into=shouting $words.map upcase
+# shouting is a new List: ["HELLO", "WORLD"]
+```
+
+Callback signature: `callback value` → sets `_Result` to the transformed value.
+
+On an empty list, returns a new empty List (exit 0).
+
+#### reduce
+
+Collapse the list to a single scalar by applying a combining callback
+across all elements. The first element is the starting value; the callback
+begins combining from the second element onward.
+
+```bash
+add() { _Result=$(( $1 + $2 )); }
+
+into=nums List
+$nums.push 10 20 30 40
+
+into=total $nums.reduce add    # total="100"
+```
+
+Callback signature: `callback running_total current_value` → sets `_Result`
+to the new running total.
+
+On an empty list: returns empty string, exit code 1.
+On a single-element list: returns that element directly (callback not called).
+
+#### do (pipeline)
+
+Apply a sequence of operations in one call. Intermediates are created and
+destroyed automatically — the caller only sees the final result.
+
+```bash
+is_even() { (( $1 % 2 == 0 )); }
+double_it() { _Result=$(( $1 * 2 )); }
+add() { _Result=$(( $1 + $2 )); }
+
+into=nums List
+$nums.push 5 10 15 20 25 30 35 40 45
+
+into=result $nums.do filter:is_even map:double_it reduce:add
+# result="200"
+```
+
+Operations are `op:callback` pairs. Recognized ops: `filter`, `map`, `reduce`.
+
+Syntax is flexible — all of these are equivalent:
+
+```bash
+$list.do "filter:is_even,map:double_it,reduce:add"
+$list.do "filter:is_even, map:double_it, reduce:add"
+$list.do filter:is_even map:double_it reduce:add
+$list.do "filter : is_even" "map : double_it" "reduce : add"
+```
+
+Commas, spaces around colons, and multiple arguments are all accepted.
+The original list is never modified or destroyed.
 
 ## Composition
 

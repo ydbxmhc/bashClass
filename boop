@@ -1357,6 +1357,103 @@ __boop.inspect() {
   printf "  methods: %s\n" "$__boop_inspect_methods"
 }
 
+# Object destructor. The symmetric inverse of __boop.new.
+#
+# Tears down everything that object creation and class-level initialization
+# built. Execution order:
+#
+#   1. Dispatch to class-level _destroy hook (if defined). The class knows
+#      what companion arrays, file descriptors, temp files, or child objects
+#      it created — the core does not. The hook is a private function named
+#      ClassName._destroy (not a registered method — not dispatchable by
+#      users, not in the public: list). This keeps the MRO clean: `destroy`
+#      always resolves to __boop.destroy, and class authors implement their
+#      cleanup in a private function that the core calls.
+#
+#   2. Wipe __boop_static keys. Every key prefixed "${_Self}." is removed.
+#      This is O(n) over the full static table — unavoidable since bash has
+#      no prefix-delete on associative arrays. Acceptable because destroy is
+#      not a hot-path operation.
+#
+#   3. Unset wrapper functions. compgen -A function gives us every function
+#      whose name starts with "${_Self}." in one shot. Each is unset.
+#
+#   4. Remove the registry entry. After this, the object ID is unresolvable.
+#
+# After destroy, the object ID is dead. Calling any method on it will fail
+# with "command not found" (the wrappers are gone). Holding a stale ID is
+# the caller's problem — same as a dangling pointer in C. The framework
+# does not track references.
+#
+# Class-level cleanup hook convention:
+#   ClassName._destroy() { ... }
+#   — NOT registered as a method (no public: entry, no boopClass token)
+#   — Called with _Self and _Class set correctly
+#   — Responsible for: companion arrays, owned child objects, FDs, temp files
+#   — Must NOT call __boop.destroy (the core handles that)
+#
+# Usage:
+#   $obj.destroy              # clean teardown
+#   into=hand Hand.new ...    # use it
+#   $hand.destroy             # done with it
+__boop.destroy() {
+  local _Self="${_Self:-}"; local _Class="${_Class:-boop}"
+  [[ -n "$_Self" ]] || _Crash "destroy: no object identity (_Self is empty)"
+  [[ -n "${__boop_registry[$_Self]+set}" ]] ||
+    _Crash "destroy: '$_Self' is not a registered object"
+
+  _Debug "destroy: $_Self ($_Class) — beginning teardown"
+
+  # --- Phase 1: class-level _destroy hook ---
+  # Resolve the trueClass (FQN) and walk the inheritance chain looking for
+  # ClassName._destroy functions. Call each one found, from most-derived to
+  # root. This lets a subclass clean up its own additions while the parent
+  # cleans up what it allocated.
+  local __boop_destroy_trueClass
+  __boop.parse "$_Self" "trueClass" __boop_destroy_trueClass
+  : "${__boop_destroy_trueClass:=$_Class}"
+
+  _Trace "destroy: phase 1 — walking chain from '$__boop_destroy_trueClass' for _destroy hooks"
+  local __boop_destroy_walk="$__boop_destroy_trueClass"
+  while [[ -n "$__boop_destroy_walk" ]]; do
+    if declare -F "${__boop_destroy_walk}._destroy" >/dev/null; then
+      _Trace "destroy: calling ${__boop_destroy_walk}._destroy on $_Self"
+      _Self="$_Self" _Class="$__boop_destroy_walk" "${__boop_destroy_walk}._destroy"
+    else
+      _Trace "destroy: no _destroy hook on $__boop_destroy_walk"
+    fi
+    __boop.parse "$__boop_destroy_walk" "parent" __boop_destroy_walk
+  done
+
+  # --- Phase 2: wipe __boop_static keys ---
+  # Prefix match: every key starting with "${_Self}." belongs to this object.
+  local __boop_destroy_prefix="${_Self}."
+  local __boop_destroy_key
+  local -i __boop_destroy_static_count=0
+  for __boop_destroy_key in "${!__boop_static[@]}"; do
+    if [[ "$__boop_destroy_key" == "$__boop_destroy_prefix"* ]]; then
+      unset '__boop_static[$__boop_destroy_key]'
+      (( __boop_destroy_static_count++ ))
+    fi
+  done
+  _Trace "destroy: phase 2 — removed $__boop_destroy_static_count __boop_static keys"
+
+  # --- Phase 3: unset wrapper functions ---
+  # compgen -A function lists all defined functions matching a prefix.
+  # Each object's wrappers are named "${_Self}.methodName".
+  local __boop_destroy_fn
+  local -i __boop_destroy_fn_count=0
+  while IFS= read -r __boop_destroy_fn; do
+    unset -f "$__boop_destroy_fn"
+    (( __boop_destroy_fn_count++ ))
+  done < <(compgen -A function "${_Self}.")
+  _Trace "destroy: phase 3 — unset $__boop_destroy_fn_count wrapper functions"
+
+  # --- Phase 4: remove registry entry ---
+  unset '__boop_registry[$_Self]'
+  _Trace "destroy: phase 4 — registry entry removed. $_Self is dead."
+}
+
 # Object constructor. This is the beating heart of object creation.
 #
 # 1. Generates a unique object ID from a global counter (hex-encoded
@@ -2923,7 +3020,7 @@ _Bless() {
 # from it (parent chain terminates at boop's empty parent field).
 # The standard methods registered here (get, set, isa, toString, new, super)
 # are available to all objects unless overridden by a subclass.
-__boop_registry["boop"]="|class=boop|trueClass=boop|parent=|methods=new,get,set,isa,mixes,trueClass,toString,inspect,super|properties=|mixins=|"
+__boop_registry["boop"]="|class=boop|trueClass=boop|parent=|methods=new,destroy,get,set,isa,mixes,trueClass,toString,inspect,super|properties=|mixins=|"
 
 #boopClass boop '
 #  custom:new=__boop.new,get=__boop.get,set=__boop.set,isa=__boop.isa,toString=__boop.toString
@@ -2931,6 +3028,7 @@ __boop_registry["boop"]="|class=boop|trueClass=boop|parent=|methods=new,get,set,
 
 __boop.registerMethod boop get __boop.get
 __boop.registerMethod boop set __boop.set
+__boop.registerMethod boop destroy __boop.destroy
 __boop.registerMethod boop isa __boop.isa
 __boop.registerMethod boop mixes __boop.mixes
 __boop.registerMethod boop trueClass __boop.trueClass

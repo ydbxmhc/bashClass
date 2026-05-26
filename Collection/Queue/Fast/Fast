@@ -1,0 +1,104 @@
+#!/bin/bash
+
+# Collection.Queue.Fast — FIFO queue via direct List inheritance.
+#
+# Inherits Collection.List and restricts the interface to queue semantics.
+# pop/unshift are overridden with _Error stubs — convention-enforced,
+# not mechanism-enforced. Same tradeoff as Stack.Fast: one object, no
+# delegation, no cascading destroy.
+#
+# Performance advantage over composition-based Collection.Queue:
+#   - No internal List object (half the objects, half the wrappers)
+#   - enqueue/dequeue are thin wrappers over inherited push/shift
+#   - No reference variable to manage
+#   - No _destroy hook needed (Container handles the companion array)
+#
+# Public interface:
+#   $q.enqueue val ...  — add one or more values to the back
+#   $q.dequeue          — remove and return front (crashes if empty)
+#   $q.peek             — return front without removing (crashes if empty)
+#   $q.size             — number of elements (alias for length)
+#   $q.isEmpty          — exits 0 if empty, 1 if not
+#
+# Inherited but intentionally available:
+#   $q.length, $q.clear, $q.has, $q.toArray, $q.toString, $q.each
+#
+# Blocked (error stubs):
+#   $q.pop, $q.unshift — not valid queue operations
+
+. boop Collection::List
+
+boop.init Collection.Queue.Fast || return 0
+
+# enqueue — append to the back. Thin wrapper over push (queue vocabulary).
+Collection.Queue.Fast.enqueue() {
+  local _Self="${_Self:-${_Class:-Collection.Queue.Fast}}" _Class="${_Class:-Collection.Queue.Fast}"
+  local -n __Collection_Queue_Fast_enqueue_arr="__boop_data_${_Self}"
+  __Collection_Queue_Fast_enqueue_arr+=("$@")
+  _Trace "enqueue: +$# element(s), length now ${#__Collection_Queue_Fast_enqueue_arr[@]}"
+}
+
+# dequeue — remove and return from the front. Crashes on empty.
+Collection.Queue.Fast.dequeue() {
+  local _Self="${_Self:-${_Class:-Collection.Queue.Fast}}" _Class="${_Class:-Collection.Queue.Fast}"
+  local -n __Collection_Queue_Fast_dequeue_arr="__boop_data_${_Self}"
+  local -i __Collection_Queue_Fast_dequeue_len=${#__Collection_Queue_Fast_dequeue_arr[@]}
+  (( __Collection_Queue_Fast_dequeue_len > 0 )) || _Crash "dequeue from empty Queue"
+  local __Collection_Queue_Fast_dequeue_val="${__Collection_Queue_Fast_dequeue_arr[0]}"
+  __Collection_Queue_Fast_dequeue_arr=("${__Collection_Queue_Fast_dequeue_arr[@]:1}")
+  _Trace "dequeue: -> '$__Collection_Queue_Fast_dequeue_val', length now $(( __Collection_Queue_Fast_dequeue_len - 1 ))"
+  boop.pass "$__Collection_Queue_Fast_dequeue_val" ${into:-}
+}
+
+# peek — return front element without removing. Crashes on empty.
+Collection.Queue.Fast.peek() {
+  local _Self="${_Self:-${_Class:-Collection.Queue.Fast}}" _Class="${_Class:-Collection.Queue.Fast}"
+  local -n __Collection_Queue_Fast_peek_arr="__boop_data_${_Self}"
+  local -i __Collection_Queue_Fast_peek_len=${#__Collection_Queue_Fast_peek_arr[@]}
+  (( __Collection_Queue_Fast_peek_len > 0 )) || _Crash "peek on empty Queue"
+  boop.pass "${__Collection_Queue_Fast_peek_arr[0]}" ${into:-}
+}
+
+# size — alias for length (queue vocabulary)
+Collection.Queue.Fast.size() {
+  local _Self="${_Self:-${_Class:-Collection.Queue.Fast}}" _Class="${_Class:-Collection.Queue.Fast}"
+  local -n __Collection_Queue_Fast_size_arr="__boop_data_${_Self}"
+  boop.pass "${#__Collection_Queue_Fast_size_arr[@]}" ${into:-}
+}
+
+# isEmpty — exit 0 if empty, 1 if not
+Collection.Queue.Fast.isEmpty() {
+  local _Self="${_Self:-${_Class:-Collection.Queue.Fast}}" _Class="${_Class:-Collection.Queue.Fast}"
+  local -n __Collection_Queue_Fast_isEmpty_arr="__boop_data_${_Self}"
+  (( ${#__Collection_Queue_Fast_isEmpty_arr[@]} == 0 ))
+}
+
+# Blocked operations — queues don't support stack-end, front-insert, or random access.
+Collection.Queue.Fast.pop() {
+  _Error "Queue.Fast: pop is not a valid queue operation — use dequeue"
+  return 1
+}
+Collection.Queue.Fast.unshift() {
+  _Error "Queue.Fast: unshift is not a valid queue operation — use enqueue"
+  return 1
+}
+Collection.Queue.Fast.getAt() {
+  _Error "Queue.Fast: random access violates FIFO — use peek or dequeue"
+  return 1
+}
+Collection.Queue.Fast.setAt() {
+  _Error "Queue.Fast: random access violates FIFO — use enqueue"
+  return 1
+}
+Collection.Queue.Fast.delete() {
+  _Error "Queue.Fast: random access violates FIFO — use dequeue"
+  return 1
+}
+Collection.Queue.Fast.slice() {
+  _Error "Queue.Fast: random access violates FIFO — use dequeue in a loop"
+  return 1
+}
+
+boopClass Collection.Queue.Fast isa:Collection.List version:1.0.0 '
+  public:enqueue,dequeue,peek,size,isEmpty,pop,unshift,getAt,setAt,delete,slice
+'

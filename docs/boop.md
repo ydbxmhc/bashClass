@@ -242,6 +242,99 @@ dispatch entirely.
 
 ---
 
+## Destroying Objects
+
+Every object inherits `destroy` from `boop`. It's the symmetric inverse
+of construction — tears down everything that `new` and class-level
+initialization built:
+
+```bash
+into=m Map
+$m.set host localhost
+$m.set port 5432
+# ... use it ...
+$m.destroy                    # gone — registry, static keys, wrappers, companion arrays
+```
+
+After `destroy`, the object ID is dead. Calling any method on it fails
+with "command not found" (the wrapper functions are unset). Holding a
+stale ID is the caller's problem — same as a dangling pointer.
+
+### When to Use It
+
+- **Long-running shells** — objects accumulate without bound otherwise.
+- **Loops that create objects** — destroy at the end of each iteration.
+- **Interactive sessions** — clean up scratch objects.
+- **Scripts that manage resources** — Stream objects hold open FDs,
+  temp-file wrappers hold disk state.
+
+Short-lived scripts can ignore it entirely. The process exits and the
+OS reclaims everything.
+
+### What It Does (Execution Order)
+
+1. **Class-level `_destroy` hook** — if the class defines a private
+   `ClassName._destroy()` function, it's called first. This is where
+   classes clean up companion arrays, close file descriptors, destroy
+   owned child objects, or remove temp files. The hook is walked up the
+   inheritance chain (most-derived first), so each ancestor cleans up
+   what it allocated.
+
+2. **Wipe `__boop_static` keys** — every key prefixed with the object
+   ID is removed.
+
+3. **Unset wrapper functions** — all functions named `${objId}.*` are
+   removed via `compgen -A function`.
+
+4. **Remove registry entry** — the object ID becomes unresolvable.
+
+### Writing a `_destroy` Hook
+
+If your class allocates companion arrays or external resources in its
+constructor, write a `_destroy` function. It's a private convention —
+not registered as a method, not in the `public:` list:
+
+```bash
+# In your class file, after the method implementations:
+MyClass._destroy() {
+  local _Self="${_Self:-}" _Class="${_Class:-MyClass}"
+  unset "__boop_data_${_Self}"          # companion array
+  rm -f "${__boop_static[${_Self}.tmpfile]:-}"  # temp file, if any
+}
+
+# The boopClass declaration does NOT mention _destroy:
+boopClass MyClass has:... public:new,...
+```
+
+The core finds it via `declare -F ClassName._destroy` during teardown.
+If your class doesn't allocate anything beyond properties, you don't
+need a hook — the core cleanup handles `__boop_static` and wrappers.
+
+### Cascading Destruction
+
+If your class owns child objects (like Stack owns a List), destroy them
+in your `_destroy` hook:
+
+```bash
+Collection.Stack._destroy() {
+  local _Self="${_Self:-}" _Class="${_Class:-Collection.Stack}"
+  local -n __ref="__Collection_Stack_list_${_Self}"
+  # Destroy the owned List
+  if [[ -n "$__ref" && -n "${__boop_registry[$__ref]+set}" ]]; then
+    _Self="$__ref" _Class=Collection.List __boop.destroy
+  fi
+  unset "__Collection_Stack_list_${_Self}"
+}
+```
+
+### Double-Destroy
+
+Calling `$obj.destroy` twice crashes on the second call — the registry
+check at the top of `__boop.destroy` rejects unknown IDs. This is
+intentional: double-free is a logic error, not a no-op.
+
+---
+
 ## Properties: Get and Set
 
 Every object inherits `get` and `set` from `boop`:

@@ -264,10 +264,43 @@ Collection.Map.each() {
   done
 }
 
+# Copy all entries from another Map into this one, in insertion order.
+#
+# Existing keys in the target are overwritten with the source's values.
+# New keys are appended to the target's insertion order.
+# The source Map is not modified.
+#
+# Usage: $target.merge $source
+Collection.Map.merge() {
+  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local __Collection_Map_merge_src="$1"
+  local -n __Collection_Map_merge_src_data="__boop_data_${__Collection_Map_merge_src}"
+  local -n __Collection_Map_merge_src_keys="__boop_keys_${__Collection_Map_merge_src}"
+  local -n __Collection_Map_merge_dst_data="__boop_data_${_Self}"
+  local -n __Collection_Map_merge_dst_keys="__boop_keys_${_Self}"
+  local __Collection_Map_merge_key
+  _Debug "merge: ${#__Collection_Map_merge_src_keys[@]} entries from $__Collection_Map_merge_src"
+  for __Collection_Map_merge_key in "${__Collection_Map_merge_src_keys[@]+"${__Collection_Map_merge_src_keys[@]}"}"; do
+    # Append to key order if new
+    if [[ -z "${__Collection_Map_merge_dst_data[$__Collection_Map_merge_key]+set}" ]]; then
+      __Collection_Map_merge_dst_keys+=("$__Collection_Map_merge_key")
+    fi
+    __Collection_Map_merge_dst_data[$__Collection_Map_merge_key]="${__Collection_Map_merge_src_data[$__Collection_Map_merge_key]}"
+  done
+}
+
+# Destroy the keys companion array. The data array (__boop_data_) is
+# handled by Collection.Container._destroy in the inheritance walk.
+Collection.Map._destroy() {
+  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  _Trace "destroy: unsetting __boop_keys_${_Self}"
+  unset "__boop_keys_${_Self}"
+}
+
 # ============================================================================
 # Class Declaration
 # ============================================================================
 
 boopClass Collection.Map isa:Collection.Container has:type '
-  public:new,getAt,setAt,delete,length,clear,has,keys,values,toArray,toString,each
+  public:new,getAt,setAt,delete,length,clear,has,keys,values,toArray,toString,each,merge
 '

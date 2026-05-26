@@ -38,7 +38,7 @@
 #     into=iter Iterator target="$list" target_class="Collection.List"
 #
 # Virtual methods (child MUST override): getAt, setAt, delete, length, clear, has, toArray
-# Provided methods (inherited, work for all): isEmpty, new, destroy, toString
+# Provided methods (inherited, work for all): isEmpty, new, toString
 # Iterator delegation (lazy): next, prev, hasNext, hasPrev, current, iterIndex, iterReset
 
 # Load guard — if already registered, nothing to do
@@ -209,10 +209,14 @@ Collection.Container.new() {
   boop.pass "$__Collection_Container_new_self" ${into:-}
 }
 
-Collection.Container.destroy() {
+# Private destroy hook called by __boop.destroy. Unsets the companion
+# data array that Container.new declares. Subclasses with additional
+# companion arrays (Map's __boop_keys_, etc.) define their own _destroy
+# which runs before this one in the inheritance walk.
+Collection.Container._destroy() {
   local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  _Trace "destroy: unsetting __boop_data_${_Self}"
   unset "__boop_data_${_Self}"
-  unset "__boop_registry[$_Self]"
 }
 
 Collection.Container.toString() {
@@ -269,7 +273,7 @@ Collection.Container.deepSet() {
 # Container Class Declaration
 # ============================================================================
 
-boopClass Collection.Container public:new,destroy,length,clear,has,getAt,setAt,delete,isEmpty,toArray,toString,deepGet,deepSet,each,iterator,next,prev,hasNext,hasPrev,current,iterIndex,iterReset has:type
+boopClass Collection.Container public:new,length,clear,has,getAt,setAt,delete,isEmpty,toArray,toString,deepGet,deepSet,each,iterator,next,prev,hasNext,hasPrev,current,iterIndex,iterReset has:type
 
 # ============================================================================
 # Deep Traversal — itemFrom / setOn (boop augmentation)
@@ -529,6 +533,14 @@ Iterator.index() {
 Iterator.reset() {
   local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
   $_Self.set position "-1"
+}
+
+# Destroy the iterator's key snapshot (if any).
+# Private hook called by __boop.destroy.
+Iterator._destroy() {
+  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
+  _Trace "destroy: unsetting __boop_iterkeys_${_Self}"
+  unset "__boop_iterkeys_${_Self}"
 }
 
 # ============================================================================

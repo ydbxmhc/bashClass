@@ -217,6 +217,27 @@ Write a string to the stream's FD. No delimiter appended.
 
 Write a string followed by the record EOL to the stream's FD.
 
+### `$s.putBack STR`
+
+Push a value back onto the front of the read buffer. The next read
+(`Read` or `next`) returns this value before consuming new data from
+the FD. Multiple calls stack (LIFO — last pushed is first read).
+
+Resets the EOF flag — putting data back means there's something to read.
+
+Essential for lookahead parsing: read a line, inspect it, decide it
+belongs to the next section, push it back.
+
+```bash
+$s.Read line
+# ... this line starts a new block, put it back ...
+$s.putBack "$line"
+# next $s.Read returns $line again
+```
+
+Best used with buffered-mode streams. Direct-mode streams don't use the
+internal buffer, so putBack behavior is less predictable there.
+
 ---
 
 ## The CRLF Contract

@@ -533,7 +533,7 @@ bash tests/integration/test_stress_ts
 ## Class Hierarchy
 
 ```
-boop                                    root — new, get, set, isa, mixes, trueClass, toString, inspect
+boop                                    root — new, destroy, get, set, isa, mixes, trueClass, toString, inspect
   ├── Geometry
   │     ├── Box                         3D rectangle — volume, face areas
   │     └── Cube                        equal-sided Box
@@ -543,8 +543,10 @@ boop                                    root — new, get, set, isa, mixes, true
   │     │     └── Map                   insertion-ordered key/value store
   │     ├── Map.Fast                    flat compound-key store — O(1) access
   │     ├── Iterator                    stateful cursor for Container subclasses
-  │     ├── Stack                       LIFO — push/pop/peek
-  │     ├── Queue                       FIFO — enqueue/dequeue/peek
+  │     ├── Stack                       LIFO — push/pop/peek (composition)
+  │     │     └── Stack.Fast            LIFO via List inheritance — lighter, faster
+  │     ├── Queue                       FIFO — enqueue/dequeue/peek (composition)
+  │     │     └── Queue.Fast            FIFO via List inheritance — lighter, faster
   │     └── Set                         unique members — add/has/remove/union/intersect/difference
   ├── Mixins
   │     ├── Terminal                    ANSI control, named colors, symbol table
@@ -622,6 +624,14 @@ done
 
 # Slice a range (inclusive)
 into=sub $fruits.slice 0 1     # "mango\ncherry"
+
+# Functional operations
+is_short() { (( ${#1} <= 5 )); }
+upcase() { _Result="${1^^}"; }
+join() { _Result="$1,$2"; }
+
+into=result $fruits.do filter:is_short map:upcase reduce:join
+# pipeline: filter → map → reduce, intermediates auto-destroyed
 ```
 
 ### Map
@@ -738,6 +748,17 @@ into=n   $s.size          # "2"
 $s.isEmpty                # exits 1 (not empty)
 ```
 
+**Stack.Fast** — same interface, inherits List directly. Faster (one object,
+no delegation), but List methods like `each` and `toArray` are accessible.
+`shift`/`unshift` are blocked with `_Error` stubs.
+
+```bash
+. boop Collection::Stack::Fast
+into=s Collection.Stack.Fast.new
+$s.push a b c
+into=v $s.pop             # "c"
+```
+
 ### Queue
 
 FIFO queue. Composes a List internally.
@@ -751,6 +772,17 @@ $q.enqueue job1 job2 job3
 into=front $q.peek        # "job1" (no removal)
 into=v     $q.dequeue     # "job1"
 into=n     $q.size        # "2"
+```
+
+**Queue.Fast** — same interface, inherits List directly. Faster (one object,
+no delegation), but List methods like `each` and `toArray` are accessible.
+`pop`/`unshift` are blocked with `_Error` stubs.
+
+```bash
+. boop Collection::Queue::Fast
+into=q Collection.Queue.Fast.new
+$q.enqueue x y z
+into=v $q.dequeue         # "x"
 ```
 
 ### Set

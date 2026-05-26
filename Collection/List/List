@@ -379,8 +379,249 @@ Collection.List.each() {
   done
 }
 
+# Check whether a value exists anywhere in the list.
+#
+# Thin wrapper over indexOf — discards the position, returns only the
+# exit code. O(n) linear scan.
+#
+# Usage: $list.contains "banana" && printf "found\n"
+Collection.List.contains() {
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local __Collection_List_contains_bitbucket
+  if [[ -z "${1:-}" ]]; then _Error "$_Self.contains requires a search argument"; return 1; fi
+  into=__Collection_List_contains_bitbucket $_Self.indexOf "$1"
+}
+
+# Return the index of the first occurrence of a value.
+#
+# Linear scan — O(n). Returns the index via boop.pass and exit 0 if found.
+# Returns empty string and exit 1 if not found.
+#
+# Usage: into=pos $list.indexOf "banana"
+Collection.List.indexOf() {
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local __Collection_List_indexOf_val="$1"
+  local -n __Collection_List_indexOf_arr="__boop_data_${_Self}"
+  local -i __Collection_List_indexOf_i __Collection_List_indexOf_len=${#__Collection_List_indexOf_arr[@]}
+  for (( __Collection_List_indexOf_i=0; __Collection_List_indexOf_i < __Collection_List_indexOf_len; __Collection_List_indexOf_i++ )); do
+    if [[ "${__Collection_List_indexOf_arr[$__Collection_List_indexOf_i]}" == "$__Collection_List_indexOf_val" ]]; then
+      boop.pass "$__Collection_List_indexOf_i" ${into:-}
+      return 0
+    fi
+  done
+  boop.pass "" ${into:-}
+  return 1
+}
+
+# Return a new List containing only elements for which the callback returns 0.
+#
+# The callback receives one argument: the element value. It returns exit
+# code 0 to keep the element, non-zero to discard it. The original List
+# is not modified.
+#
+# On an empty list, returns a new empty List (exit 0 — not an error).
+#
+# Usage:
+#   is_long() { (( ${#1} > 3 )); }
+#   into=result $list.filter is_long
+Collection.List.filter() {
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local __Collection_List_filter_fn="$1"
+  local -n __Collection_List_filter_src="__boop_data_${_Self}"
+
+  # Create the result List with a clean class context
+  local __Collection_List_filter_result
+  into=__Collection_List_filter_result _Delegate Collection.List.new
+
+  local -n __Collection_List_filter_dst="__boop_data_${__Collection_List_filter_result}"
+  local -i __Collection_List_filter_i __Collection_List_filter_len=${#__Collection_List_filter_src[@]}
+
+  _Debug "filter: $__Collection_List_filter_len element(s) via '$__Collection_List_filter_fn'"
+  for (( __Collection_List_filter_i=0; __Collection_List_filter_i < __Collection_List_filter_len; __Collection_List_filter_i++ )); do
+    if "$__Collection_List_filter_fn" "${__Collection_List_filter_src[$__Collection_List_filter_i]}"; then
+      __Collection_List_filter_dst+=("${__Collection_List_filter_src[$__Collection_List_filter_i]}")
+    fi
+  done
+  _Debug "filter: kept ${#__Collection_List_filter_dst[@]} of $__Collection_List_filter_len"
+
+  boop.pass "$__Collection_List_filter_result" ${into:-}
+}
+
+# Return a new List with each element transformed by the callback.
+#
+# The callback receives one argument: the element value. It writes the
+# transformed value to the variable _Result. The original List is not
+# modified.
+#
+# On an empty list, returns a new empty List (exit 0 — not an error).
+#
+# Usage:
+#   upcase() { _Result="${1^^}"; }
+#   into=result $list.map upcase
+Collection.List.map() {
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local __Collection_List_map_fn="$1"
+  local -n __Collection_List_map_src="__boop_data_${_Self}"
+
+  # Create the result List with a clean class context
+  local __Collection_List_map_result
+  into=__Collection_List_map_result _Delegate Collection.List.new
+
+  local -n __Collection_List_map_dst="__boop_data_${__Collection_List_map_result}"
+  local -i __Collection_List_map_i __Collection_List_map_len=${#__Collection_List_map_src[@]}
+  local _Result=""
+
+  _Debug "map: $__Collection_List_map_len element(s) via '$__Collection_List_map_fn'"
+  for (( __Collection_List_map_i=0; __Collection_List_map_i < __Collection_List_map_len; __Collection_List_map_i++ )); do
+    _Result=""
+    "$__Collection_List_map_fn" "${__Collection_List_map_src[$__Collection_List_map_i]}"
+    __Collection_List_map_dst+=("$_Result")
+  done
+
+  boop.pass "$__Collection_List_map_result" ${into:-}
+}
+
+# Reduce the list to a single scalar value by applying a combining callback
+# across all elements.
+#
+# The callback receives two arguments: the running total and the current
+# element. It writes the new running total to _Result.
+#
+# The first element is used as the initial running total. The callback
+# starts combining from the second element onward.
+#
+# On an empty list: returns empty string via boop.pass, exit code 1.
+# On a single-element list: returns that element (callback never called).
+#
+# Usage:
+#   add() { _Result=$(( $1 + $2 )); }
+#   into=total $nums.reduce add
+Collection.List.reduce() {
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local __Collection_List_reduce_fn="$1"
+  local -n __Collection_List_reduce_arr="__boop_data_${_Self}"
+  local -i __Collection_List_reduce_len=${#__Collection_List_reduce_arr[@]}
+
+  # Empty list: return empty, exit 1
+  if (( __Collection_List_reduce_len == 0 )); then
+    _Debug "reduce: empty list — returning exit 1"
+    boop.pass "" ${into:-}
+    return 1
+  fi
+
+  # Single element: return it directly, no callback needed
+  if (( __Collection_List_reduce_len == 1 )); then
+    _Debug "reduce: single element — returning directly"
+    boop.pass "${__Collection_List_reduce_arr[0]}" ${into:-}
+    return 0
+  fi
+
+  local _Result="${__Collection_List_reduce_arr[0]}"
+  local -i __Collection_List_reduce_i
+
+  _Debug "reduce: $__Collection_List_reduce_len element(s) via '$__Collection_List_reduce_fn'"
+  for (( __Collection_List_reduce_i=1; __Collection_List_reduce_i < __Collection_List_reduce_len; __Collection_List_reduce_i++ )); do
+    "$__Collection_List_reduce_fn" "$_Result" "${__Collection_List_reduce_arr[$__Collection_List_reduce_i]}"
+  done
+
+  boop.pass "$_Result" ${into:-}
+}
+
+# Apply a pipeline of operations in sequence, managing intermediates.
+#
+# Each operation is an op:callback pair. Operations are separated by
+# whitespace, commas, or both. Spaces around colons are tolerated.
+# All of these are equivalent:
+#
+#   $list.do "filter:is_even,map:double_it,reduce:add"
+#   $list.do "filter:is_even, map:double_it, reduce:add"
+#   $list.do filter:is_even map:double_it reduce:add
+#   $list.do "filter : is_even" "map : double_it" "reduce : add"
+#
+# Recognized operations: filter, map, reduce. Each takes a callback name.
+# filter and map produce new Lists (intermediates are destroyed automatically).
+# reduce produces a scalar (the final value).
+#
+# Returns whatever the last operation produces: a List ID (filter/map) or
+# a scalar string (reduce). Exit code follows the last operation's contract
+# (reduce on empty returns 1).
+#
+# Usage:
+#   into=result $list.do filter:is_even map:double_it reduce:add
+Collection.List.do() {
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+
+  # --- Normalize input into op:callback tokens ---
+  local IFS=' '
+  local __Collection_List_do_raw="$*"
+  # Commas are visual separators — replace with space
+  __Collection_List_do_raw="${__Collection_List_do_raw//,/ }"
+  # Collapse spaces around colons: " : " → ":", ": " → ":", " :" → ":"
+  while [[ "$__Collection_List_do_raw" == *" :"* || "$__Collection_List_do_raw" == *": "* ]]; do
+    __Collection_List_do_raw="${__Collection_List_do_raw// :/:}"
+    __Collection_List_do_raw="${__Collection_List_do_raw//: /:}"
+  done
+
+  # Split on whitespace into tokens
+  local -a __Collection_List_do_tokens
+  read -ra __Collection_List_do_tokens <<< "$__Collection_List_do_raw"
+
+  (( ${#__Collection_List_do_tokens[@]} > 0 )) ||
+    _Crash "List.do: empty pipeline"
+
+  _Debug "do: ${#__Collection_List_do_tokens[@]} operation(s)"
+
+  # --- Execute pipeline ---
+  local __Collection_List_do_current="$_Self"
+  local __Collection_List_do_prev=""
+  local __Collection_List_do_op __Collection_List_do_cb __Collection_List_do_tok
+  local -i __Collection_List_do_rc=0
+
+  for __Collection_List_do_tok in "${__Collection_List_do_tokens[@]}"; do
+    __Collection_List_do_op="${__Collection_List_do_tok%%:*}"
+    __Collection_List_do_cb="${__Collection_List_do_tok#*:}"
+    [[ -n "$__Collection_List_do_op" && -n "$__Collection_List_do_cb" && "$__Collection_List_do_op" != "$__Collection_List_do_cb" ]] ||
+      _Crash "List.do: malformed token '$__Collection_List_do_tok' — expected op:callback"
+
+    _Trace "do: $__Collection_List_do_op:$__Collection_List_do_cb on $__Collection_List_do_current"
+
+    case "$__Collection_List_do_op" in
+      filter)
+        __Collection_List_do_prev="$__Collection_List_do_current"
+        into=__Collection_List_do_current \
+          _Self="$__Collection_List_do_current" _Class=Collection.List \
+          Collection.List.filter "$__Collection_List_do_cb"
+        ;;
+      map)
+        __Collection_List_do_prev="$__Collection_List_do_current"
+        into=__Collection_List_do_current \
+          _Self="$__Collection_List_do_current" _Class=Collection.List \
+          Collection.List.map "$__Collection_List_do_cb"
+        ;;
+      reduce)
+        __Collection_List_do_prev="$__Collection_List_do_current"
+        into=__Collection_List_do_current \
+          _Self="$__Collection_List_do_current" _Class=Collection.List \
+          Collection.List.reduce "$__Collection_List_do_cb" || __Collection_List_do_rc=$?
+        ;;
+      *) _Crash "List.do: unknown operation '$__Collection_List_do_op' (expected: filter, map, reduce)" ;;
+    esac
+
+    # Destroy the intermediate (but never the original input)
+    if [[ -n "$__Collection_List_do_prev" && "$__Collection_List_do_prev" != "$_Self" &&
+          -n "${__boop_registry[$__Collection_List_do_prev]+set}" ]]; then
+      _Trace "do: destroying intermediate $__Collection_List_do_prev"
+      _Delegate $__Collection_List_do_prev.destroy
+    fi
+    __Collection_List_do_prev=""
+  done
+
+  boop.pass "$__Collection_List_do_current" ${into:-}
+  return $__Collection_List_do_rc
+}
+
 # ============================================================================
 # Class Declaration
 # ============================================================================
 
-boopClass Collection.List isa:Collection.Container public:new,getAt,setAt,delete,length,clear,has,push,pop,shift,unshift,slice,toArray,toString,each has:type
+boopClass Collection.List isa:Collection.Container public:new,getAt,setAt,delete,length,clear,has,push,pop,shift,unshift,slice,toArray,toString,each,contains,indexOf,filter,map,reduce,do has:type

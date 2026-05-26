@@ -1,0 +1,283 @@
+#!/bin/bash
+set -uo pipefail
+
+# Object destruction tests
+#
+# Classification: UNIT (boop core — __boop.destroy)
+# Covers: registry removal, __boop_static cleanup, wrapper function removal,
+#         class-level _destroy hooks, companion array teardown, cascading
+#         destruction (Stack/Queue → owned List), Stream FD closure,
+#         double-destroy crash, destroy on bare boop objects.
+
+. boop TestSuite Cube List Map Stack Queue Set Config Stream
+
+into=t TestSuite name="Destroy Tests"
+
+# ============================================================================
+# Basic lifecycle: registry, static, wrappers
+# ============================================================================
+
+$t.section "basic lifecycle"
+
+into=b Box length=5 width=3 height=7
+__td_id="$b"
+
+# Preconditions
+$t.assert_ok "object in registry before destroy" test -n "${__boop_registry[$__td_id]+set}"
+$t.assert_ok "static keys exist before destroy" bash -c "
+  . boop Cube
+  into=b Box length=5 width=3 height=7
+  id=\$b
+  [[ -n \"\${__boop_static[\${id}.length]+set}\" ]]
+"
+$t.assert_ok "wrapper exists before destroy" declare -F "$__td_id.volume"
+
+# Destroy
+$b.destroy
+
+# Postconditions
+$t.assert_eq "registry entry removed" "${__boop_registry[$__td_id]:-GONE}" "GONE"
+$t.assert_eq "static key removed" "${__boop_static[${__td_id}.length]:-GONE}" "GONE"
+$t.assert_eq "static key height removed" "${__boop_static[${__td_id}.height]:-GONE}" "GONE"
+$t.assert_fail "wrapper function gone" declare -F "$__td_id.volume"
+$t.assert_fail "get wrapper gone" declare -F "$__td_id.get"
+$t.assert_fail "set wrapper gone" declare -F "$__td_id.set"
+$t.assert_fail "destroy wrapper gone" declare -F "$__td_id.destroy"
+
+# ============================================================================
+# Double-destroy crashes
+# ============================================================================
+
+$t.section "double-destroy"
+
+$t.assert_fail "second destroy crashes" bash -c "
+  . boop Cube
+  into=b Box length=1 width=1 height=1
+  \$b.destroy
+  _Self=\$b _Class=Geometry.Box __boop.destroy
+"
+
+# ============================================================================
+# List: companion array cleanup
+# ============================================================================
+
+$t.section "List companion array"
+
+into=lst List
+$lst.push "alpha" "beta" "gamma"
+__td_lst_id="$lst"
+__td_lst_arr="__boop_data_${__td_lst_id}"
+
+# Precondition: companion array exists
+$t.assert_ok "List companion array exists" declare -p "$__td_lst_arr"
+
+$lst.destroy
+
+# Postcondition: companion array gone
+$t.assert_fail "List companion array removed" declare -p "$__td_lst_arr"
+$t.assert_eq "List registry entry removed" "${__boop_registry[$__td_lst_id]:-GONE}" "GONE"
+
+# ============================================================================
+# Map: both companion arrays cleaned
+# ============================================================================
+
+$t.section "Map companion arrays"
+
+into=mp Map
+$mp.setAt host localhost
+$mp.setAt port 5432
+__td_mp_id="$mp"
+__td_mp_data="__boop_data_${__td_mp_id}"
+__td_mp_keys="__boop_keys_${__td_mp_id}"
+
+$t.assert_ok "Map data array exists" declare -p "$__td_mp_data"
+$t.assert_ok "Map keys array exists" declare -p "$__td_mp_keys"
+
+$mp.destroy
+
+$t.assert_fail "Map data array removed" declare -p "$__td_mp_data"
+$t.assert_fail "Map keys array removed" declare -p "$__td_mp_keys"
+$t.assert_eq "Map registry removed" "${__boop_registry[$__td_mp_id]:-GONE}" "GONE"
+
+# ============================================================================
+# Set: companion array cleaned
+# ============================================================================
+
+$t.section "Set companion array"
+
+into=st Collection.Set.new
+$st.add "x"
+$st.add "y"
+__td_st_id="$st"
+__td_st_arr="__Collection_Set_data_${__td_st_id}"
+
+$t.assert_ok "Set companion array exists" declare -p "$__td_st_arr"
+
+$st.destroy
+
+$t.assert_fail "Set companion array removed" declare -p "$__td_st_arr"
+$t.assert_eq "Set registry removed" "${__boop_registry[$__td_st_id]:-GONE}" "GONE"
+
+# ============================================================================
+# Stack: cascading destruction of owned List
+# ============================================================================
+
+$t.section "Stack cascading destroy"
+
+into=stk Collection.Stack.new
+$stk.push "a" "b" "c"
+__td_stk_id="$stk"
+
+# Get the internal List ID via indirection
+__td_stk_varname="__Collection_Stack_list_${__td_stk_id}"
+__td_stk_list_id="${!__td_stk_varname}"
+__td_stk_list_arr="__boop_data_${__td_stk_list_id}"
+
+$t.assert_ok "Stack's internal List in registry" test -n "${__boop_registry[$__td_stk_list_id]+set}"
+$t.assert_ok "Stack's internal List array exists" declare -p "$__td_stk_list_arr"
+
+$stk.destroy
+
+$t.assert_eq "Stack registry removed" "${__boop_registry[$__td_stk_id]:-GONE}" "GONE"
+$t.assert_eq "Stack's List also destroyed" "${__boop_registry[$__td_stk_list_id]:-GONE}" "GONE"
+$t.assert_fail "Stack's List array removed" declare -p "$__td_stk_list_arr"
+$t.assert_fail "Stack reference variable removed" declare -p "__Collection_Stack_list_${__td_stk_id}"
+
+# ============================================================================
+# Queue: cascading destruction of owned List
+# ============================================================================
+
+$t.section "Queue cascading destroy"
+
+into=q Collection.Queue.new
+$q.enqueue "x" "y"
+__td_q_id="$q"
+
+__td_q_varname="__Collection_Queue_list_${__td_q_id}"
+__td_q_list_id="${!__td_q_varname}"
+
+$t.assert_ok "Queue's internal List in registry" test -n "${__boop_registry[$__td_q_list_id]+set}"
+
+$q.destroy
+
+$t.assert_eq "Queue registry removed" "${__boop_registry[$__td_q_id]:-GONE}" "GONE"
+$t.assert_eq "Queue's List also destroyed" "${__boop_registry[$__td_q_list_id]:-GONE}" "GONE"
+
+# ============================================================================
+# Config: companion arrays cleaned
+# ============================================================================
+
+$t.section "Config companion arrays"
+
+into=cfg Config.new
+$cfg.set theme dark
+$cfg.set host localhost
+__td_cfg_id="$cfg"
+__td_cfg_data="__boop_config_${__td_cfg_id}"
+__td_cfg_keys="__boop_config_keys_${__td_cfg_id}"
+
+$t.assert_ok "Config data array exists" declare -p "$__td_cfg_data"
+$t.assert_ok "Config keys array exists" declare -p "$__td_cfg_keys"
+
+$cfg.destroy
+
+$t.assert_fail "Config data array removed" declare -p "$__td_cfg_data"
+$t.assert_fail "Config keys array removed" declare -p "$__td_cfg_keys"
+$t.assert_eq "Config registry removed" "${__boop_registry[$__td_cfg_id]:-GONE}" "GONE"
+
+# ============================================================================
+# Stream: FD closure and companion arrays
+# ============================================================================
+
+$t.section "Stream FD and companion arrays"
+
+# Create a stream from a temp file
+__td_tmpfile=$(mktemp)
+printf 'line1\nline2\nline3\n' > "$__td_tmpfile"
+
+into=s Stream.new -P "$__td_tmpfile"
+__td_s_id="$s"
+__td_s_fd="${__boop_static[${__td_s_id}.fd]}"
+__td_s_fields="__boop_data_${__td_s_id}_fields"
+__td_s_readargs="__boop_data_${__td_s_id}_readArgs"
+
+$t.assert_ok "Stream FD is open" test -e "/dev/fd/$__td_s_fd"
+
+$s.destroy
+
+$t.assert_fail "Stream fields array removed" declare -p "$__td_s_fields"
+$t.assert_fail "Stream readArgs array removed" declare -p "$__td_s_readargs"
+$t.assert_eq "Stream registry removed" "${__boop_registry[$__td_s_id]:-GONE}" "GONE"
+# FD closure: after destroy, reading from the FD should fail
+__td_s_read_ok=0
+read -t 0 -u "$__td_s_fd" 2>/dev/null && __td_s_read_ok=1 || true
+$t.assert_eq "Stream FD closed (not readable)" "$__td_s_read_ok" "0"
+
+rm -f "$__td_tmpfile"
+
+# ============================================================================
+# Bare boop object (no class-level hook)
+# ============================================================================
+
+$t.section "bare boop object"
+
+into=bare new boop
+__td_bare_id="$bare"
+$bare.set "x" "42"
+
+$t.assert_ok "bare object in registry" test -n "${__boop_registry[$__td_bare_id]+set}"
+
+$bare.destroy
+
+$t.assert_eq "bare registry removed" "${__boop_registry[$__td_bare_id]:-GONE}" "GONE"
+$t.assert_eq "bare static removed" "${__boop_static[${__td_bare_id}.x]:-GONE}" "GONE"
+$t.assert_fail "bare wrapper gone" declare -F "$__td_bare_id.get"
+
+# ============================================================================
+# Destroy does not affect other objects
+# ============================================================================
+
+$t.section "isolation"
+
+into=keep Box length=9 width=8 height=7
+into=kill Box length=1 width=1 height=1
+__td_keep_id="$keep"
+__td_kill_id="$kill"
+
+$kill.destroy
+
+$t.assert_ok "surviving object still in registry" test -n "${__boop_registry[$__td_keep_id]+set}"
+into=v $keep.volume
+$t.assert_eq "surviving object still works" "$v" "504"
+$t.assert_eq "destroyed object gone" "${__boop_registry[$__td_kill_id]:-GONE}" "GONE"
+
+# ============================================================================
+# Rapid create-destroy cycle (leak check)
+# ============================================================================
+
+$t.section "rapid create-destroy cycle"
+
+__td_pre_keys=0
+for __td_k in "${!__boop_registry[@]}"; do (( __td_pre_keys++ )); done
+
+for __td_i in {1..50}; do
+  into=__td_tmp List
+  $__td_tmp.push "data_$__td_i"
+  $__td_tmp.destroy
+done
+
+__td_post_keys=0
+for __td_k in "${!__boop_registry[@]}"; do (( __td_post_keys++ )); done
+
+$t.assert_eq "no registry leak after 50 create-destroy cycles" "$__td_pre_keys" "$__td_post_keys"
+
+# Check __boop_static didn't grow (no leftover keys from destroyed objects)
+__td_orphan=0
+for __td_k in "${!__boop_static[@]}"; do
+  [[ "$__td_k" == __obj_* ]] || continue
+  __td_obj_prefix="${__td_k%%.*}"
+  [[ -z "${__boop_registry[$__td_obj_prefix]+set}" ]] && (( __td_orphan++ ))
+done
+$t.assert_eq "no orphan static keys after rapid cycle" "$__td_orphan" "0"
+
+$t.summary

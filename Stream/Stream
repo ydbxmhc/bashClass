@@ -643,12 +643,55 @@ Stream.writeLine() {
   printf '%s%s' "$1" "${__boop_static[${_Self}.eol]:-$'\n'}" >&"${__boop_static[${_Self}.fd]}"
 }
 
+# Push a value back onto the front of the read buffer.
+#
+# The next read (Read or next) will return this value before consuming
+# any new data from the underlying FD. Multiple putBack calls stack —
+# the last pushed is the first read (LIFO within the buffer).
+#
+# Resets the EOF flag — if the stream was exhausted, putting data back
+# means there's something to read again.
+#
+# Only meaningful for buffered-mode streams. Direct-mode streams don't
+# use the internal buffer; putBack on a direct-mode stream switches it
+# to use the buffer for the pushed-back data, but subsequent reads still
+# go through the read builtin. For reliable putBack behavior, use
+# buffered mode (any of: -D, -E, -f, -F, -W, -n at construction).
+#
+# Usage:
+#   $s.Read line              # got a line
+#   # ... inspect it, decide it belongs to the next section ...
+#   $s.putBack "$line"        # push it back
+#   # next $s.Read returns $line again
+Stream.putBack() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  local __Stream_putBack_val="$1"
+  local __Stream_putBack_eol="${__boop_static[${_Self}.eol]}"
+  _Trace "putBack: ${#__Stream_putBack_val} chars back onto buffer"
+  __boop_static["${_Self}.buf"]="${__Stream_putBack_val}${__Stream_putBack_eol}${__boop_static[${_Self}.buf]}"
+  __boop_static["${_Self}.eof"]="0"
+}
+
+# Destroy companion arrays and close the file descriptor.
+# Private hook called by __boop.destroy.
+Stream._destroy() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  # Close the FD if still open (eof flag indicates already closed by $s.close)
+  if [[ "${__boop_static[${_Self}.eof]}" != "1" && -n "${__boop_static[${_Self}.fd]:-}" ]]; then
+    _Trace "destroy: closing fd=${__boop_static[${_Self}.fd]}"
+    eval "exec ${__boop_static[${_Self}.fd]}>&-"
+  fi
+  # Unset companion arrays
+  _Trace "destroy: unsetting __boop_data_${_Self}_fields, __boop_data_${_Self}_readArgs"
+  unset "__boop_data_${_Self}_fields" "__boop_data_${_Self}_readArgs"
+}
+
 # ============================================================================
 # Class Declaration
 # ============================================================================
 
 boopClass Stream '
   has:fd,path,eol,eolMode,fdelim,fdelimMode,parseMode,expose,fields,readArgs,array,timeout,nchars,blockSize,buf,eof,recRe,fieldRe
-  public:new,read,Read,next,field,fieldCount,eof,buffered,close,write,writeLine
+  public:new,read,Read,next,field,fieldCount,eof,buffered,close,write,writeLine,putBack
 '
 

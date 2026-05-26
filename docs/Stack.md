@@ -152,3 +152,58 @@ a List directly. Stack is deliberately opaque.
 
 **Crash on underflow.** Both `pop` and `peek` call `_Crash` on an empty
 stack. Check `isEmpty` before calling if underflow is possible.
+
+---
+
+## Collection.Stack.Fast
+
+Inheritance-based alternative. Extends List directly instead of wrapping
+one via composition. Faster (one object, no delegation), but the full
+List API is accessible if a caller ignores the stack contract.
+
+### When to Use Fast
+
+- Performance matters (tight loops, many stack objects)
+- You trust callers to respect the stack interface
+- You want `each`, `toArray`, `toString`, `clear` available on the stack
+- Destroy is simpler (no cascading — it's just one object)
+
+### When to Use the Composition Version
+
+- You need strict encapsulation (internal List is unreachable)
+- You want to guarantee no one calls `shift` or `getAt` by accident
+- API surface discipline matters more than speed
+
+### Usage
+
+```bash
+. boop Collection::Stack::Fast
+
+into=s Collection.Stack.Fast.new
+$s.push "a" "b" "c"
+into=v $s.peek              # "c"
+into=v $s.pop               # "c"
+into=n $s.size              # 2
+
+# Inherited from List — available on Fast, hidden on composition Stack:
+$s.each my_callback
+into=all $s.toArray
+
+# Blocked — errors with a clear message:
+$s.shift                    # ERROR: not a valid stack operation
+$s.unshift "x"             # ERROR: not a valid stack operation
+```
+
+### Blocked Methods
+
+| Method | Why |
+|--------|-----|
+| `shift` | Removes from the bottom — violates LIFO |
+| `unshift` | Inserts at the bottom — violates LIFO |
+| `getAt` | Random access — violates LIFO |
+| `setAt` | Random access — violates LIFO |
+| `delete` | Random access — violates LIFO |
+| `slice` | Random access — violates LIFO |
+
+All return exit code 1 and emit `_Error` with guidance on the correct
+method to use.
