@@ -504,7 +504,42 @@ handle every edge case — just the 80% that scripts actually use.
 
 ---
 
-### 6. Real-World Example Scripts
+### 6. `lens` — Text Stream Inspection Tool
+
+Working name. Reads stdin unless given a path. Combines head, tail,
+wc, nl, grep, cut, column into one composable tool. Each option is a
+transformation; multiple options apply in argument order as a pipeline.
+
+**Three axes:**
+- **Mode** (what unit): `--lines` (default), `--fields`, `--bytes`
+- **Position**: `--first N`, `--last N`, `--from N`, `--to N`
+- **Filter**: `--match PATTERN`, `--not PATTERN` (or `--not --first N`)
+
+**`--not` scope is TBD** — can negate a pattern (grep -v) or a position
+selector (skip the first N lines). Both are useful; needs to be nailed
+down. `--not --first 10` as "skip the header" is a compelling use case.
+
+**Evaluation order follows argument order** — `--last 100 --match "error"`
+means tail then grep; `--match "error" --last 100` means grep then tail.
+Explicit, predictable, pipeline-friendly.
+
+**Full option set (draft):**
+- `--first N` / `--last N` — head/tail
+- `--from N` / `--to N` — line range (the thing head+tail can't do cleanly)
+- `--match PATTERN` — include matching lines (grep)
+- `--not PATTERN` / `--not --first N` etc. — exclude/negate
+- `--fields LIST` — extract fields (cut); pairs with `--delimiter`
+- `--delimiter CHAR` — field separator (default whitespace)
+- `--number` — prepend line numbers (nl)
+- `--count` — emit counts instead of content (wc)
+- `--column` — align tabular output
+
+**Candidate name:** `lens` (working). Particle/element alternatives on
+the table — name final when tool takes shape.
+
+---
+
+### 7. Real-World Example Scripts
 
 The blackjack game demonstrates the framework but not its *utility*.
 
@@ -518,7 +553,7 @@ Candidates:
 - **System inventory tool**: collect host info, serialize to JSON, compare
   against expected state from Config.
 
-### 6. Shell Completion for boopShell
+### 7. Shell Completion for boopShell
 
 Tab-completing `$obj.<TAB>` in the interactive REPL.
 
@@ -530,7 +565,7 @@ Implementation path:
 - Also complete class names after `. boop` and `_Import`.
 - Moderate complexity — readline completion in bash is well-documented.
 
-### 7. Functional Collection Pipelines
+### 8. Functional Collection Pipelines
 
 `$list | filter fn | map fn | collect` without subshells.
 
