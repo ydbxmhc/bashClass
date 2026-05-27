@@ -405,7 +405,23 @@ Options:
 - **Shorter prefix policy**: allow `__CM_` (class initials + method initial)
   for deeply nested locals. Document the abbreviation in the class header.
 
-### 5. Real-World Example Scripts
+### 5. BusyBox Coverage Survey
+
+BusyBox bundles ~300 Unix tools into a single binary for minimal
+environments where `sed`, `tr`, `awk`, etc. may not be present.
+Survey what BusyBox provides and assess how many could be replicated
+as boop classes or scripts — both as a capability audit and as a
+source of real-world example script candidates.
+
+Pure-bash parameter expansion already covers a surprising range
+(string manipulation, path ops, arithmetic). Stream + Args + Math
+cover more. Interesting targets: `grep`-like filtering via Stream,
+`cut`/`awk`-like field extraction, `sort`/`uniq` via List, `wc` via
+Stream accumulation.
+
+---
+
+### 6. Real-World Example Scripts
 
 The blackjack game demonstrates the framework but not its *utility*.
 
