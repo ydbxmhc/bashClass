@@ -86,3 +86,9 @@ different approach.
 At the start of every session, pull from remote before doing anything
 else. The user may have pushed changes between sessions.
 
+
+## Re-read Standards at Session Start
+
+At the start of every session, re-read `docs/STANDARDS.md` — especially
+the Shell Options section. The errexit-safety and IFS-independence
+patterns are easy to forget and expensive to debug when violated.

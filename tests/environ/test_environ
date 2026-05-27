@@ -1,0 +1,139 @@
+#!/bin/bash
+
+# Environment resilience test harness.
+#
+# Runs a representative set of framework operations under various shell
+# configurations to verify boop works correctly regardless of the user's
+# set/shopt/IFS settings.
+#
+# Each configuration runs in its own backgrounded subshell at lowered
+# priority (nice +10), writing to a dedicated log file. The harness
+# waits for all to complete and reports pass/fail per configuration.
+#
+# Usage:
+#   tests/environ/test_environ              # run all configs
+#   tests/environ/test_environ --serial     # run sequentially (debugging)
+#
+# Log files: tests/environ/logs/config_NAME.log
+
+__te_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+__te_root="$(cd "$__te_dir/../.." && pwd)"
+__te_logdir="$__te_dir/logs"
+__te_serial=0
+[[ "${1:-}" == "--serial" ]] && __te_serial=1
+
+mkdir -p "$__te_logdir"
+
+# ============================================================================
+# Configuration definitions
+# ============================================================================
+
+# Each config is: name, setup commands (run before __te_operations)
+declare -a __te_configs=()
+declare -A __te_setup=()
+
+__te_add() {
+  local __te_add_name="$1" __te_add_setup="$2"
+  __te_configs+=("$__te_add_name")
+  __te_setup["$__te_add_name"]="$__te_add_setup"
+}
+
+# --- Most extreme: everything on ---
+__te_add "all_strict" "set -euo pipefail -E -T -x; shopt -s nullglob extglob dotglob inherit_errexit lastpipe"
+
+# --- errexit alone (the most impactful single option) ---
+__te_add "errexit" "set -ex"
+
+# --- inherit_errexit (affects $() captures) ---
+__te_add "inherit_errexit" "shopt -s inherit_errexit; set -ex"
+
+# --- errexit + nounset + pipefail (common strict mode) ---
+__te_add "strict_common" "set -euo pipefail -x"
+
+# --- nounset alone ---
+__te_add "nounset" "set -u"
+
+# --- pipefail alone ---
+__te_add "pipefail" "set -o pipefail"
+
+# --- failglob (the wildcard — pun intended) ---
+__te_add "failglob" "shopt -s failglob"
+
+# --- failglob + nullglob (contradictory? bash resolves in favor of failglob) ---
+__te_add "failglob_nullglob" "shopt -s failglob nullglob"
+
+# --- nullglob + dotglob + extglob ---
+__te_add "glob_all" "shopt -s nullglob dotglob extglob"
+
+# --- errtrace + functrace (trap inheritance) ---
+__te_add "traps_inherit" "set -E -T"
+
+# --- IFS torture: empty ---
+__te_add "ifs_empty" "IFS=''"
+
+# --- IFS torture: colon (common in PATH-like vars) ---
+__te_add "ifs_colon" "IFS=':'"
+
+# --- IFS torture: equals+pipe (our delimiter chars) ---
+__te_add "ifs_delimiters" "IFS='=|'"
+
+# --- IFS torture: no whitespace ---
+__te_add "ifs_no_space" "IFS=$'\n'"
+
+# --- Default (control — should always pass) ---
+__te_add "default" ""
+
+# ============================================================================
+# Runner
+# ============================================================================
+
+declare -a __te_pids=()
+declare -A __te_pid_to_name=()
+
+printf "=== Environment Resilience Tests ===\n"
+printf "  Configurations: %d\n" "${#__te_configs[@]}"
+printf "  Mode: %s\n" "$( (( __te_serial )) && printf "serial" || printf "parallel" )"
+printf "  Logs: %s/\n\n" "$__te_logdir"
+
+for __te_name in "${__te_configs[@]}"; do
+  __te_log="$__te_logdir/config_${__te_name}.log"
+  __te_setup_cmd="${__te_setup[$__te_name]}"
+
+  # Build the subshell command: apply config, then source the operations file
+  __te_cmd="cd '$__te_root'; ${__te_setup_cmd:+$__te_setup_cmd; }. '$__te_dir/operations'"
+
+  if (( __te_serial )); then
+    printf "  %-25s " "$__te_name..."
+    if bash -c "$__te_cmd" > "$__te_log" 2>&1; then
+      printf "PASS\n"
+    else
+      printf "FAIL (see %s)\n" "$__te_log"
+    fi
+  else
+    nice -n 10 bash -c "$__te_cmd" > "$__te_log" 2>&1 &
+    __te_pids+=($!)
+    __te_pid_to_name[$!]="$__te_name"
+  fi
+done
+
+# Wait for parallel jobs and collect results
+if (( ! __te_serial )); then
+  declare -i __te_passed=0 __te_failed=0
+  for __te_pid in "${__te_pids[@]}"; do
+    __te_name="${__te_pid_to_name[$__te_pid]}"
+    if wait "$__te_pid"; then
+      printf "  %-25s PASS\n" "$__te_name"
+      (( __te_passed++ ))
+    else
+      printf "  %-25s FAIL (see %s/config_%s.log)\n" "$__te_name" "$__te_logdir" "$__te_name"
+      (( __te_failed++ ))
+    fi
+  done
+
+  printf "\n=== Results ===\n"
+  printf "  Passed: %d\n" "$__te_passed"
+  printf "  Failed: %d\n" "$__te_failed"
+  printf "  Total:  %d\n" "$(( __te_passed + __te_failed ))"
+
+  (( __te_failed == 0 ))
+fi

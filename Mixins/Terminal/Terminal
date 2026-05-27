@@ -94,14 +94,14 @@ Terminal.reset()     { printf '\033[0m'; }
 # Set foreground color by name.
 Terminal.fg() {
   local __Terminal_fg_code="${__Terminal_fg[${1:-}]:-}"
-  [[ -n "$__Terminal_fg_code" ]] || _Crash "Terminal.fg: unknown color '${1:-}'"
+  [[ -n "$__Terminal_fg_code" ]] || { _Error "Terminal.fg: unknown color '${1:-}'"; return 1; }
   printf '\033[%sm' "$__Terminal_fg_code"
 }
 
 # Set background color by name.
 Terminal.bg() {
   local __Terminal_bg_code="${__Terminal_bg[${1:-}]:-}"
-  [[ -n "$__Terminal_bg_code" ]] || _Crash "Terminal.bg: unknown color '${1:-}'"
+  [[ -n "$__Terminal_bg_code" ]] || { _Error "Terminal.bg: unknown color '${1:-}'"; return 1; }
   printf '\033[%sm' "$__Terminal_bg_code"
 }
 
@@ -151,7 +151,7 @@ Terminal.readKey() {
 # Usage: into=c $obj.char topLeft
 Terminal.char() {
   local __Terminal_char_v="${__Terminal_chars[${1:-}]:-}"
-  [[ -n "$__Terminal_char_v" ]] || _Crash "Terminal.char: unknown symbol '${1:-}'"
+  [[ -n "$__Terminal_char_v" ]] || { _Error "Terminal.char: unknown symbol '${1:-}'"; return 1; }
   boop.pass "$__Terminal_char_v" ${into:-}
 }
 

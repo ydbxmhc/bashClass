@@ -3,6 +3,10 @@
 Things that will shoot you in the foot. Especially the subtle ones
 that are hard to debug when you don't know what you're looking at.
 
+See also [STANDARDS.md](STANDARDS.md) — particularly the Shell Options
+section, which covers the same errexit/IFS/nounset patterns from the
+"how to write it correctly" angle rather than the "what goes wrong" angle.
+
 ---
 
 ## Environment Prefix Leakage (`into=`, `_EOL=`, etc.)
@@ -107,29 +111,192 @@ extra newline just means `read` has a clean delimiter to stop on).
 
 ---
 
-## `declare -g` Inside a Function vs `local` in the Caller
+## `declare -g` Can't Punch Through a `local`
 
-**The trap:** `declare -g varname=value` inside a called function
-creates a global variable. But if the CALLING function has a `local`
-with the same name, the caller can't see the global -- the local
-shadows it. This makes `declare -g` unreliable for communicating
-values back to a caller.
+**The trap:** You have a global variable. A function declares a `local`
+with the same name. That function calls another function which uses
+`declare -g` to set the global. The global IS updated — but the calling
+function can't see the change because its `local` shadows the global
+for the entire duration of its scope.
 
-**When it bites:** Args.parse uses `declare -g` to set option
-variables in script-context mode. If the caller already has a `local`
-with the same name as an option, the value is invisible.
+```bash
+declare -g name="original"
 
-**The guard:** Use prefixed variable names in schemas (e.g.
-`__Stream_new_blockSize` instead of `blockSize`) so they can't
-collide with caller variables. Or use `into=` mode to get values
-back via a Config object instead of globals.
+caller() {
+  local name="mine"       # shadows the global within this function
+  helper                   # helper sets the global via declare -g
+  printf "%s\n" "$name"   # prints "mine" — the local wins here
+}
+
+helper() {
+  declare -g name="from_helper"   # this DOES set the global...
+}
+
+caller
+printf "%s\n" "$name"     # prints "from_helper" — the global WAS updated
+```
+
+The global changed. It's not lost. But the calling function never sees
+it because `local name` takes priority within `caller`'s scope. After
+`caller` returns, the global reflects the new value.
+
+**Think of it like this:** `local` creates a sticky note over the
+global. `declare -g` from a deeper function writes on the wall behind
+the sticky note. The writing is there — you just can't see it until
+the sticky note is removed (the function returns).
+
+**When it bites:** `Args.parse` in script-context mode uses `declare -g`
+to set option variables. If the caller happens to have a `local` with
+the same name as one of the schema's option variables, the caller reads
+its own (unchanged) local instead of the value Args just set.
+
+**The guard:** Use prefixed variable names in schemas so they can't
+collide with caller locals. Or use `into=` mode to get values back
+from Args via a Config object — that sidesteps the whole issue because
+the object ID is returned through `boop.pass`, not through a named global.
+
+---
+
+## `set -e` Kills on Innocent Patterns
+
+**The trap:** Under `set -e` (errexit), any command that returns
+non-zero terminates the shell — unless it's in a conditional context.
+Several common bash patterns are silent killers:
+
+### `[[ test ]] && action`
+
+When the test is false, the `&&` short-circuits and the whole line's
+exit code is 1. Under errexit, dead.
+
+```bash
+# KILLS under set -e when digits is NOT all zeros:
+[[ "${digits//0/}" == "" ]] && neg=0
+
+# SAFE — the || true makes the overall expression always succeed:
+[[ "${digits//0/}" == "" ]] && neg=0 || true
+
+# ALWAYS SAFE — if/fi is a conditional context, errexit never fires:
+if [[ "${digits//0/}" == "" ]]; then neg=0; fi
+```
+
+This only matters at the top level of a function body. Inside an `if`
+condition, a `while` condition, or the left side of `||`, errexit is
+suppressed by bash's rules.
+
+### `x && y || z` is not a ternary
+
+This looks like if/then/else but it's two independent short-circuit
+operators. If `y` fails, `z` runs — even though `x` succeeded.
+
+```bash
+# LOOKS like: if grep found it, print "yes", else print "no"
+grep -q "pattern" file && printf "yes\n" || printf "no\n"
+
+# ACTUALLY: if grep fails OR printf fails, print "no".
+# If stdout is closed, printf fails → "no" prints even though grep matched.
+```
+
+*Even assignments* can fail!  
+For real conditional logic, use `if/fi`. It's always safe, always clear,
+and errexit never fires inside a conditional context:
+
+```bash
+# ALWAYS CORRECT regardless of set -e, y's exit code, or anything else:
+if grep -q "pattern" file; then
+  printf "yes\n"
+else
+  printf "no\n"
+fi
+```
+
+### `(( arithmetic ))` as a standalone statement
+
+Arithmetic expressions return their truth value as an exit code.
+`(( 0 ))` returns 1. The classic gotcha:
+
+```bash
+# KILLS on first iteration when count is 0:
+(( count++ ))    # evaluates to 0 (old value) → exit 1
+
+# SAFE — pre-increment evaluates to 1:
+(( ++count ))
+
+# SAFE — addition always evaluates to the new value:
+(( count += 1 ))
+```
+
+But post-increment is fine in contexts where the exit code doesn't
+matter:
+
+```bash
+arr[n++]=$x      # assignment succeeds; arithmetic is internal
+```
+
+**The meta-lesson:** Under `set -e`, every statement's exit code
+matters. If a statement can legitimately return non-zero in normal
+operation, it needs protection. `if/fi` is always the safest choice —
+it creates a conditional context where errexit is suppressed by
+bash's own rules. `|| true` is the lightweight alternative when you
+just need to neutralize a false-branch exit code.
+
+---
+
+## IFS Isn't Always What You Think
+
+**The trap:** The user may have set IFS to anything before sourcing
+boop. Colon (for PATH parsing), empty (to prevent splitting), equals
+sign, pipe — all are real-world values. Any code that does word
+splitting (`$*`, unquoted `$var`, `for x in $string`) or array
+joining (`"${arr[*]}"`) without explicitly setting IFS will break.
+
+```bash
+# User has IFS=':' — this joins args with colon, splits on colon:
+local input="$*"
+for token in $input; do ...    # tokens split on ':' not space
+
+# SAFE — local IFS scopes it to this function, restores on return:
+local IFS=$' \t\n'
+local input="$*"
+for token in $input; do ...    # always splits on whitespace
+```
+
+`local IFS=...` is the correct pattern. It scopes IFS to the function
+without touching the caller's value. No save/restore needed — bash
+handles it automatically on function return.
+
+**Where this bit us:** `boopClass` token parsing. With `IFS=':'`, the
+multi-argument class declaration was joined and split on colons instead
+of spaces, producing garbage tokens. Fixed by `local IFS=$' \t\n'` at
+the top of `__boopClass.parseTokens`.
+
+---
+
+## `unset` Inside Nested Functions May Not Reach Globals
+
+**The trap:** `unset varname` inside a function removes the variable
+from the *current scope*. If there's a local with that name in any
+enclosing function on the call stack, `unset` peels off that layer
+instead of reaching the global. Multiple `unset` calls peel multiple
+layers — but you can't reliably predict how many layers deep you are.
+
+**When it bites:** Object destruction. A `_destroy` hook tries to
+`unset` a companion array that was `declare -ga`'d at global scope.
+If the destroy is called from deep in a call chain, the unset might
+not reach the global.
+
+**The guard:** Destroy companion arrays from the same scope depth
+that created them (the object's own `_destroy` hook), or use
+`_Delegate $obj.destroy` which goes through the public interface
+and keeps the call chain shallow.
+
 
 ---
 
 ## Fork Bomb Awareness (the `:` joke)
 
-Yes, `:(){ :|:& };:` is one line. No, we don't do that here. But
-the broader point: bash makes it trivially easy to create runaway
+Yes, `:(){ :|:& };:` is one line. No, we don't do that here.
+
+The broader point: bash makes it trivially easy to create runaway
 processes, infinite loops, and resource exhaustion. The framework
 can't protect against all of these, but:
 
@@ -138,4 +305,3 @@ can't protect against all of these, but:
 - Never recurse without a depth guard
 - Never `while true` without a break condition that's guaranteed
   to eventually fire
-

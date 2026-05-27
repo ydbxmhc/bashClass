@@ -109,8 +109,8 @@ Collection.List.setAt() {
   local -n __Collection_List_setAt_arr="__boop_data_${_Self}"
   local -i __Collection_List_setAt_len=0; (( ${#__Collection_List_setAt_arr[@]} )) && __Collection_List_setAt_len=${#__Collection_List_setAt_arr[@]}
   (( __Collection_List_setAt_idx < 0 )) && (( __Collection_List_setAt_idx += __Collection_List_setAt_len ))
-  (( __Collection_List_setAt_idx < 0 || __Collection_List_setAt_idx > __Collection_List_setAt_len )) &&
-    _Crash "List index out of range: $1 (length: $__Collection_List_setAt_len)"
+  (( __Collection_List_setAt_idx < 0 || __Collection_List_setAt_idx > __Collection_List_setAt_len )) && {
+    _Error "List index out of range: $1 (length: $__Collection_List_setAt_len)"; return 1; }
   _Trace "setAt: [$__Collection_List_setAt_idx] = '$__Collection_List_setAt_val'"
   __Collection_List_setAt_arr[$__Collection_List_setAt_idx]="$__Collection_List_setAt_val"
 }
@@ -137,8 +137,8 @@ Collection.List.delete() {
   local -n __Collection_List_del_arr="__boop_data_${_Self}"
   local -i __Collection_List_del_len=0; (( ${#__Collection_List_del_arr[@]} )) && __Collection_List_del_len=${#__Collection_List_del_arr[@]}
   (( __Collection_List_del_idx < 0 )) && (( __Collection_List_del_idx += __Collection_List_del_len ))
-  (( __Collection_List_del_idx < 0 || __Collection_List_del_idx >= __Collection_List_del_len )) &&
-    _Crash "List index out of range: $1 (length: $__Collection_List_del_len)"
+  (( __Collection_List_del_idx < 0 || __Collection_List_del_idx >= __Collection_List_del_len )) && {
+    _Error "List index out of range: $1 (length: $__Collection_List_del_len)"; return 1; }
   _Debug "delete: [$__Collection_List_del_idx], length now $(( __Collection_List_del_len - 1 ))"
   unset '__Collection_List_del_arr[$__Collection_List_del_idx]'
   __Collection_List_del_arr=("${__Collection_List_del_arr[@]+"${__Collection_List_del_arr[@]}"}")
@@ -224,7 +224,7 @@ Collection.List.pop() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_pop_arr="__boop_data_${_Self}"
   local -i __Collection_List_pop_len=0; (( ${#__Collection_List_pop_arr[@]} )) && __Collection_List_pop_len=${#__Collection_List_pop_arr[@]}
-  (( __Collection_List_pop_len == 0 )) && _Crash "pop from empty List"
+  (( __Collection_List_pop_len == 0 )) && { _Error "pop from empty List"; return 1; }
   local __Collection_List_pop_val="${__Collection_List_pop_arr[-1]}"
   unset '__Collection_List_pop_arr[-1]'
   _Debug "pop: -> '$__Collection_List_pop_val', length now $(( __Collection_List_pop_len - 1 ))"
@@ -244,7 +244,7 @@ Collection.List.shift() {
   local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_shift_arr="__boop_data_${_Self}"
   local -i __Collection_List_shift_len=0; (( ${#__Collection_List_shift_arr[@]} )) && __Collection_List_shift_len=${#__Collection_List_shift_arr[@]}
-  (( __Collection_List_shift_len == 0 )) && _Crash "shift from empty List"
+  (( __Collection_List_shift_len == 0 )) && { _Error "shift from empty List"; return 1; }
   local __Collection_List_shift_val="${__Collection_List_shift_arr[0]}"
   __Collection_List_shift_arr=("${__Collection_List_shift_arr[@]:1}")
   _Debug "shift: -> '$__Collection_List_shift_val', length now $(( __Collection_List_shift_len - 1 ))"

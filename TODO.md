@@ -387,10 +387,48 @@ boson --install /opt/boop    # custom location
 - Platform detection (Linux, macOS, WSL, Git Bash on Windows)
 
 **Bundle build tool (`boop.bundle`):**
-- Takes a tool script + a manifest of required classes
-- Resolves dependency order via the class registry
-- Concatenates into a single distributable file
-- Appends the Installer mixin code
+
+A real tool, not a cat pipeline. The bundler must:
+
+1. **Resolve the dependency graph statically.** Parse each class file
+   for `. boop ClassName`, `_Require`, `_Load`, `_Import`, and
+   `boopClass ... isa:Parent`. These are the edges. Recurse until all
+   transitive deps are collected.
+
+2. **Topological sort.** Parents before children, deps before dependents.
+   A class that declares `isa:Box` must appear after Box in the bundle.
+   A class that does `. boop Config` must appear after Config.
+
+3. **Neutralize source lines.** Every `. boop ClassName` line in a
+   bundled class file becomes a no-op (comment it out or replace with
+   `: # bundled`). The framework's `__boop_loaded` guard handles the
+   boop-itself case, but class-level source lines would trigger
+   filesystem resolution that doesn't exist in a bundle context.
+
+4. **Preserve load guards.** `boop.init ClassName || return 0` stays —
+   it's the idempotency mechanism. If the bundle is sourced into a
+   shell that already has boop loaded, the guards prevent double-reg.
+
+5. **Optional: strip comment-only lines.** Lines matching `^\s*#` (but
+   NOT shebangs, NOT `# shellcheck` directives) can be removed for a
+   ~35% size reduction. This is a separate pass, off by default.
+   Inline comments (`code  # comment`) are NOT stripped — that requires
+   a real parser to distinguish `#` in strings/expansions from actual
+   comments. Not worth the complexity for marginal gains.
+
+6. **Append the Installer mixin** gated behind `--install` detection.
+
+**Size budget (current stdlib):**
+- Full with comments: ~461 KB, 10,294 lines
+- Comment-only lines stripped: ~299 KB, 6,106 lines
+- A typical tool (boson) would bundle boop + Args + Config + JSON +
+  Map.Fast + List — maybe 60% of the stdlib. Estimated: ~180 KB stripped.
+
+**What the bundler does NOT do:**
+- Inline comment stripping (too fragile without a real parser)
+- Minification (variable shortening, whitespace collapse — not worth it)
+- Compilation or bytecode (bash doesn't support it)
+- Tree-shaking individual functions (too coupled to be worth it)
 
 **Deferred:**
 - `basher` package, `brew tap` — wait until post-1.0 stability

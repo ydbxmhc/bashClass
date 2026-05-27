@@ -9,6 +9,9 @@ should be able to read any function and understand what it does, what
 it expects, and what it returns — without reading the entire framework
 first.
 
+See also [GOTCHAS.md](GOTCHAS.md) — the "what goes wrong and why" companion
+to this document's "how to write it correctly."
+
 ---
 
 ## API Tiers
@@ -287,10 +290,118 @@ If boop ever needs to temporarily change a shell option internally,
 it must save and restore it. The caller's shell options are their
 business.
 
-All code in the framework should operate under the assumption that the 
-user *might* set such options. It should run as cleanly from a script
-that uses `set -eu` as one which blithely uses unset vars because they
-will return "nothing".
+All code in the framework must operate correctly regardless of the
+user's shell configuration. A user who sources boop from a script
+with `set -euo pipefail`, or from an interactive shell with custom
+IFS, or with `shopt -s failglob` — all of these must work. The
+environment resilience test (`tests/environ/test_environ`) verifies
+this across 15 configurations.
+
+### errexit Safety (`set -e`)
+
+Under `set -e`, any command that returns non-zero kills the shell —
+unless it's in a conditional context (`if`, `||`, `&&` as part of a
+compound that succeeds overall, or a `while`/`until` condition).
+
+**The `[[ ]] && action` pattern is a landmine.** When the test is
+false, the whole line returns non-zero:
+
+```bash
+# DANGEROUS under set -e: if digits is NOT all zeros, this kills the shell
+[[ "${digits//0/}" == "" ]] && neg=0
+
+# SAFE: the || true ensures the overall expression always succeeds
+[[ "${digits//0/}" == "" ]] && neg=0 || true
+
+# ALSO SAFE: if/fi is always a conditional context
+if [[ "${digits//0/}" == "" ]]; then neg=0; fi
+```
+
+Use `|| true` when the false case is normal (not an error). Use
+`if/fi` when the logic is complex enough to warrant it. The choice
+is readability — both are errexit-safe.
+
+**Arithmetic expressions return their truth value as an exit code.**
+`(( 0 ))` returns 1. `(( x++ ))` when x is 0 evaluates to 0 (the
+old value), which returns exit code 1. Under `set -e`, this kills.
+
+```bash
+# DANGEROUS: first iteration when count is 0, (( 0++ )) → exit 1
+(( count++ ))
+
+# SAFE: pre-increment evaluates to 1 on first call
+(( ++count ))
+
+# SAFE: addition assignment always evaluates to the new value
+(( count += 1 ))
+
+# ALSO FINE: inside an assignment context, the exit code doesn't matter
+foo[n++]=$x    # the assignment succeeds; the arithmetic is internal
+```
+
+The rule isn't "never use post-increment" — it's "understand what the
+expression evaluates to, because that becomes the exit code." In an
+assignment like `arr[n++]=val`, the assignment's success is the exit
+code, not the arithmetic's. But as a standalone statement, the
+arithmetic IS the exit code.
+
+### IFS Independence
+
+Never rely on the ambient IFS value. The user may have set it to
+anything — colon, empty, equals sign, or something exotic.
+
+```bash
+# DANGEROUS: relies on IFS being space/tab/newline for word splitting
+local input="$*"
+for token in $input; do ...
+
+# SAFE: explicitly set IFS for the scope that needs it
+local IFS=$' \t\n'
+local input="$*"
+for token in $input; do ...
+```
+
+Use `local IFS=...` to scope IFS to the current function. Bash
+restores the previous value automatically when the function returns —
+no manual save/restore needed, no risk of missing a restore path on
+early return or crash.
+
+When joining array elements with `"${array[*]}"`, always set IFS
+explicitly for the join:
+
+```bash
+# DANGEROUS: joins on whatever IFS happens to be
+printf '%s\n' "${arr[*]}"
+
+# SAFE: explicit join character
+local IFS=','; printf '%s\n' "${arr[*]}"
+
+# PREFERRED when you don't need a join: iterate instead
+printf '%s\n' "${arr[@]}"
+```
+
+### nounset Safety (`set -u`)
+
+Under `set -u`, referencing an unset variable is an error. Use
+`${var:-}` (default to empty) or `${var:-default}` for any variable
+that might legitimately be unset:
+
+```bash
+# DANGEROUS under set -u: crashes if _Class is unset
+local _Class="$_Class"
+
+# SAFE: provides a default
+local _Class="${_Class:-boop}"
+```
+
+### Framework Must Not Alter User Environment
+
+To be explicit: after `. boop` returns, the user's IFS, shell options,
+shopt settings, and trap state must be exactly as they were before.
+`local` scoping handles IFS. Shell options should never be changed by
+framework code at the global level. If a future need arises to
+temporarily change an option, use a subshell or save/restore — but
+prefer redesigning to avoid the need.
 
 ---
 
@@ -418,6 +529,47 @@ function":
 
 Compare to extracting the loop body into a private helper: zero. The
 refactor is cheaper than one invocation of the wrong design.
+
+---
+
+## Liskov Substitution Principle (LSP)
+
+The Liskov Substitution Principle states: if class B inherits from
+class A, then objects of type B should be usable anywhere objects of
+type A are expected, without breaking the program's correctness.
+
+In boop, this means:
+
+- **Inherited methods must work correctly on subclass instances.**
+  If `Box` has a `volume` method, and `Cube` inherits from `Box`,
+  then calling `volume` on a Cube must produce a correct result —
+  even if Cube doesn't override it.
+
+- **Overrides must honor the parent's contract.** If `List.pop`
+  returns the last element and crashes on empty, then `Stack.pop`
+  (which wraps a List) must do the same. A caller who expects List
+  behavior shouldn't be surprised by Stack behavior.
+
+- **Documented divergences are acceptable but must be explicit.**
+  When a class intentionally breaks substitutability — like Stream's
+  `read` method, which returns 0 on partial-read-at-EOF where bash's
+  raw `read` returns non-zero — that's an "LSP divergence." It's a
+  conscious design choice, not a bug. Document it in the class file
+  and in the relevant docs with the phrase "LSP divergence" so it's
+  searchable and unambiguous.
+
+### When to Diverge
+
+Diverge when the parent's behavior is *wrong for the use case* and
+honoring it would force every caller to work around it. Stream's
+`read` divergence exists because the raw `read` behavior (returning
+non-zero on the last record) causes silent data loss in `while` loops.
+Correctness wins over substitutability.
+
+When you diverge, document:
+1. What the parent does
+2. What you do instead
+3. Why the divergence is correct for this context
 
 ---
 

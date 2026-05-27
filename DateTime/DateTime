@@ -180,8 +180,8 @@ DateTime.utc() {
   local _Class="${_Class:-DateTime}"
   local __DateTime_utc_str="${1:?DateTime.utc: date string required}"
   [[ "$__DateTime_utc_str" =~ \
-    ^([0-9]{4})-([0-9]{2})-([0-9]{2})([T\ ]([0-9]{2}):([0-9]{2}):([0-9]{2}))?$ ]] \
-    || _Crash "DateTime.utc: expected YYYY-MM-DD[T HH:MM:SS], got '$__DateTime_utc_str'"
+    ^([0-9]{4})-([0-9]{2})-([0-9]{2})([T\ ]([0-9]{2}):([0-9]{2}):([0-9]{2}))?$ ]] ||
+    { _Error "DateTime.utc: expected YYYY-MM-DD[T HH:MM:SS], got '$__DateTime_utc_str'"; return 1; }
 
   local __DateTime_utc_ep
   __DateTime_epochFromUTC __DateTime_utc_ep \
@@ -205,8 +205,8 @@ DateTime.parse() {
 
   if ! __DateTime_parseISO __DateTime_parse_ep "$__DateTime_parse_str"; then
     # Non-ISO format: one subshell here, nothing after.
-    __DateTime_parse_ep=$(date -d "$__DateTime_parse_str" +%s) \
-      || _Crash "DateTime.parse: cannot parse '$__DateTime_parse_str'"
+    __DateTime_parse_ep=$(date -d "$__DateTime_parse_str" +%s) ||
+      { _Error "DateTime.parse: cannot parse '$__DateTime_parse_str'"; return 1; }
   fi
 
   into=__DateTime_parse_self __boop.new

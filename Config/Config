@@ -65,8 +65,8 @@ __Config.parseFlat() {
 Config.load() {
   local _Class="${_Class:-Config}"
   local __Config_load_file="${1:-}"
-  [[ -n "$__Config_load_file" ]] || _Crash "Config.load: file path required"
-  [[ -f "$__Config_load_file" ]] || _Crash "Config.load: file not found: $__Config_load_file"
+  [[ -n "$__Config_load_file" ]] || { _Error "Config.load: file path required"; return 1; }
+  [[ -f "$__Config_load_file" ]] || { _Error "Config.load: file not found: $__Config_load_file"; return 1; }
 
   local __Config_load_self
   into=__Config_load_self __boop.new format=flat "file=$__Config_load_file"
@@ -129,8 +129,8 @@ __Config.parseINI() {
 Config.loadINI() {
   local _Class="${_Class:-Config}"
   local __Config_ini_file="${1:-}"
-  [[ -n "$__Config_ini_file" ]] || _Crash "Config.loadINI: file path required"
-  [[ -f "$__Config_ini_file" ]] || _Crash "Config.loadINI: file not found: $__Config_ini_file"
+  [[ -n "$__Config_ini_file" ]] || { _Error "Config.loadINI: file path required"; return 1; }
+  [[ -f "$__Config_ini_file" ]] || { _Error "Config.loadINI: file not found: $__Config_ini_file"; return 1; }
 
   local __Config_ini_self
   into=__Config_ini_self __boop.new format=ini "file=$__Config_ini_file"
@@ -245,7 +245,7 @@ Config.save() {
   if [[ -z "$__Config_save_target" ]]; then
     into=__Config_save_target __boop.get file
   fi
-  [[ -n "$__Config_save_target" ]] || _Crash "Config.save: no file specified and no source file recorded"
+  [[ -n "$__Config_save_target" ]] || { _Error "Config.save: no file specified and no source file recorded"; return 1; }
 
   local __Config_save_format
   into=__Config_save_format __boop.get format

@@ -1,0 +1,105 @@
+#!/bin/bash
+# Shared operation set for environment resilience tests.
+# Sourced by each configured subshell after setup commands run.
+# Must be self-contained — no references to outer harness scope.
+
+# Load framework and classes
+. boop Cube List Map Stack Queue Set Config Args Stream Signal Math
+
+# --- Object lifecycle ---
+into=b Box length=5 width=3 height=7
+into=v $b.volume
+[[ "$v" == "105" ]] || { printf "FAIL: Box volume expected 105 got '%s'\n" "$v"; exit 1; }
+$b.destroy
+
+# --- Collections ---
+into=l List
+$l.push alpha beta gamma delta
+into=v $l.getAt 2
+[[ "$v" == "gamma" ]] || { printf "FAIL: List getAt expected gamma got '%s'\n" "$v"; exit 1; }
+$l.contains "beta" || { printf "FAIL: List contains beta\n"; exit 1; }
+into=pos $l.indexOf "delta"
+[[ "$pos" == "3" ]] || { printf "FAIL: indexOf delta expected 3 got '%s'\n" "$pos"; exit 1; }
+
+# filter/map/reduce
+is_long() { (( ${#1} > 4 )); }
+upcase() { _Result="${1^^}"; }
+join() { _Result="${1},${2}"; }
+into=filtered $l.filter is_long
+into=mapped $filtered.map upcase
+into=result $mapped.reduce join
+[[ "$result" == "ALPHA,GAMMA,DELTA" ]] || { printf "FAIL: pipeline expected ALPHA,GAMMA,DELTA got '%s'\n" "$result"; exit 1; }
+$filtered.destroy
+$mapped.destroy
+$l.destroy
+
+# --- Map ---
+into=m Map
+$m.setAt host localhost
+$m.setAt port 5432
+into=v $m.getAt host
+[[ "$v" == "localhost" ]] || { printf "FAIL: Map get host expected localhost got '%s'\n" "$v"; exit 1; }
+$m.destroy
+
+# --- Stack (composition) ---
+into=s Collection.Stack.new
+$s.push x y z
+into=v $s.pop
+[[ "$v" == "z" ]] || { printf "FAIL: Stack pop expected z got '%s'\n" "$v"; exit 1; }
+$s.destroy
+
+# --- Queue (composition) ---
+into=q Collection.Queue.new
+$q.enqueue a b c
+into=v $q.dequeue
+[[ "$v" == "a" ]] || { printf "FAIL: Queue dequeue expected a got '%s'\n" "$v"; exit 1; }
+$q.destroy
+
+# --- Config ---
+__te_cfg_tmp=$(mktemp)
+printf 'host=localhost\nport=8080\n' > "$__te_cfg_tmp"
+into=cfg Config.load "$__te_cfg_tmp"
+into=v $cfg.get host
+[[ "$v" == "localhost" ]] || { printf "FAIL: Config get host expected localhost got '%s'\n" "$v"; rm -f "$__te_cfg_tmp"; exit 1; }
+$cfg.destroy
+rm -f "$__te_cfg_tmp"
+
+# --- Math ---
+into=m Math 3.14
+into=v $m.val
+[[ "$v" == "3.14" ]] || { printf "FAIL: Math val expected 3.14 got '%s'\n" "$v"; exit 1; }
+into=sum Math.add 10 20 30
+[[ "$sum" == "60" ]] || { printf "FAIL: Math.add expected 60 got '%s'\n" "$sum"; exit 1; }
+
+# --- Error conditions (should return non-zero, not crash) ---
+# Use || to capture the exit code without triggering errexit.
+into=empty List
+$empty.pop && __te_rc=0 || __te_rc=$?
+(( __te_rc == 1 )) || { printf "FAIL: pop empty expected rc=1 got %d\n" "$__te_rc"; exit 1; }
+
+Math.divide 5 0 && __te_rc=0 || __te_rc=$?
+(( __te_rc == 1 )) || { printf "FAIL: div by zero expected rc=1 got %d\n" "$__te_rc"; exit 1; }
+
+$empty.destroy
+
+# --- Signal ---
+__te_sig_fired=0
+__te_sig_handler() { __te_sig_fired=1; }
+Signal.on USR1 __te_sig_handler
+Signal.dispatch USR1
+(( __te_sig_fired == 1 )) || { printf "FAIL: Signal dispatch didn't fire handler\n"; exit 1; }
+Signal.clear USR1
+
+# --- Args ---
+into=opts Args.parse '
+  [Options]
+  verbose | v
+  output | o =
+' -v --output result.txt
+into=v $opts.get verbose
+[[ "$v" == "1" ]] || { printf "FAIL: Args verbose expected 1 got '%s'\n" "$v"; exit 1; }
+into=v $opts.get output
+[[ "$v" == "result.txt" ]] || { printf "FAIL: Args output expected result.txt got '%s'\n" "$v"; exit 1; }
+$opts.destroy
+
+printf "ALL OPERATIONS PASSED\n"

@@ -43,7 +43,7 @@ Collection.Queue.Fast.dequeue() {
   local _Self="${_Self:-${_Class:-Collection.Queue.Fast}}" _Class="${_Class:-Collection.Queue.Fast}"
   local -n __Collection_Queue_Fast_dequeue_arr="__boop_data_${_Self}"
   local -i __Collection_Queue_Fast_dequeue_len=${#__Collection_Queue_Fast_dequeue_arr[@]}
-  (( __Collection_Queue_Fast_dequeue_len > 0 )) || _Crash "dequeue from empty Queue"
+  (( __Collection_Queue_Fast_dequeue_len > 0 )) || { _Error "dequeue from empty Queue"; return 1; }
   local __Collection_Queue_Fast_dequeue_val="${__Collection_Queue_Fast_dequeue_arr[0]}"
   __Collection_Queue_Fast_dequeue_arr=("${__Collection_Queue_Fast_dequeue_arr[@]:1}")
   _Trace "dequeue: -> '$__Collection_Queue_Fast_dequeue_val', length now $(( __Collection_Queue_Fast_dequeue_len - 1 ))"
@@ -55,7 +55,7 @@ Collection.Queue.Fast.peek() {
   local _Self="${_Self:-${_Class:-Collection.Queue.Fast}}" _Class="${_Class:-Collection.Queue.Fast}"
   local -n __Collection_Queue_Fast_peek_arr="__boop_data_${_Self}"
   local -i __Collection_Queue_Fast_peek_len=${#__Collection_Queue_Fast_peek_arr[@]}
-  (( __Collection_Queue_Fast_peek_len > 0 )) || _Crash "peek on empty Queue"
+  (( __Collection_Queue_Fast_peek_len > 0 )) || { _Error "peek on empty Queue"; return 1; }
   boop.pass "${__Collection_Queue_Fast_peek_arr[0]}" ${into:-}
 }
 

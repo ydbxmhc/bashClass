@@ -146,15 +146,17 @@ __Data_JSON_parseString() {
   __Data_JSON_fail "Data.JSON: unterminated string" || return 1
 }
 
-# __Data_JSON_fail -- conditional crash for safe mode.
-# Normal mode: calls _Crash (aborts). Safe mode: stores msg in __Data_JSON_error
-# and returns 1 so the caller can propagate via "|| return 1".
+# __Data_JSON_fail -- report a parse error.
+# Safe mode: stores msg in __Data_JSON_error and returns 1.
+# Normal mode: emits _Error and returns 1.
+# Both modes are non-fatal — the caller propagates via "|| return 1".
 __Data_JSON_fail() {
   if (( __Data_JSON_safe )); then
     __Data_JSON_error="$1"
     return 1
   fi
-  _Crash "$1"
+  _Error "$1"
+  return 1
 }
 
 # __Data_JSON_storeLeaf -- write a leaf value into the current doc.
@@ -312,7 +314,7 @@ __Data_JSON_parseValue() {
 #   into=s $doc.get "scores.1"        # "20"
 Data.JSON.parse() {
   local __Data_JSON_parse_json="${1:-}"
-  [[ -n "$__Data_JSON_parse_json" ]] || _Crash "Data.JSON.parse: empty input"
+  [[ -n "$__Data_JSON_parse_json" ]] || { _Error "Data.JSON.parse: empty input"; return 1; }
 
   # Create the target Fast object and its companion ordered-key index.
   # __boop_keys_${doc} is an indexed array that records each leaf key as it is

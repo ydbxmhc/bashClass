@@ -47,6 +47,24 @@ organizable data. `$s.trim` edits in place; `$s.trimmed` returns an edited
 result without altering the original. Those are a lot easier than rolling
 your own multiline code.
 
+### Design Principles
+
+A few terms and principles that appear throughout the documentation:
+
+- **LSP (Liskov Substitution Principle):** a subtype should be usable
+  wherever its parent type is expected without breaking behavior. In boop,
+  this means inherited methods work correctly on subclass instances, and
+  when we intentionally *diverge* from a parent's contract (like Stream's
+  `read` vs bash's `read` builtin), we document it explicitly as an "LSP
+  divergence." See [STANDARDS.md](docs/STANDARDS.md) for the full treatment.
+
+- **Primitives inward, wrappers outward:** the core logic lives in one
+  place; variant entry points are thin wrappers that delegate to it.
+
+- **errexit-safe by default:** all framework code must survive `set -e`
+  without modification. See [STANDARDS.md](docs/STANDARDS.md#shell-options)
+  and [GOTCHAS.md](docs/GOTCHAS.md) for the patterns.
+
 ---
 
 ## Requirements
