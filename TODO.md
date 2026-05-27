@@ -81,9 +81,10 @@ Mixins done (see DEVLOG). Remaining:
 Core done. 71 tests. Docs at `docs/Args.md`.
 
 - **CRLF stripping in file-load**: `IFS= read -r` preserves `\r` on
-  Windows files. Fix: `line="${line%$'\r'}"` in all three file-load paths.
-- **`_Delimiter` fallback inconsistency**: line ~357 hardcodes `$'\n'`
-  instead of `$_EOL`. Change to `${_Delimiter:-$_EOL}`.
+  Windows-saved files. The three file-load paths in `__Args_applyValue`
+  (array `[]<`, map `{}<`, scalar `<`) do not strip `\r`. Only matters
+  if Windows-saved files are a real input source for `<`-type args.
+  Fix when needed: `line="${line%$'\r'}"` after each `read`.
 - **Schema validation warnings**: typos, duplicate option names, missing
   `=` on value-taking options.
 - **Value validators** (`Args.types` registry): named types (`int+`,
@@ -139,8 +140,7 @@ Remaining:
 ### Delimiter Consistency Audit
 
 Every method that joins or splits values should respect `_Delimiter`
-and `_EOL` consistently. Current coverage is good but not audited.
-`Map::Fast` has three bare `${_Delimiter}` references with no fallback.
+and `_EOL` consistently. Current coverage is good but not fully audited.
 
 ### Internal Descriptor Separator (low priority)
 
@@ -207,7 +207,6 @@ already implemented. Verify it covers all tiers correctly.
 - List: `insertAt`/`removeAt` for LinkedList compatibility
 - Map: verify insertion-order guarantee
 - Defensive array access policy: consistent across all collections
-- `Map::Fast` bare `${_Delimiter}`: add fallback in 3 places
 - **_Class leak audit**: any constructor that creates child objects
   must use `_Delegate` (or clear `_Class`) to prevent the child from
   being baked with the parent's class identity. Stack and Queue fixed

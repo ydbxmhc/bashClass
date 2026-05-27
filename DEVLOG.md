@@ -625,3 +625,20 @@ Both subsumed by the Classpath/Namespace/Index implementation.
 the loader checks `__boop_preferred_version` from RC files. Version
 constraint enforcement is deferred to the Meta-Components / SemVer
 item in TODO.md.
+
+---
+
+## Delimiter Consistency -- Args and Map::Fast
+
+**Completed:** verified 2026-05-27
+
+Two items from TODO confirmed already resolved during audit:
+
+- **Args `_Delimiter` fallback**: `__Args_parse_d` (line ~357) already
+  uses `${_EOL:-$'\n'}` — not a hardcoded newline. Done.
+- **`Map::Fast` bare `${_Delimiter}`**: `keys`, `keysUnder`, and
+  `toString` all use `${_EOL:-$'\n'}` with proper fallback. Done.
+
+The Args CRLF stripping item remains in TODO, narrowed to a
+conditional fix (only relevant for Windows-saved files fed to
+`<`-type args).
