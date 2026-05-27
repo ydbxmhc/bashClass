@@ -409,15 +409,83 @@ Options:
 
 BusyBox bundles ~300 Unix tools into a single binary for minimal
 environments where `sed`, `tr`, `awk`, etc. may not be present.
-Survey what BusyBox provides and assess how many could be replicated
-as boop classes or scripts — both as a capability audit and as a
-source of real-world example script candidates.
 
-Pure-bash parameter expansion already covers a surprising range
-(string manipulation, path ops, arithmetic). Stream + Args + Math
-cover more. Interesting targets: `grep`-like filtering via Stream,
-`cut`/`awk`-like field extraction, `sort`/`uniq` via List, `wc` via
-Stream accumulation.
+**The pitch:** not "replace BusyBox" but "consolation prize drop-in
+for systems where bash is present but specific tools aren't." On any
+given system — stripped container images, minimal cloud instances,
+embedded Linux, odd CI environments — something you expect to just
+be there sometimes isn't. A boop script that gracefully falls back
+to a pure-bash implementation is more portable than one that crashes
+with `command not found`.
+
+#### What boop can cover (~40–50% of BusyBox surface area)
+
+Text processing and data manipulation — the half that's pure
+computation with no kernel interface:
+
+| Tool(s) | boop equivalent | Status |
+|---------|----------------|--------|
+| `bc` | Math | Done — arbitrary precision, *better* than bc |
+| `date` | DateTime | Done |
+| `grep` (basic) | Stream + regex mode | Slower, no binary |
+| `cut`, `awk` field split | Stream `-f`/`-F`/`-W` | Core use case |
+| `wc` | Stream accumulation | Trivial to build |
+| `head`/`tail` | Stream with record limits | Mostly covered |
+| `cat` | Stream passthrough | Trivial |
+| `tr` | String.replace | Done |
+| `sort`/`uniq` | List + sort callback | Doable; slow on large input |
+| `basename`/`dirname` | Parameter expansion | Pure bash already |
+| `seq`, `yes`, `true`/`false` | Trivial loops/builtins | Trivial |
+| `expr` | Math | Done |
+| `printf`/`echo` | Builtins | Already there |
+| Config/INI parsing | Config | Done, arguably more capable |
+| JSON | Data.JSON | Done |
+| `sed` (basic substitution) | String pipeline | Partial — no in-place file edit |
+
+#### Partial / awkward
+
+| Tool | Limitation |
+|------|-----------|
+| `find` | No filesystem traversal class — doable in bash, just tedious |
+| `xargs` | Buildable; arg-splitting edge cases are fiddly |
+| `tee` | Needs multi-FD output (Stream multi-FD model — planned) |
+| `diff` | Doable but pure-bash LCS is slow on large files |
+| `wget`/`curl` (basic) | `/dev/tcp` handles simple HTTP GETs; no HTTPS |
+| `nc` | `/dev/tcp` covers basic cases; Stream::Socket would handle properly |
+
+#### Hard limits — cannot replicate
+
+| Category | Reason |
+|----------|--------|
+| Compression (`gzip`, `tar`, `xz`) | Binary format + null-byte problem in bash variables |
+| Checksums (`md5sum`, `sha256sum`) | Bitwise ops are theoretically possible but agonizingly slow |
+| Filesystem (`mount`, `mkfs`, `mknod`) | Kernel interface — must be external |
+| Process/init (`ps` deep, `init`, `syslog`) | `/proc` is readable; `kill` needs syscall; init is a different world |
+| User management (`passwd`, `login`) | Security-critical — should never be pure bash |
+| Hardware (`ifconfig`, `udhcpc`, `mdev`) | Kernel interface |
+| Editors (`vi`, `nano`) | Possible in theory; enormous scope |
+| Shell (`ash`, `sh`) | Can't replace the thing running you |
+
+#### Size and speed
+
+- **BusyBox**: ~500KB–2MB compiled C binary covering ~300 tools
+- **boop**: bash (~1.5MB) + framework + classes (~550KB source). If
+  bash is already present, boop's marginal cost is ~550KB.
+- **Speed**: BusyBox wins 10–100x on most operations. The exception
+  is string-heavy work where boop avoids fork/exec overhead —
+  `while read` + parameter expansion can beat chained external-tool
+  pipelines on small-to-medium files. Crossover point: any operation
+  where process startup dominates over computation.
+
+#### Implementation approach
+
+Don't build monolithic replacements. Build thin boop wrappers that:
+1. Check for the real tool (`command -v grep`) and use it if present
+2. Fall back to the pure-bash equivalent if not
+3. Accept the same common flags so call sites don't need to change
+
+The consolation-prize version doesn't need to match every flag or
+handle every edge case — just the 80% that scripts actually use.
 
 ---
 
