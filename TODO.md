@@ -340,10 +340,23 @@ Several docs reference `local -I` which the framework no longer uses:
 
 **The model: every tool is a gateway to the framework.**
 
-Standalone tools (boson, a YAML tool, etc.) are distributed as single-file
-bundles — the framework + required classes concatenated inline, then the
-tool's own code. They work immediately with no installation. But they also
-carry the Installer mixin, which can bootstrap the full framework on demand.
+The bundle+installer pattern is the *standard delivery vehicle* for all
+boop-based standalone tools — boson, BusyBox fallbacks, example scripts,
+anything intended to be dropped onto a system and run. The shape is always
+the same: self-contained single file that works immediately with just bash,
+and optionally bootstraps the full framework on demand.
+
+This means:
+- A stripped container gets a drop-in `grep` fallback that solves the
+  immediate problem and can install the full framework for next time.
+- boson ships the same way — useful standalone, gateway to the ecosystem.
+- Any boop utility becomes its own installer. No separate install step,
+  no bootstrap chicken-and-egg problem.
+
+Standalone tools are distributed as single-file bundles — the framework +
+required classes concatenated inline, then the tool's own code. They work
+immediately with no installation. But they also carry the Installer mixin,
+which can bootstrap the full framework on demand.
 
 ```bash
 # Just use it — zero install, single file
@@ -362,6 +375,8 @@ boson --install /opt/boop    # custom location
 - Required classes in dependency order (load guards prevent double-reg)
 - Tool's own code
 - Installer mixin gated behind `--install` argument detection
+- If boop is already loaded in the environment, the guards are no-ops —
+  the bundle works correctly whether the framework is pre-installed or not
 
 **Installer mixin provides:**
 - `--about` / `--version` — framework version bundled in this tool
