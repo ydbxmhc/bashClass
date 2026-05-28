@@ -1,38 +1,34 @@
 #!/usr/bin/env bash
 # boop.bundle — produce a self-contained single-file bundle
-#
-# Usage:
-#   boop.bundle <tool-file> [-o output]
-#   boop.bundle <tool-file> -o -          # write to stdout
-#
-# Bundles boop core + all required classes (resolved transitively) into a
-# single portable script.  '. boop ...' lines in class files become
-# ': # bundled'.  The import-args block that follows the __boop_loaded guard
-# in boop itself is dropped — it is not safe when boop is inlined rather
-# than sourced with arguments.
 
 set -euo pipefail
 
 __bb_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-__bb_tool=""
-__bb_output=""
 
-# ============================================================================
-# Argument parsing
-# ============================================================================
+. "$__bb_root/boop" Args
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    -o) shift; __bb_output="${1:?'-o requires an argument'}"; shift ;;
-    -*) printf 'boop.bundle: unknown option: %s\n' "$1" >&2; exit 1 ;;
-    *)  [[ -z "$__bb_tool" ]] || { printf 'boop.bundle: unexpected argument: %s\n' "$1" >&2; exit 1; }
-        __bb_tool="$1"; shift ;;
-  esac
-done
+Args.parse '
+[Use]
+boop.bundle <tool-file> [-o output]
+
+  Bundle a boop tool and all its class dependencies into a single
+  portable executable that runs on any machine with bash 4.3+.
+
+  The output file is self-contained: boop core + required classes
+  (resolved transitively) + the tool itself.  Can optionally install
+  the full framework with --install (Installer mixin, future).
+
+[Options]
+output | o =    # output file (default: <tool-file>.bundle; use - for stdout)
+' "$@"
+
+__bb_tool="${_ArgsRemaining[0]:-}"
 
 [[ -n "$__bb_tool" ]]                    || { printf 'boop.bundle: tool file required\n' >&2; exit 1; }
 [[ -f "$__bb_tool" && -r "$__bb_tool" ]] || { printf 'boop.bundle: cannot read: %s\n' "$__bb_tool" >&2; exit 1; }
-[[ -n "$__bb_output" ]]                  || __bb_output="${__bb_tool}.bundle"
+
+__bb_output="${output:-${__bb_tool}.bundle}"
+unset output
 
 # ============================================================================
 # .boopIndex — short-name → relative-path mapping
@@ -60,7 +56,7 @@ __bb_load_index "$__bb_root/.boopIndex"
 #   1. .boopIndex short-name expansion (List → Collection/List)
 #   2. Normalize :: and . to /
 #   3. R1a: root/path/tail  (namespace convention: Collection/List/List)
-#   3. R1b: root/path       (bare file fallback)
+#      R1b: root/path       (bare file fallback)
 #
 # Result stored in __bb_resolve_result.  Returns 1 if unresolvable.
 # ============================================================================
@@ -100,7 +96,7 @@ __bb_resolve() {
 # Extract dep names from a file (one per line on stdout)
 #
 # Sources of deps:
-#   '. boop Dep1 Dep2 ...'     — direct load declarations
+#   '. boop Dep1 Dep2 ...'      — direct load declarations
 #   'boopClass Name isa:Parent' — inheritance (first physical line only)
 #
 # require:* tokens are skipped — they are version guards, not class names.
