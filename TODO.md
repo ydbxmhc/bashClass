@@ -561,16 +561,30 @@ down. `--not --first 10` as "skip the header" is a compelling use case.
 means tail then grep; `--match "error" --last 100` means grep then tail.
 Explicit, predictable, pipeline-friendly.
 
-**Full option set (draft):**
-- `--first N` / `--last N` — head/tail
-- `--from N` / `--to N` — line range (the thing head+tail can't do cleanly)
-- `--match PATTERN` — include matching lines (grep)
-- `--not PATTERN` / `--not --first N` etc. — exclude/negate
-- `--fields LIST` — extract fields (cut); pairs with `--delimiter`
+**Current option set (schema committed):**
+- `--first N` / `--no-first N` — head / skip header
+- `--last N` / `--no-last N` — tail / skip trailer
+- `--from N` / `--to N` — line range
+- `--match PATTERN` / `--no-match PATTERN` — grep / grep -v (combinable)
+- `--not` (`-X`) — invert final record-selection result
+- `--fields LIST` — extract fields (cut-style); pairs with `--delimiter`
+- `--chars RANGES` — fixed-width character extraction (e.g. `1-10,20-30`)
 - `--delimiter CHAR` — field separator (default whitespace)
-- `--number` — prepend line numbers (nl)
+- `--number` — prepend record numbers (nl)
 - `--count` — emit counts instead of content (wc)
-- `--column` — align tabular output
+
+**Evaluation order** (fixed, regardless of argument order):
+position selection → match filter → `--not` inversion → field/char extraction → formatting
+
+**Deferred:**
+- `--cols 'FMT' RANGES` — combined field selection + printf formatting in one
+  pass. E.g. `--cols '%-20s %10s' 1,3` selects fields 1 and 3 and formats them
+  with the given format string. Eliminates the need for a separate alignment
+  step; printf already knows the widths.
+- `--column` (auto-align) — requires buffering all output to detect max widths;
+  separate design pass needed.
+- `--bytes RANGES` — byte-addressed slicing for binary/ASCII-only fixed-width
+  data; `--chars` covers the UTF-8 case via bash `${var:N:L}`.
 
 **Candidate name:** `lens` (working). Particle/element alternatives on
 the table — name final when tool takes shape.
