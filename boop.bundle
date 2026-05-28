@@ -1,0 +1,267 @@
+#!/usr/bin/env bash
+# boop.bundle — produce a self-contained single-file bundle
+#
+# Usage:
+#   boop.bundle <tool-file> [-o output]
+#   boop.bundle <tool-file> -o -          # write to stdout
+#
+# Bundles boop core + all required classes (resolved transitively) into a
+# single portable script.  '. boop ...' lines in class files become
+# ': # bundled'.  The import-args block that follows the __boop_loaded guard
+# in boop itself is dropped — it is not safe when boop is inlined rather
+# than sourced with arguments.
+
+set -euo pipefail
+
+__bb_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+__bb_tool=""
+__bb_output=""
+
+# ============================================================================
+# Argument parsing
+# ============================================================================
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o) shift; __bb_output="${1:?'-o requires an argument'}"; shift ;;
+    -*) printf 'boop.bundle: unknown option: %s\n' "$1" >&2; exit 1 ;;
+    *)  [[ -z "$__bb_tool" ]] || { printf 'boop.bundle: unexpected argument: %s\n' "$1" >&2; exit 1; }
+        __bb_tool="$1"; shift ;;
+  esac
+done
+
+[[ -n "$__bb_tool" ]]                    || { printf 'boop.bundle: tool file required\n' >&2; exit 1; }
+[[ -f "$__bb_tool" && -r "$__bb_tool" ]] || { printf 'boop.bundle: cannot read: %s\n' "$__bb_tool" >&2; exit 1; }
+[[ -n "$__bb_output" ]]                  || __bb_output="${__bb_tool}.bundle"
+
+# ============================================================================
+# .boopIndex — short-name → relative-path mapping
+# ============================================================================
+
+declare -A __bb_index=()
+
+__bb_load_index() {
+  [[ -f "$1" ]] || return 0
+  local __bb_li_line __bb_li_k __bb_li_v
+  while IFS= read -r __bb_li_line || [[ -n "$__bb_li_line" ]]; do
+    [[ -z "$__bb_li_line" || "$__bb_li_line" == '#'* ]] && continue
+    __bb_li_k="${__bb_li_line%%=*}"
+    __bb_li_v="${__bb_li_line#*=}"
+    [[ -n "$__bb_li_k" && "$__bb_li_k" != "$__bb_li_line" ]] && __bb_index["$__bb_li_k"]="$__bb_li_v"
+  done < "$1"
+}
+
+__bb_load_index "$__bb_root/.boopIndex"
+
+# ============================================================================
+# Class name → absolute file path
+#
+# Resolution order:
+#   1. .boopIndex short-name expansion (List → Collection/List)
+#   2. Normalize :: and . to /
+#   3. R1a: root/path/tail  (namespace convention: Collection/List/List)
+#   3. R1b: root/path       (bare file fallback)
+#
+# Result stored in __bb_resolve_result.  Returns 1 if unresolvable.
+# ============================================================================
+
+__bb_resolve_result=""
+
+__bb_resolve() {
+  local __bb_r_name="$1"
+  local __bb_r_path
+
+  if [[ -n "${__bb_index[$__bb_r_name]:-}" ]]; then
+    __bb_r_path="${__bb_index[$__bb_r_name]}"
+  else
+    __bb_r_path="$__bb_r_name"
+  fi
+
+  __bb_r_path="${__bb_r_path//::/"/"}"
+  __bb_r_path="${__bb_r_path//.//}"
+
+  local __bb_r_tail="${__bb_r_path##*/}"
+
+  if [[ -f "$__bb_root/$__bb_r_path/$__bb_r_tail" ]]; then
+    __bb_resolve_result="$__bb_root/$__bb_r_path/$__bb_r_tail"
+    return 0
+  fi
+
+  if [[ -f "$__bb_root/$__bb_r_path" ]]; then
+    __bb_resolve_result="$__bb_root/$__bb_r_path"
+    return 0
+  fi
+
+  printf 'boop.bundle: cannot resolve: %s\n' "$__bb_r_name" >&2
+  return 1
+}
+
+# ============================================================================
+# Extract dep names from a file (one per line on stdout)
+#
+# Sources of deps:
+#   '. boop Dep1 Dep2 ...'     — direct load declarations
+#   'boopClass Name isa:Parent' — inheritance (first physical line only)
+#
+# require:* tokens are skipped — they are version guards, not class names.
+# ============================================================================
+
+__bb_file_deps() {
+  local __bb_fd_file="$1"
+  local __bb_fd_line
+  local -a __bb_fd_toks
+  while IFS= read -r __bb_fd_line || [[ -n "$__bb_fd_line" ]]; do
+    if [[ "$__bb_fd_line" == '. boop'* ]]; then
+      read -ra __bb_fd_toks <<< "${__bb_fd_line#. boop}"
+      local __bb_fd_t
+      for __bb_fd_t in "${__bb_fd_toks[@]+"${__bb_fd_toks[@]}"}"; do
+        [[ -z "$__bb_fd_t" || "$__bb_fd_t" == require:* ]] && continue
+        printf '%s\n' "$__bb_fd_t"
+      done
+    elif [[ "$__bb_fd_line" == 'boopClass '* ]]; then
+      read -ra __bb_fd_toks <<< "$__bb_fd_line"
+      local __bb_fd_t
+      for __bb_fd_t in "${__bb_fd_toks[@]+"${__bb_fd_toks[@]}"}"; do
+        if [[ "$__bb_fd_t" == 'isa:'* ]]; then
+          printf '%s\n' "${__bb_fd_t#isa:}"
+          break
+        fi
+      done
+    fi
+  done < "$__bb_fd_file"
+}
+
+# ============================================================================
+# Topological sort — DFS, post-order
+#
+# __bb_visit resolves a class name to a path, recurses into its deps,
+# then appends itself.  The visited set is keyed on absolute path so
+# aliases (List, Collection::List, Collection.List) all deduplicate to
+# the same node.
+# ============================================================================
+
+declare -A __bb_visited=()
+declare -a __bb_order=()
+
+__bb_visit() {
+  local __bb_v_name="$1"
+
+  __bb_resolve "$__bb_v_name" || return 1
+  local __bb_v_path="$__bb_resolve_result"
+
+  [[ -n "${__bb_visited[$__bb_v_path]+set}" ]] && {
+    [[ "${__bb_visited[$__bb_v_path]}" == in-progress ]] && \
+      printf 'boop.bundle: WARNING: cycle at %s\n' "$__bb_v_name" >&2
+    return 0
+  }
+
+  __bb_visited["$__bb_v_path"]=in-progress
+
+  local __bb_v_dep
+  while IFS= read -r __bb_v_dep; do
+    [[ -n "$__bb_v_dep" ]] || continue
+    __bb_visit "$__bb_v_dep" || \
+      printf 'boop.bundle: WARNING: skipping unresolved dep: %s\n' "$__bb_v_dep" >&2
+  done < <(__bb_file_deps "$__bb_v_path")
+
+  __bb_visited["$__bb_v_path"]=done
+  __bb_order+=("$__bb_v_path")
+}
+
+# ============================================================================
+# Emit boop core
+#
+# Outputs lines 1 through the closing fi of the __boop_loaded guard.
+# Drops the import-args block that follows (". boop ClassName" argument
+# processing) — it reads $@ and would consume the tool's own arguments.
+# ============================================================================
+
+__bb_emit_boop() {
+  local __bb_eb_line __bb_eb_saw_loaded=0
+  while IFS= read -r __bb_eb_line || [[ -n "$__bb_eb_line" ]]; do
+    [[ "$__bb_eb_line" == '#!'* ]] && continue
+    printf '%s\n' "$__bb_eb_line"
+    [[ "$__bb_eb_line" == '__boop_loaded=1' ]] && __bb_eb_saw_loaded=1
+    (( __bb_eb_saw_loaded )) && [[ "$__bb_eb_line" == 'fi'* ]] && return 0
+  done < "$__bb_root/boop"
+}
+
+# ============================================================================
+# Emit a class or tool file
+#
+# - Strips any #! lines (shebangs; safe to strip regardless of position)
+# - Replaces '. boop ...' lines with ': # bundled'
+# ============================================================================
+
+__bb_emit_file() {
+  local __bb_ef_file="$1"
+  local __bb_ef_line
+  while IFS= read -r __bb_ef_line || [[ -n "$__bb_ef_line" ]]; do
+    [[ "$__bb_ef_line" == '#!'* ]] && continue
+    if [[ "$__bb_ef_line" == '. boop'* ]]; then
+      printf ': # bundled\n'
+    else
+      printf '%s\n' "$__bb_ef_line"
+    fi
+  done < "$__bb_ef_file"
+}
+
+# ============================================================================
+# Assemble the bundle (all output to stdout)
+# ============================================================================
+
+__bb_sep='# ============================================================'
+
+__bb_do_output() {
+  printf '#!/usr/bin/env bash\n'
+  printf '# bundled by boop.bundle — do not edit\n'
+  printf '# tool: %s\n' "$(basename "$__bb_tool")"
+  printf '\n'
+
+  printf '%s\n# boop core\n%s\n' "$__bb_sep" "$__bb_sep"
+  __bb_emit_boop
+  # In a bundle all code runs from a single file, so the direct-execution
+  # check (BASH_SOURCE[1] == $0) in boop.init / boop.initMixin always fires.
+  # Override both with idempotency-only versions.
+  printf 'boop.init()     { __boop.guard "$1"                            && return 1; return 0; }\n'
+  printf 'boop.initMixin(){ [[ -n "${__boop_mixin_registry[$1]+set}" ]] && return 1; return 0; }\n'
+  printf '\n'
+
+  local __bb_do_f __bb_do_label
+  for __bb_do_f in "${__bb_order[@]}"; do
+    __bb_do_label="${__bb_do_f#"$__bb_root/"}"
+    printf '%s\n# %s\n%s\n' "$__bb_sep" "$__bb_do_label" "$__bb_sep"
+    __bb_emit_file "$__bb_do_f"
+    printf '\n'
+  done
+
+  printf '%s\n# %s\n%s\n' "$__bb_sep" "$(basename "$__bb_tool")" "$__bb_sep"
+  __bb_emit_file "$__bb_tool"
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+# Collect root deps declared in the tool file
+declare -a __bb_roots=()
+while IFS= read -r __bb_dep; do
+  [[ -n "$__bb_dep" ]] && __bb_roots+=("$__bb_dep")
+done < <(__bb_file_deps "$__bb_tool")
+
+(( ${#__bb_roots[@]} > 0 )) || \
+  printf 'boop.bundle: WARNING: no boop dependencies found in %s\n' "$__bb_tool" >&2
+
+# Walk the dep graph
+for __bb_root_dep in "${__bb_roots[@]}"; do
+  __bb_visit "$__bb_root_dep" || { printf 'boop.bundle: FATAL: failed on %s\n' "$__bb_root_dep" >&2; exit 1; }
+done
+
+# Write output
+if [[ "$__bb_output" == "-" ]]; then
+  __bb_do_output
+else
+  __bb_do_output > "$__bb_output"
+  chmod +x "$__bb_output"
+  printf 'boop.bundle: wrote %s (%d lines)\n' "$__bb_output" "$(wc -l < "$__bb_output")" >&2
+fi
