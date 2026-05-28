@@ -544,50 +544,42 @@ handle every edge case — just the 80% that scripts actually use.
 
 ### 6. `lens` — Text Stream Inspection Tool
 
-Working name. Reads stdin unless given a path. Combines head, tail,
-wc, nl, grep, cut, column into one composable tool. Each option is a
-transformation; multiple options apply in argument order as a pipeline.
+IN PROGRESS — Args schema and layered help committed (2026-05-28).
+Implementation not yet started.
 
-**Three axes:**
-- **Mode** (what unit): `--lines` (default), `--fields`, `--bytes`
-- **Position**: `--first N`, `--last N`, `--from N`, `--to N`
-- **Filter**: `--match PATTERN`, `--not PATTERN` (or `--not --first N`)
+**Design (settled):**
 
-**`--not` scope is TBD** — can negate a pattern (grep -v) or a position
-selector (skip the first N lines). Both are useful; needs to be nailed
-down. `--not --first 10` as "skip the header" is a compelling use case.
+One filtering axis per invocation:
+- Position (relative): `--first`, `--last` (combinable, pipeline-ordered)
+- Position (absolute): `--from`, `--to` (combinable, defines a range)
+- Match: `--match`, `--no-match` (combinable, `--and`/`--or`)
+- Fields: `--fields` (with `-f`/`-F`/`-W` for delimiter)
+- Chars: `--chars`
 
-**Evaluation order follows argument order** — `--last 100 --match "error"`
-means tail then grep; `--match "error" --last 100` means grep then tail.
-Explicit, predictable, pipeline-friendly.
+These modes are mutually exclusive. Relative/absolute position also
+exclusive with each other. `--not` inverts any mode. `--number` and
+`--count` are universal formatting options.
 
-**Current option set (schema committed):**
-- `--first N` / `--no-first N` — head / skip header
-- `--last N` / `--no-last N` — tail / skip trailer
-- `--from N` / `--to N` — line range
-- `--match PATTERN` / `--no-match PATTERN` — grep / grep -v (combinable)
-- `--not` (`-X`) — invert final record-selection result
-- `--fields LIST` — extract fields (cut-style); pairs with `--delimiter`
-- `--chars RANGES` — fixed-width character extraction (e.g. `1-10,20-30`)
-- `--delimiter CHAR` — field separator (default whitespace)
-- `--number` — prepend record numbers (nl)
-- `--count` — emit counts instead of content (wc)
+Stream delimiter options pass through: `-d`/`-D`/`-E` for record,
+`-f`/`-F`/`-W` for field. Enables paragraph mode, CRLF, multi-char
+delimiters out of the box.
 
-**Evaluation order** (fixed, regardless of argument order):
-position selection → match filter → `--not` inversion → field/char extraction → formatting
+Layered help: `--help` (compact synopsis), `--options` (full reference),
+`--examples` (cookbook), `--about`, `--boop`.
+
+**Remaining implementation:**
+- Position mode logic (first/last pipeline, from/to range, --not inversion)
+- Match mode logic (regex predicates, --and/--or aggregation, --not)
+- Field extraction (parse range specs, apply to each record)
+- Char extraction (parse range specs, substring each record)
+- --number (prepend line counter)
+- --count (accumulate and emit count instead of content)
+- Stream construction from parsed args (pass through delimiter options)
 
 **Deferred:**
-- `--cols 'FMT' RANGES` — combined field selection + printf formatting in one
-  pass. E.g. `--cols '%-20s %10s' 1,3` selects fields 1 and 3 and formats them
-  with the given format string. Eliminates the need for a separate alignment
-  step; printf already knows the widths.
-- `--column` (auto-align) — requires buffering all output to detect max widths;
-  separate design pass needed.
-- `--bytes RANGES` — byte-addressed slicing for binary/ASCII-only fixed-width
-  data; `--chars` covers the UTF-8 case via bash `${var:N:L}`.
-
-**Candidate name:** `lens` (working). Particle/element alternatives on
-the table — name final when tool takes shape.
+- `--cols 'FMT' RANGES` — combined field selection + printf formatting
+- `--column` (auto-align) — requires buffering for max-width detection
+- `--bytes RANGES` — byte-addressed slicing for binary/ASCII-only data
 
 ---
 

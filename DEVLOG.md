@@ -4,6 +4,85 @@ Completed work items, extracted from TODO.md. Most recent first.
 
 ---
 
+## Session: 2026-05-28
+
+**lens tool — Args schema and layered help**
+
+- Complete Args schema with mutual exclusion groups enforcing one-axis-at-a-time
+- Stream delimiter options passed through (-d/-D/-E/-f/-F/-W)
+- Compact POSIX synopsis for default --help (6 lines)
+- Layered help system: --options, --examples, --about, --boop
+- No implementation yet — schema and help screens only
+
+**Args: `show=` directive**
+
+- New `[Parser]` key: `show = Section1, Section2`
+- Controls which schema sections `--help` displays
+- Default (empty): shows all sections except `[Parser]` and `[Exclusive]`
+- `__Args.printHelp` rewritten to filter sections based on the directive
+
+---
+
+## Session: 2026-05-27
+
+**Error Severity Reclassification**
+
+- Reclassified data-condition `_Crash` calls to `_Error` + `return 1`
+  across all classes: List, Map, Stack, Queue, Config, Math, Args,
+  DateTime, Geometry, Serializable, Terminal, JSON, boop.destroy
+- Added `|| return 1` propagation in Math and Args internal call chains
+- Fixed Math.rawDiv trailing conditional returning non-zero on success
+- 34 `_Crash` calls remain — all security/corruption/programmer-error
+
+**Environment Resilience Testing**
+
+- New test harness: `tests/environ/test_environ` (15 configurations)
+- All pass: errexit, nounset, pipefail, failglob, nullglob, dotglob,
+  extglob, inherit_errexit, errtrace, functrace, 4 IFS variants, default
+- Fixed: `(( x++ ))` errexit issue in destroy (use `++x`)
+- Fixed: IFS independence in `__boopClass.parseTokens` (`local IFS`)
+- Fixed: bare `[[ ]] &&` errexit issue in Math.resolve (`|| true`)
+
+**Documentation**
+
+- `docs/STANDARDS.md`: Shell Options section expanded (errexit, IFS, nounset)
+- `docs/STANDARDS.md`: LSP section added
+- `docs/GOTCHAS.md`: errexit patterns, IFS, unset scoping, not-a-ternary
+- `README.md`: Design Principles subsection
+- Cross-links between STANDARDS and GOTCHAS
+
+---
+
+## Session: 2026-05-26
+
+**Object Lifecycle / GC**
+
+- `$obj.destroy` implemented on boop root class, inherited by all objects
+- `ClassName._destroy()` private hook convention for class-specific cleanup
+- Walks inheritance chain (most-derived first) calling each hook
+- Wipes __boop_static keys, unsets wrapper functions, removes registry entry
+- Hooks for: List, Map, Map.Fast, Set, Stack, Queue, Config, Stream, Iterator
+- Fixed pre-existing `_Class` leak in Stack/Queue constructors (`_Delegate`)
+- Removed old `Collection.Container.destroy` (replaced by core mechanism)
+- `test_destroy_ts`: 50 assertions covering full lifecycle
+
+**Collection Enhancements**
+
+- `List.filter`, `List.map`, `List.reduce` — functional operations
+- `List.do` — pipeline method with flexible syntax parsing
+- `List.contains`, `List.indexOf` — search methods
+- `Map.merge` — copy entries from another Map
+- `Collection.Stack.Fast`, `Collection.Queue.Fast` — inheritance-based
+  variants with blocked methods for contract enforcement
+- `Stream.putBack` — lookahead support for parsers
+
+**Test Infrastructure**
+
+- `test_destroy_ts` — dedicated destroy lifecycle test (50 assertions)
+- Renamed `test_stress_ts` → `test_adversarial_ts`
+
+---
+
 ## Stream Class -- Core Implementation
 
 **Completed:** 2026-05-20
