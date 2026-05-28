@@ -231,8 +231,42 @@ __Args.parseOptLine() {
 # ============================================================================
 
 # Print formatted help from parsed schema tables, then exit 0.
+# Respects __Args_parser_show: if set, only prints sections listed there.
+# Default (empty): prints all sections except [Parser] and [Exclusive].
 __Args.printHelp() {
-  printf '%s\n' "$__Args_parse_schema"
+  local __Args_ph_show="${__Args_parser_show:-}"
+  local __Args_ph_section="" __Args_ph_line __Args_ph_printing=1
+
+  while IFS= read -r __Args_ph_line; do
+    # Detect section headers
+    if [[ "$__Args_ph_line" =~ ^\[([^]]+)\]$ ]]; then
+      __Args_ph_section="${BASH_REMATCH[1]}"
+      if [[ -n "$__Args_ph_show" ]]; then
+        # Only print sections in the show list
+        __Args_ph_printing=0
+        local __Args_ph_s
+        local IFS=','
+        for __Args_ph_s in $__Args_ph_show; do
+          # Strip whitespace
+          __Args_ph_s="${__Args_ph_s#"${__Args_ph_s%%[![:space:]]*}"}"
+          __Args_ph_s="${__Args_ph_s%"${__Args_ph_s##*[![:space:]]}"}"
+          if [[ "${__Args_ph_s,,}" == "${__Args_ph_section,,}" ]]; then
+            __Args_ph_printing=1
+            break
+          fi
+        done
+      else
+        # Default: skip Parser and Exclusive sections
+        case "$__Args_ph_section" in
+          Parser|Exclusive) __Args_ph_printing=0 ;;
+          *) __Args_ph_printing=1 ;;
+        esac
+      fi
+      # Don't print the section header bracket line itself for hidden sections
+      (( __Args_ph_printing )) || continue
+    fi
+    (( __Args_ph_printing )) && printf '%s\n' "$__Args_ph_line"
+  done <<< "$__Args_parse_schema"
 }
 
 # ============================================================================
@@ -264,6 +298,7 @@ __Args.schemaLine() {
         *) _Crash "Args.parse: [Parser] bareKV expects true|false, got '$__Args_sl_val'" ;;
       esac
       ;;
+    show) __Args_parser_show="$__Args_sl_val" ;;
     *) _Crash "Args.parse: [Parser] unknown key: $__Args_sl_key" ;;
   esac
 }
@@ -373,6 +408,7 @@ Args.parse() {
   declare -gA __Args_fileload=()  # varname → "1" if value is a filename to load
   # Parser-behavior flags set by the [Parser] schema section.
   declare -gi __Args_parser_bareKV=0
+  declare -g  __Args_parser_show=""
   # Mutual exclusion groups from [Exclusive] section.
   declare -ga __Args_exclusive=()
 
