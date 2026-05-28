@@ -7,41 +7,43 @@ Args.parse '
 [Use]
 lens [options] [file]
 
-  Inspect and transform text streams. Reads stdin unless a file is
-  given. Record-selection operations apply left to right in argument
-  order. --not inverts the final record-selection result.
+  Inspect and transform text streams. Reads stdin unless a file is given.
 
-  Examples:
+  Evaluation order (regardless of argument order):
+    position selection  →  match filter  →  --not inversion
+    →  field/char extraction  →  formatting
+
+  Common patterns:
     lens --first 20 file.txt              # head
     lens --last 20 file.txt               # tail
     lens --from 5 --to 15 file.txt        # line range
+    lens --no-first 1 file.txt            # skip header line
     lens --match ERROR log.txt            # grep
-    lens --not --match ERROR log.txt      # grep -v
-    lens --not-first 1 --match TODO *.sh  # skip header, find TODOs
-    lens --last 100 --match error log     # errors in last 100 lines
-    lens --fields 1,3 --delimiter : /etc/passwd
+    lens --no-match ERROR log.txt         # grep -v
+    lens --match foo --no-match bar       # foo lines that do not contain bar
+    lens --not --match ERROR log.txt      # invert: everything except ERROR lines
+    lens --last 100 --match error log     # errors among last 100 lines
+    lens --chars 1-10,20-30 data.txt      # fixed-width column extraction
 
 [Options]
-file         | f =    # input file (default: stdin)
+file              | f =   # input file (default: stdin)
 
-first             =   # first N records
-not-first         =   # skip first N records
-last              =   # last N records
-not-last          =   # skip last N records
-from              =   # start at record N (inclusive)
-not-from          =   # stop before record N
-to                =   # end at record N (inclusive)
-not-to            =   # start after record N
+first                 =   # first N records
+no-first              =   # skip first N records
+last                  =   # last N records
+no-last               =   # skip last N records
+from                  =   # start at record N (inclusive)
+to                    =   # end at record N (inclusive)
 
-match[]      | m =    # include records matching PATTERN (repeatable)
-not-match[]  | M =    # exclude records matching PATTERN (repeatable)
+match[]           | m =   # include records matching PATTERN (repeatable)
+no-match[]        | v =   # exclude records matching PATTERN (repeatable)
 
-not          | v      # invert final record-selection result
+not               | X     # invert final record-selection result
 
-fields            =   # field numbers or ranges: 1,3-5 (unaffected by --not)
-delimiter    | d =    # field delimiter (default: whitespace)
+fields                =   # field numbers or ranges: 1,3-5
+chars                 =   # character positions or ranges: 1-10,20-30
+delimiter         | d =   # field delimiter for --fields (default: whitespace)
 
-number       | n      # prepend record numbers
-count        | c      # print counts instead of content
-column                # align output as columns
+number            | n     # prepend record numbers
+count             | c     # print counts instead of content
 ' "$@"
