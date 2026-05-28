@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# lens — text stream inspection tool
+
+. boop Stream Args
+
+Args.parse '
+[Use]
+lens [options] [file]
+
+  Inspect and transform text streams. Reads stdin unless a file is
+  given. Record-selection operations apply left to right in argument
+  order. --not inverts the final record-selection result.
+
+  Examples:
+    lens --first 20 file.txt              # head
+    lens --last 20 file.txt               # tail
+    lens --from 5 --to 15 file.txt        # line range
+    lens --match ERROR log.txt            # grep
+    lens --not --match ERROR log.txt      # grep -v
+    lens --not-first 1 --match TODO *.sh  # skip header, find TODOs
+    lens --last 100 --match error log     # errors in last 100 lines
+    lens --fields 1,3 --delimiter : /etc/passwd
+
+[Options]
+file         | f =    # input file (default: stdin)
+
+first             =   # first N records
+not-first         =   # skip first N records
+last              =   # last N records
+not-last          =   # skip last N records
+from              =   # start at record N (inclusive)
+not-from          =   # stop before record N
+to                =   # end at record N (inclusive)
+not-to            =   # start after record N
+
+match[]      | m =    # include records matching PATTERN (repeatable)
+not-match[]  | M =    # exclude records matching PATTERN (repeatable)
+
+not          | v      # invert final record-selection result
+
+fields            =   # field numbers or ranges: 1,3-5 (unaffected by --not)
+delimiter    | d =    # field delimiter (default: whitespace)
+
+number       | n      # prepend record numbers
+count        | c      # print counts instead of content
+column                # align output as columns
+' "$@"
