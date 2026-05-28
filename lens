@@ -3,13 +3,13 @@
 #
 # One axis at a time:
 #   Position (relative): --first, --last (combinable; argument order = pipeline order)
-#   Position (absolute): --from, --to (combinable; defines a line range)
+#   Position (absolute): --from, --to (combinable; any subset works)
 #   Match mode:          --match, --no-match (combinable with each other, --and/--or)
 #   Field mode:          --fields + field delimiter options
 #   Char mode:           --chars
 #
-# These modes are mutually exclusive. You pick one per invocation.
-# Relative and absolute position are also exclusive with each other.
+# These axes are mutually exclusive. You pick one per invocation.
+# Position selectors (first/last/from/to) are freely combinable with each other.
 # --not inverts the final selection in any mode.
 # --number and --count are formatting options compatible with any mode.
 #
@@ -17,144 +17,16 @@
 
 . boop Stream Args
 
-# --- Long-form help screens (handled before Args.parse) ---
-case "${1:-}" in
-  --examples)
-    cat <<'EOF'
-lens — Examples
-
-  Position (relative):
-    lens --first 20 file.txt              head
-    lens --last 20 file.txt               tail
-    lens --not --first 1 file.txt         skip header (all but first line)
-    lens --first 20 --last 5 file.txt     last 5 of the first 20 (lines 16-20)
-    lens --last 20 --first 5 file.txt     first 5 of the last 20
-
-  Position (absolute):
-    lens --from 5 --to 15 file.txt        lines 5-15
-    lens --not --from 20 --to 50 file.txt skip lines 20-50, print the rest
-
-  Match:
-    lens --match ERROR log.txt            grep
-    lens --no-match DEBUG log.txt         grep -v
-    lens --and --match foo --no-match bar lines with foo but without bar
-    lens --or --match error --match warn  lines with error OR warn
-    lens --not --match ERROR log.txt      everything except ERROR lines
-    lens --count --match ERROR log.txt    count of ERROR lines
-
-  Fields:
-    lens --fields 1,3-5 -f : /etc/passwd  cut -d: -f1,3-5
-    lens --fields 1,3 -W ' ' log.txt      awk-style whitespace collapse
-    lens --fields 2 -F '||' data.txt      multi-char field delimiter
-
-  Characters:
-    lens --chars 1-10,20-30 data.txt      fixed-width column extraction
-
-  Record delimiters:
-    lens -D '' --match ERROR app.log      paragraph mode (blank-line separated)
-    lens -D $'\r\n' --first 5 win.log     CRLF records
-    lens -E $'\r\n' --count file.txt      any of CR or LF ends a record
-
-  Combining with pipes:
-    lens --last 100 file | lens --match error    errors in last 100 lines
-    lens --match error file | lens --fields 1,4  fields from matching lines
-EOF
-    exit 0 ;;
-
-  --options)
-    cat <<'EOF'
-lens — Options Reference
-
-  Input:
-    -P, --file PATH         Input file (default: stdin)
-
-  Position (relative — argument order = pipeline order):
-    --first N               First N records
-    --last N                Last N records
-
-  Position (absolute — defines a line range):
-    --from N                Start at record N (1-indexed, inclusive)
-    --to N                  End at record N (inclusive)
-
-  Match (content filtering):
-    -m, --match PATTERN     Include if record matches (repeatable)
-    -v, --no-match PATTERN  Include if record does NOT match (repeatable)
-    -A, --and               All predicates must pass (default)
-    -O, --or                Any predicate passing is enough
-
-  Inversion:
-    -X, --not               Invert final selection result
-
-  Column extraction:
-    --fields SPEC           Field numbers or ranges: 1,3-5
-    --chars SPEC            Character positions or ranges: 1-10,20-30
-
-  Record delimiter (mutually exclusive; default: newline):
-    -d CHAR                 Single-char record delimiter
-    -D STRING               Multi-char record delimiter (exact match)
-    -E CHARS                Char-class record delimiter (any char in set)
-
-  Field delimiter (mutually exclusive; for --fields mode):
-    -f CHARS                Char set, non-stacking (empties preserved)
-    -F STRING               Exact multi-char string
-    -W CHARS                Char class, runs collapse (like awk)
-
-  Formatting:
-    -n, --number            Prepend record numbers to output
-    -c, --count             Emit count instead of content
-
-  Help:
-    -h, --help              This synopsis
-    --options               Full options reference (this screen)
-    --examples              Usage examples
-    --about                 About lens
-    --boop                  About the boop framework
-EOF
-    exit 0 ;;
-
-  --about)
-    cat <<'EOF'
-lens — text stream inspection tool
-
-  Reads stdin or a file. Filters, selects, and formats records.
-  One filtering axis per invocation; combine with pipes for complex queries.
-
-  Replaces common uses of head, tail, grep, cut, and wc in a single tool
-  with consistent syntax and support for multi-character record/field
-  delimiters, paragraph mode, and character-class splitting.
-
-  Built on the boop framework (bash OOP). Run --boop for details.
-  https://github.com/ydbxmhc/bashClass
-EOF
-    exit 0 ;;
-
-  --boop)
-    cat <<'EOF'
-lens is built on boop — an OOP framework for bash 4.3+.
-
-  boop provides classes, objects, inheritance, method dispatch, a universal
-  return system, and a standard library including Stream (buffered I/O with
-  multi-char delimiters), Args (CLI parsing), Math (arbitrary precision),
-  Collections (List, Map, Set, Stack, Queue), and more.
-
-  This tool is a single-file bundle: the framework and required classes are
-  embedded inline. It works standalone with no installation.
-
-  To install the full boop framework:
-    lens --boop-install              install to ~/.local/lib/boop
-    lens --boop-install /opt/boop    install to custom path
-
-  Repository: https://github.com/ydbxmhc/bashClass
-EOF
-    exit 0 ;;
-
-  "") set -- --help ;;
-esac
+(( $# )) || set -- --help
 
 Args.parse '
 [Parser]
 show = Use
 bareKV = false
+subscreen = examples=Examples
+subscreen = options=OptionsRef
+subscreen = about=About
+subscreen = boop=Boop
 
 [Use]
 lens { --first N [--last N] | --last N [--first N]
@@ -206,36 +78,136 @@ number            | n
 count             | c
 
 [Exclusive]
+(first last from to) | (match no_match) | (fields) | (chars)
 and | or
-first | from
-first | to
-last | from
-last | to
-fields | chars
-fields | match
-fields | no_match
-chars | match
-chars | no_match
-first | match
-first | no_match
-first | fields
-first | chars
-last | match
-last | no_match
-last | fields
-last | chars
-from | match
-from | no_match
-from | fields
-from | chars
-to | match
-to | no_match
-to | fields
-to | chars
 eolChar | eolString
 eolChar | eolClass
 eolString | eolClass
 fdelimSet | fdelimStr
 fdelimSet | fdelimCol
 fdelimStr | fdelimCol
+
+[Requires]
+and => match | no_match
+or => match | no_match
+fdelimSet => fields
+fdelimStr => fields
+fdelimCol => fields
+
+[Examples]
+lens — Examples
+
+  Position (relative):
+    lens --first 20 file.txt              head
+    lens --last 20 file.txt               tail
+    lens --not --first 1 file.txt         skip header (all but first line)
+    lens --first 20 --last 5 file.txt     last 5 of the first 20 (lines 16-20)
+    lens --last 20 --first 5 file.txt     first 5 of the last 20
+
+  Position (absolute):
+    lens --from 5 --to 15 file.txt        lines 5-15
+    lens --not --from 20 --to 50 file.txt skip lines 20-50, print the rest
+
+  Match:
+    lens --match ERROR log.txt            grep
+    lens --no-match DEBUG log.txt         grep -v
+    lens --and --match foo --no-match bar lines with foo but without bar
+    lens --or --match error --match warn  lines with error OR warn
+    lens --not --match ERROR log.txt      everything except ERROR lines
+    lens --count --match ERROR log.txt    count of ERROR lines
+
+  Fields:
+    lens --fields 1,3-5 -f : /etc/passwd  cut -d: -f1,3-5
+    lens --fields 1,3 -W '"'"' '"'"' log.txt      awk-style whitespace collapse
+    lens --fields 2 -F '"'"'||'"'"' data.txt      multi-char field delimiter
+
+  Characters:
+    lens --chars 1-10,20-30 data.txt      fixed-width column extraction
+
+  Record delimiters:
+    lens -D '"'"''"'"' --match ERROR app.log      paragraph mode (blank-line separated)
+    lens -D $'"'"'\r\n'"'"' --first 5 win.log     CRLF records
+    lens -E $'"'"'\r\n'"'"' --count file.txt      any of CR or LF ends a record
+
+  Combining with pipes:
+    lens --last 100 file | lens --match error    errors in last 100 lines
+    lens --match error file | lens --fields 1,4  fields from matching lines
+
+[OptionsRef]
+lens — Options Reference
+
+  Input:
+    -P, --file PATH         Input file (default: stdin)
+
+  Position (relative — argument order = pipeline order):
+    --first N               First N records
+    --last N                Last N records
+
+  Position (absolute — defines a line range):
+    --from N                Start at record N (1-indexed, inclusive)
+    --to N                  End at record N (inclusive)
+
+  Match (content filtering):
+    -m, --match PATTERN     Include if record matches (repeatable)
+    -v, --no-match PATTERN  Include if record does NOT match (repeatable)
+    -A, --and               All predicates must pass (default)
+    -O, --or                Any predicate passing is enough
+
+  Inversion:
+    -X, --not               Invert final selection result
+
+  Column extraction:
+    --fields SPEC           Field numbers or ranges: 1,3-5
+    --chars SPEC            Character positions or ranges: 1-10,20-30
+
+  Record delimiter (mutually exclusive; default: newline):
+    -d CHAR                 Single-char record delimiter
+    -D STRING               Multi-char record delimiter (exact match)
+    -E CHARS                Char-class record delimiter (any char in set)
+
+  Field delimiter (mutually exclusive; for --fields mode):
+    -f CHARS                Char set, non-stacking (empties preserved)
+    -F STRING               Exact multi-char string
+    -W CHARS                Char class, runs collapse (like awk)
+
+  Formatting:
+    -n, --number            Prepend record numbers to output
+    -c, --count             Emit count instead of content
+
+  Help:
+    -h, --help              This synopsis
+    --options               Full options reference (this screen)
+    --examples              Usage examples
+    --about                 About lens
+    --boop                  About the boop framework
+
+[About]
+lens — text stream inspection tool
+
+  Reads stdin or a file. Filters, selects, and formats records.
+  One filtering axis per invocation; combine with pipes for complex queries.
+
+  Replaces common uses of head, tail, grep, cut, and wc in a single tool
+  with consistent syntax and support for multi-character record/field
+  delimiters, paragraph mode, and character-class splitting.
+
+  Built on the boop framework (bash OOP). Run --boop for details.
+  https://github.com/ydbxmhc/bashClass
+
+[Boop]
+lens is built on boop — an OOP framework for bash 4.3+.
+
+  boop provides classes, objects, inheritance, method dispatch, a universal
+  return system, and a standard library including Stream (buffered I/O with
+  multi-char delimiters), Args (CLI parsing), Math (arbitrary precision),
+  Collections (List, Map, Set, Stack, Queue), and more.
+
+  This tool is a single-file bundle: the framework and required classes are
+  embedded inline. It works standalone with no installation.
+
+  To install the full boop framework:
+    lens --boop-install              install to ~/.local/lib/boop
+    lens --boop-install /opt/boop    install to custom path
+
+  Repository: https://github.com/ydbxmhc/bashClass
 ' "$@"
