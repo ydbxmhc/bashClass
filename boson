@@ -52,12 +52,12 @@ boson — Examples
   Sourceable output (--emit):
     boson --emit '.' < data.json              whole doc as var=value lines
     boson --emit '.database' < config.json    subtree as assignments
-    eval "$(boson --emit '.' < config.json)"  load all into current shell
+    . <(boson --emit '.' < config.json)       load all into current shell
 
   Named assignment (--into):
     boson --into=host '.database.host' < c.json   → host=localhost
     boson --into=names '.users[].name' < d.json   → names=("Alice" "Bob")
-    eval "$(boson --into=port '.server.port' < c.json)"
+    . <(boson --into=port '.server.port' < c.json)
 
   Eponymous (--eponymous / -E):
     boson -E '.database.host' < c.json        → host=localhost
