@@ -215,6 +215,29 @@ lens is built on boop — an OOP framework for bash 4.3+.
   Repository: https://github.com/ydbxmhc/bashClass
 ' "$@" || exit 1
 
+# Bare filenames: if positionals remain and are readable files, use them.
+# Multiple files are concatenated into one stream (like cat file1 file2 | lens).
+# If -P was given explicitly, positionals are ignored.
+if [[ -z "${file:-}" && ${#_ArgsRemaining[@]} -gt 0 ]]; then
+  # Verify all positionals are readable files
+  declare -ga __lens_files=()
+  for __lens_arg in "${_ArgsRemaining[@]}"; do
+    if [[ -f "$__lens_arg" && -r "$__lens_arg" ]]; then
+      __lens_files+=("$__lens_arg")
+    else
+      _Error "lens: not a readable file: '$__lens_arg'"
+      exit 1
+    fi
+  done
+  if (( ${#__lens_files[@]} == 1 )); then
+    file="${__lens_files[0]}"
+  elif (( ${#__lens_files[@]} > 1 )); then
+    # Multiple files: set up fd from process substitution concatenating them
+    exec {__lens_multi_fd}< <(cat "${__lens_files[@]}")
+    fd="$__lens_multi_fd"
+  fi
+fi
+
 # ============================================================================
 # Implementation
 # ============================================================================
