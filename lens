@@ -216,11 +216,11 @@ lens is built on boop — an OOP framework for bash 4.3+.
 ' "$@" || exit 1
 
 # Bare filenames: if positionals remain and are readable files, use them.
-# Multiple files are concatenated into one stream (like cat file1 file2 | lens).
+# Multiple files are processed independently (like head/tail/grep), not
+# concatenated — so --first 5 f1 f2 gives the first 5 of each file.
 # If -P was given explicitly, positionals are ignored.
+declare -ga __lens_files=()
 if [[ -z "${file:-}" && ${#_ArgsRemaining[@]} -gt 0 ]]; then
-  # Verify all positionals are readable files
-  declare -ga __lens_files=()
   for __lens_arg in "${_ArgsRemaining[@]}"; do
     if [[ -f "$__lens_arg" && -r "$__lens_arg" ]]; then
       __lens_files+=("$__lens_arg")
@@ -229,13 +229,7 @@ if [[ -z "${file:-}" && ${#_ArgsRemaining[@]} -gt 0 ]]; then
       exit 1
     fi
   done
-  if (( ${#__lens_files[@]} == 1 )); then
-    file="${__lens_files[0]}"
-  elif (( ${#__lens_files[@]} > 1 )); then
-    # Multiple files: set up fd from process substitution concatenating them
-    exec {__lens_multi_fd}< <(cat "${__lens_files[@]}")
-    fd="$__lens_multi_fd"
-  fi
+  (( ${#__lens_files[@]} == 1 )) && file="${__lens_files[0]}"
 fi
 
 # ============================================================================
@@ -599,4 +593,12 @@ _lens_run() {
   if (( count )); then printf '%d\n' "$_lens_sel_count"; fi
 }
 
-_lens_run
+if (( ${#__lens_files[@]} > 1 )); then
+  for __lens_multi_f in "${__lens_files[@]}"; do
+    file="$__lens_multi_f"
+    _lens_sel_count=0
+    _lens_run
+  done
+else
+  _lens_run
+fi
