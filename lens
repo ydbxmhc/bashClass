@@ -213,7 +213,7 @@ lens is built on boop — an OOP framework for bash 4.3+.
     lens --boop-install /opt/boop    install to custom path
 
   Repository: https://github.com/ydbxmhc/bashClass
-' "$@"
+' "$@" || exit 1
 
 # ============================================================================
 # Implementation
@@ -526,9 +526,12 @@ _lens_run() {
       local -i __lens_run_in
       while $__lens_run_s.next; do
         (( ++__lens_run_n ))
-        (( __lens_run_n >= __lens_run_ws )) || continue
-        __lens_run_in=1
-        (( __lens_run_we >= 0 && __lens_run_n > __lens_run_we )) && __lens_run_in=0
+        __lens_run_in=0
+        if (( __lens_run_n >= __lens_run_ws )); then
+          if (( __lens_run_we < 0 || __lens_run_n <= __lens_run_we )); then
+            __lens_run_in=1
+          fi
+        fi
         if (( not )); then
           (( __lens_run_in )) || _lens_emit_rec "$__lens_run_n" "$_lens_line"
         else

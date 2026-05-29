@@ -1,0 +1,343 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# lens tool tests
+#
+# Classification: INTEGRATION (tools/lens)
+# Covers: position modes (first/last/from/to), match mode (and/or/not),
+#         field extraction, char extraction, formatting (number/count),
+#         record delimiters, edge cases (empty input, single line, etc.)
+
+__tl_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+__tl_root="$(cd "$__tl_dir/../.." && pwd)"
+__tl_lens="$__tl_root/lens"
+
+. "$__tl_root/boop" TestSuite
+
+into=t TestSuite name="Lens Tests"
+
+# Helper: run lens with given args, feed stdin, capture stdout
+__tl_run() {
+  local __tl_run_input="$1"; shift
+  printf '%s' "$__tl_run_input" | "$__tl_lens" "$@"
+}
+
+# Standard test data
+__tl_10="1
+2
+3
+4
+5
+6
+7
+8
+9
+10"
+
+__tl_words="apple
+banana
+cherry
+date
+elderberry
+fig
+grape"
+
+__tl_csv="name,age,city
+alice,30,new york
+bob,25,chicago
+carol,35,denver"
+
+# ============================================================================
+# Position: --first
+# ============================================================================
+
+$t.section "Position: --first"
+
+__tl_out="$(__tl_run "$__tl_10" --first 3)"
+$t.assert_eq "first 3" "$__tl_out" "1
+2
+3"
+
+__tl_out="$(__tl_run "$__tl_10" --first 1)"
+$t.assert_eq "first 1" "$__tl_out" "1"
+
+__tl_out="$(__tl_run "$__tl_10" --first 100)"
+$t.assert_eq "first > length" "$__tl_out" "$__tl_10"
+
+__tl_out="$(__tl_run "" --first 5)"
+$t.assert_eq "first on empty" "$__tl_out" ""
+
+# ============================================================================
+# Position: --last
+# ============================================================================
+
+$t.section "Position: --last"
+
+__tl_out="$(__tl_run "$__tl_10" --last 3)"
+$t.assert_eq "last 3" "$__tl_out" "8
+9
+10"
+
+__tl_out="$(__tl_run "$__tl_10" --last 1)"
+$t.assert_eq "last 1" "$__tl_out" "10"
+
+__tl_out="$(__tl_run "$__tl_10" --last 100)"
+$t.assert_eq "last > length" "$__tl_out" "$__tl_10"
+
+# ============================================================================
+# Position: --first + --last combined
+# ============================================================================
+
+$t.section "Position: first+last combined"
+
+# first 5, then last 2 of those → lines 4,5
+__tl_out="$(__tl_run "$__tl_10" --first 5 --last 2)"
+$t.assert_eq "first 5 last 2" "$__tl_out" "4
+5"
+
+# last 5, then first 2 of those → lines 6,7
+__tl_out="$(__tl_run "$__tl_10" --last 5 --first 2)"
+$t.assert_eq "last 5 first 2" "$__tl_out" "6
+7"
+
+# ============================================================================
+# Position: --from / --to
+# ============================================================================
+
+$t.section "Position: --from/--to"
+
+__tl_out="$(__tl_run "$__tl_10" --from 3 --to 5)"
+$t.assert_eq "from 3 to 5" "$__tl_out" "3
+4
+5"
+
+__tl_out="$(__tl_run "$__tl_10" --from 8)"
+$t.assert_eq "from 8 (no to)" "$__tl_out" "8
+9
+10"
+
+__tl_out="$(__tl_run "$__tl_10" --to 3)"
+$t.assert_eq "to 3 (no from)" "$__tl_out" "1
+2
+3"
+
+# ============================================================================
+# Position: --not
+# ============================================================================
+
+$t.section "Position: --not"
+
+# not first 2 → skip first 2, print rest
+__tl_out="$(__tl_run "$__tl_10" --not --first 2)"
+$t.assert_eq "not first 2" "$__tl_out" "3
+4
+5
+6
+7
+8
+9
+10"
+
+# not last 2 → print all except last 2
+__tl_out="$(__tl_run "$__tl_10" --not --last 2)"
+$t.assert_eq "not last 2" "$__tl_out" "1
+2
+3
+4
+5
+6
+7
+8"
+
+# not from 3 to 5 → skip lines 3-5
+__tl_out="$(__tl_run "$__tl_10" --not --from 3 --to 5)"
+$t.assert_eq "not from 3 to 5" "$__tl_out" "1
+2
+6
+7
+8
+9
+10"
+
+# ============================================================================
+# Match: basic
+# ============================================================================
+
+$t.section "Match: basic"
+
+__tl_out="$(__tl_run "$__tl_words" --match 'e')"
+$t.assert_eq "match e" "$__tl_out" "apple
+cherry
+date
+elderberry
+grape"
+
+__tl_out="$(__tl_run "$__tl_words" --no-match 'e')"
+$t.assert_eq "no-match e" "$__tl_out" "banana
+fig"
+
+# ============================================================================
+# Match: --and / --or
+# ============================================================================
+
+$t.section "Match: --and/--or"
+
+# and: must have 'a' AND 'e'
+__tl_out="$(__tl_run "$__tl_words" --and --match 'a' --match 'e')"
+$t.assert_eq "and match a+e" "$__tl_out" "apple
+date
+grape"
+
+# or: has 'b' OR 'f'
+__tl_out="$(__tl_run "$__tl_words" --or --match 'b' --match 'f')"
+$t.assert_eq "or match b|f" "$__tl_out" "banana
+elderberry
+fig"
+
+# and with no-match: has 'a' but not 'p'
+__tl_out="$(__tl_run "$__tl_words" --and --match 'a' --no-match 'p')"
+$t.assert_eq "and match a no-match p" "$__tl_out" "banana
+date"
+
+# ============================================================================
+# Match: --not
+# ============================================================================
+
+$t.section "Match: --not"
+
+# not match 'e' → everything that does NOT have 'e'
+__tl_out="$(__tl_run "$__tl_words" --not --match 'e')"
+$t.assert_eq "not match e" "$__tl_out" "banana
+fig"
+
+# ============================================================================
+# Fields
+# ============================================================================
+
+$t.section "Fields"
+
+__tl_out="$(__tl_run "$__tl_csv" --fields 1 -f ',')"
+$t.assert_eq "field 1 csv" "$__tl_out" "name
+alice
+bob
+carol"
+
+__tl_out="$(__tl_run "$__tl_csv" --fields 1,3 -f ',')"
+$t.assert_eq "fields 1,3 csv" "$__tl_out" "name,city
+alice,new york
+bob,chicago
+carol,denver"
+
+# not fields: exclude field 2
+__tl_out="$(__tl_run "$__tl_csv" --not --fields 2 -f ',')"
+$t.assert_eq "not field 2" "$__tl_out" "name,city
+alice,new york
+bob,chicago
+carol,denver"
+
+# ============================================================================
+# Chars
+# ============================================================================
+
+$t.section "Chars"
+
+__tl_fixed="ABCDEFGHIJ
+1234567890
+abcdefghij"
+
+__tl_out="$(__tl_run "$__tl_fixed" --chars 1-3)"
+$t.assert_eq "chars 1-3" "$__tl_out" "ABC
+123
+abc"
+
+__tl_out="$(__tl_run "$__tl_fixed" --chars 1,5,10)"
+$t.assert_eq "chars 1,5,10" "$__tl_out" "AEJ
+150
+aej"
+
+# ============================================================================
+# Formatting: --number
+# ============================================================================
+
+$t.section "Formatting: --number"
+
+__tl_out="$(__tl_run "$__tl_10" --first 3 --number)"
+$t.assert_eq "number with first 3" "$__tl_out" "1	1
+2	2
+3	3"
+
+# ============================================================================
+# Formatting: --count
+# ============================================================================
+
+$t.section "Formatting: --count"
+
+__tl_out="$(__tl_run "$__tl_words" --count --match 'e')"
+$t.assert_eq "count match e" "$__tl_out" "5"
+
+__tl_out="$(__tl_run "$__tl_10" --count --first 4)"
+$t.assert_eq "count first 4" "$__tl_out" "4"
+
+__tl_out="$(__tl_run "" --count --match 'x')"
+$t.assert_eq "count empty" "$__tl_out" "0"
+
+# ============================================================================
+# Record delimiter
+# ============================================================================
+
+$t.section "Record delimiter"
+
+__tl_para="para one line 1
+para one line 2
+
+para two line 1
+
+para three line 1
+para three line 2
+para three line 3"
+
+__tl_out="$(__tl_run "$__tl_para" -D $'\n\n' --first 1)"
+$t.assert_eq "paragraph mode first 1" "$__tl_out" "para one line 1
+para one line 2"
+
+__tl_out="$(__tl_run "$__tl_para" -D $'\n\n' --count)"
+$t.assert_eq "paragraph mode count" "$__tl_out" "3"
+
+# ============================================================================
+# Edge cases
+# ============================================================================
+
+$t.section "Edge cases"
+
+# Single line, no trailing newline
+__tl_out="$(printf 'hello' | "$__tl_lens" --first 1)"
+$t.assert_eq "single line no newline" "$__tl_out" "hello"
+
+# File input
+__tl_tmp=$(mktemp)
+printf '%s\n' "$__tl_10" > "$__tl_tmp"
+__tl_out="$("$__tl_lens" -P "$__tl_tmp" --last 2)"
+$t.assert_eq "file input last 2" "$__tl_out" "9
+10"
+rm -f "$__tl_tmp"
+
+# No filter (pass-through) — need at least -P /dev/stdin to signal "read stdin"
+__tl_out="$(__tl_run "$__tl_10" -P /dev/stdin)"
+$t.assert_eq "no filter passthrough" "$__tl_out" "$__tl_10"
+
+# ============================================================================
+# Mutual exclusion enforcement
+# ============================================================================
+
+$t.section "Mutual exclusion"
+
+$t.assert_fail "first + match exclusive" \
+  bash -c "cd '$__tl_root'; printf 'x\n' | ./lens --first 1 --match x"
+
+$t.assert_fail "fields + chars exclusive" \
+  bash -c "cd '$__tl_root'; printf 'x\n' | ./lens --fields 1 --chars 1"
+
+$t.assert_fail "and + or exclusive" \
+  bash -c "cd '$__tl_root'; printf 'x\n' | ./lens --and --or --match x"
+
+$t.summary
