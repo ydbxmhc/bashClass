@@ -37,20 +37,11 @@ Socket.new() {
   [[ -n "$__Socket_new_host" ]] || { _Error "Socket.new: host required"; return 1; }
   [[ -n "$__Socket_new_port" ]] || { _Error "Socket.new: port required"; return 1; }
 
-  # exec without a command makes ALL redirections permanent in the current shell,
-  # so "exec {fd}<>/dev/tcp/... 2>/dev/null" would permanently redirect stderr.
-  # Save and restore fd 2 explicitly to suppress the bash error on failure.
-  local -i __Socket_new_fd=0 __Socket_new_save2
-  exec {__Socket_new_save2}>&2
-  exec 2>/dev/null
-  exec {__Socket_new_fd}<>/dev/tcp/"$__Socket_new_host"/"$__Socket_new_port"
-  local __Socket_new_rc=$?
-  exec 2>&"$__Socket_new_save2"
-  exec {__Socket_new_save2}>&-
-  if (( __Socket_new_rc )); then
+  local -i __Socket_new_fd=0
+  exec {__Socket_new_fd}<>/dev/tcp/"$__Socket_new_host"/"$__Socket_new_port" || {
     _Error "Socket.new: could not connect to ${__Socket_new_host}:${__Socket_new_port}"
     return 1
-  fi
+  }
 
   into=__Socket_new_self __boop.new \
     host="$__Socket_new_host" \
