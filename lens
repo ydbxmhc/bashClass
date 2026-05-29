@@ -40,7 +40,7 @@ lens { --first N [--last N] | --last N [--first N]
      | --match PAT...      [--no-match PAT...] [--and|--or]
      | --fields SPEC       [-f|-F|-W DELIM]
      | --chars SPEC }
-     [--not] [-d|-D|-E DELIM] [-n] [-c] [-P file]
+     [--not] [-d|-D|-E DELIM] [-n] [-c] [-H] [-P file]
 
   More: --options, --examples, --about, --boop
 
@@ -83,6 +83,7 @@ fdelimCol         | W =
 # --- Formatting ---
 number            | n
 count             | c
+prefix            | H
 
 [Exclusive]
 (first last from to) | (match no_match) | (fields) | (chars)
@@ -132,6 +133,12 @@ lens — Examples
     lens -D $'"'"'\r\n'"'"' --first 5 win.log     CRLF records
     lens -E $'"'"'\r\n'"'"' --count file.txt      any of CR or LF ends a record
 
+  Multiple files (per-file operation with ==> filename <== headers):
+    lens --first 5 a.log b.log           first 5 lines of each file
+    lens --match ERROR a.log b.log       matching lines from each (with headers)
+    lens --match ERROR -H a.log b.log    grep-style filename:line output
+    lens --count --match ERROR *.log     total match count across all files
+
   Combining with pipes:
     lens --last 100 file | lens --match error    errors in last 100 lines
     lens --match error file | lens --fields 1,4  fields from matching lines
@@ -175,7 +182,8 @@ lens — Options Reference
 
   Formatting:
     -n, --number            Prepend record numbers to output
-    -c, --count             Emit count instead of content
+    -c, --count             Emit total count across all files
+    -H, --prefix            Prefix each output line with filename (instead of headers)
 
   Help:
     -h, --help              This synopsis
@@ -249,6 +257,9 @@ declare -ga _lens_flds=()
 # Count of selected records (for --count mode).
 declare -gi _lens_sel_count=0
 
+# Current filename being processed (set by multi-file loop; used by --prefix).
+declare -g __lens_current_file=""
+
 # ---------------------------------------------------------------------------
 # _lens_emit_rec  N  REC
 # what: Emit one selected record, respecting --number and --count mode.
@@ -257,12 +268,15 @@ declare -gi _lens_sel_count=0
 # returns: nothing; writes to stdout or increments _lens_sel_count
 # gotchas: _lens_sel_count is a global (declare -gi above); reset before run
 _lens_emit_rec() {
+  local __lens_emit_pfx=""
+  [[ -n "${__lens_current_file:-}" && -n "${prefix:-}" ]] && \
+    __lens_emit_pfx="${__lens_current_file}:"
   if (( count )); then
     (( ++_lens_sel_count ))
   elif (( number )); then
-    printf '%d\t%s\n' "$1" "$2"
+    printf '%s%d\t%s\n' "$__lens_emit_pfx" "$1" "$2"
   else
-    printf '%s\n' "$2"
+    printf '%s%s\n' "$__lens_emit_pfx" "$2"
   fi
 }
 
@@ -590,15 +604,22 @@ _lens_run() {
   fi
 
   $__lens_run_s.close
-  if (( count )); then printf '%d\n' "$_lens_sel_count"; fi
 }
 
 if (( ${#__lens_files[@]} > 1 )); then
+  declare -i __lens_multi_first=1
   for __lens_multi_f in "${__lens_files[@]}"; do
     file="$__lens_multi_f"
-    _lens_sel_count=0
+    __lens_current_file="$__lens_multi_f"
+    if (( ! prefix && ! count )); then
+      (( __lens_multi_first )) || printf '\n'
+      __lens_multi_first=0
+      printf '==> %s <==\n' "$__lens_multi_f"
+    fi
     _lens_run
   done
 else
+  [[ -n "${file:-}" ]] && __lens_current_file="${file}"
   _lens_run
 fi
+if (( count )); then printf '%d\n' "$_lens_sel_count"; fi
