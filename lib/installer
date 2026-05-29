@@ -1,0 +1,342 @@
+#!/usr/bin/env bash
+# lib/installer — boop framework installer
+#
+# Embedded by collider into bundled tools. Provides --boop-install
+# functionality: downloads or extracts the full boop framework to disk,
+# writes a .booprc, and reports success.
+#
+# Install strategy (cascade — first available wins):
+#   1. git clone (full repo, updatable)
+#   2. curl (download full-bundle file)
+#   3. wget (download full-bundle file)
+#   4. openssl s_client + bash (pure TLS fetch — no curl/wget needed)
+#   5. Self-extract (the bundle IS the framework; unpack from $0)
+#
+# Location strategy (prompted, with suggestions):
+#   1. /usr/local/lib/boop (if writable — system-wide)
+#   2. ~/.local/lib/boop (user-local, no sudo needed)
+#   3. Custom path (user provides)
+#
+# This file is NOT a class or mixin. It's a plain function library
+# with the __installer_ prefix. Collider pastes it into bundles.
+
+# --- Configuration ---
+__installer_repo="https://github.com/ydbxmhc/bashClass.git"
+__installer_raw="https://raw.githubusercontent.com/ydbxmhc/bashClass/main"
+__installer_bundle_name="boop-full.bundle"
+
+# --- Utility ---
+
+__installer_has() { command -v "$1" >/dev/null; }
+
+__installer_prompt() {
+  local __installer_prompt_msg="$1" __installer_prompt_default="${2:-}"
+  local __installer_prompt_reply
+  if [[ -n "$__installer_prompt_default" ]]; then
+    printf '%s [%s]: ' "$__installer_prompt_msg" "$__installer_prompt_default" >&2
+  else
+    printf '%s: ' "$__installer_prompt_msg" >&2
+  fi
+  read -r __installer_prompt_reply
+  printf '%s' "${__installer_prompt_reply:-$__installer_prompt_default}"
+}
+
+__installer_confirm() {
+  local __installer_confirm_msg="$1"
+  local __installer_confirm_reply
+  printf '%s [Y/n]: ' "$__installer_confirm_msg" >&2
+  read -r __installer_confirm_reply
+  [[ "${__installer_confirm_reply,,}" == "n" ]] && return 1
+  return 0
+}
+
+__installer_writable() {
+  local __installer_writable_dir="$1"
+  # Check if the directory (or its nearest existing parent) is writable
+  while [[ -n "$__installer_writable_dir" ]]; do
+    if [[ -d "$__installer_writable_dir" ]]; then
+      [[ -w "$__installer_writable_dir" ]] && return 0 || return 1
+    fi
+    __installer_writable_dir="${__installer_writable_dir%/*}"
+  done
+  return 1
+}
+
+__installer_platform() {
+  local __installer_platform_os
+  case "$OSTYPE" in
+    linux*)  __installer_platform_os="linux" ;;
+    darwin*) __installer_platform_os="macos" ;;
+    msys*|cygwin*|mingw*) __installer_platform_os="windows" ;;
+    *)       __installer_platform_os="unknown" ;;
+  esac
+  printf '%s' "$__installer_platform_os"
+}
+
+# --- Download methods ---
+
+__installer_fetch_git() {
+  local __installer_fg_dest="$1"
+  printf '  Using git clone...\n' >&2
+  git clone --depth 1 "$__installer_repo" "$__installer_fg_dest"
+}
+
+__installer_fetch_curl() {
+  local __installer_fc_dest="$1"
+  local __installer_fc_url="${__installer_raw}/${__installer_bundle_name}"
+  printf '  Using curl...\n' >&2
+  curl -fsSL "$__installer_fc_url" -o "${__installer_fc_dest}/${__installer_bundle_name}"
+}
+
+__installer_fetch_wget() {
+  local __installer_fw_dest="$1"
+  local __installer_fw_url="${__installer_raw}/${__installer_bundle_name}"
+  printf '  Using wget...\n' >&2
+  wget -q "$__installer_fw_url" -O "${__installer_fw_dest}/${__installer_bundle_name}"
+}
+
+# Pure bash HTTPS fetch via openssl s_client.
+# Minimal HTTP/1.1 GET — follows no redirects, handles chunked poorly.
+# Good enough for grabbing a single known file from a known URL.
+__installer_fetch_openssl() {
+  local __installer_fo_dest="$1"
+  local __installer_fo_host="raw.githubusercontent.com"
+  local __installer_fo_path="/ydbxmhc/bashClass/main/${__installer_bundle_name}"
+  local __installer_fo_outfile="${__installer_fo_dest}/${__installer_bundle_name}"
+
+  printf '  Using openssl s_client (no curl/wget available)...\n' >&2
+
+  {
+    printf 'GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n' \
+      "$__installer_fo_path" "$__installer_fo_host"
+  } | openssl s_client -connect "${__installer_fo_host}:443" -quiet 2>/dev/null | {
+    # Skip HTTP headers (everything up to the first blank line)
+    local __installer_fo_line
+    while IFS= read -r __installer_fo_line; do
+      [[ "$__installer_fo_line" == $'\r' || -z "$__installer_fo_line" ]] && break
+    done
+    # Rest is the body
+    cat
+  } > "$__installer_fo_outfile"
+
+  # Sanity check — did we get anything?
+  [[ -s "$__installer_fo_outfile" ]] || {
+    printf '  ERROR: download produced empty file\n' >&2
+    rm -f "$__installer_fo_outfile"
+    return 1
+  }
+}
+
+# --- .booprc generation ---
+
+__installer_write_booprc() {
+  local __installer_wrc_path="$1"
+  local __installer_wrc_rcfile="$HOME/.booprc"
+
+  # Don't clobber — append if it exists
+  if [[ -f "$__installer_wrc_rcfile" ]]; then
+    if grep -q "$__installer_wrc_path" "$__installer_wrc_rcfile"; then
+      printf '  .booprc already references this path — no changes needed.\n' >&2
+      return 0
+    fi
+    printf '  Appending to existing %s\n' "$__installer_wrc_rcfile" >&2
+    printf '\n# Added by boop installer\nBOOPPATH="%s${BOOPPATH:+:$BOOPPATH}"\n' \
+      "$__installer_wrc_path" >> "$__installer_wrc_rcfile"
+  else
+    printf '  Creating %s\n' "$__installer_wrc_rcfile" >&2
+    printf '# boop framework configuration\nBOOPPATH="%s${BOOPPATH:+:$BOOPPATH}"\n' \
+      "$__installer_wrc_path" > "$__installer_wrc_rcfile"
+  fi
+}
+
+# --- Main installer entry point ---
+
+__installer_run() {
+  local __installer_run_target="${1:-}"
+
+  printf '\n'
+  printf '  ╔══════════════════════════════════╗\n'
+  printf '  ║   boop framework installer       ║\n'
+  printf '  ╚══════════════════════════════════╝\n'
+  printf '\n'
+
+  local __installer_run_platform
+  __installer_run_platform="$(__installer_platform)"
+  printf '  Platform: %s\n' "$__installer_run_platform"
+
+  # --- Determine install location ---
+  if [[ -z "$__installer_run_target" ]]; then
+    printf '\n  Where should boop be installed?\n\n'
+
+    local __installer_run_default=""
+    if __installer_writable "/usr/local/lib"; then
+      __installer_run_default="/usr/local/lib/boop"
+      printf '    1) /usr/local/lib/boop  (system-wide, writable)\n'
+    else
+      printf '    1) /usr/local/lib/boop  (system-wide, needs sudo)\n'
+    fi
+    printf '    2) %s/.local/lib/boop  (user-local)\n' "$HOME"
+    printf '    3) Custom path\n'
+    printf '\n'
+
+    [[ -z "$__installer_run_default" ]] && __installer_run_default="$HOME/.local/lib/boop"
+
+    local __installer_run_choice
+    __installer_run_choice="$(__installer_prompt "  Choice (1/2/3 or path)" "$__installer_run_default")"
+
+    case "$__installer_run_choice" in
+      1) __installer_run_target="/usr/local/lib/boop" ;;
+      2) __installer_run_target="$HOME/.local/lib/boop" ;;
+      3) __installer_run_target="$(__installer_prompt "  Install path")" ;;
+      /*) __installer_run_target="$__installer_run_choice" ;;
+      *) __installer_run_target="$__installer_run_default" ;;
+    esac
+  fi
+
+  printf '\n  Install target: %s\n' "$__installer_run_target"
+
+  # --- Check for existing installation ---
+  if [[ -d "$__installer_run_target" ]]; then
+    if [[ -f "$__installer_run_target/boop" ]]; then
+      printf '  WARNING: boop already installed at this location.\n' >&2
+      __installer_confirm "  Overwrite?" || {
+        printf '  Aborted.\n' >&2
+        return 1
+      }
+      rm -rf "$__installer_run_target"
+    else
+      printf '  WARNING: directory exists but does not contain boop.\n' >&2
+      __installer_confirm "  Use this directory anyway?" || {
+        printf '  Aborted.\n' >&2
+        return 1
+      }
+    fi
+  fi
+
+  # --- Create parent directory ---
+  local __installer_run_parent="${__installer_run_target%/*}"
+  if [[ -n "$__installer_run_parent" && ! -d "$__installer_run_parent" ]]; then
+    mkdir -p "$__installer_run_parent" || {
+      printf '  ERROR: cannot create %s (permission denied?)\n' "$__installer_run_parent" >&2
+      return 1
+    }
+  fi
+
+  # --- Download/install ---
+  printf '\n  Downloading boop framework...\n'
+
+  local __installer_run_method=""
+  if __installer_has git; then
+    __installer_run_method="git"
+  elif __installer_has curl; then
+    __installer_run_method="curl"
+  elif __installer_has wget; then
+    __installer_run_method="wget"
+  elif __installer_has openssl; then
+    __installer_run_method="openssl"
+  fi
+
+  local -i __installer_run_rc=0
+  case "$__installer_run_method" in
+    git)
+      __installer_fetch_git "$__installer_run_target" || __installer_run_rc=$?
+      ;;
+    curl)
+      mkdir -p "$__installer_run_target"
+      __installer_fetch_curl "$__installer_run_target" || __installer_run_rc=$?
+      ;;
+    wget)
+      mkdir -p "$__installer_run_target"
+      __installer_fetch_wget "$__installer_run_target" || __installer_run_rc=$?
+      ;;
+    openssl)
+      mkdir -p "$__installer_run_target"
+      __installer_fetch_openssl "$__installer_run_target" || __installer_run_rc=$?
+      ;;
+    "")
+      printf '  No download method available (need git, curl, wget, or openssl).\n' >&2
+      printf '  You can manually download from: %s\n' "$__installer_repo" >&2
+      return 1
+      ;;
+  esac
+
+  if (( __installer_run_rc )); then
+    printf '  ERROR: download failed (exit %d)\n' "$__installer_run_rc" >&2
+    return 1
+  fi
+
+  # --- Write .booprc ---
+  printf '\n'
+  if __installer_confirm "  Configure ~/.booprc to find this installation?"; then
+    __installer_write_booprc "$__installer_run_target"
+  fi
+
+  # --- Add to PATH suggestion ---
+  printf '\n'
+  printf '  ✓ boop installed to: %s\n' "$__installer_run_target"
+  printf '\n'
+  printf '  To use immediately in this session:\n'
+  printf '    export BOOPPATH="%s"\n' "$__installer_run_target"
+  printf '    . "%s/boop"\n' "$__installer_run_target"
+  printf '\n'
+  printf '  To make permanent, add to your shell profile (~/.bashrc or ~/.bash_profile):\n'
+  printf '    export BOOPPATH="%s"\n' "$__installer_run_target"
+  printf '\n'
+
+  return 0
+}
+
+# --- Update entry point ---
+
+__installer_update() {
+  local __installer_update_path="${1:-}"
+
+  # Try to find existing installation
+  if [[ -z "$__installer_update_path" ]]; then
+    # Check BOOPPATH, then common locations
+    local __installer_update_candidate
+    for __installer_update_candidate in \
+      "${BOOPPATH%%:*}" \
+      "/usr/local/lib/boop" \
+      "$HOME/.local/lib/boop"; do
+      if [[ -d "$__installer_update_candidate/.git" ]]; then
+        __installer_update_path="$__installer_update_candidate"
+        break
+      fi
+    done
+  fi
+
+  if [[ -z "$__installer_update_path" ]]; then
+    printf '  Cannot find a git-based boop installation to update.\n' >&2
+    printf '  Specify the path: --boop-update /path/to/boop\n' >&2
+    return 1
+  fi
+
+  if [[ ! -d "$__installer_update_path/.git" ]]; then
+    printf '  %s is not a git repository — cannot update.\n' "$__installer_update_path" >&2
+    printf '  (Only git-cloned installations support --boop-update)\n' >&2
+    return 1
+  fi
+
+  printf '  Updating boop at: %s\n' "$__installer_update_path"
+  git -C "$__installer_update_path" pull || {
+    printf '  ERROR: git pull failed\n' >&2
+    return 1
+  }
+  printf '  ✓ Updated.\n'
+}
+
+# --- Dispatch (called from bundled tool's argument handling) ---
+
+__installer_dispatch() {
+  case "${1:-}" in
+    --boop-install)
+      __installer_run "${2:-}"
+      exit $?
+      ;;
+    --boop-update)
+      __installer_update "${2:-}"
+      exit $?
+      ;;
+  esac
+}

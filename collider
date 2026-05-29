@@ -231,6 +231,13 @@ __bb_do_output() {
     printf '\n'
   done
 
+  # Embed the installer library (enables --boop-install in the bundle)
+  if [[ -f "$__bb_root/lib/installer" ]]; then
+    printf '%s\n# lib/installer\n%s\n' "$__bb_sep" "$__bb_sep"
+    __bb_emit_file "$__bb_root/lib/installer"
+    printf '\n'
+  fi
+
   printf '%s\n# %s\n%s\n' "$__bb_sep" "$(basename "$__bb_tool")" "$__bb_sep"
   __bb_emit_file "$__bb_tool"
 }
