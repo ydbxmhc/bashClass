@@ -41,6 +41,7 @@ lens { --first N [--last N] | --last N [--first N]
 [Options]
 # --- Input ---
 file              | P =
+fd                | u =
 
 # --- Position (relative) ---
 first                 =
@@ -211,3 +212,271 @@ lens is built on boop — an OOP framework for bash 4.3+.
 
   Repository: https://github.com/ydbxmhc/bashClass
 ' "$@"
+
+# ============================================================================
+# Implementation
+# ============================================================================
+
+# Global used by Stream.read (must not be local — read builtin assigns to it
+# at the call site, which is inside Stream.read's frame, not ours).
+declare -g _lens_line=""
+
+# Global output of _lens_parse_spec (0-based indices).
+declare -ga _lens_spec_out=()
+
+# Global output of _lens_split_fields (split record fields).
+declare -ga _lens_flds=()
+
+# Count of selected records (for --count mode).
+declare -gi _lens_sel_count=0
+
+# ---------------------------------------------------------------------------
+# _lens_emit_rec  N  REC
+#   Emit one selected record.  Respects --number and --count.
+_lens_emit_rec() {
+  if (( count )); then
+    (( _lens_sel_count++ ))
+  elif (( number )); then
+    printf '%d\t%s\n' "$1" "$2"
+  else
+    printf '%s\n' "$2"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# _lens_parse_spec  SPEC
+#   Parse "1,3-5,7" into 0-based indices stored in global _lens_spec_out[].
+_lens_parse_spec() {
+  _lens_spec_out=()
+  local _spec="$1" _part _lo _hi _i
+  local -a _parts
+  IFS=',' read -ra _parts <<< "$_spec"
+  for _part in "${_parts[@]}"; do
+    if [[ "$_part" == *-* ]]; then
+      _lo="${_part%%-*}"; _hi="${_part##*-}"
+      for (( _i = _lo; _i <= _hi; _i++ )); do _lens_spec_out+=($(( _i - 1 ))); done
+    else
+      _lens_spec_out+=($(( _part - 1 )))
+    fi
+  done
+}
+
+# ---------------------------------------------------------------------------
+# _lens_split_fields  REC
+#   Split REC into _lens_flds[] using the active field delimiter.
+#   -F STRING : exact multi-char split (empties preserved)
+#   -W CHARS  : char-class, runs collapse (awk-style)
+#   -f CHARS  : char-set, no collapse (cut-style, empties preserved)
+#   default   : whitespace collapse
+_lens_split_fields() {
+  local _rec="$1"
+  _lens_flds=()
+  if [[ -n "$fdelimStr" ]]; then
+    local _r="$_rec"
+    while [[ "$_r" == *"$fdelimStr"* ]]; do
+      _lens_flds+=("${_r%%"$fdelimStr"*}"); _r="${_r#*"$fdelimStr"}"
+    done
+    _lens_flds+=("$_r")
+  elif [[ -n "$fdelimCol" ]]; then
+    local _ifs="$IFS"; IFS="$fdelimCol"
+    read -ra _lens_flds <<< "$_rec"
+    IFS="$_ifs"
+  elif [[ -n "$fdelimSet" ]]; then
+    local _c _field="" _i _di _hit _dl=${#fdelimSet} _len=${#_rec}
+    for (( _i = 0; _i < _len; _i++ )); do
+      _c="${_rec:_i:1}"; _hit=0
+      for (( _di = 0; _di < _dl; _di++ )); do
+        [[ "${fdelimSet:_di:1}" == "$_c" ]] && { _hit=1; break; }
+      done
+      if (( _hit )); then _lens_flds+=("$_field"); _field=""
+      else _field+="$_c"
+      fi
+    done
+    _lens_flds+=("$_field")
+  else
+    read -ra _lens_flds <<< "$_rec"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# _lens_run — main dispatch
+_lens_run() {
+  # Build Stream constructor args
+  local -a _sa=()
+  [[ -n "$file"      ]] && _sa+=(-P "$file")
+  [[ -n "$fd"        ]] && _sa+=(-u "$fd")
+  [[ -n "$eolChar"   ]] && _sa+=(-d "$eolChar")
+  [[ -n "$eolString" ]] && _sa+=(-D "$eolString")
+  [[ -n "$eolClass"  ]] && _sa+=(-E "$eolClass")
+
+  local _s
+  into=_s Stream.new "${_sa[@]}" _lens_line
+
+  local -i _n=0  # current record number
+
+  # ---- fields mode ----
+  if [[ -n "$fields" ]]; then
+    _lens_parse_spec "$fields"
+    local -a _fspec=("${_lens_spec_out[@]}")
+    local _ofs
+    if   [[ -n "$fdelimStr" ]]; then _ofs="$fdelimStr"
+    elif [[ -n "$fdelimSet" ]]; then _ofs="${fdelimSet:0:1}"
+    else _ofs=" "
+    fi
+    local _fi _out _i
+    while $_s.next; do
+      (( _n++ ))
+      _lens_split_fields "$_lens_line"
+      _out=""; _i=0
+      for _fi in "${_fspec[@]}"; do
+        (( _i++ > 0 )) && _out+="$_ofs"
+        _out+="${_lens_flds[$_fi]:-}"
+      done
+      _lens_emit_rec "$_n" "$_out"
+    done
+
+  # ---- chars mode ----
+  elif [[ -n "$chars" ]]; then
+    _lens_parse_spec "$chars"
+    local -a _cspec=("${_lens_spec_out[@]}")
+    local _ci _out
+    while $_s.next; do
+      (( _n++ ))
+      _out=""
+      for _ci in "${_cspec[@]}"; do _out+="${_lens_line:_ci:1}"; done
+      _lens_emit_rec "$_n" "$_out"
+    done
+
+  # ---- match mode ----
+  elif (( ${#match[@]} + ${#no_match[@]} > 0 )); then
+    local _pat _pass
+    while $_s.next; do
+      (( _n++ ))
+      _pass=1
+      if [[ -n "$or" ]]; then
+        _pass=0
+        for _pat in "${match[@]+"${match[@]}"}"; do
+          [[ "$_lens_line" =~ $_pat ]] && { _pass=1; break; }
+        done
+        if (( ! _pass )); then
+          for _pat in "${no_match[@]+"${no_match[@]}"}"; do
+            [[ ! "$_lens_line" =~ $_pat ]] && { _pass=1; break; }
+          done
+        fi
+      else
+        # AND (default)
+        for _pat in "${match[@]+"${match[@]}"}"; do
+          [[ "$_lens_line" =~ $_pat ]] || { _pass=0; break; }
+        done
+        if (( _pass )); then
+          for _pat in "${no_match[@]+"${no_match[@]}"}"; do
+            [[ "$_lens_line" =~ $_pat ]] && { _pass=0; break; }
+          done
+        fi
+      fi
+      (( not )) && (( _pass = ! _pass ))
+      (( _pass )) && _lens_emit_rec "$_n" "$_lens_line"
+    done
+
+  # ---- position mode ----
+  elif [[ -n "$first$last$from$to" ]]; then
+    local -i _ws=1 _we=-1  # window start / end (-1 = unlimited)
+    local -i _need_buf=0 _buf_sz=0 _buf_take=0
+
+    [[ -n "$from" ]] && _ws=$from
+    [[ -n "$to"   ]] && _we=$to
+
+    if [[ -n "$first" && -n "$last" ]]; then
+      if (( first >= last )); then
+        # first is outer: cap window at first N, then take last K of those
+        local -i _fe=$(( _ws + first - 1 ))
+        (( _we < 0 || _fe < _we )) && _we=$_fe
+        local -i _fs=$(( _we - last + 1 ))
+        (( _fs > _ws )) && _ws=$_fs
+      else
+        # last is outer: take last N, then take first K of those
+        if (( _we >= 0 )); then
+          # end is known — computable without buffering
+          local -i _ls=$(( _we - last + 1 ))
+          (( _ls < _ws )) && _ls=$_ws
+          _ws=$_ls
+          local -i _le=$(( _ls + first - 1 ))
+          (( _le < _we )) && _we=$_le
+        else
+          _need_buf=1; _buf_sz=$last; _buf_take=$first
+        fi
+      fi
+    elif [[ -n "$first" ]]; then
+      local -i _fe=$(( _ws + first - 1 ))
+      (( _we < 0 || _fe < _we )) && _we=$_fe
+    elif [[ -n "$last" ]]; then
+      if (( _we >= 0 )); then
+        local -i _ls=$(( _we - last + 1 ))
+        (( _ls < _ws )) && _ls=$_ws
+        _ws=$_ls
+      else
+        _need_buf=1; _buf_sz=$last
+      fi
+    fi
+
+    if (( _need_buf && not )); then
+      # --not + unbounded last: must collect all records to know what to skip
+      local -a _all=()
+      while $_s.next; do
+        (( _n++ ))
+        (( _n >= _ws )) || continue
+        _all+=("$_lens_line")
+      done
+      local -i _tot=${#_all[@]} _skip_s _skip_e _ri
+      _skip_s=$(( _tot - _buf_sz )); (( _skip_s < 0 )) && _skip_s=0
+      _skip_e=$(( _tot - 1 ))
+      (( _buf_take > 0 )) && _skip_e=$(( _skip_s + _buf_take - 1 ))
+      for (( _ri = 0; _ri < _tot; _ri++ )); do
+        (( _ri < _skip_s || _ri > _skip_e )) && \
+          _lens_emit_rec $(( _ws + _ri )) "${_all[$_ri]}"
+      done
+
+    elif (( _need_buf )); then
+      local -a _cbuf=()
+      while $_s.next; do
+        (( _n++ ))
+        (( _n >= _ws )) || continue
+        _cbuf+=("$_lens_line")
+        (( ${#_cbuf[@]} > _buf_sz )) && _cbuf=("${_cbuf[@]:1}")
+      done
+      local -i _tot _ee _rb _ri
+      _tot=${#_cbuf[@]}; _ee=$(( _tot - 1 )); _rb=$(( _n - _tot + 1 ))
+      (( _buf_take > 0 && _buf_take - 1 < _ee )) && _ee=$(( _buf_take - 1 ))
+      for (( _ri = 0; _ri <= _ee; _ri++ )); do
+        _lens_emit_rec $(( _rb + _ri )) "${_cbuf[$_ri]}"
+      done
+
+    else
+      # Direct range [_ws, _we]
+      local -i _in
+      while $_s.next; do
+        (( _n++ ))
+        (( _n >= _ws )) || continue
+        _in=1; (( _we >= 0 && _n > _we )) && _in=0
+        if (( not )); then
+          (( _in )) || _lens_emit_rec "$_n" "$_lens_line"
+        else
+          (( _in )) && _lens_emit_rec "$_n" "$_lens_line"
+          (( _we >= 0 && _n >= _we )) && break
+        fi
+      done
+    fi
+
+  # ---- pass-through (no filter) ----
+  else
+    while $_s.next; do
+      (( _n++ ))
+      (( not )) || _lens_emit_rec "$_n" "$_lens_line"
+    done
+  fi
+
+  $_s.close
+  if (( count )); then printf '%d\n' "$_lens_sel_count"; fi
+}
+
+_lens_run
