@@ -507,16 +507,16 @@ Stream.Read() {
 # ============================================================================
 
 __Stream._scrubCharClass() {
-  local __Stream_bc_str="$1" __Stream_bc_tmp
-  for c in ']' '^' '-'; do
-    __Stream_bc_tmp="${__Stream_bc_str//$c/}"
-    [[ "${#__Stream_bc_str}" == "${#__Stream_bc_tmp}" ]] && continue
-    case "$c" in
-      ']') __Stream_bc_str="]$__Stream_bc_tmp" ;;
-        *) __Stream_bc_str="$__Stream_bc_tmp$c" ;;
+  local __Stream_scrub_str="$1" __Stream_scrub_tmp __Stream_scrub_c
+  for __Stream_scrub_c in ']' '^' '-'; do
+    __Stream_scrub_tmp="${__Stream_scrub_str//$__Stream_scrub_c/}"
+    [[ "${#__Stream_scrub_str}" == "${#__Stream_scrub_tmp}" ]] && continue
+    case "$__Stream_scrub_c" in
+      ']') __Stream_scrub_str="]$__Stream_scrub_tmp" ;;
+        *) __Stream_scrub_str="$__Stream_scrub_tmp$__Stream_scrub_c" ;;
     esac
   done
-  boop.pass "$__Stream_bc_str" ${into:-}
+  boop.pass "$__Stream_scrub_str" ${into:-}
 }
 
 __Stream._fillBuffer() {

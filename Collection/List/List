@@ -167,7 +167,7 @@ Collection.List.length() {
 Collection.List.clear() {
   local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_clear_arr="__boop_data_${_Self}"
-  local -i __Collection_List_clear_len=0; [[ -n "${!__Collection_List_clear_arr[@]}" ]] && __Collection_List_clear_len=${#__Collection_List_clear_arr[@]}
+  local -i __Collection_List_clear_len=0; (( ${#__Collection_List_clear_arr[@]} )) && __Collection_List_clear_len=${#__Collection_List_clear_arr[@]} || true
   _Debug "clear: $__Collection_List_clear_len element(s) removed"
   __Collection_List_clear_arr=()
 }

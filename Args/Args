@@ -710,6 +710,7 @@ Args.parse() {
         __Args_parse_gpart="${__Args_parse_gpart%"${__Args_parse_gpart##*[![:space:]]}"}"
         [[ -z "$__Args_parse_gpart" ]] && continue
         local __Args_parse_g_has_set=0 __Args_parse_g_set_names=""
+        local IFS=$' \t\n'
         read -ra __Args_parse_gmembers <<< "$__Args_parse_gpart"
         for __Args_parse_gm in "${__Args_parse_gmembers[@]+"${__Args_parse_gmembers[@]}"}"; do
           if [[ -n "${__Args_values[$__Args_parse_gm]:-}" ]]; then
@@ -792,6 +793,7 @@ Args.parse() {
     __Args_parse_tog="${__Args_parse_tog#"${__Args_parse_tog%%[![:space:]]*}"}"
     __Args_parse_tog="${__Args_parse_tog%"${__Args_parse_tog##*[![:space:]]}"}"
     [[ -z "$__Args_parse_tog" ]] && continue
+    local IFS=$' \t\n'
     read -ra __Args_parse_tog_members <<< "$__Args_parse_tog"
     __Args_parse_tog_set=0; __Args_parse_tog_unset=0
     for __Args_parse_tog_m in "${__Args_parse_tog_members[@]+"${__Args_parse_tog_members[@]}"}"; do

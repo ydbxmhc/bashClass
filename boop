@@ -1902,6 +1902,7 @@ __boop.loader() {
   # Build the effective root list: . + BOOPPATH + PATH
   local -A __boop_loader_seen
   local -a __boop_loader_roots=()
+  trap 'unset -f __boop_loader_addRoot' RETURN
 
   __boop_loader_addRoot() {
     local __boop_loader_addRoot_r="$1"
@@ -2019,6 +2020,7 @@ __boop.classResolve() {
   # Deduplicate via scratchpad associative array (exact path match only).
   local -A __boop_classResolve_seen
   local -a __boop_classResolve_roots=()
+  trap 'unset -f __boop_classResolve_addRoot __boop_classResolve_r1' RETURN
 
   # Helper: add a root if not already seen
   __boop_classResolve_addRoot() {

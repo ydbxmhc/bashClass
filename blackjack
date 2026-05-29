@@ -390,14 +390,14 @@ declare -i __BJ_next=0
 # Shuffle the index array (Fisher-Yates) and reset the cursor.
 # Sub-millisecond since we're only moving integers around.
 __bj_shuffle() {
-  local -i __i __j __tmp
+  local -i __BJ_shuffle_i __BJ_shuffle_j __BJ_shuffle_tmp
   __BJ_order=()
-  for (( __i = 0; __i < 52; __i++ )); do __BJ_order[__i]="$__i"; done
-  for (( __i = 51; __i > 0; __i-- )); do
-    __j=$(( RANDOM % (__i + 1) ))
-    __tmp="${__BJ_order[__i]}"
-    __BJ_order[__i]="${__BJ_order[__j]}"
-    __BJ_order[__j]="$__tmp"
+  for (( __BJ_shuffle_i = 0; __BJ_shuffle_i < 52; __BJ_shuffle_i++ )); do __BJ_order[__BJ_shuffle_i]="$__BJ_shuffle_i"; done
+  for (( __BJ_shuffle_i = 51; __BJ_shuffle_i > 0; __BJ_shuffle_i-- )); do
+    __BJ_shuffle_j=$(( RANDOM % (__BJ_shuffle_i + 1) ))
+    __BJ_shuffle_tmp="${__BJ_order[__BJ_shuffle_i]}"
+    __BJ_order[__BJ_shuffle_i]="${__BJ_order[__BJ_shuffle_j]}"
+    __BJ_order[__BJ_shuffle_j]="$__BJ_shuffle_tmp"
   done
   __BJ_next=0
 }
