@@ -626,10 +626,12 @@ Stream.fieldCount() {
 
 Stream.close() {
   local _Self="${_Self:-}" _Class="${_Class:-Stream}"
-  if [[ -n "${__boop_static[${_Self}.fd]}" ]]; then
-    eval "exec ${__boop_static[${_Self}.fd]}>&-"
+  local __Stream_close_fd="${__boop_static[${_Self}.fd]:-}"
+  if [[ -n "$__Stream_close_fd" ]]; then
+    [[ "$__Stream_close_fd" =~ ^[0-9]+$ ]] || { _Error "Stream.close: invalid fd '${__Stream_close_fd}'"; return 1; }
+    exec {__Stream_close_fd}>&-
     __boop_static["${_Self}.eof"]="1"
-    _Info "close: fd=${__boop_static[${_Self}.fd]} closed"
+    _Info "close: fd=${__Stream_close_fd} closed"
   fi
 }
 
@@ -676,10 +678,12 @@ Stream.putBack() {
 # Private hook called by __boop.destroy.
 Stream._destroy() {
   local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  local __Stream_destroy_fd="${__boop_static[${_Self}.fd]:-}"
   # Close the FD if still open (eof flag indicates already closed by $s.close)
-  if [[ "${__boop_static[${_Self}.eof]}" != "1" && -n "${__boop_static[${_Self}.fd]:-}" ]]; then
-    _Trace "destroy: closing fd=${__boop_static[${_Self}.fd]}"
-    eval "exec ${__boop_static[${_Self}.fd]}>&-"
+  if [[ "${__boop_static[${_Self}.eof]}" != "1" && -n "$__Stream_destroy_fd" ]]; then
+    _Trace "destroy: closing fd=${__Stream_destroy_fd}"
+    [[ "$__Stream_destroy_fd" =~ ^[0-9]+$ ]] || { _Error "Stream._destroy: invalid fd '${__Stream_destroy_fd}'"; return 1; }
+    exec {__Stream_destroy_fd}>&-
   fi
   # Unset companion arrays
   _Trace "destroy: unsetting __boop_data_${_Self}_fields, __boop_data_${_Self}_readArgs"

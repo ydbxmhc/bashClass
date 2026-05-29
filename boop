@@ -239,6 +239,12 @@ declare -gi __boop_loaded=0
 # Global object counter for unique ID generation. Incremented by __boop.new.
 declare -gi __boop_id=0
 
+# EXIT guard: if the script crashes mid-load (e.g. inside a sourced tmpfile),
+# remove any in-progress class-loading tmpfiles for this PID so they don't
+# accumulate in /tmp. On normal exit these files are already gone; the trap
+# is a no-op in that case.
+trap 'rm -f "${TMPDIR:-/tmp}/__boop_bf_$$" "${TMPDIR:-/tmp}/__boop_rc_$$" "${TMPDIR:-/tmp}/__boop_alias_$$"' EXIT
+
 # ============================================================================
 # UTILITY
 # ============================================================================
