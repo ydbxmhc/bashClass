@@ -11,14 +11,14 @@ printf '
 # Helper: print a loading message, overwriting the previous one.
 # Uses \r + spaces to clear the line, so consecutive calls stack
 # cleanly without newlines.
-__bj_loading() {
+__BJ_loading() {
   printf "\r                                              \r  %s" "$1"
 }
 
 # The heavy work is PlayingCard.newDeck (~9s). The other steps are
 # near-instant. These three messages are for color; we pace them
 # with short sleeps so the narrative beats feel roughly even.
-__bj_loading "Unwrapping a fresh deck..."
+__BJ_loading "Unwrapping a fresh deck..."
 
 # ─────────────────────────────────────────────────────────────────────
 # BLACKJACK — a boop framework demonstration
@@ -369,11 +369,11 @@ declare -i bankroll=100 round=0
 #
 # At end-of-hand, hands are "discarded" (cleared). The cards stay in the
 # master forever; we just stop referencing them via the hands.
-__bj_loading "Shuffling thoroughly..."
+__BJ_loading "Shuffling thoroughly..."
 into=__BJ_one_deck PlayingCard.newDeck
 declare -a __BJ_master=()
 declare -i __BJ_mi __BJ_mlen
-__bj_loading "Loading into the shoe..."
+__BJ_loading "Loading into the shoe..."
 into=__BJ_mlen $__BJ_one_deck.length
 for (( __BJ_mi=0; __BJ_mi < __BJ_mlen; __BJ_mi++ )); do
   into=__BJ_master[__BJ_mi] $__BJ_one_deck.getAt $__BJ_mi
@@ -389,7 +389,7 @@ declare -i __BJ_next=0
 
 # Shuffle the index array (Fisher-Yates) and reset the cursor.
 # Sub-millisecond since we're only moving integers around.
-__bj_shuffle() {
+__BJ_shuffle() {
   local -i __BJ_shuffle_i __BJ_shuffle_j __BJ_shuffle_tmp
   __BJ_order=()
   for (( __BJ_shuffle_i = 0; __BJ_shuffle_i < 52; __BJ_shuffle_i++ )); do __BJ_order[__BJ_shuffle_i]="$__BJ_shuffle_i"; done
@@ -404,7 +404,7 @@ __bj_shuffle() {
 
 # Draw the next card from the shuffled order and advance the cursor.
 # Returns the card's object ID via boop.pass, honoring into=.
-__bj_draw() {
+__BJ_draw() {
   local __card="${__BJ_master[${__BJ_order[__BJ_next]}]}"
   (( __BJ_next++ ))
   boop.pass "$__card" ${into:-}
@@ -412,12 +412,12 @@ __bj_draw() {
 
 # Discard a hand: clear its contents. The cards stay in the master
 # forever -- hands just stop referencing them.
-__bj_discard() {
+__BJ_discard() {
   local __hand="$1"
   $__hand.clear
 }
 
-__bj_shuffle
+__BJ_shuffle
 
 # Hands are reused across rounds -- at end-of-round we discard (clear)
 # them, which is cheap, rather than creating new hand objects each time.
@@ -446,23 +446,23 @@ while (( bankroll > 0 )); do
   # ~18 cards (2 initial each + up to ~8 hits per player before bust).
   # 20 is a safe threshold. The reshuffle itself is sub-millisecond.
   if (( 52 - __BJ_next < 20 )); then
-    __bj_loading "Shuffling..."
-    __bj_shuffle
+    __BJ_loading "Shuffling..."
+    __BJ_shuffle
     printf '\r                                              \r'
   fi
 
   # Start of round: discard both hands (carried over from prior round
   # on rounds 2+) and reset the hole-card flag.
-  __bj_discard "$player"; $player.set hidden "1"
-  __bj_discard "$dealer"; $dealer.set hidden "1"
+  __BJ_discard "$player"; $player.set hidden "1"
+  __BJ_discard "$dealer"; $dealer.set hidden "1"
 
   # Deal: player, dealer, player, dealer. We draw from the working
   # order and push straight into the hand.
   declare __BJ_card
-  into=__BJ_card __bj_draw; $player.push "$__BJ_card"
-  into=__BJ_card __bj_draw; $dealer.push "$__BJ_card"
-  into=__BJ_card __bj_draw; $player.push "$__BJ_card"
-  into=__BJ_card __bj_draw; $dealer.push "$__BJ_card"
+  into=__BJ_card __BJ_draw; $player.push "$__BJ_card"
+  into=__BJ_card __BJ_draw; $dealer.push "$__BJ_card"
+  into=__BJ_card __BJ_draw; $player.push "$__BJ_card"
+  into=__BJ_card __BJ_draw; $dealer.push "$__BJ_card"
 
   # ── Check naturals ──
   declare -i player_bj=0 dealer_bj=0
@@ -501,7 +501,7 @@ while (( bankroll > 0 )); do
     into=__BJ_choice player_action "[H]it, [S]tand, [P]eek, [Q]uit"
     case "${__BJ_choice,,}" in
       h)
-        into=__BJ_card __bj_draw; $player.push "$__BJ_card"
+        into=__BJ_card __BJ_draw; $player.push "$__BJ_card"
         if $player.isBust; then
           $player.reveal
           (( bankroll -= bet ))
@@ -551,7 +551,7 @@ while (( bankroll > 0 )); do
   while true; do
     into=dtotal $dealer.total
     (( dtotal >= 17 )) && break
-    into=__BJ_card __bj_draw; $dealer.push "$__BJ_card"
+    into=__BJ_card __BJ_draw; $dealer.push "$__BJ_card"
     draw_table "$player" "$dealer" "$round" "$bankroll" "$bet" \
       "Dealer hits..."
     (( __BJ_simple )) || sleep 1
