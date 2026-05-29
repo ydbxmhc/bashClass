@@ -386,7 +386,7 @@ boson --install /opt/boop    # custom location
 - `.booprc` generation with BOOPPATH pointing at the install
 - Platform detection (Linux, macOS, WSL, Git Bash on Windows)
 
-**Bundle build tool (`boop.bundle`):**
+**Bundle build tool (`collider`):**
 
 A real tool, not a cat pipeline. The bundler must:
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# boop.bundle — produce a self-contained single-file bundle
+# collider — produce a self-contained single-file bundle
 
 set -euo pipefail
 
@@ -9,7 +9,7 @@ __bb_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 Args.parse '
 [Use]
-boop.bundle <tool-file> [-o output]
+collider <tool-file> [-o output]
 
   Bundle a boop tool and all its class dependencies into a single
   portable executable that runs on any machine with bash 4.3+.
@@ -24,8 +24,8 @@ output | o =    # output file (default: <tool-file>.bundle; use - for stdout)
 
 __bb_tool="${_ArgsRemaining[0]:-}"
 
-[[ -n "$__bb_tool" ]]                    || { printf 'boop.bundle: tool file required\n' >&2; exit 1; }
-[[ -f "$__bb_tool" && -r "$__bb_tool" ]] || { printf 'boop.bundle: cannot read: %s\n' "$__bb_tool" >&2; exit 1; }
+[[ -n "$__bb_tool" ]]                    || { printf 'collider: tool file required\n' >&2; exit 1; }
+[[ -f "$__bb_tool" && -r "$__bb_tool" ]] || { printf 'collider: cannot read: %s\n' "$__bb_tool" >&2; exit 1; }
 
 __bb_output="${output:-${__bb_tool}.bundle}"
 unset output
@@ -88,7 +88,7 @@ __bb_resolve() {
     return 0
   fi
 
-  printf 'boop.bundle: cannot resolve: %s\n' "$__bb_r_name" >&2
+  printf 'collider: cannot resolve: %s\n' "$__bb_r_name" >&2
   return 1
 }
 
@@ -147,7 +147,7 @@ __bb_visit() {
 
   [[ -n "${__bb_visited[$__bb_v_path]+set}" ]] && {
     [[ "${__bb_visited[$__bb_v_path]}" == in-progress ]] && \
-      printf 'boop.bundle: WARNING: cycle at %s\n' "$__bb_v_name" >&2
+      printf 'collider: WARNING: cycle at %s\n' "$__bb_v_name" >&2
     return 0
   }
 
@@ -157,7 +157,7 @@ __bb_visit() {
   while IFS= read -r __bb_v_dep; do
     [[ -n "$__bb_v_dep" ]] || continue
     __bb_visit "$__bb_v_dep" || \
-      printf 'boop.bundle: WARNING: skipping unresolved dep: %s\n' "$__bb_v_dep" >&2
+      printf 'collider: WARNING: skipping unresolved dep: %s\n' "$__bb_v_dep" >&2
   done < <(__bb_file_deps "$__bb_v_path")
 
   __bb_visited["$__bb_v_path"]=done
@@ -210,7 +210,7 @@ __bb_sep='# ============================================================'
 
 __bb_do_output() {
   printf '#!/usr/bin/env bash\n'
-  printf '# bundled by boop.bundle — do not edit\n'
+  printf '# bundled by collider — do not edit\n'
   printf '# tool: %s\n' "$(basename "$__bb_tool")"
   printf '\n'
 
@@ -246,11 +246,11 @@ while IFS= read -r __bb_dep; do
 done < <(__bb_file_deps "$__bb_tool")
 
 (( ${#__bb_roots[@]} > 0 )) || \
-  printf 'boop.bundle: WARNING: no boop dependencies found in %s\n' "$__bb_tool" >&2
+  printf 'collider: WARNING: no boop dependencies found in %s\n' "$__bb_tool" >&2
 
 # Walk the dep graph
 for __bb_root_dep in "${__bb_roots[@]}"; do
-  __bb_visit "$__bb_root_dep" || { printf 'boop.bundle: FATAL: failed on %s\n' "$__bb_root_dep" >&2; exit 1; }
+  __bb_visit "$__bb_root_dep" || { printf 'collider: FATAL: failed on %s\n' "$__bb_root_dep" >&2; exit 1; }
 done
 
 # Write output
@@ -259,5 +259,5 @@ if [[ "$__bb_output" == "-" ]]; then
 else
   __bb_do_output > "$__bb_output"
   chmod +x "$__bb_output"
-  printf 'boop.bundle: wrote %s (%d lines)\n' "$__bb_output" "$(wc -l < "$__bb_output")" >&2
+  printf 'collider: wrote %s (%d lines)\n' "$__bb_output" "$(wc -l < "$__bb_output")" >&2
 fi
