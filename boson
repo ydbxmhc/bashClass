@@ -265,133 +265,131 @@ __boson_output_array() {
 # Execute query
 # ============================================================================
 
-__boson_parse_expr "$__boson_expr"
+__boson_run() {
+  __boson_parse_expr "$__boson_expr"
 
-if [[ -n "$__boson_iter" ]]; then
-  # Array iteration: enumerate numeric indices under the prefix
-  local -n __boson_data="__boop_data_${__boson_doc}"
-  local __boson_sep=""
-  into=__boson_sep $__boson_doc.get sep
-  : "${__boson_sep:=.}"
+  if [[ -n "$__boson_iter" ]]; then
+    # Array iteration: enumerate numeric indices under the prefix
+    local -n __boson_data="__boop_data_${__boson_doc}"
+    local __boson_sep="."
 
-  # Find all numeric children of the prefix
-  local __boson_prefix="${__boson_key}${__boson_sep}"
-  local __boson_k __boson_idx __boson_rest __boson_val
-  local -A __boson_seen_idx=()
+    # Find all numeric children of the prefix
+    local __boson_prefix="${__boson_key}${__boson_sep}"
+    local __boson_k __boson_idx __boson_rest __boson_val
+    local -A __boson_seen_idx=()
 
-  for __boson_k in "${!__boson_data[@]}"; do
-    [[ "$__boson_k" == "$__boson_prefix"* ]] || continue
-    __boson_rest="${__boson_k#"$__boson_prefix"}"
-    __boson_idx="${__boson_rest%%"$__boson_sep"*}"
-    [[ "$__boson_idx" =~ ^[0-9]+$ ]] || continue
-    [[ -n "${__boson_seen_idx[$__boson_idx]+set}" ]] && continue
-    __boson_seen_idx[$__boson_idx]=1
-  done
-
-  # Sort indices numerically
-  local -a __boson_indices=()
-  for __boson_idx in "${!__boson_seen_idx[@]}"; do
-    __boson_indices+=("$__boson_idx")
-  done
-  local -i __boson_i __boson_j __boson_tmp_idx
-  for (( __boson_i = 1; __boson_i < ${#__boson_indices[@]}; __boson_i++ )); do
-    __boson_tmp_idx=${__boson_indices[$__boson_i]}
-    __boson_j=$__boson_i
-    while (( __boson_j > 0 && __boson_indices[__boson_j-1] > __boson_tmp_idx )); do
-      __boson_indices[$__boson_j]=${__boson_indices[$((__boson_j-1))]}
-      (( --__boson_j ))
-    done
-    __boson_indices[$__boson_j]=$__boson_tmp_idx
-  done
-
-  # Collect values
-  local -a __boson_arr_vals=()
-  for __boson_idx in "${__boson_indices[@]}"; do
-    if [[ -n "$__boson_suffix" ]]; then
-      local __boson_full_key="${__boson_key}${__boson_sep}${__boson_idx}${__boson_sep}${__boson_suffix}"
-    else
-      local __boson_full_key="${__boson_key}${__boson_sep}${__boson_idx}"
-    fi
-    into=__boson_val $__boson_doc.get "$__boson_full_key"
-    [[ -n "$__boson_val" ]] || continue
-
-    if [[ -n "$into_var" || -n "$eponymous" ]]; then
-      __boson_arr_vals+=("$__boson_val")
-    else
-      local __boson_leaf_name="${__boson_suffix:-$__boson_idx}"
-      __boson_output "$__boson_val" "$(__boson_varname "$__boson_leaf_name")"
-    fi
-  done
-
-  # Sourceable array output
-  if [[ -n "$into_var" ]]; then
-    __boson_output_array "$into_var" "${__boson_arr_vals[@]}"
-  elif [[ -n "$eponymous" ]]; then
-    local __boson_arr_name
-    if [[ -n "$__boson_suffix" ]]; then
-      __boson_arr_name="$(__boson_varname "$__boson_suffix")"
-    else
-      __boson_arr_name="$(__boson_varname "$__boson_key")"
-    fi
-    __boson_output_array "$__boson_arr_name" "${__boson_arr_vals[@]}"
-  fi
-
-elif [[ -n "$emit" ]]; then
-  # Emit mode with no iteration: dump all keys under the expression as assignments
-  local -n __boson_data="__boop_data_${__boson_doc}"
-  local __boson_sep=""
-  into=__boson_sep $__boson_doc.get sep
-  : "${__boson_sep:=.}"
-
-  local __boson_prefix=""
-  [[ -n "$__boson_key" ]] && __boson_prefix="${__boson_key}${__boson_sep}"
-
-  local __boson_k __boson_vname __boson_rel
-  for __boson_k in "${!__boson_data[@]}"; do
-    if [[ -n "$__boson_prefix" ]]; then
+    for __boson_k in "${!__boson_data[@]}"; do
       [[ "$__boson_k" == "$__boson_prefix"* ]] || continue
-      __boson_rel="${__boson_k#"$__boson_prefix"}"
-    else
-      __boson_rel="$__boson_k"
-    fi
-    __boson_vname="$(__boson_varname "$__boson_rel")"
-    printf '%s=%s\n' "$__boson_vname" "$(__boson_quote_val "${__boson_data[$__boson_k]}")"
-  done
+      __boson_rest="${__boson_k#"$__boson_prefix"}"
+      __boson_idx="${__boson_rest%%"$__boson_sep"*}"
+      [[ "$__boson_idx" =~ ^[0-9]+$ ]] || continue
+      [[ -n "${__boson_seen_idx[$__boson_idx]+set}" ]] && continue
+      __boson_seen_idx[$__boson_idx]=1
+    done
 
-else
-  # Direct key lookup
-  local __boson_val
-  into=__boson_val $__boson_doc.get "$__boson_key"
-  if [[ -n "$__boson_val" ]]; then
-    local __boson_leaf="${__boson_key##*.}"
-    [[ "$__boson_leaf" == "$__boson_key" ]] || true  # leaf is last segment
-    __boson_output "$__boson_val" "$(__boson_varname "$__boson_leaf")"
-  else
-    # Key not found — might be an object/array (has children)
-    local __boson_children
-    into=__boson_children $__boson_doc.keysUnder "$__boson_key"
-    if [[ -n "$__boson_children" ]]; then
-      if [[ -n "$emit" || -n "$eponymous" ]]; then
-        # Emit subtree
-        local -n __boson_data="__boop_data_${__boson_doc}"
-        local __boson_sep=""
-        into=__boson_sep $__boson_doc.get sep
-        : "${__boson_sep:=.}"
-        local __boson_prefix="${__boson_key}${__boson_sep}"
-        local __boson_k __boson_rel __boson_vname
-        for __boson_k in "${!__boson_data[@]}"; do
-          [[ "$__boson_k" == "$__boson_prefix"* ]] || continue
-          __boson_rel="${__boson_k#"$__boson_prefix"}"
-          __boson_vname="$(__boson_varname "$__boson_rel")"
-          printf '%s=%s\n' "$__boson_vname" "$(__boson_quote_val "${__boson_data[$__boson_k]}")"
-        done
+    # Sort indices numerically
+    local -a __boson_indices=()
+    for __boson_idx in "${!__boson_seen_idx[@]}"; do
+      __boson_indices+=("$__boson_idx")
+    done
+    local -i __boson_i __boson_j __boson_tmp_idx
+    for (( __boson_i = 1; __boson_i < ${#__boson_indices[@]}; __boson_i++ )); do
+      __boson_tmp_idx=${__boson_indices[$__boson_i]}
+      __boson_j=$__boson_i
+      while (( __boson_j > 0 && __boson_indices[__boson_j-1] > __boson_tmp_idx )); do
+        __boson_indices[$__boson_j]=${__boson_indices[$((__boson_j-1))]}
+        (( --__boson_j ))
+      done
+      __boson_indices[$__boson_j]=$__boson_tmp_idx
+    done
+
+    # Collect values
+    local -a __boson_arr_vals=()
+    for __boson_idx in "${__boson_indices[@]}"; do
+      local __boson_full_key
+      if [[ -n "$__boson_suffix" ]]; then
+        __boson_full_key="${__boson_key}${__boson_sep}${__boson_idx}${__boson_sep}${__boson_suffix}"
       else
-        printf '{...} (%d keys)\n' "$(printf '%s\n' "$__boson_children" | wc -l)"
+        __boson_full_key="${__boson_key}${__boson_sep}${__boson_idx}"
       fi
+      into=__boson_val $__boson_doc.get "$__boson_full_key"
+      [[ -n "$__boson_val" ]] || continue
+
+      if [[ -n "$into_var" || -n "$eponymous" ]]; then
+        __boson_arr_vals+=("$__boson_val")
+      else
+        local __boson_leaf_name="${__boson_suffix:-$__boson_idx}"
+        __boson_output "$__boson_val" "$(__boson_varname "$__boson_leaf_name")"
+      fi
+    done
+
+    # Sourceable array output
+    if [[ -n "$into_var" ]]; then
+      __boson_output_array "$into_var" "${__boson_arr_vals[@]}"
+    elif [[ -n "$eponymous" ]]; then
+      local __boson_arr_name
+      if [[ -n "$__boson_suffix" ]]; then
+        __boson_arr_name="$(__boson_varname "$__boson_suffix")"
+      else
+        __boson_arr_name="$(__boson_varname "$__boson_key")"
+      fi
+      __boson_output_array "$__boson_arr_name" "${__boson_arr_vals[@]}"
+    fi
+
+  elif [[ -n "$emit" ]]; then
+    # Emit mode with no iteration: dump all keys under the expression as assignments
+    local -n __boson_data="__boop_data_${__boson_doc}"
+    local __boson_sep="."
+
+    local __boson_prefix=""
+    [[ -n "$__boson_key" ]] && __boson_prefix="${__boson_key}${__boson_sep}"
+
+    local __boson_k __boson_vname __boson_rel
+    for __boson_k in "${!__boson_data[@]}"; do
+      if [[ -n "$__boson_prefix" ]]; then
+        [[ "$__boson_k" == "$__boson_prefix"* ]] || continue
+        __boson_rel="${__boson_k#"$__boson_prefix"}"
+      else
+        __boson_rel="$__boson_k"
+      fi
+      __boson_vname="$(__boson_varname "$__boson_rel")"
+      printf '%s=%s\n' "$__boson_vname" "$(__boson_quote_val "${__boson_data[$__boson_k]}")"
+    done
+
+  else
+    # Direct key lookup
+    local __boson_val
+    into=__boson_val $__boson_doc.get "$__boson_key"
+    if [[ -n "$__boson_val" ]]; then
+      local __boson_leaf="${__boson_key##*.}"
+      __boson_output "$__boson_val" "$(__boson_varname "$__boson_leaf")"
     else
-      printf 'null\n'
+      # Key not found — might be an object/array (has children)
+      local __boson_children
+      into=__boson_children $__boson_doc.keysUnder "$__boson_key"
+      if [[ -n "$__boson_children" ]]; then
+        if [[ -n "$eponymous" ]]; then
+          # Emit subtree using leaf names as variable names
+          local -n __boson_data="__boop_data_${__boson_doc}"
+          local __boson_sep="."
+          local __boson_prefix="${__boson_key}${__boson_sep}"
+          local __boson_k __boson_rel __boson_vname
+          for __boson_k in "${!__boson_data[@]}"; do
+            [[ "$__boson_k" == "$__boson_prefix"* ]] || continue
+            __boson_rel="${__boson_k#"$__boson_prefix"}"
+            __boson_vname="$(__boson_varname "$__boson_rel")"
+            printf '%s=%s\n' "$__boson_vname" "$(__boson_quote_val "${__boson_data[$__boson_k]}")"
+          done
+        else
+          printf '{...} (%d keys)\n' "$(printf '%s\n' "$__boson_children" | wc -l)"
+        fi
+      else
+        printf 'null\n'
+      fi
     fi
   fi
-fi
 
-$__boson_doc.destroy
+  $__boson_doc.destroy
+}
+
+__boson_run
