@@ -420,35 +420,54 @@ _lens_run() {
     fi
 
     if (( _need_buf && not )); then
-      # --not + unbounded last: must collect all records to know what to skip
-      local -a _all=()
+      # Circular buffer of _buf_sz: emit records as they're evicted (proven not
+      # in the last N), stop at EOF without emitting the remaining buffer.
+      local -a _cbuf=()
+      local -i _chead=0 _cfill=0 _buf_base_n=0
       while $_s.next; do
         (( _n++ ))
         (( _n >= _ws )) || continue
-        _all+=("$_lens_line")
+        if (( _cfill >= _buf_sz )); then
+          _lens_emit_rec "$_buf_base_n" "${_cbuf[$_chead]}"
+          _cbuf[$_chead]="$_lens_line"
+          _chead=$(( (_chead + 1) % _buf_sz ))
+          (( _buf_base_n++ ))
+        else
+          _cbuf+=("$_lens_line")
+          (( ++_cfill ))
+          (( _cfill == 1 )) && _buf_base_n=$_n
+        fi
       done
-      local -i _tot=${#_all[@]} _skip_s _skip_e _ri
-      _skip_s=$(( _tot - _buf_sz )); (( _skip_s < 0 )) && _skip_s=0
-      _skip_e=$(( _tot - 1 ))
-      (( _buf_take > 0 )) && _skip_e=$(( _skip_s + _buf_take - 1 ))
-      for (( _ri = 0; _ri < _tot; _ri++ )); do
-        (( _ri < _skip_s || _ri > _skip_e )) && \
-          _lens_emit_rec $(( _ws + _ri )) "${_all[$_ri]}"
-      done
+      # _buf_take > 0: NOT (first K of last N) → also emit the tail of the buffer.
+      if (( _buf_take > 0 && _cfill > _buf_take )); then
+        local -i _ri
+        for (( _ri = _buf_take; _ri < _cfill; _ri++ )); do
+          _lens_emit_rec $(( _buf_base_n + _ri )) "${_cbuf[(( (_chead + _ri) % _buf_sz ))]}"
+        done
+      fi
 
     elif (( _need_buf )); then
+      # Circular buffer: fill slots then overwrite oldest; emit all at EOF in
+      # head order (no expensive array-slice shift on every record).
       local -a _cbuf=()
+      local -i _chead=0 _cfill=0
       while $_s.next; do
         (( _n++ ))
         (( _n >= _ws )) || continue
-        _cbuf+=("$_lens_line")
-        (( ${#_cbuf[@]} > _buf_sz )) && _cbuf=("${_cbuf[@]:1}")
+        if (( _cfill < _buf_sz )); then
+          _cbuf+=("$_lens_line")
+          (( ++_cfill ))
+        else
+          _cbuf[$_chead]="$_lens_line"
+          _chead=$(( (_chead + 1) % _buf_sz ))
+        fi
       done
-      local -i _tot _ee _rb _ri
-      _tot=${#_cbuf[@]}; _ee=$(( _tot - 1 )); _rb=$(( _n - _tot + 1 ))
+      local -i _rb _ee _ri
+      _rb=$(( _n - _cfill + 1 ))
+      _ee=$(( _cfill - 1 ))
       (( _buf_take > 0 && _buf_take - 1 < _ee )) && _ee=$(( _buf_take - 1 ))
       for (( _ri = 0; _ri <= _ee; _ri++ )); do
-        _lens_emit_rec $(( _rb + _ri )) "${_cbuf[$_ri]}"
+        _lens_emit_rec $(( _rb + _ri )) "${_cbuf[(( (_chead + _ri) % _buf_sz ))]}"
       done
 
     else
