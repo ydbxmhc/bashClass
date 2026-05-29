@@ -1,0 +1,159 @@
+#!/bin/bash
+
+# Socket — plaintext TCP connection via bash /dev/tcp.
+#
+# Opens a bidirectional fd to host:port. Provides line-oriented and
+# raw read/write. Suitable for HTTP/1.x, SMTP, and other plaintext
+# protocols. No TLS (bash /dev/tcp is plaintext only).
+#
+# Usage:
+#   into=s Socket.new host=example.com port=80 [timeout=30]
+#   $s.writeLine "GET / HTTP/1.1"
+#   $s.writeLine "Host: example.com"
+#   $s.writeLine "Connection: close"
+#   $s.writeLine ""
+#   into=status $s.readLine
+#   into=body   $s.readAll
+#   $s.close
+
+. boop
+boop.init Socket || return 0
+
+# ============================================================================
+# Constructor
+# ============================================================================
+
+Socket.new() {
+  local _Class="${_Class:-Socket}"
+  local __Socket_new_self __Socket_new_host="" __Socket_new_port="" __Socket_new_timeout=30
+  local __Socket_new_arg
+  for __Socket_new_arg in "$@"; do
+    case "$__Socket_new_arg" in
+      host=*)    __Socket_new_host="${__Socket_new_arg#host=}" ;;
+      port=*)    __Socket_new_port="${__Socket_new_arg#port=}" ;;
+      timeout=*) __Socket_new_timeout="${__Socket_new_arg#timeout=}" ;;
+    esac
+  done
+  [[ -n "$__Socket_new_host" ]] || { _Error "Socket.new: host required"; return 1; }
+  [[ -n "$__Socket_new_port" ]] || { _Error "Socket.new: port required"; return 1; }
+
+  # exec without a command makes ALL redirections permanent in the current shell,
+  # so "exec {fd}<>/dev/tcp/... 2>/dev/null" would permanently redirect stderr.
+  # Save and restore fd 2 explicitly to suppress the bash error on failure.
+  local -i __Socket_new_fd=0 __Socket_new_save2
+  exec {__Socket_new_save2}>&2
+  exec 2>/dev/null
+  exec {__Socket_new_fd}<>/dev/tcp/"$__Socket_new_host"/"$__Socket_new_port"
+  local __Socket_new_rc=$?
+  exec 2>&"$__Socket_new_save2"
+  exec {__Socket_new_save2}>&-
+  if (( __Socket_new_rc )); then
+    _Error "Socket.new: could not connect to ${__Socket_new_host}:${__Socket_new_port}"
+    return 1
+  fi
+
+  into=__Socket_new_self __boop.new \
+    host="$__Socket_new_host" \
+    port="$__Socket_new_port" \
+    fd="$__Socket_new_fd" \
+    timeout="$__Socket_new_timeout" \
+    closed="0"
+  boop.pass "$__Socket_new_self" "${into:-}"
+}
+
+# ============================================================================
+# Write
+# ============================================================================
+
+# Write raw bytes to the socket (no newline).
+Socket.write() {
+  local _Self="${_Self:-}" _Class="${_Class:-Socket}"
+  local __Socket_write_fd="${__boop_static[${_Self}.fd]:-}"
+  printf '%s' "$1" >&"$__Socket_write_fd"
+}
+
+# Write a line terminated with \r\n (standard for HTTP, SMTP, etc.).
+Socket.writeLine() {
+  local _Self="${_Self:-}" _Class="${_Class:-Socket}"
+  local __Socket_writeLine_fd="${__boop_static[${_Self}.fd]:-}"
+  printf '%s\r\n' "$1" >&"$__Socket_writeLine_fd"
+}
+
+# ============================================================================
+# Read
+# ============================================================================
+
+# Read one line, stripping the trailing \r\n.
+# Returns 1 on timeout or EOF.
+Socket.readLine() {
+  local _Self="${_Self:-}" _Class="${_Class:-Socket}"
+  local __Socket_readLine_fd="${__boop_static[${_Self}.fd]:-}"
+  local __Socket_readLine_timeout="${__boop_static[${_Self}.timeout]:-30}"
+  local __Socket_readLine_line=""
+  IFS= read -r -t "$__Socket_readLine_timeout" __Socket_readLine_line \
+    <&"$__Socket_readLine_fd" || return 1
+  boop.pass "${__Socket_readLine_line%$'\r'}" "${into:-}"
+}
+
+# Read until the remote closes the connection, stripping \r from each line.
+# Returns everything as a single newline-separated string.
+Socket.readAll() {
+  local _Self="${_Self:-}" _Class="${_Class:-Socket}"
+  local __Socket_readAll_fd="${__boop_static[${_Self}.fd]:-}"
+  local __Socket_readAll_timeout="${__boop_static[${_Self}.timeout]:-30}"
+  local __Socket_readAll_out="" __Socket_readAll_line="" __Socket_readAll_first=1
+  while IFS= read -r -t "$__Socket_readAll_timeout" __Socket_readAll_line \
+      <&"$__Socket_readAll_fd"; do
+    (( __Socket_readAll_first )) || __Socket_readAll_out+=$'\n'
+    __Socket_readAll_first=0
+    __Socket_readAll_out+="${__Socket_readAll_line%$'\r'}"
+  done
+  # read returns non-zero on EOF-without-newline but still populates the var;
+  # capture that final partial line so body content isn't silently dropped.
+  if [[ -n "$__Socket_readAll_line" ]]; then
+    (( __Socket_readAll_first )) || __Socket_readAll_out+=$'\n'
+    __Socket_readAll_out+="${__Socket_readAll_line%$'\r'}"
+  fi
+  boop.pass "$__Socket_readAll_out" "${into:-}"
+}
+
+# Read exactly N bytes from the socket into the into= target.
+Socket.readBytes() {
+  local _Self="${_Self:-}" _Class="${_Class:-Socket}"
+  local __Socket_readBytes_fd="${__boop_static[${_Self}.fd]:-}"
+  local __Socket_readBytes_timeout="${__boop_static[${_Self}.timeout]:-30}"
+  local -i __Socket_readBytes_n="${1:-0}"
+  local __Socket_readBytes_buf=""
+  IFS= read -r -t "$__Socket_readBytes_timeout" -N "$__Socket_readBytes_n" \
+    __Socket_readBytes_buf <&"$__Socket_readBytes_fd" || true
+  boop.pass "$__Socket_readBytes_buf" "${into:-}"
+}
+
+# ============================================================================
+# Lifecycle
+# ============================================================================
+
+Socket.close() {
+  local _Self="${_Self:-}" _Class="${_Class:-Socket}"
+  local __Socket_close_fd="${__boop_static[${_Self}.fd]:-}"
+  [[ "${__boop_static[${_Self}.closed]:-0}" == "1" ]] && return
+  [[ -n "$__Socket_close_fd" && "$__Socket_close_fd" =~ ^[0-9]+$ ]] && \
+    exec {__Socket_close_fd}>&-
+  __boop_static["${_Self}.closed"]="1"
+}
+
+Socket._destroy() {
+  local _Self="${_Self:-}" _Class="${_Class:-Socket}"
+  [[ "${__boop_static[${_Self}.closed]:-0}" == "1" ]] && return
+  local __Socket_destroy_fd="${__boop_static[${_Self}.fd]:-}"
+  [[ -n "$__Socket_destroy_fd" && "$__Socket_destroy_fd" =~ ^[0-9]+$ ]] && \
+    exec {__Socket_destroy_fd}>&-
+}
+
+# ============================================================================
+# Registration
+# ============================================================================
+
+boopClass Socket \
+  'has:host,port,fd,timeout,closed
+   public:new,write,writeLine,readLine,readAll,readBytes,close'
