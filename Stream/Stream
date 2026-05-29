@@ -674,6 +674,150 @@ Stream.putBack() {
   __boop_static["${_Self}.eof"]="0"
 }
 
+# ============================================================================
+# Bulk record loader — read many records in one call.
+#
+# Reads up to blockSize bytes from the FD, splits into complete records,
+# and appends them to the caller's array. Partial records at the chunk
+# boundary are held in the internal buffer for the next call.
+#
+# In line mode (no field splitting): each array element is one record.
+# In field mode (-a): each record's fields are appended sequentially;
+#   the caller strides by field count.
+#
+# Returns: number of records parsed this call (via boop.pass).
+#          0 means EOF — no more data available.
+#
+# Usage:
+#   declare -ga bulk=()
+#   while true; do
+#     into=n $s.bulk bulk
+#     (( n )) || break
+#     # process bulk[0..n-1] (line mode) or bulk[0..n*stride-1] (field mode)
+#     bulk=()  # reset for next chunk
+#   done
+#
+# Performance: reduces framework dispatch overhead from O(records) to
+# O(records/chunk_size). For 1000 records with default 1024-byte chunks,
+# typically 5-20 calls instead of 1000.
+Stream.bulk() {
+  local _Self="${_Self:-}" _Class="${_Class:-Stream}"
+  local __Stream_bulk_arrname="$1"
+  local -n __Stream_bulk_arr="$__Stream_bulk_arrname"
+
+  [[ "${__boop_static[${_Self}.eof]}" == "1" ]] && { boop.pass "0" ${into:-}; return 0; }
+
+  local __Stream_bulk_fd="${__boop_static[${_Self}.fd]}"
+  local __Stream_bulk_eol="${__boop_static[${_Self}.eol]}"
+  local __Stream_bulk_eolMode="${__boop_static[${_Self}.eolMode]}"
+  local __Stream_bulk_fdelim="${__boop_static[${_Self}.fdelim]}"
+  local __Stream_bulk_fdelimMode="${__boop_static[${_Self}.fdelimMode]}"
+  local __Stream_bulk_buf="${__boop_static[${_Self}.buf]}"
+  local __Stream_bulk_blockSize="${__boop_static[${_Self}.blockSize]}"
+  local __Stream_bulk_fieldRe="${__boop_static[${_Self}.fieldRe]}"
+  local -i __Stream_bulk_count=0
+
+  # Fill buffer — always try to read more if we have room
+  local __Stream_bulk_chunk="" __Stream_bulk_read_rc=0
+  IFS= read -r -N "$__Stream_bulk_blockSize" -u "$__Stream_bulk_fd" __Stream_bulk_chunk || __Stream_bulk_read_rc=$?
+  if [[ -n "$__Stream_bulk_chunk" ]]; then
+    __Stream_bulk_buf+="$__Stream_bulk_chunk"
+  elif [[ -z "$__Stream_bulk_buf" ]]; then
+    # Nothing in buffer and nothing from FD — true EOF
+    __boop_static["${_Self}.eof"]="1"
+    boop.pass "0" ${into:-}
+    return 0
+  fi
+  if (( __Stream_bulk_read_rc )); then
+    __boop_static["${_Self}.eof"]="1"
+  fi
+
+  # Extract records from buffer
+  local __Stream_bulk_record __Stream_bulk_rest="$__Stream_bulk_buf"
+
+  if [[ "$__Stream_bulk_eolMode" == "char" || "$__Stream_bulk_eolMode" == "string" ]]; then
+    # String/char delimiter: split on exact match
+    while [[ "$__Stream_bulk_rest" == *"$__Stream_bulk_eol"* ]]; do
+      __Stream_bulk_record="${__Stream_bulk_rest%%"$__Stream_bulk_eol"*}"
+      __Stream_bulk_rest="${__Stream_bulk_rest#*"$__Stream_bulk_eol"}"
+
+      # Field splitting if configured
+      if [[ "$__Stream_bulk_fdelimMode" == "none" ]]; then
+        __Stream_bulk_arr+=("$__Stream_bulk_record")
+      else
+        __Stream._bulkSplitFields "$__Stream_bulk_arrname" "$__Stream_bulk_record" \
+          "$__Stream_bulk_fdelim" "$__Stream_bulk_fdelimMode" "$__Stream_bulk_fieldRe"
+      fi
+      (( ++__Stream_bulk_count ))
+    done
+  elif [[ "$__Stream_bulk_eolMode" == "class" ]]; then
+    # Char-class delimiter: regex split
+    local __Stream_bulk_recRe="${__boop_static[${_Self}.recRe]}"
+    while [[ "$__Stream_bulk_rest" =~ $__Stream_bulk_recRe ]]; do
+      __Stream_bulk_record="${BASH_REMATCH[1]}"
+      __Stream_bulk_rest="${__Stream_bulk_rest:${#BASH_REMATCH[0]}}"
+
+      if [[ "$__Stream_bulk_fdelimMode" == "none" ]]; then
+        __Stream_bulk_arr+=("$__Stream_bulk_record")
+      else
+        __Stream._bulkSplitFields "$__Stream_bulk_arrname" "$__Stream_bulk_record" \
+          "$__Stream_bulk_fdelim" "$__Stream_bulk_fdelimMode" "$__Stream_bulk_fieldRe"
+      fi
+      (( ++__Stream_bulk_count ))
+    done
+  fi
+
+  # If EOF was hit and there's remaining data (no trailing delimiter), emit it
+  if [[ "${__boop_static[${_Self}.eof]}" == "1" && -n "$__Stream_bulk_rest" ]]; then
+    if [[ "$__Stream_bulk_fdelimMode" == "none" ]]; then
+      __Stream_bulk_arr+=("$__Stream_bulk_rest")
+    else
+      __Stream._bulkSplitFields "$__Stream_bulk_arrname" "$__Stream_bulk_rest" \
+        "$__Stream_bulk_fdelim" "$__Stream_bulk_fdelimMode" "$__Stream_bulk_fieldRe"
+    fi
+    (( ++__Stream_bulk_count ))
+    __Stream_bulk_rest=""
+  fi
+
+  # Save remaining partial record back to buffer
+  __boop_static["${_Self}.buf"]="$__Stream_bulk_rest"
+
+  boop.pass "$__Stream_bulk_count" ${into:-}
+}
+
+# Internal: split a record into fields and append to the bulk array.
+# Same logic as Stream.Read's field assignment but outputs to an array
+# instead of named variables.
+__Stream._bulkSplitFields() {
+  local __Stream_bsf_arrname="$1" __Stream_bsf_record="$2"
+  local __Stream_bsf_delim="$3" __Stream_bsf_mode="$4" __Stream_bsf_re="$5"
+  local -n __Stream_bsf_arr="$__Stream_bsf_arrname"
+  local __Stream_bsf_rest="$__Stream_bsf_record" __Stream_bsf_val
+
+  if [[ ("$__Stream_bsf_mode" == "class" || "$__Stream_bsf_mode" == "collapse") && -n "$__Stream_bsf_re" ]]; then
+    while [[ "$__Stream_bsf_rest" =~ $__Stream_bsf_re ]]; do
+      __Stream_bsf_arr+=("${BASH_REMATCH[1]}")
+      __Stream_bsf_rest="${__Stream_bsf_rest:${#BASH_REMATCH[0]}}"
+    done
+    __Stream_bsf_arr+=("$__Stream_bsf_rest")
+  elif [[ "$__Stream_bsf_mode" == "string" ]]; then
+    while [[ "$__Stream_bsf_rest" == *"$__Stream_bsf_delim"* ]]; do
+      __Stream_bsf_arr+=("${__Stream_bsf_rest%%"$__Stream_bsf_delim"*}")
+      __Stream_bsf_rest="${__Stream_bsf_rest#*"$__Stream_bsf_delim"}"
+    done
+    __Stream_bsf_arr+=("$__Stream_bsf_rest")
+  else
+    # char-class non-stacking (fdelimSet): use PE bracket expression
+    local __Stream_bsf_field
+    while [[ "$__Stream_bsf_rest" == *["$__Stream_bsf_delim"]* ]]; do
+      __Stream_bsf_field="${__Stream_bsf_rest%%["$__Stream_bsf_delim"]*}"
+      __Stream_bsf_arr+=("$__Stream_bsf_field")
+      __Stream_bsf_rest="${__Stream_bsf_rest:${#__Stream_bsf_field}+1}"
+    done
+    __Stream_bsf_arr+=("$__Stream_bsf_rest")
+  fi
+}
+
 # Destroy companion arrays and close the file descriptor.
 # Private hook called by __boop.destroy.
 Stream._destroy() {
@@ -696,6 +840,6 @@ Stream._destroy() {
 
 boopClass Stream '
   has:fd,path,eol,eolMode,fdelim,fdelimMode,parseMode,expose,fields,readArgs,array,timeout,nchars,blockSize,buf,eof,recRe,fieldRe
-  public:new,read,Read,next,field,fieldCount,eof,buffered,close,write,writeLine,putBack
+  public:new,read,Read,next,field,fieldCount,eof,buffered,close,write,writeLine,putBack,bulk
 '
 

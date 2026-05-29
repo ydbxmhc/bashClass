@@ -298,16 +298,27 @@ _lens_split_fields() {
     read -ra _lens_flds <<< "$__lens_split_rec"
     IFS="$__lens_split_ifs"
   elif [[ -n "$fdelimSet" ]]; then
-    local __lens_split_c __lens_split_field="" __lens_split_i __lens_split_len=${#__lens_split_rec}
-    for (( __lens_split_i = 0; __lens_split_i < __lens_split_len; __lens_split_i++ )); do
-      __lens_split_c="${__lens_split_rec:__lens_split_i:1}"
-      if [[ "$fdelimSet" == *"$__lens_split_c"* ]]; then
-        _lens_flds+=("$__lens_split_field"); __lens_split_field=""
-      else
-        __lens_split_field+="$__lens_split_c"
-      fi
-    done
-    _lens_flds+=("$__lens_split_field")
+    # Char-set delimiter, non-stacking (empties preserved).
+    # Uses glob bracket expression [chars] in parameter expansion — bash
+    # does the character-class matching in C, no per-char bash loop.
+    if (( ${#fdelimSet} == 1 )); then
+      # Single char — fast PE split
+      local __lens_split_r="$__lens_split_rec"
+      while [[ "$__lens_split_r" == *"$fdelimSet"* ]]; do
+        _lens_flds+=("${__lens_split_r%%"$fdelimSet"*}")
+        __lens_split_r="${__lens_split_r#*"$fdelimSet"}"
+      done
+      _lens_flds+=("$__lens_split_r")
+    else
+      # Multi-char set — bracket expression in PE
+      local __lens_split_r="$__lens_split_rec" __lens_split_field
+      while [[ "$__lens_split_r" == *["$fdelimSet"]* ]]; do
+        __lens_split_field="${__lens_split_r%%["$fdelimSet"]*}"
+        _lens_flds+=("$__lens_split_field")
+        __lens_split_r="${__lens_split_r:${#__lens_split_field}+1}"
+      done
+      _lens_flds+=("$__lens_split_r")
+    fi
   else
     read -ra _lens_flds <<< "$__lens_split_rec"
   fi
@@ -333,17 +344,29 @@ _lens_run() {
   [[ -n "$eolClass"  ]] && __lens_run_sa+=(-E "$eolClass")
 
   local __lens_run_s
-  into=__lens_run_s Stream.new "${__lens_run_sa[@]}" _lens_line
-
   local -i __lens_run_n=0  # current record number
+
+  # Construct Stream: fields mode uses array splitting; everything else reads lines
+  if [[ -n "$fields" ]]; then
+    [[ -n "$fdelimSet" ]] && __lens_run_sa+=(-f "$fdelimSet")
+    [[ -n "$fdelimStr" ]] && __lens_run_sa+=(-F "$fdelimStr")
+    [[ -n "$fdelimCol" ]] && __lens_run_sa+=(-W "$fdelimCol")
+    [[ -z "$fdelimSet$fdelimStr$fdelimCol" ]] && __lens_run_sa+=(-W ' ')
+    __lens_run_sa+=(-a _lens_flds)
+    into=__lens_run_s Stream.new "${__lens_run_sa[@]}"
+  else
+    into=__lens_run_s Stream.new "${__lens_run_sa[@]}" _lens_line
+  fi
 
   # ---- fields mode ----
   if [[ -n "$fields" ]]; then
+
     _lens_parse_spec "$fields"
     local -a __lens_run_fspec=("${_lens_spec_out[@]}")
     local __lens_run_ofs
     if   [[ -n "$fdelimStr" ]]; then __lens_run_ofs="$fdelimStr"
     elif [[ -n "$fdelimSet" ]]; then __lens_run_ofs="${fdelimSet:0:1}"
+    elif [[ -n "$fdelimCol" ]]; then __lens_run_ofs="${fdelimCol:0:1}"
     else __lens_run_ofs=" "
     fi
     local __lens_run_fi __lens_run_out
@@ -354,7 +377,7 @@ _lens_run() {
     fi
     while $__lens_run_s.next; do
       (( ++__lens_run_n ))
-      _lens_split_fields "$_lens_line"
+      # _lens_flds is populated by Stream's array mode — no manual split needed
       __lens_run_out=""; __lens_run_first=1
       if (( not )); then
         for (( __lens_run_fi = 0; __lens_run_fi < ${#_lens_flds[@]}; __lens_run_fi++ )); do
