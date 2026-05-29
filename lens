@@ -607,19 +607,25 @@ _lens_run() {
 }
 
 if (( ${#__lens_files[@]} > 1 )); then
-  declare -i __lens_multi_first=1
+  declare -i __lens_multi_first=1 __lens_grand_total=0
   for __lens_multi_f in "${__lens_files[@]}"; do
     file="$__lens_multi_f"
     __lens_current_file="$__lens_multi_f"
+    _lens_sel_count=0
     if (( ! prefix && ! count )); then
       (( __lens_multi_first )) || printf '\n'
       __lens_multi_first=0
       printf '==> %s <==\n' "$__lens_multi_f"
     fi
     _lens_run
+    if (( count )); then
+      printf '%d\t%s\n' "$_lens_sel_count" "$__lens_multi_f"
+      (( __lens_grand_total += _lens_sel_count ))
+    fi
   done
+  if (( count )); then printf '%d\ttotal\n' "$__lens_grand_total"; fi
 else
   [[ -n "${file:-}" ]] && __lens_current_file="${file}"
   _lens_run
+  if (( count )); then printf '%d\n' "$_lens_sel_count"; fi
 fi
-if (( count )); then printf '%d\n' "$_lens_sel_count"; fi
