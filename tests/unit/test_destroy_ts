@@ -205,13 +205,15 @@ $t.assert_ok "Stream FD is open" test -e "/dev/fd/$__td_s_fd"
 
 $s.destroy
 
+# Check FD closure immediately after destroy.
+# Avoid read -u with 2>/dev/null: bash saves fd2 to the next available fd
+# (the just-freed fd number) before opening /dev/null, making read succeed
+# on the saved copy. Use /dev/fd existence check instead.
+$t.assert_fail "Stream FD closed" test -e "/dev/fd/$__td_s_fd"
+
 $t.assert_fail "Stream fields array removed" declare -p "$__td_s_fields"
 $t.assert_fail "Stream readArgs array removed" declare -p "$__td_s_readargs"
 $t.assert_eq "Stream registry removed" "${__boop_registry[$__td_s_id]:-GONE}" "GONE"
-# FD closure: after destroy, reading from the FD should fail
-__td_s_read_ok=0
-read -t 0 -u "$__td_s_fd" 2>/dev/null && __td_s_read_ok=1 || true
-$t.assert_eq "Stream FD closed (not readable)" "$__td_s_read_ok" "0"
 
 rm -f "$__td_tmpfile"
 
