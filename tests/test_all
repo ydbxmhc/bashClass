@@ -13,12 +13,15 @@ export TESTSUITE_VERBOSE="${TESTSUITE_VERBOSE:-1}"
 
 __ta_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 __ta_mode="${1:-all}"
-rc=0
 
 # Tee all output (stdout + stderr) to a log for later inspection.
 # The log lives at the repo root; overwritten each run.
+# Brace group + pipe preserves exit code via PIPESTATUS; avoids the
+# process-substitution exit-code leak of exec > >(tee ...).
 __ta_log="$(cd "$__ta_dir/.." && pwd)/test_all.log"
-exec > >(tee "$__ta_log") 2>&1
+
+{
+rc=0
 
 # ============================================================================
 # Smoke — always runs first; failure aborts everything
@@ -84,3 +87,6 @@ else
 fi
 
 exit $rc
+
+} 2>&1 | tee "$__ta_log"
+exit "${PIPESTATUS[0]}"
