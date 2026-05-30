@@ -21,6 +21,7 @@ Signal=Signal
 List=Collection/List
 Container=Collection/Container
 JSON=Data/JSON
+Socket=Net/Socket
 Args=Args
 Deck=Games/Deck
 Box=Geometry/Box
