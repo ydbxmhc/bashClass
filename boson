@@ -21,6 +21,11 @@
 
 . boop Args Data::JSON
 
+# Distribution URLs — override with BOOP_DIST_URL for testing:
+#   BOOP_DIST_URL=http://localhost:8080 boson --self-update
+__installer_self_name="boson"
+__installer_self_url="${BOOP_DIST_URL:-http://get.boop.sh}/boson"
+
 # Installer dispatch
 declare -F __installer_dispatch >/dev/null ||
   . "${__boop_root:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/lib/installer"

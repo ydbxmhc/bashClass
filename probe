@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
-# probe — minimal HTTP client (plaintext, no external deps)
+# probe — minimal HTTP client (plaintext HTTP only)
+#
+# External deps: cat (body slurp via $(cat <&fd)); all other I/O is pure bash.
 
 . boop Net::Socket Args
+
+# Distribution URLs — override with BOOP_DIST_URL for testing:
+#   BOOP_DIST_URL=http://localhost:8080 probe --self-update
+__installer_self_name="probe"
+__installer_self_url="${BOOP_DIST_URL:-http://get.boop.sh}/probe"
 
 # Installer dispatch
 declare -F __installer_dispatch >/dev/null ||
