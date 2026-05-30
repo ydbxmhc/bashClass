@@ -135,62 +135,60 @@ __probe_fetch() {
   local __probe_s
   into=__probe_s Socket.new \
     host="$__probe_host" port="$__probe_port" timeout="${timeout:-30}" || return 1
+  local __probe_fd="${__boop_static[${__probe_s}.fd]}"
 
-  # Send request line
+  # ── Request ──────────────────────────────────────────────────────────────
+
   local __probe_req="${__probe_method} ${__probe_path} HTTP/1.1"
   (( verbose )) && printf '> %s\n' "$__probe_req" >&2
   $__probe_s.writeLine "$__probe_req"
 
-  # Standard headers
   $__probe_s.writeLine "Host: ${__probe_host}"
   $__probe_s.writeLine "User-Agent: probe/1.0"
   $__probe_s.writeLine "Connection: close"
   if (( verbose )); then
-    printf '> Host: %s\n' "$__probe_host" >&2
-    printf '> User-Agent: probe/1.0\n' >&2
-    printf '> Connection: close\n' >&2
+    printf '> Host: %s\n> User-Agent: probe/1.0\n> Connection: close\n' "$__probe_host" >&2
   fi
 
-  # JSON shorthand
   if (( json )); then
     $__probe_s.writeLine "Content-Type: application/json"
     $__probe_s.writeLine "Accept: application/json"
     (( verbose )) && printf '> Content-Type: application/json\n> Accept: application/json\n' >&2
   fi
 
-  # Custom headers
   local __probe_hdr
   for __probe_hdr in "${header[@]+"${header[@]}"}"; do
     $__probe_s.writeLine "$__probe_hdr"
     (( verbose )) && printf '> %s\n' "$__probe_hdr" >&2
   done
 
-  # Body
   if [[ -n "${data:-}" ]]; then
-    local -i __probe_clen=${#data}
-    $__probe_s.writeLine "Content-Length: ${__probe_clen}"
-    (( verbose )) && printf '> Content-Length: %d\n' "$__probe_clen" >&2
+    $__probe_s.writeLine "Content-Length: ${#data}"
+    (( verbose )) && printf '> Content-Length: %d\n' "${#data}" >&2
     $__probe_s.writeLine ""
     $__probe_s.write "$data"
   else
     $__probe_s.writeLine ""
   fi
-
   (( verbose )) && printf '>\n' >&2
 
-  # Read status line
-  local __probe_status_line __probe_http_status
-  into=__probe_status_line $__probe_s.readLine || {
+  # ── Response ─────────────────────────────────────────────────────────────
+
+  # Status line
+  local __probe_status_line=""
+  IFS= read -r -t "${timeout:-30}" __probe_status_line <&"$__probe_fd" || {
     (( quiet )) || printf 'probe: no response from %s\n' "$__probe_host" >&2
     $__probe_s.close; return 1
   }
-  __probe_http_status="${__probe_status_line#* }"
+  __probe_status_line="${__probe_status_line%$'\r'}"
+  local __probe_http_status="${__probe_status_line#* }"
   __probe_http_status="${__probe_http_status%% *}"
 
-  # Read response headers
+  # Headers
   local -a __probe_resp_hdrs=()
-  local __probe_hline
-  while into=__probe_hline $__probe_s.readLine; do
+  local __probe_hline=""
+  while IFS= read -r -t "${timeout:-30}" __probe_hline <&"$__probe_fd"; do
+    __probe_hline="${__probe_hline%$'\r'}"
     [[ -z "$__probe_hline" ]] && break
     __probe_resp_hdrs+=("$__probe_hline")
   done
@@ -212,7 +210,7 @@ __probe_fetch() {
 
   # Read body
   local __probe_body
-  into=__probe_body $__probe_s.readAll
+  __probe_body=$(cat <&"$__probe_fd")
   $__probe_s.close
 
   # Output
