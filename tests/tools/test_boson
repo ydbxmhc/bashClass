@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# boson tool tests
+#
+# Classification: INTEGRATION (tools/boson)
+# Covers: path expressions (.key, .a.b, .arr[N]), array iteration (.arr[],
+#         .arr[].field), output modes (default/-r/--emit/--into/-E),
+#         type-aware quoting, document-order preservation, missing keys,
+#         input sources (stdin and file argument).
+
+__tb_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+__tb_root="$(cd "$__tb_dir/../.." && pwd)"
+__tb_boson="$__tb_root/boson"
+__tb_json="$__tb_dir/_boson_sample.json"
+
+. "$__tb_root/boop" TestSuite
+
+into=t TestSuite name="Boson Tests"
+
+# Helper: run boson with the sample JSON on stdin, capture stdout
+__tb_run() {
+  "$__tb_boson" "$@" < "$__tb_json"
+}
+
+# ============================================================================
+# Default output mode (type-aware quoting)
+# ============================================================================
+
+$t.section "Default output"
+
+$t.assert_eq "string is quoted"  "$(__tb_run '.name')"           '"boop"'
+$t.assert_eq "nested string"     "$(__tb_run '.database.host')"  '"localhost"'
+$t.assert_eq "number is bare"    "$(__tb_run '.count')"          '42'
+$t.assert_eq "float is bare"     "$(__tb_run '.ratio')"          '3.14'
+$t.assert_eq "bool is bare"      "$(__tb_run '.active')"         'true'
+$t.assert_eq "null is bare"      "$(__tb_run '.nothing')"        'null'
+
+# ============================================================================
+# Raw output (-r)
+# ============================================================================
+
+$t.section "Raw output"
+
+$t.assert_eq "raw string unquoted" "$(__tb_run -r '.name')"          'boop'
+$t.assert_eq "raw nested"          "$(__tb_run -r '.database.host')" 'localhost'
+$t.assert_eq "raw number"          "$(__tb_run -r '.count')"         '42'
+
+# ============================================================================
+# Array indexing
+# ============================================================================
+
+$t.section "Array indexing"
+
+$t.assert_eq "index 0"  "$(__tb_run '.scores[0]')" '10'
+$t.assert_eq "index 1"  "$(__tb_run '.scores[1]')" '20'
+$t.assert_eq "index 2"  "$(__tb_run '.scores[2]')" '30'
+
+# ============================================================================
+# Array iteration
+# ============================================================================
+
+$t.section "Array iteration"
+
+$t.assert_eq "iterate scalars" "$(__tb_run -r '.tags[]')" 'alpha
+beta
+gamma'
+
+$t.assert_eq "iterate + field name" "$(__tb_run -r '.users[].name')" 'Alice
+Bob'
+
+$t.assert_eq "iterate + field age" "$(__tb_run -r '.users[].age')" '30
+25'
+
+# ============================================================================
+# Emit mode (sourceable, document order preserved)
+# ============================================================================
+
+$t.section "Emit mode"
+
+# Document order is host, port, ssl — NOT hash order. This is the bug fix:
+# emit walks the ordered key index, not the raw hash.
+$t.assert_eq "emit subtree in doc order" "$(__tb_run --emit '.database')" 'host=localhost
+port=5432
+ssl=false'
+
+# ============================================================================
+# Into mode (named assignment)
+# ============================================================================
+
+$t.section "Into mode"
+
+$t.assert_eq "into scalar" "$(__tb_run --into=myhost '.database.host')" 'myhost=localhost'
+
+$t.assert_eq "into array" "$(__tb_run --into=names '.users[].name')" 'names=(Alice Bob)'
+
+# ============================================================================
+# Eponymous mode (leaf-name variables)
+# ============================================================================
+
+$t.section "Eponymous mode"
+
+$t.assert_eq "eponymous scalar" "$(__tb_run -E '.database.host')" 'host=localhost'
+
+$t.assert_eq "eponymous subtree in doc order" "$(__tb_run -E '.database')" 'host=localhost
+port=5432
+ssl=false'
+
+# ============================================================================
+# Missing keys
+# ============================================================================
+
+$t.section "Missing keys"
+
+$t.assert_eq "missing top-level"  "$(__tb_run '.nope')"   'null'
+$t.assert_eq "missing nested"     "$(__tb_run '.a.b.c')"  'null'
+
+# ============================================================================
+# Input sources
+# ============================================================================
+
+$t.section "Input sources"
+
+# File as last argument (instead of stdin)
+$t.assert_eq "file argument" "$("$__tb_boson" -r '.name' "$__tb_json")" 'boop'
+
+# Emitted output is actually sourceable
+$t.section "Sourceable round-trip"
+__tb_eval_out="$(eval "$(__tb_run -E '.database.host')"; printf '%s' "$host")"
+$t.assert_eq "eponymous output sources cleanly" "$__tb_eval_out" 'localhost'
+
+# ============================================================================
+# Error / usage cases
+# ============================================================================
+
+$t.section "Error cases"
+
+# Mutually exclusive output modes
+$t.assert_fail "raw + emit exclusive" \
+  bash -c "cd '$__tb_root'; ./boson -r --emit '.name' < '$__tb_json'"
+
+$t.assert_fail "emit + into exclusive" \
+  bash -c "cd '$__tb_root'; ./boson --emit --into=x '.name' < '$__tb_json'"
+
+$t.summary

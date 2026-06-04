@@ -69,6 +69,55 @@ __installer_writable() {
   return 1
 }
 
+# Detect the host platform.
+#
+# Returns one of: linux, macos, windows, unknown (on stdout). Used to tailor
+# install hints. Pure bash -- inspects $OSTYPE, falling back to `uname` only
+# when $OSTYPE is unset (rare, but some minimal shells don't export it).
+#
+# Arguments: none
+# Returns:   platform name on stdout; always exits 0
+__installer_platform() {
+  local __installer_platform_os="${OSTYPE:-}"
+  [[ -z "$__installer_platform_os" ]] && command -v uname >/dev/null &&
+    __installer_platform_os="$(uname -s)"
+  case "${__installer_platform_os,,}" in
+    linux*)            printf 'linux' ;;
+    darwin*)           printf 'macos' ;;
+    msys*|cygwin*|win*) printf 'windows' ;;
+    *)                 printf 'unknown' ;;
+  esac
+}
+
+# Write (or update) ~/.booprc so it puts TARGET on BOOPPATH.
+#
+# First-write creates the file with a single BOOPPATH line. If the file
+# already exists and does NOT already mention TARGET, a new BOOPPATH line is
+# appended (prepending TARGET to any existing BOOPPATH). If TARGET is already
+# referenced, the file is left untouched -- the operation is idempotent, so
+# calling it repeatedly with the same path never duplicates entries.
+#
+# Arguments:
+#   $1 -- install target path to place on BOOPPATH
+# Returns:   0 on success; writes to $HOME/.booprc
+__installer_write_booprc() {
+  local __installer_wb_target="$1"
+  local __installer_wb_rcfile="$HOME/.booprc"
+
+  if [[ -f "$__installer_wb_rcfile" ]] &&
+      grep -q "$__installer_wb_target" "$__installer_wb_rcfile"; then
+    printf '  .booprc already references this path.\n' >&2
+  elif [[ -f "$__installer_wb_rcfile" ]]; then
+    printf '\n# Added by boop installer\nBOOPPATH="%s${BOOPPATH:+:$BOOPPATH}"\n' \
+      "$__installer_wb_target" >> "$__installer_wb_rcfile"
+    printf '  Appended to %s\n' "$__installer_wb_rcfile" >&2
+  else
+    printf '# boop framework configuration\nBOOPPATH="%s"\n' \
+      "$__installer_wb_target" > "$__installer_wb_rcfile"
+    printf '  Created %s\n' "$__installer_wb_rcfile" >&2
+  fi
+}
+
 # ============================================================================
 # Pure bash HTTP GET — no external dependencies
 #
@@ -341,19 +390,7 @@ __installer_run() {
   # --- Write .booprc ---
   printf '\n'
   if __installer_confirm "  Configure ~/.booprc?"; then
-    local __installer_run_rcfile="$HOME/.booprc"
-    if [[ -f "$__installer_run_rcfile" ]] && \
-        grep -q "$__installer_run_target" "$__installer_run_rcfile"; then
-      printf '  .booprc already references this path.\n' >&2
-    elif [[ -f "$__installer_run_rcfile" ]]; then
-      printf '\n# Added by boop installer\nBOOPPATH="%s${BOOPPATH:+:$BOOPPATH}"\n' \
-        "$__installer_run_target" >> "$__installer_run_rcfile"
-      printf '  Appended to %s\n' "$__installer_run_rcfile" >&2
-    else
-      printf '# boop framework configuration\nBOOPPATH="%s"\n' \
-        "$__installer_run_target" > "$__installer_run_rcfile"
-      printf '  Created %s\n' "$__installer_run_rcfile" >&2
-    fi
+    __installer_write_booprc "$__installer_run_target"
   fi
 
   printf '\n  ✓ boop installed to: %s\n' "$__installer_run_target"

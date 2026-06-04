@@ -86,6 +86,23 @@ else
   printf '  PASS: all variable names follow convention\n'
 fi
 
+# ============================================================================
+# Footer — utility tool tests are NOT part of this run
+#
+# The tools under tests/tools/ (lens, collider, installer, boson, probe) are
+# slow unbundled (each invocation re-sources the whole framework) and some
+# need extra fixtures (probe wants python for a loopback HTTP server). They
+# are intentionally excluded from test_all. Run them individually as needed.
+# ============================================================================
+printf '\n%s\n' '------------------------------------------------------------'
+printf 'Utility tool tests are not run here. Run individually as needed:\n'
+printf '  bash tests/tools/test_lens        # ~2 min unbundled\n'
+printf '  bash tests/tools/test_boson       # ~2 min unbundled\n'
+printf '  bash tests/tools/test_probe       # needs python (loopback server)\n'
+printf '  bash tests/tools/test_collider    # builds a bundle\n'
+printf '  bash tests/tools/test_installer\n'
+printf '%s\n' '------------------------------------------------------------'
+
 exit $rc
 
 } 2>&1 | tee "$__ta_log"

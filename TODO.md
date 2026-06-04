@@ -258,32 +258,34 @@ same backend as Data.JSON. API mirrors Config.
 "Bash Oriented Scripting Object Notation" — a jq-like query engine
 for structured data. Operates on any Map.Fast (JSON, YAML, Config).
 
-Architecture: `Data.Boson` class (query engine) + `boson` CLI wrapper.
-The query engine is format-agnostic — it queries Map.Fast regardless of
-what parser populated it.
+STATUS (2026-06-04): Stage 1 shipped as the `boson` CLI script, plus
+sourceable output modes that weren't in the original roadmap. 26 assertions
+in `tests/tools/test_boson`. Stages 2-5 (select/pipe/construction/recursive
+descent) remain. The standalone `Data.Boson` query *class* is not yet
+extracted — the query logic currently lives in the `boson` script.
 
 ```bash
-# CLI usage
+# CLI usage (working today)
 boson '.users[0].name' < data.json
-boson '.database.host' < config.yml
-
-# Library usage
-into=doc Data.JSON.parse < data.json
-into=val $doc.query ".users[0].name"
-into=val $doc.query ".users[].age"       # one per line
+boson -r '.users[].email' < data.json    # raw, one per line
+boson --emit '.database' < config.json   # sourceable assignments
+boson --into=host '.database.host' < c.json
+boson -E '.database' < c.json            # eponymous (leaf-name vars)
 ```
 
 ### Staged Roadmap
 
-| Stage | Features | Builds on |
-|-------|----------|-----------|
-| 1 | Path expressions (`.foo.bar[2]`), array iteration (`[]`), raw output | Map.Fast.get, keysUnder |
-| 2 | Select with comparisons (`select(.age > 30)`), pipe chaining | List.filter, Math comparison |
-| 3 | String interpolation (`"Hello \(.name)"`), object construction (`{k: .v}`) | String manipulation |
-| 4 | map/reduce/group_by, sort_by | List.filter/map/reduce (already built) |
-| 5 | Recursive descent (`..`), multiple outputs | Key iteration with suffix match |
+| Stage | Features | Status |
+|-------|----------|--------|
+| 1 | Path expressions (`.foo.bar[2]`), array iteration (`[]`), raw output | DONE |
+| — | Sourceable output: `--emit`, `--into=VAR`, `-E`/`--eponymous` | DONE (doc-order preserved) |
+| 2 | Select with comparisons (`select(.age > 30)`), pipe chaining | TODO |
+| 3 | String interpolation (`"Hello \(.name)"`), object construction (`{k: .v}`) | TODO |
+| 4 | map/reduce/group_by, sort_by | TODO |
+| 5 | Recursive descent (`..`), multiple outputs | TODO |
 
 ### What exists already:
+- `boson` CLI — Stage 1 path/iteration/raw + sourceable output modes
 - `Data.JSON.parse` — recursive descent parser → Map.Fast
 - `Data.JSON.stringify` — serialize Map.Fast → JSON
 - `Map.Fast.get` — point lookups by compound key
@@ -291,13 +293,15 @@ into=val $doc.query ".users[].age"       # one per line
 - `List.filter/map/reduce/do` — functional collection ops
 - `Math.DO` — expression tokenizer/evaluator (reusable for comparisons)
 
-### What needs building:
-- Path expression parser (`.foo[2].bar` → `foo.2.bar` compound key)
-- Array iteration (enumerate numeric keys under a prefix, yield each)
+### What needs building (Stage 2+):
 - Comparison expression evaluator for select predicates
+- Pipe chaining between query stages
 - Construction syntax parser (mini-language for building output objects)
 - Pure-bash sort for sort_by (quicksort, ~40 lines)
-- CLI wrapper script (`boson`)
+- Object/array re-emission in default mode (currently prints `{...} (N keys)`
+  placeholder for non-leaf nodes)
+- Extract the format-agnostic query engine into a `Data.Boson` class so
+  it's reusable as a library, not only via the CLI
 
 ---
 
@@ -357,6 +361,15 @@ Standalone tools are distributed as single-file bundles — the framework +
 required classes concatenated inline, then the tool's own code. They work
 immediately with no installation. But they also carry the Installer mixin,
 which can bootstrap the full framework on demand.
+
+**Naming convention (settled 2026-06-04):** bundles are named `bundle-<tool>`
+(e.g. `bundle-boson`). `collider`'s default output uses this prefix; it groups
+all bundles together and keeps them visually distinct from the bare-named dev
+scripts they were built from. The bare name (`boson`) is reserved for the
+public release / the boopRoot-dependent dev script. Bundles are rename-safe —
+nothing inside keys off the filename — so a user may drop the prefix locally.
+(A trailing-dot or trailing-colon marker for dev scripts was considered and
+rejected: Windows and git cannot represent either filename.)
 
 ```bash
 # Just use it — zero install, single file
@@ -544,10 +557,10 @@ handle every edge case — just the 80% that scripts actually use.
 
 ### 6. `lens` — Text Stream Inspection Tool
 
-IN PROGRESS — Args schema and layered help committed (2026-05-28).
-Implementation not yet started.
+DONE (2026-06-04) — fully implemented and tested. 38 assertions in
+`tests/tools/test_lens` cover all modes. See DEVLOG.
 
-**Design (settled):**
+**Design (as built):**
 
 One filtering axis per invocation:
 - Position (relative): `--first`, `--last` (combinable, pipeline-ordered)
@@ -557,8 +570,10 @@ One filtering axis per invocation:
 - Chars: `--chars`
 
 These modes are mutually exclusive. Relative/absolute position also
-exclusive with each other. `--not` inverts any mode. `--number` and
-`--count` are universal formatting options.
+exclusive with each other. `--not` inverts any mode (including fields and
+chars). `--number` and `--count` are universal formatting options.
+Multiple files are processed independently (per-file headers, or `-H`
+filename prefixes, or a grand total in `--count` mode).
 
 Stream delimiter options pass through: `-d`/`-D`/`-E` for record,
 `-f`/`-F`/`-W` for field. Enables paragraph mode, CRLF, multi-char
@@ -567,16 +582,7 @@ delimiters out of the box.
 Layered help: `--help` (compact synopsis), `--options` (full reference),
 `--examples` (cookbook), `--about`, `--boop`.
 
-**Remaining implementation:**
-- Position mode logic (first/last pipeline, from/to range, --not inversion)
-- Match mode logic (regex predicates, --and/--or aggregation, --not)
-- Field extraction (parse range specs, apply to each record)
-- Char extraction (parse range specs, substring each record)
-- --number (prepend line counter)
-- --count (accumulate and emit count instead of content)
-- Stream construction from parsed args (pass through delimiter options)
-
-**Deferred:**
+**Deferred (not yet built):**
 - `--cols 'FMT' RANGES` — combined field selection + printf formatting
 - `--column` (auto-align) — requires buffering for max-width detection
 - `--bytes RANGES` — byte-addressed slicing for binary/ASCII-only data

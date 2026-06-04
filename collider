@@ -19,7 +19,7 @@ collider <tool-file> [-o output]
   the full framework with --install (Installer mixin, future).
 
 [Options]
-output | o =    # output file (default: <tool-file>.bundle; use - for stdout)
+output | o =    # output file (default: bundle-<tool>; use - for stdout)
 ' "$@"
 
 __bb_tool="${_ArgsRemaining[0]:-}"
@@ -27,7 +27,17 @@ __bb_tool="${_ArgsRemaining[0]:-}"
 [[ -n "$__bb_tool" ]]                    || { printf 'collider: tool file required\n' >&2; exit 1; }
 [[ -f "$__bb_tool" && -r "$__bb_tool" ]] || { printf 'collider: cannot read: %s\n' "$__bb_tool" >&2; exit 1; }
 
-__bb_output="${output:-${__bb_tool}.bundle}"
+# Default output name: bundle-<tool> in the tool's own directory. The
+# bundle- prefix groups all bundles together and clearly distinguishes
+# them from the dev scripts they were built from. The resulting file is
+# rename-safe — nothing in the bundle keys off its own filename — so a
+# user can drop the prefix locally without consequence.
+__bb_tool_base="${__bb_tool##*/}"
+if [[ "$__bb_tool" == */* ]]; then
+  __bb_output="${output:-${__bb_tool%/*}/bundle-${__bb_tool_base}}"
+else
+  __bb_output="${output:-bundle-${__bb_tool_base}}"
+fi
 unset output
 
 # ============================================================================

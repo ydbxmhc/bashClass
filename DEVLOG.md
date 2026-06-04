@@ -4,6 +4,55 @@ Completed work items, extracted from TODO.md. Most recent first.
 
 ---
 
+## Session: 2026-06-04
+
+**Tooling readiness pass — boson, lens, probe + bundle naming**
+
+Found the tool docs badly out of sync with reality: lens, boson, and probe
+were all far more complete than DEVLOG/PLAN/audit claimed. Verified by
+running them, fixed two real bugs, and added the missing test suites.
+
+- **Bundle naming convention**: bundles are now named `bundle-<tool>`
+  (was `<tool>.bundle`). `collider`'s default output changed accordingly.
+  Bare names stay as the boopRoot-dependent dev scripts. Bundles are
+  rename-safe — nothing in a bundle keys off its own filename (`--self-update`
+  uses `$0` only to know which path to overwrite; identity/URL are baked-in
+  literals). Verified by running a renamed copy. (A trailing-dot or colon
+  marker was considered and rejected: Windows/git can't represent either.)
+
+- **boson — emit key-order bug fixed**: `--emit` and `--eponymous` subtree
+  output iterated the raw Map.Fast hash, losing document order. Now they walk
+  the JSON parser's companion ordered-key index (`__boop_keys_${doc}`) via a
+  new `__boson_ordered_keys` helper, mirroring what `Data.JSON.stringify`
+  does. `--emit .database` now yields host, port, ssl in source order.
+
+- **probe — relative-redirect bug fixed**: a 3xx with a relative `Location`
+  (e.g. `/target`, the common case) crashed with "host required" because the
+  raw value was fed back through the URL parser. Now the target is resolved
+  against the current request's scheme/host/port (absolute-path and
+  relative-path cases both handled) before re-fetching.
+
+- **lib/installer refactor**: extracted `__installer_platform` and
+  `__installer_write_booprc` as real functions from inline logic in
+  `__installer_run`, which now delegates to them. Makes the booprc and
+  platform logic testable (primitives-inward per api-shape steering).
+
+- **New test suites**: `tests/tools/test_boson` (26 assertions, incl.
+  document-order and sourceable round-trip), `tests/tools/test_probe`
+  (17 assertions, with a self-contained python loopback HTTP server fixture
+  at `tests/tools/_http_server.py`; skips cleanly if python is absent).
+  `test_installer` (was stale, referencing two nonexistent functions) now
+  passes 21/21 against the extracted helpers.
+
+- **test_all footer**: utility tool tests are intentionally excluded from
+  `test_all` (slow unbundled, some need fixtures). Added a footer note to
+  the run output listing how to run each one individually.
+
+Tool test results: lens 38/38, boson 26/26, probe 17/17, collider 24/24,
+installer 21/21.
+
+---
+
 ## Session: 2026-05-28
 
 **lens tool — Args schema and layered help**

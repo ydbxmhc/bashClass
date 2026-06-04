@@ -7,6 +7,11 @@
 
 No code was changed during this audit.
 
+> **Update 2026-06-04:** The `lens` findings below (M1, M3, L1, L2, L3, S1)
+> were re-checked against the current `lens` source and are all **RESOLVED** —
+> the tool was substantially rewritten after this audit. Each is annotated
+> inline. Non-lens findings have not been re-verified in this pass.
+
 ---
 
 ## Severity Legend
@@ -97,6 +102,10 @@ trap 'rm -f "$tmpfile"' RETURN
 
 ### M1 · `lens` — `--not` flag silently ignored in `--fields` and `--chars` modes
 
+> **RESOLVED (2026-06-04).** Both branches now build an exclusion set
+> (`__lens_run_excl`) when `not` is set and emit the complement. Covered by
+> the "not field 2" assertion in `tests/tools/test_lens`.
+
 **File:** `lens`, function `_lens_run`
 
 The `--not` flag is documented as inverting selection. In position (`--match`) mode it is correctly applied. In `--fields` and `--chars` modes, `_lens_emit_rec` is called unconditionally; the `not` variable is never checked in those branches.
@@ -135,6 +144,9 @@ Neither line sets `local IFS` first. If the calling script has set `IFS` to anyt
 
 ### M3 · `lens` — multiple standalone `(( n++ ))` statements are errexit hazards
 
+> **RESOLVED (2026-06-04).** All standalone increments now use pre-increment
+> form (`(( ++__lens_run_n ))`, `(( ++_lens_sel_count ))`).
+
 **File:** `lens`, functions `_lens_run` and `_lens_emit_rec`
 
 **GOTCHAS.md** explicitly documents this: `(( count++ ))` when count is 0 evaluates to 0 (false) and returns exit code 1. Under `set -e`, that kills the script.
@@ -163,6 +175,9 @@ Note: `(( _i++ > 0 ))` in the fields separator logic is **not** a bug — the `>
 
 ### L1 · `lens` — local variables do not use triple-prefix naming
 
+> **RESOLVED (2026-06-04).** All internal locals now use the `__lens_run_*`,
+> `__lens_parse_*`, `__lens_split_*` triple-prefix form.
+
 **File:** `lens`  
 **Reference:** `docs/STANDARDS.md` §"Naming Conventions", `docs/bash_style.md`
 
@@ -179,6 +194,9 @@ These single-character or two-character names will silently collide with nameref
 **Fix:** Adopt a consistent prefix, e.g., `__lens_run_n`, `__lens_run_i`, etc.
 
 ### L2 · `lens` — EOL and fdelim mutex not using group `[Exclusive]` form
+
+> **RESOLVED (2026-06-04).** The schema now uses the group form:
+> `(eolChar eolString eolClass)` and `(fdelimSet fdelimStr fdelimCol)`.
 
 **File:** `lens`, the Args schema at the top of the script
 
@@ -208,6 +226,9 @@ The group `[Exclusive]` form was added to Args specifically for this case. These
 Two lines instead of six; semantically clearer; fewer constraints to keep in sync if new options are added to the group.
 
 ### L3 · `lens` — function headers are incomplete
+
+> **RESOLVED (2026-06-04).** `_lens_run`, `_lens_emit_rec`, `_lens_parse_spec`,
+> and `_lens_split_fields` now carry full what/args/returns/gotchas headers.
 
 **File:** `lens`, all internal functions
 
@@ -251,6 +272,11 @@ This uses indirect-expansion key enumeration inside `[[ -n ]]`, which is both no
 
 ### S1 · `_lens_split_fields` fdelimSet branch — O(n·m) per record
 
+> **RESOLVED (2026-06-04).** The multi-char fdelimSet branch now uses a bracket
+> glob expression (`*["$fdelimSet"]*` with `%%["$fdelimSet"]*` trimming), so the
+> character-class match runs in C inside bash rather than a per-char bash loop.
+> The single-char case is a fast plain-PE split.
+
 **File:** `lens`, function `_lens_split_fields`
 
 The fdelimSet branch (multi-character delimiter set) uses nested loops: outer over each character in the record, inner over each character in the delimiter set. For a record of length *n* and a delimiter set of size *m*, this is O(n·m) per record.
@@ -290,16 +316,16 @@ This is a low-risk issue (the names are sufficiently obscure) but could cause ba
 | C1 | `Collection/List/List` | CRITICAL | OOP convention | `$Class` should be `$_Class`; object identity always wrong on static calls |
 | H1 | `Stream/Stream` | HIGH | Security | `eval "exec ${fd}>&-"` with unvalidated fd value |
 | H2 | `boop` | HIGH | Security | Tmpfiles written by backfill/register/alias have no crash-cleanup trap |
-| M1 | `lens` | MEDIUM | Correctness | `--not` silently ignored in `--fields` and `--chars` modes |
+| M1 | `lens` | MEDIUM | Correctness | `--not` silently ignored in `--fields` and `--chars` modes — **RESOLVED 2026-06-04** |
 | M2 | `Args/Args` | MEDIUM | Correctness | `read -ra` in phases 4b/4d has no `local IFS`; breaks under non-default IFS |
-| M3 | `lens` | MEDIUM | Correctness | `(( n++ ))` when n=0 returns exit 1; reaches code under set -e |
-| L1 | `lens` | LOW | Standards | Locals not triple-prefixed; nameref collision risk |
-| L2 | `lens` | LOW | Standards | EOL/fdelim mutex should use group `[Exclusive]` form |
-| L3 | `lens` | LOW | Standards | Function headers incomplete (missing args/returns/gotchas) |
+| M3 | `lens` | MEDIUM | Correctness | `(( n++ ))` when n=0 returns exit 1; reaches code under set -e — **RESOLVED 2026-06-04** |
+| L1 | `lens` | LOW | Standards | Locals not triple-prefixed; nameref collision risk — **RESOLVED 2026-06-04** |
+| L2 | `lens` | LOW | Standards | EOL/fdelim mutex should use group `[Exclusive]` form — **RESOLVED 2026-06-04** |
+| L3 | `lens` | LOW | Standards | Function headers incomplete (missing args/returns/gotchas) — **RESOLVED 2026-06-04** |
 | L4 | `Stream/Stream` | LOW | Standards | `_scrubCharClass` locals named `c` and `__Stream_bc_tmp` (wrong prefix) |
 | L5 | `blackjack` | LOW | Standards | Shuffle locals `__i/__j/__tmp` should use `__BJ_shuffle_` prefix |
 | L6 | `Collection/List/List` | LOW | Standards | `[[ -n "${!arr[@]}" ]]` non-idiomatic; use `(( ${#arr[@]} ))` |
-| S1 | `lens` | — | Speed | fdelimSet branch O(n·m) loop; replace inner loop with glob test |
+| S1 | `lens` | — | Speed | fdelimSet branch O(n·m) loop; replace inner loop with glob test — **RESOLVED 2026-06-04** |
 | S2 | `boop` | — | Speed | PATH/BOOPPATH scanned on every class resolution; cache it |
 | S3 | `boop` | — | Maintainability | Nested helpers survive crash if `unset -f` not reached; use `trap ... RETURN` |
 

@@ -225,6 +225,26 @@ __boson_varname() {
   printf '%s' "$__boson_vn"
 }
 
+# Leaf keys for the parsed doc, in original document order.
+#
+# Data.JSON.parse maintains __boop_keys_${doc} — an indexed array recording
+# each leaf key as it was parsed. Iterating it reproduces the source key
+# order, which the raw hash (${!data[@]}) does not. Raw Fast objects with no
+# companion keys array fall back to (unordered) hash iteration.
+#
+# Arguments: none (reads global __boson_doc)
+# Returns:   populates the global array _boson_okeys[]
+__boson_ordered_keys() {
+  _boson_okeys=()
+  if [[ -v "__boop_keys_${__boson_doc}" ]]; then
+    local -n __boson_ok_ord="__boop_keys_${__boson_doc}"
+    _boson_okeys=( "${__boson_ok_ord[@]+"${__boson_ok_ord[@]}"}" )
+  else
+    local -n __boson_ok_data="__boop_data_${__boson_doc}"
+    _boson_okeys=( "${!__boson_ok_data[@]}" )
+  fi
+}
+
 # Output a single value in the current mode
 __boson_output() {
   local __boson_out_val="$1" __boson_out_varname="${2:-}"
@@ -269,6 +289,9 @@ __boson_output_array() {
 # ============================================================================
 # Execute query
 # ============================================================================
+
+# Holds leaf keys in document order; populated by __boson_ordered_keys.
+declare -a _boson_okeys=()
 
 __boson_run() {
   __boson_parse_expr "$__boson_expr"
@@ -342,7 +365,8 @@ __boson_run() {
     fi
 
   elif [[ -n "$emit" ]]; then
-    # Emit mode with no iteration: dump all keys under the expression as assignments
+    # Emit mode with no iteration: dump all keys under the expression as
+    # assignments, in original document order (via __boson_ordered_keys).
     local -n __boson_data="__boop_data_${__boson_doc}"
     local __boson_sep="."
 
@@ -350,7 +374,8 @@ __boson_run() {
     [[ -n "$__boson_key" ]] && __boson_prefix="${__boson_key}${__boson_sep}"
 
     local __boson_k __boson_vname __boson_rel
-    for __boson_k in "${!__boson_data[@]}"; do
+    __boson_ordered_keys
+    for __boson_k in "${_boson_okeys[@]+"${_boson_okeys[@]}"}"; do
       if [[ -n "$__boson_prefix" ]]; then
         [[ "$__boson_k" == "$__boson_prefix"* ]] || continue
         __boson_rel="${__boson_k#"$__boson_prefix"}"
@@ -374,12 +399,13 @@ __boson_run() {
       into=__boson_children $__boson_doc.keysUnder "$__boson_key"
       if [[ -n "$__boson_children" ]]; then
         if [[ -n "$eponymous" ]]; then
-          # Emit subtree using leaf names as variable names
+          # Emit subtree using leaf names as variable names, in document order
           local -n __boson_data="__boop_data_${__boson_doc}"
           local __boson_sep="."
           local __boson_prefix="${__boson_key}${__boson_sep}"
           local __boson_k __boson_rel __boson_vname
-          for __boson_k in "${!__boson_data[@]}"; do
+          __boson_ordered_keys
+          for __boson_k in "${_boson_okeys[@]+"${_boson_okeys[@]}"}"; do
             [[ "$__boson_k" == "$__boson_prefix"* ]] || continue
             __boson_rel="${__boson_k#"$__boson_prefix"}"
             __boson_vname="$(__boson_varname "$__boson_rel")"

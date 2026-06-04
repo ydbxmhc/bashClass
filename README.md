@@ -602,6 +602,11 @@ boop                                    root — new, destroy, get, set, isa, mi
 | [docs/Container.md](docs/Container.md) | Container and Iterator API |
 | [docs/String.md](docs/String.md) | Text.String API reference — mutators, -ed forms, pipelines, mixin usage |
 | [docs/DateTime.md](docs/DateTime.md) | DateTime API reference — constructors, formatting, arithmetic, comparison, DST notes |
+| [docs/tools.md](docs/tools.md) | CLI tools overview and index — when to reach for each, shared conventions |
+| [docs/lens.md](docs/lens.md) | lens reference — text stream inspection (head/tail/grep/cut/wc) |
+| [docs/boson.md](docs/boson.md) | boson reference — jq-style JSON query |
+| [docs/probe.md](docs/probe.md) | probe reference — minimal plaintext HTTP client |
+| [docs/collider.md](docs/collider.md) | collider reference — single-file bundler |
 | [TODO.md](TODO.md) | Roadmap and open design questions |
 
 
