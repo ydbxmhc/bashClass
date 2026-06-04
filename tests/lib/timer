@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# tests/lib/timer -- portable elapsed-time helper for benchmarks.
+#
+# Benchmarks need sub-second wall-clock timing. The mechanism degrades
+# gracefully with the running bash:
+#
+#   bash 5.0+ : EPOCHREALTIME -- microsecond precision, pure bash, no fork.
+#               Reads the clock directly, so it can bracket any region.
+#   bash <5.0 : the `time` keyword (present since bash 2.x) + TIMEFORMAT='%R'
+#               -- millisecond precision. `time` can only measure a command
+#               or block, not read a clock, so the API below is shaped as
+#               "time this command."
+#
+# Because `time` measures a command, bench_time runs its target in the
+# CURRENT shell (no subshell, no pipe), so any variable the target sets --
+# including boop `into=` results -- stays visible to the caller. Wrap work
+# that needs into= in a small function and time that function.
+#
+# Coarser resolution on older bash is fine in practice: a good benchmark
+# runs many iterations over several passes, which averages out the lower
+# precision (and the spikes from extraneous system load). If you're on
+# bash <5.0, expect millisecond timing -- and slower runs generally. Upgrade
+# to bash 5.0+ for finer measurement.
+#
+# This is a benchmark/test helper, not part of the shipped framework API.
+
+# --- Capability detection (once, at source time) ---
+if [[ -n "${EPOCHREALTIME:-}" ]]; then
+  __timer_mode="epoch"
+  __timer_precision="microsecond"
+else
+  __timer_mode="time"
+  __timer_precision="millisecond"
+fi
+
+# Temp file for capturing `time` output on the degraded path. Created lazily;
+# the sourcing benchmark is responsible for its own EXIT trap cleanup, or call
+# __timer_cleanup.
+__timer_tmp=""
+
+# __timer_cleanup -- remove the temp file used by the `time` path, if any.
+__timer_cleanup() { [[ -n "$__timer_tmp" ]] && rm -f "$__timer_tmp"; __timer_tmp=""; }
+
+# __timer_note -- one-line human description of the active timing precision.
+# Print it at the top of a benchmark so the reader knows what they're getting.
+__timer_note() {
+  local __timer_note_ver="${BASH_VERSION%%(*}"
+  if [[ "$__timer_mode" == "epoch" ]]; then
+    printf 'timing: EPOCHREALTIME, microsecond precision (bash %s)\n' "$__timer_note_ver"
+  else
+    printf 'timing: time keyword, millisecond precision -- bash %s lacks EPOCHREALTIME; upgrade to bash 5.0+ for finer timing\n' "$__timer_note_ver"
+  fi
+}
+
+# bench_time OUTVAR CMD [ARG...]
+# Run CMD..., storing elapsed wall-clock seconds (a float string like
+# "1.234567" on bash 5+, "1.234" on older) into the variable named OUTVAR.
+#
+# CMD runs in the current shell; side effects (including into= targets) persist.
+bench_time() {
+  local __bench_time_out="$1"; shift
+  if [[ "$__timer_mode" == "epoch" ]]; then
+    local __bench_time_t0="$EPOCHREALTIME"
+    "$@"
+    local __bench_time_t1="$EPOCHREALTIME"
+    # EPOCHREALTIME always carries 6 fractional digits; the radix char is
+    # locale-dependent (may be ',' not '.'). Strip every non-digit to get
+    # integer microseconds, subtract, then reformat as seconds.microseconds.
+    local __bench_time_us=$(( ${__bench_time_t1//[!0-9]/} - ${__bench_time_t0//[!0-9]/} ))
+    printf -v "$__bench_time_out" '%d.%06d' \
+      "$(( __bench_time_us / 1000000 ))" "$(( __bench_time_us % 1000000 ))"
+  else
+    [[ -n "$__timer_tmp" ]] || __timer_tmp="$(mktemp)"
+    # TIMEFORMAT='%R' -> wall-clock seconds with millisecond precision (e.g.
+    # "0.380"). Separate the command's own stderr (fd 3 -> real stderr) from
+    # the `time` keyword's output (block fd 2 -> temp file) so a chatty
+    # command can't corrupt the captured number.
+    local TIMEFORMAT='%R'
+    { time "$@" 2>&3 ; } 3>&2 2>"$__timer_tmp"
+    printf -v "$__bench_time_out" '%s' "$(<"$__timer_tmp")"
+  fi
+}

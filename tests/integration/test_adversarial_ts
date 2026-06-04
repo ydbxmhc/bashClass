@@ -16,6 +16,7 @@ set -uo pipefail
 __bench_count="${1:-0}"
 
 . boop TestSuite Cube
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/tests/lib/timer"
 
 into=t TestSuite name="Adversarial Tests"
 
@@ -687,52 +688,53 @@ $t.assert_eq "sequential into: side=35" "$__rt_b" "35"
 
 if (( __bench_count > 0 )); then
   $t.section "bulk benchmark ($__bench_count objects)"
+  # Opt-in benchmark. Timing via bench_time (tests/lib/timer): EPOCHREALTIME
+  # (microsecond) on bash 5+, the `time` keyword (millisecond) on older bash.
+  # The rest of this suite runs on the 4.3 floor; this section degrades in
+  # precision rather than failing. See tests/lib/timer.
+  trap __timer_cleanup EXIT
+  $t.info "$(__timer_note)"
   $t.info "Creating $__bench_count objects..."
 
   declare -a __bench_objs=()
-  __bc_start=$EPOCHREALTIME
-  for (( __bi=0; __bi < __bench_count; __bi++ )); do
-    into=__bench_obj new Cube size=$(( __bi + 1 )) unit=cm
-    __bench_objs+=("$__bench_obj")
-  done
-  __bc_end=$EPOCHREALTIME
-  $t.info "Creation: $(awk "BEGIN{printf \"%.3f\", $__bc_end - $__bc_start}")s ($__bench_count objects)"
+  __bench_make() {
+    local __bi
+    for (( __bi=0; __bi < __bench_count; __bi++ )); do
+      into=__bench_obj new Cube size=$(( __bi + 1 )) unit=cm
+      __bench_objs+=("$__bench_obj")
+    done
+  }
 
-  __bm_start=$EPOCHREALTIME
+  # Exercise every accessor on one object; used for both the first-pass and
+  # baked (second-pass) timing runs.
+  __bench_exercise() {
+    local __bobj
+    __bench_calls=0
+    for __bobj in "${__bench_objs[@]}"; do
+      $__bobj.volume >/dev/null 2>&1; (( ++__bench_calls ))
+      $__bobj.side >/dev/null 2>&1; (( ++__bench_calls ))
+      $__bobj.top >/dev/null 2>&1; (( ++__bench_calls ))
+      $__bobj.end >/dev/null 2>&1; (( ++__bench_calls ))
+      $__bobj.bottom >/dev/null 2>&1; (( ++__bench_calls ))
+      $__bobj.size >/dev/null 2>&1; (( ++__bench_calls ))
+      $__bobj.unit >/dev/null 2>&1; (( ++__bench_calls ))
+      $__bobj.isa >/dev/null 2>&1; (( ++__bench_calls ))
+      $__bobj.isa Cube >/dev/null 2>&1; (( ++__bench_calls ))
+      $__bobj.isa Box >/dev/null 2>&1; (( ++__bench_calls ))
+      $__bobj.toString >/dev/null 2>&1; (( ++__bench_calls ))
+    done
+  }
+
   declare -i __bench_calls=0
-  for __bobj in "${__bench_objs[@]}"; do
-    $__bobj.volume >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.side >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.top >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.end >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.bottom >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.size >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.unit >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.isa >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.isa Cube >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.isa Box >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.toString >/dev/null 2>&1; (( __bench_calls++ ))
-  done
-  __bm_end=$EPOCHREALTIME
-  $t.info "Methods: $(awk "BEGIN{printf \"%.3f\", $__bm_end - $__bm_start}")s ($__bench_calls calls, first pass)"
 
-  __bb_start=$EPOCHREALTIME
-  __bench_calls=0
-  for __bobj in "${__bench_objs[@]}"; do
-    $__bobj.volume >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.side >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.top >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.end >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.bottom >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.size >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.unit >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.isa >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.isa Cube >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.isa Box >/dev/null 2>&1; (( __bench_calls++ ))
-    $__bobj.toString >/dev/null 2>&1; (( __bench_calls++ ))
-  done
-  __bb_end=$EPOCHREALTIME
-  $t.info "Baked: $(awk "BEGIN{printf \"%.3f\", $__bb_end - $__bb_start}")s ($__bench_calls calls, second pass)"
+  bench_time __bench_el __bench_make
+  $t.info "Creation: ${__bench_el}s ($__bench_count objects)"
+
+  bench_time __bench_el __bench_exercise
+  $t.info "Methods: ${__bench_el}s ($__bench_calls calls, first pass)"
+
+  bench_time __bench_el __bench_exercise
+  $t.info "Baked: ${__bench_el}s ($__bench_calls calls, second pass)"
 
   unset __bench_objs
 else

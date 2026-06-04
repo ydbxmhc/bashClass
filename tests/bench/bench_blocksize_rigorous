@@ -7,15 +7,26 @@
 # Usage: bash tests/bench/bench_blocksize_rigorous
 
 . boop Stream
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/timer"
 __boop.setLogLevel warn
 
 ITERS=3000
 PASSES=5
 
 # --- Timing ---
-bench_start() { __bench_start="$EPOCHREALTIME"; }
-bench_end() { printf -v __bench_elapsed "%.3f" "$(( ${EPOCHREALTIME//.} - ${__bench_start//.} ))e-6"; }
+# bench_time (tests/lib/timer): EPOCHREALTIME on bash 5+, `time` keyword
+# (millisecond) on older bash. Interleaved passes + min/median/max reporting
+# average out the coarser resolution on old bash. See tests/lib/timer.
+trap __timer_cleanup EXIT
 timestamp() { printf '%(%Y-%m-%d %H:%M:%S)T' -1; }
+
+# Drain a Stream from the given Stream.new args. Uses $s.next, which dispatches
+# to the correct reader for the stream's mode (direct vs buffered).
+__bbr_drain() {
+  into=s Stream.new "$@"
+  while $s.next; do :; done
+  $s.close
+}
 
 # --- Results storage ---
 # Associative array: results["dataset.mode.blocksize.pass"] = elapsed
@@ -84,6 +95,7 @@ printf " done\n"
 printf "[%s] Data generation complete.\n\n" "$(timestamp)"
 
 # --- Run benchmarks: interleaved passes ---
+__timer_note
 printf "[%s] Running %d passes (interleaved)...\n" "$(timestamp)" "$PASSES"
 
 for (( pass=1; pass <= PASSES; pass++ )); do
@@ -93,59 +105,31 @@ for (( pass=1; pass <= PASSES; pass++ )); do
     printf "  bs=%d: " "$bs"
 
     # Dataset 1: random, PE mode, whole-line
-    bench_start
-    into=s Stream.new -P "$__bench_tmp1" -D $'\n' --blockSize="$bs" line
-    while $s.Read; do :; done
-    $s.close
-    bench_end
+    bench_time __bench_elapsed __bbr_drain -P "$__bench_tmp1" -D $'\n' --blockSize="$bs" line
     __bench_results["random.pe.$bs.$pass"]="$__bench_elapsed"; printf "."
 
     # Dataset 1: random, regex mode, whole-line
-    bench_start
-    into=s Stream.new -P "$__bench_tmp1" -E $'\n' --blockSize="$bs" line
-    while $s.Read; do :; done
-    $s.close
-    bench_end
+    bench_time __bench_elapsed __bbr_drain -P "$__bench_tmp1" -E $'\n' --blockSize="$bs" line
     __bench_results["random.regex.$bs.$pass"]="$__bench_elapsed"; printf "."
 
     # Dataset 1: random, PE mode, field split
-    bench_start
-    into=s Stream.new -P "$__bench_tmp1" -D $'\n' -f ':' --blockSize="$bs" a b c d e f g h
-    while $s.Read; do :; done
-    $s.close
-    bench_end
+    bench_time __bench_elapsed __bbr_drain -P "$__bench_tmp1" -D $'\n' -f ':' --blockSize="$bs" a b c d e f g h
     __bench_results["random.pe_f.$bs.$pass"]="$__bench_elapsed"; printf "."
 
     # Dataset 2: short uniform, PE mode, field split
-    bench_start
-    into=s Stream.new -P "$__bench_tmp2" -D $'\n' -f ':' --blockSize="$bs" a b c d e
-    while $s.Read; do :; done
-    $s.close
-    bench_end
+    bench_time __bench_elapsed __bbr_drain -P "$__bench_tmp2" -D $'\n' -f ':' --blockSize="$bs" a b c d e
     __bench_results["short.pe_f.$bs.$pass"]="$__bench_elapsed"; printf "."
 
     # Dataset 3: long uniform, PE mode, whole-line
-    bench_start
-    into=s Stream.new -P "$__bench_tmp3" -D $'\n' --blockSize="$bs" line
-    while $s.Read; do :; done
-    $s.close
-    bench_end
+    bench_time __bench_elapsed __bbr_drain -P "$__bench_tmp3" -D $'\n' --blockSize="$bs" line
     __bench_results["long.pe.$bs.$pass"]="$__bench_elapsed"; printf "."
 
     # Dataset 3: long uniform, PE mode, field split
-    bench_start
-    into=s Stream.new -P "$__bench_tmp3" -D $'\n' -f ':' --blockSize="$bs" a b c d e
-    while $s.Read; do :; done
-    $s.close
-    bench_end
+    bench_time __bench_elapsed __bbr_drain -P "$__bench_tmp3" -D $'\n' -f ':' --blockSize="$bs" a b c d e
     __bench_results["long.pe_f.$bs.$pass"]="$__bench_elapsed"; printf "."
 
     # Dataset 4: many fields, PE mode, field split
-    bench_start
-    into=s Stream.new -P "$__bench_tmp4" -D $'\n' -f ':' --blockSize="$bs" f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13 f14
-    while $s.Read; do :; done
-    $s.close
-    bench_end
+    bench_time __bench_elapsed __bbr_drain -P "$__bench_tmp4" -D $'\n' -f ':' --blockSize="$bs" f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13 f14
     __bench_results["many.pe_f.$bs.$pass"]="$__bench_elapsed"; printf "."
     printf " done\n"
   done
@@ -188,21 +172,15 @@ report_row "Many fields (15), PE + -f"   "many.pe_f"
 # --- Baselines ---
 printf "\n=== BASELINES (raw read, single pass) ===\n"
 
-bench_start
-while IFS=':' read -r a b c d e f g h; do :; done < "$__bench_tmp1"
-bench_end; printf "  raw read (random, 8 fields):    %ss\n" "$__bench_elapsed"
+__bbr_raw1() { while IFS=':' read -r a b c d e f g h; do :; done < "$__bench_tmp1"; }
+__bbr_raw2() { while IFS=':' read -r a b c d e; do :; done < "$__bench_tmp2"; }
+__bbr_raw3() { while IFS=':' read -r a b c d e; do :; done < "$__bench_tmp3"; }
+__bbr_raw4() { while IFS=':' read -r f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13 f14; do :; done < "$__bench_tmp4"; }
 
-bench_start
-while IFS=':' read -r a b c d e; do :; done < "$__bench_tmp2"
-bench_end; printf "  raw read (short, 5 fields):     %ss\n" "$__bench_elapsed"
-
-bench_start
-while IFS=':' read -r a b c d e; do :; done < "$__bench_tmp3"
-bench_end; printf "  raw read (long, 5 fields):      %ss\n" "$__bench_elapsed"
-
-bench_start
-while IFS=':' read -r f0 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13 f14; do :; done < "$__bench_tmp4"
-bench_end; printf "  raw read (15 fields):           %ss\n" "$__bench_elapsed"
+bench_time __bench_elapsed __bbr_raw1; printf "  raw read (random, 8 fields):    %ss\n" "$__bench_elapsed"
+bench_time __bench_elapsed __bbr_raw2; printf "  raw read (short, 5 fields):     %ss\n" "$__bench_elapsed"
+bench_time __bench_elapsed __bbr_raw3; printf "  raw read (long, 5 fields):      %ss\n" "$__bench_elapsed"
+bench_time __bench_elapsed __bbr_raw4; printf "  raw read (15 fields):           %ss\n" "$__bench_elapsed"
 
 printf "\n[%s] === DONE ===\n" "$(timestamp)"
 

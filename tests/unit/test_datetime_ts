@@ -32,9 +32,12 @@ $t.section "construction: now"
 into=d DateTime.now
 $t.assert_ok  "now: isa DateTime"  $d.isa DateTime
 into=ep $d.epoch
-# Compare against EPOCHSECONDS (bash 5 builtin) — no subshell needed.
+# Compare against the current epoch. Use printf strftime (%(%s)T, bash 4.2+,
+# zero-fork) rather than EPOCHSECONDS (bash 5.0) so this test runs on the
+# framework's actual 4.3 floor. See docs/bash_version_audit.md.
+printf -v __dt_now '%(%s)T' -1
 $t.assert_ok  "now: epoch close to current time" \
-  bash -c "(( $ep >= EPOCHSECONDS - 5 && $ep <= EPOCHSECONDS + 5 ))"
+  bash -c "(( $ep >= $__dt_now - 5 && $ep <= $__dt_now + 5 ))"
 
 $t.section "construction: fromEpoch"
 
