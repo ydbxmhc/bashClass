@@ -1,170 +1,155 @@
-# probe — Minimal HTTP Client
+# probe(1)
 
-A small HTTP client built on bash `/dev/tcp`, via the `Net.Socket` class.
-Plaintext **HTTP only** — there is no TLS, by design. For quick requests
-against local services, internal APIs, and health checks where bringing in
-`curl` is overkill or unavailable, probe is enough.
+## NAME
 
-Built on `Net.Socket` and `Args`. HTTP/1.1 with `Connection: close`.
+**probe** — minimal plaintext HTTP client
 
----
+## SYNOPSIS
 
-## Quick Start
-
-```bash
-probe http://example.com                  # GET, body to stdout
-probe -s http://example.com               # status code only (e.g. 200)
-probe -i http://example.com               # status line + headers + body
-probe -d "name=Alice" http://host/form    # POST (auto when -d is present)
-probe -j -d '{"x":1}' http://host/api     # JSON shorthand
+```
+probe [-X METHOD] [-d DATA] [-j] [-H HEADER]... [-i | -s | -o FILE]
+      [-t SECONDS] [--no-follow] [-v] [-q] URL...
+probe (-h | --help | --examples | --about)
 ```
 
-Layered help: `--examples`, `--about`.
+## DESCRIPTION
 
----
+**probe** fetches HTTP URLs using bash's `/dev/tcp` pseudo-device — no `curl`,
+no `wget`, no external dependencies. It speaks HTTP/1.1 with
+`Connection: close` and is intended for quick requests against local services,
+internal APIs, and health checks.
 
-## Requests
+It handles **plaintext HTTP only**. An `https://` URL is rejected with a clear
+message — see LIMITATIONS.
 
-### Method
+The request method defaults to `GET`, or `POST` when a body is supplied with
+`-d`. Multiple URLs may be given and are fetched in order.
 
-GET by default. If `-d`/`--data` is given and no method is set, the method
-becomes POST. Override explicitly with `-X`/`--method`.
+## OPTIONS
+
+### Request
+
+| Short | Long | Argument | Meaning |
+|-------|------|----------|---------|
+| `-X` | `--method` | METHOD | HTTP method (default: GET, or POST with `-d`) |
+| `-d` | `--data` | DATA | Request body; sets Content-Length and implies POST |
+| `-j` | `--json` | — | Add `Content-Type: application/json` and `Accept: application/json` |
+| `-H` | `--header` | "Name: Value" | Add a request header (repeatable) |
+
+### Response
+
+| Short | Long | Argument | Meaning |
+|-------|------|----------|---------|
+| (default) | | | Write the response body to stdout |
+| `-i` | `--include` | — | Print the status line and headers before the body |
+| `-s` | `--status` | — | Print only the numeric HTTP status code |
+| `-o` | `--output` | FILE | Write the body to FILE instead of stdout |
+
+`-s` is mutually exclusive with `-i` and `-o` (it suppresses the body).
+
+### Connection
+
+| Short | Long | Argument | Meaning |
+|-------|------|----------|---------|
+| `-t` | `--timeout` | SECONDS | Connection + read timeout (default 30) |
+| | `--no-follow` | — | Do not follow 3xx redirects |
+
+### Verbosity
+
+| Short | Long | Meaning |
+|-------|------|---------|
+| `-v` | `--verbose` | Print the request headers to stderr (`>`-prefixed) |
+| `-q` | `--quiet` | Suppress informational stderr messages |
+
+### Help
+
+| Short | Long | Meaning |
+|-------|------|---------|
+| `-h` | `--help` | Synopsis |
+| | `--examples` | Cookbook |
+| | `--about` | About probe |
+
+## EXAMPLES
+
+### Basic requests
 
 ```bash
-probe http://host/page                 # GET
-probe -d "a=1" http://host/submit      # POST
-probe -X DELETE http://host/item/3     # explicit method
+probe http://example.com               # GET, body to stdout
+probe -s http://example.com            # status code only (e.g. 200)
+probe -i http://example.com            # status line + headers + body
+probe -o page.html http://example.com  # body to a file
 ```
 
-### Body and JSON
-
-| Flag | Effect |
-|------|--------|
-| `-d`, `--data STRING` | Send STRING as the request body (sets Content-Length) |
-| `-j`, `--json` | Add `Content-Type: application/json` and `Accept: application/json` |
+### POST and JSON
 
 ```bash
-probe -d "name=Alice&age=30" http://host/form
-probe -j -d '{"name":"Alice"}' http://host/users
-probe -j http://host/data              # just the JSON Accept/Content-Type headers
+probe -d "name=Alice&age=30" http://host/form   # form POST (method implied)
+probe -j -d '{"name":"Alice"}' http://host/users # JSON POST
+probe -j http://host/data                         # GET with JSON Accept header
+probe -X DELETE http://host/item/3                # explicit method
 ```
 
 ### Headers
-
-`-H`/`--header` adds a request header. Repeatable.
 
 ```bash
 probe -H "Authorization: Bearer TOKEN" http://host/me
 probe -H "Accept: text/plain" -H "X-Custom: foo" http://host/
 ```
 
----
-
-## Responses
-
-| Flag | Effect |
-|------|--------|
-| (default) | Print the response body to stdout |
-| `-i`, `--include` | Print the status line and headers before the body |
-| `-s`, `--status` | Print only the numeric HTTP status code |
-| `-o`, `--output FILE` | Write the body to FILE instead of stdout |
-
-`-s` is mutually exclusive with `-i` and `-o` (it suppresses the body entirely).
+### Inspecting redirects
 
 ```bash
-probe -i http://host/                  # HTTP/1.1 200 OK ... + body
-probe -s http://host/                  # 200
-probe -o page.html http://host/        # body to a file
+probe http://host/old-path            # follows the redirect to its target
+probe --no-follow -s http://host/old  # stop at the 3xx, print its status
 ```
 
----
+A relative `Location` (e.g. `/target`) is resolved against the current
+request's scheme, host, and port before the next fetch; absolute
+`http://…` Locations are used as-is.
 
-## Redirects
-
-3xx responses are followed by default. `--no-follow` stops at the redirect so
-you can inspect it.
-
-A relative `Location` header (e.g. `/target` or `next.html` — the common case
-for most servers) is resolved against the **current request's** scheme, host,
-and port before the next fetch. Absolute `http://…` Locations are used as-is.
+### Debugging and timeouts
 
 ```bash
-probe http://host/old-path             # follows the redirect to its target
-probe --no-follow -s http://host/old   # 302 (stops, shows the status)
+probe -v http://host/                 # show the request headers sent
+probe -t 5 http://slow.host/          # 5-second timeout
+probe http://a.host/ http://b.host/   # several URLs, fetched in order
 ```
 
----
+## EXIT STATUS
 
-## Connection and Verbosity
+- **0** — every request completed (a followed redirect counts as completion).
+- **non-zero** — connection failure, timeout, no response, an `https://` URL
+  (rejected), or any URL in a multi-URL invocation failing.
 
-| Flag | Effect |
-|------|--------|
-| `-t`, `--timeout N` | Connection + read timeout in seconds (default 30) |
-| `--no-follow` | Do not follow 3xx redirects |
-| `-v`, `--verbose` | Print the request headers to stderr (`> ` prefixed) |
-| `-q`, `--quiet` | Suppress informational stderr messages |
+## LIMITATIONS
 
-```bash
-probe -v http://host/                  # show what was sent
-probe -t 5 http://slow.host/           # 5-second timeout
-```
+- **No HTTPS/TLS.** TLS belongs in a crypto library, not pure bash, so probe
+  rejects `https://` up front rather than failing obscurely. For TLS, use
+  `curl` or `wget`; the bundle/installer machinery can also fetch a richer
+  client (see [TODO.md](../TODO.md)).
+- **Text bodies only.** The body is read line-oriented and bash variables
+  cannot hold NUL, so binary responses are not preserved faithfully.
+- **Pragmatic, not spec-complete.** probe follows the common redirect/parse
+  cases, not every corner of HTTP/1.1.
 
----
+## NOTES
 
-## Multiple URLs
+probe is pure bash, built on the **boop** framework's `Net.Socket` and `Args`
+classes. It began as a thought experiment — what can an OOP bash standard
+library do with `/dev/tcp` alone? — and it is not competitive on speed or
+completeness with `curl`. Its value is reach: it runs anywhere **bash 4.3+** is
+present (with `/dev/tcp` support, standard on Linux/macOS and Git Bash), making
+it a "consolation prize" drop-in for stripped containers and minimal images
+where curl and wget are absent but a quick HTTP GET is still needed.
 
-Several URLs in one call are fetched in order. The exit status is non-zero if
-any fetch fails.
+`Net.Socket` owns the connection lifecycle, timeouts, and read/write
+primitives; probe owns URL parsing, request construction, redirect resolution,
+and output formatting. The same socket layer is the foundation for a future
+`Stream::Socket` with bidirectional multi-FD I/O. For repeated use, bundle
+probe with `collider` (`collider probe` → `bundle-probe`).
 
-```bash
-probe http://a.host/ http://b.host/
-```
+## SEE ALSO
 
----
-
-## Exit Status
-
-- 0 — all requests completed (including a followed redirect).
-- non-zero — connection failure, timeout, no response, an HTTPS URL (rejected),
-  or any URL in a multi-URL call failing.
-
----
-
-## Limitations
-
-- **No HTTPS/TLS.** An `https://` URL is rejected with a clear message. probe
-  speaks plaintext HTTP over `/dev/tcp` only. For TLS, use curl or wget — or
-  see the installer's `--fetch-probe`/cascade story in
-  [TODO.md](../TODO.md) for how bundles bootstrap a richer fetch.
-- **Text bodies.** The body is read line-oriented; bash variables cannot hold
-  NUL, so binary responses are not preserved faithfully.
-- **One redirect chain, simple parsing.** probe is a pragmatic client, not a
-  spec-complete user agent. It handles the everyday cases.
-
----
-
-## Design Notes
-
-### Why /dev/tcp instead of curl
-
-The point of probe is zero external dependencies. `Net.Socket` opens a TCP
-connection through bash's `/dev/tcp` pseudo-device, so probe runs anywhere bash
-does — including stripped containers and minimal images where curl isn't
-installed. It is the "consolation prize" drop-in: not as capable as curl, but
-present when curl isn't.
-
-### Why no TLS
-
-TLS in pure bash is not realistic — the handshake and crypto belong in a
-library. Rather than half-implement it, probe is honest about being
-plaintext-only and rejects HTTPS up front instead of failing obscurely. When
-real TLS is needed, the bundle/installer machinery can fetch a tool that has
-it.
-
-### Relationship to Net.Socket
-
-probe is a thin CLI over `Net.Socket`: the socket class owns connection
-lifecycle, timeouts, and the read/write primitives; probe owns URL parsing,
-request construction, redirect resolution, and output formatting. The same
-socket layer is the foundation for a future `Stream::Socket` with full
-bidirectional, multi-FD I/O (see [Stream.md](Stream.md) and TODO).
+`curl(1)`, `wget(1)` — the fuller-featured clients probe stands in for.
+[docs/Stream.md](Stream.md) for the planned socket-stream model,
+[docs/tools.md](tools.md) for the tool family.

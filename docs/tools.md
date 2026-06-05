@@ -5,7 +5,8 @@ boop script: it sources the framework, loads a few classes, and exposes a
 focused CLI. They run from a boopRoot checkout (the framework on `PATH`), and
 each can be packaged into a self-contained single-file bundle with `collider`.
 
-This page is the map. Each tool has its own full reference — follow the links.
+This page is the map. Each tool has its own full reference in POSIX man-page
+form (NAME / SYNOPSIS / DESCRIPTION / OPTIONS / EXAMPLES / …) — follow the links.
 
 | Tool | Reach for it when… | Built on | Reference |
 |------|--------------------|----------|-----------|
@@ -13,6 +14,27 @@ This page is the map. Each tool has its own full reference — follow the links.
 | **boson** | you need to pull values out of JSON without `jq` | Data.JSON, Map.Fast, Args | [boson.md](boson.md) |
 | **probe** | you need a quick plaintext HTTP request, no curl | Net.Socket, Args | [probe.md](probe.md) |
 | **collider** | you want to ship a tool as one portable file | Args | [collider.md](collider.md) |
+
+---
+
+## Pure bash, by design
+
+These tools began as a thought experiment: how far can an object-oriented
+standard library written in pure bash be pushed? The answer turned out to be
+"surprisingly far" — a stream processor, a JSON query engine, an HTTP client,
+and a bundler, none of which shell out to external programs.
+
+They are **not** competitive on speed with the C utilities they echo (`grep`,
+`cut`, `jq`, `curl` fork once and run native code; these interpret bash). What
+they offer instead is **reach and features**: they run anywhere **bash 4.3+** is
+present — stripped containers, minimal images, locked-down hosts where
+installing coreutils, jq, or curl is not an option — and they frequently add
+capabilities the classic tools lack (multi-character and character-class
+delimiters, one-axis composition, sourceable JSON output, `/dev/tcp` fetches).
+Reach for them when the "right" tool isn't installed and bash is.
+
+Each per-tool reference repeats this note in its NOTES section, since the docs
+are meant to stand alone.
 
 ---
 

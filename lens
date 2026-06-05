@@ -231,36 +231,46 @@ lens is built on boop — an OOP framework for bash 4.3+.
 ' "$@" || exit 1
 
 # ---------------------------------------------------------------------------
-# Post-parse validation — catches combinations Args schema cannot express.
+# Post-parse validation — catches combinations the Args schema cannot express.
 # ---------------------------------------------------------------------------
 
-# Combining three or more position options is always reducible to --from/--to
-# and is only a source of confusion.
+# Combining three or more position options is always reducible to a plain
+# --from/--to range, so it's only a source of confusion. Count how many are
+# set; more than two is an error.
 declare -i __lens_npos=0
 [[ -n "${first:-}" ]] && (( ++__lens_npos ))
 [[ -n "${last:-}"  ]] && (( ++__lens_npos ))
 [[ -n "${from:-}"  ]] && (( ++__lens_npos ))
 [[ -n "${to:-}"    ]] && (( ++__lens_npos ))
-(( __lens_npos <= 2 )) || {
+if (( __lens_npos > 2 )); then
   _Error "lens: combine at most two of --first/--last/--from/--to"
   exit 1
-}
+fi
 
-# Position values must be positive integers (record numbers are 1-indexed).
+# _lens_posint NAME VALUE
+# what: Validate that a position option's value is a positive integer.
+#       Record numbers are 1-indexed, so zero and negatives are invalid.
+# args: NAME  — the option name, used only in the error message (e.g. "first")
+#       VALUE — the value to validate
+# returns: 0 if VALUE is a positive integer; otherwise prints a clear error
+#          and exits 1 (a bad position value can't be recovered for this run).
 _lens_posint() {
-  [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || {
-    _Error "lens: --$1 requires a positive integer (got '${2:-}')"
-    exit 1
-  }
+  if [[ "${2:-}" =~ ^[1-9][0-9]*$ ]]; then
+    return 0
+  fi
+  _Error "lens: --$1 requires a positive integer (got '${2:-}')"
+  exit 1
 }
 [[ -n "${first:-}" ]] && _lens_posint first "$first"
 [[ -n "${last:-}"  ]] && _lens_posint last  "$last"
 [[ -n "${from:-}"  ]] && _lens_posint from  "$from"
 [[ -n "${to:-}"    ]] && _lens_posint to    "$to"
-[[ -n "${from:-}" && -n "${to:-}" ]] && (( from > to )) && {
+
+# A --from greater than --to describes an empty range; reject it explicitly.
+if [[ -n "${from:-}" && -n "${to:-}" ]] && (( from > to )); then
   _Error "lens: --from $from > --to $to (empty range)"
   exit 1
-}
+fi
 
 # Bare filenames: if positionals remain and are readable files, use them.
 # Multiple files are processed independently (like head/tail/grep), not

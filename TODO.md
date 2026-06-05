@@ -587,6 +587,49 @@ Layered help: `--help` (compact synopsis), `--options` (full reference),
 - `--column` (auto-align) — requires buffering for max-width detection
 - `--bytes RANGES` — byte-addressed slicing for binary/ASCII-only data
 
+**Proposed features (2026-06-05 session — designed, not built):**
+
+- **Separate output delimiters.** Today the output field separator is derived
+  from the *input* delimiter, so you can't read on one delimiter and write on
+  another. Add distinct output record/field delimiters (e.g. `--ors`/`--ofs`,
+  names TBD) so lens can convert formats — read a file in paragraph mode (`-D ''`)
+  and emit CSV lines, or split on `||` and join on `,`. This is the enabler for
+  the next two items and the highest-value of the set.
+
+- **Literal insertion in field output.** Pairs with the output-delimiter work:
+  let the `--fields`/`--cols` spec interleave literal strings with field refs
+  (e.g. `--cols '3 "," 1'` or similar mini-syntax) so output can be templated,
+  not just delimiter-joined. Subsumes the older `--cols 'FMT' RANGES` idea.
+  Reordering already works (`--fields 3,1`); this adds literals between them.
+
+- **`--rec-after-byte N` and `--start-at-byte N` (bulk skip optimization).**
+  Two long-only options (no short forms) to cheaply scan the tail of a large
+  file ("8MB file, I want the last ~100 records"). Both work on **pipes too**,
+  not just seekable files — `read -N N _` consumes a byte blast off any stream,
+  skipping the framework's per-record parse (where the cost is). Verified:
+  `seq 9999 | { read -rN 9999 _; read -r _; head; }`.
+
+  Two distinct contracts:
+  - **`--rec-after-byte N`** — resync variant. Read N bytes, then read and
+    discard one more record (the partial record you landed in), then start
+    emitting. "Give me the records *after* byte N," landing on a clean
+    boundary. The sacrificed partial record is the cost of alignment.
+  - **`--start-at-byte N`** — raw variant. Discard N-1 bytes and start emitting
+    at byte N exactly, no questions asked. Accepts a torn first record; for
+    when you want byte-exact positioning and know what you're doing.
+
+  **`--number` becomes tilde-prefixed under either option** (e.g. `~2223`): the
+  record numbers are relative to the seek point, not the true file position
+  (we skipped without counting), and the `~` flags that approximation in the
+  output itself. This replaces the earlier idea of disallowing `--number` with
+  a seek — better to allow it and mark it honestly.
+
+  Both are pure speed optimizations: they change only how fast lens reaches the
+  records, never (beyond the documented landing-record behavior) which records
+  are emitted. The byte offset is NOT record-aligned — that is the whole point
+  of the resync in `--rec-after-byte` and the explicit caveat for
+  `--start-at-byte`. Document the distinction in bold.
+
 ---
 
 ### 7. Real-World Example Scripts

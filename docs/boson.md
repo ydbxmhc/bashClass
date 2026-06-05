@@ -1,39 +1,34 @@
-# boson — Structured Data Query
+# boson(1)
 
-A jq-style query tool for JSON, in pure bash. boson parses input into a
-`Map.Fast` store and resolves path expressions against it. No `jq`, no external
-dependencies — just the boop framework.
+## NAME
 
-The name is "Bash Oriented Scripting Object Notation." It is built on
-`Data.JSON`, `Map.Fast`, and `Args`.
+**boson** — query JSON with jq-style path expressions
 
-> **Status.** Stage 1 (path expressions, array iteration, raw output) and the
-> sourceable output modes (`--emit`, `--into`, `--eponymous`) are implemented
-> and tested (`tests/tools/test_boson`, 26 assertions). The jq-style query
-> features — `select(...)`, pipe chaining, object construction,
-> `map`/`reduce`/`sort_by`, recursive descent — are on the roadmap. See
-> [TODO.md](../TODO.md).
+## SYNOPSIS
 
----
-
-## Quick Start
-
-```bash
-boson '.name' < data.json                 # "boop"   (strings quoted)
-boson -r '.name' < data.json              # boop     (raw, no quotes)
-boson '.database.host' < config.json      # nested key
-boson '.scores[0]' < data.json            # array index
-boson '.users[]' < data.json              # iterate (one element per line)
-boson '.users[].email' < data.json        # iterate + extract a field
-boson '.version' package.json             # file as the last argument
+```
+boson [-r | --emit | --into=VAR | -E] EXPR [FILE]
+boson (-h | --help | --examples | --about | --boop)
 ```
 
-Reads stdin, or a file given as the final positional argument. Layered help:
-`--examples`, `--about`, `--boop`.
+EXPR is a path expression. With no FILE, boson reads JSON from standard input.
 
----
+## DESCRIPTION
 
-## Path Syntax
+**boson** parses a JSON document into a flat key-value store and resolves a
+path expression against it, like a small `jq`. It reads standard input or a
+single file given as the final argument, and writes the selected value(s) in
+one of several output formats.
+
+The name stands for "Bash Oriented Scripting Object Notation."
+
+> **Status.** Path expressions, array iteration, and the output modes below are
+> implemented and tested. The richer jq surface — `select(...)`, pipe chaining,
+> object construction, `map`/`reduce`/`sort_by`, recursive descent (`..`) — is
+> on the roadmap; see [TODO.md](../TODO.md). In the default mode a non-leaf node
+> currently prints a `{...} (N keys)` placeholder rather than re-emitting JSON.
+
+### Path syntax
 
 | Expression | Meaning |
 |------------|---------|
@@ -43,121 +38,117 @@ Reads stdin, or a file given as the final positional argument. Layered help:
 | `.arr[]` | Iterate all array elements (one per line) |
 | `.obj[].name` | Iterate an array, extract `.name` from each element |
 
-Internally a path is rewritten to a Map.Fast compound key: `.users[0].email`
-becomes the key `users.0.email`. Array iteration (`[]`) enumerates the numeric
-children under a prefix, in index order.
+Internally a path becomes a compound key — `.users[0].email` → `users.0.email`.
+Array iteration (`[]`) enumerates the numeric children under a prefix, in index
+order. A key that does not exist yields `null`.
+
+## OPTIONS
+
+The output modes are mutually exclusive; choose at most one. With none, boson
+uses type-aware default output.
+
+| Short | Long | Meaning |
+|-------|------|---------|
+| | (default) | Type-aware: strings quoted, numbers/booleans/null bare |
+| `-r` | `--raw` | Raw values, unquoted (one per line when iterating) |
+| `-e` | `--emit` | Every leaf under EXPR as sourceable `var=value` lines |
+| | `--into=VAR` | The value as `VAR=value`, or an array as `VAR=(...)` |
+| `-E` | `--eponymous` | Like `--emit`, but variables are named by the leaf key |
+
+Help:
+
+| Short | Long | Meaning |
+|-------|------|---------|
+| `-h` | `--help` | Synopsis |
+| | `--examples` | Cookbook |
+| | `--about` | About boson |
+| | `--boop` | About the boop framework |
+
+`--emit` and `--eponymous` preserve the **original document key order**: they
+walk the parser's companion ordered-key index, not the raw hash, so assignments
+emerge in source order — the same mechanism `Data.JSON.stringify` uses.
+
+## EXAMPLES
+
+### Reading values
 
 ```bash
-boson '.address.city' < data.json     # nested
-boson '.scores[2]' < data.json        # third element
-boson '.tags[]' < data.json           # each tag
-boson '.users[].age' < data.json      # each user's age
+boson '.name' < data.json             # "boop"      (default: strings quoted)
+boson -r '.name' < data.json          # boop        (raw, unquoted)
+boson '.database.host' < config.json  # nested key
+boson '.scores[0]' < data.json        # first array element
+boson '.version' package.json         # FILE as the final argument
 ```
 
-A key that does not exist yields `null`.
-
----
-
-## Output Modes
-
-The output modes are mutually exclusive. Default mode is type-aware; the others
-produce raw or sourceable text.
-
-### Default — type-aware
-
-Strings are quoted; numbers, booleans, and `null` are bare.
+### Iterating arrays
 
 ```bash
-boson '.name'   < d.json   # "boop"
-boson '.count'  < d.json   # 42
-boson '.active' < d.json   # true
-boson '.nothing' < d.json  # null
+boson '.tags[]' < data.json           # each element, one per line
+boson -r '.users[].email' < data.json # one unquoted email per line
+boson '.users[].age' < data.json      # a field extracted from each element
 ```
 
-A non-leaf node (an object or array) currently prints a `{...} (N keys)`
-placeholder rather than re-emitting JSON. Re-emission is a roadmap item.
-
-### `-r`, `--raw` — unquoted values
+### Type-aware default output
 
 ```bash
-boson -r '.name' < d.json              # boop
-boson -r '.users[].email' < d.json     # one unquoted email per line
+boson '.count'   < d.json   # 42      (number, bare)
+boson '.active'  < d.json   # true    (boolean, bare)
+boson '.nothing' < d.json   # null
+boson '.name'    < d.json   # "boop"  (string, quoted)
 ```
 
-### `--emit` — sourceable assignments
+### Sourceable output for shell scripts
 
-Every leaf under the expression as `var=value` lines, safely quoted for
-sourcing. Key paths become variable names (dots and dashes → underscores).
+Pull configuration straight into shell variables instead of shelling out per
+value:
 
 ```bash
+# Whole subtree as var=value lines, in document order
 boson --emit '.database' < config.json
-# host=localhost
-# port=5432
-# ssl=false
+#   host=localhost
+#   port=5432
+#   ssl=false
 
-. <(boson --emit '.' < config.json)    # load the whole document into the shell
+# Load an entire document into the current shell
+. <(boson --emit '.' < config.json)
+
+# A single named value
+boson --into=host '.database.host' < config.json    # host=localhost
+. <(boson --into=port '.server.port' < config.json)
+
+# An iterated field as an array
+boson --into=names '.users[].name' < data.json       # names=(Alice Bob)
+
+# Eponymous: variable named by the leaf key
+boson -E '.database.host' < config.json              # host=localhost
+boson -E '.database' < config.json                   # host=…  port=…  ssl=…
 ```
 
-### `--into=VAR` — named assignment
+## EXIT STATUS
 
-A single value as `VAR=value`, or an array as `VAR=(...)`.
+- **0** — query succeeded; a value (or `null`) was written.
+- **non-zero** — malformed JSON, no input (no file and nothing piped), an empty
+  expression, or conflicting output modes (rejected by the argument parser).
 
-```bash
-boson --into=host '.database.host' < c.json    # host=localhost
-boson --into=names '.users[].name' < d.json    # names=(Alice Bob)
-. <(boson --into=port '.server.port' < c.json)
-```
+Diagnostics print to standard error beginning with `boson:`.
 
-### `-E`, `--eponymous` — leaf-name variables
+## NOTES
 
-Like `--emit`, but uses the leaf key name as the variable name.
+boson is pure bash, built on the **boop** framework's `Data.JSON`, `Map.Fast`,
+and `Args` classes. It began as a thought experiment — how much of `jq` can a
+bash OOP standard library express? — and it will never match a C-based JSON
+processor on speed. Its value is reach: it runs anywhere **bash 4.3+** is
+present, with no `jq`, no Python, and no external dependencies, which makes it a
+dependable fallback on stripped containers and minimal hosts where those are
+absent.
 
-```bash
-boson -E '.database.host' < c.json     # host=localhost
-boson -E '.database' < c.json          # host=…\nport=…\nssl=…
-```
+The query engine operates on the flat key-value store, not on JSON syntax, so
+the same engine is intended to serve YAML and INK/Config sources once those
+parsers feed the same backend. For repeated use, bundle boson with `collider`
+(`collider boson` → `bundle-boson`) to avoid the per-invocation framework load.
 
-### Output ordering
+## SEE ALSO
 
-`--emit` and `--eponymous` preserve **original document key order**. They walk
-the JSON parser's companion ordered-key index (`__boop_keys_${doc}`), not the
-raw associative array, so emitted assignments come out in the same order the
-keys appeared in the source — the same mechanism `Data.JSON.stringify` uses.
-
----
-
-## Exit Status and Errors
-
-- A successful query exits 0.
-- Malformed JSON: a parse error on stderr, non-zero exit.
-- No input (no file, nothing piped): error on stderr, non-zero exit.
-- An empty expression: error on stderr, non-zero exit.
-- Conflicting output modes (e.g. `-r --emit`): rejected by the Args schema.
-
----
-
-## Design Notes
-
-### Format-agnostic at heart
-
-boson queries a `Map.Fast`. JSON is just the parser that populates it today.
-Because the query operates on the flat compound-key store rather than on JSON
-syntax, the same engine will serve YAML and Config once those parsers feed the
-same backend — which is why the roadmap envisions a reusable `Data.Boson`
-*class* with the CLI as a thin wrapper. For now the query logic lives in the
-`boson` script.
-
-### Why sourceable output
-
-The `--emit` / `--into` / `--eponymous` modes exist because the most common
-thing a shell script wants from a config file is *variables*. Rather than
-shelling out per value, you source one boson call and have the whole subtree as
-bash variables — in document order, safely quoted.
-
-### Roadmap
-
-Stage 2+ adds the jq-style query surface: `select(.age > 30)` predicates (built
-on Math comparison), pipe chaining between stages, string interpolation and
-object construction, `map`/`reduce`/`group_by`/`sort_by` (built on List's
-functional ops), and recursive descent (`..`). See [TODO.md](../TODO.md) for
-the staged plan and what each stage builds on.
+`jq(1)` — the tool boson imitates. [docs/JSON.md](JSON.md) for the parser,
+[docs/Map.md](Map.md) for the backing store, [docs/tools.md](tools.md) for the
+tool family, and [TODO.md](../TODO.md) for the staged roadmap.
