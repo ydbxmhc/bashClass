@@ -454,7 +454,15 @@ Args.parse() {
   declare -gA __Args_descriptions=()
   declare -gA __Args_subcmd_desc=()
   declare -g  __Args_usage=""
-  declare -gA __Args_seen=()
+  # Two seen-tables, deliberately separate:
+  #   __Args_seen      -- PERSISTENT (+=). Records what the user supplied across
+  #                       parses so Args.given still answers after a nested parse
+  #                       (e.g. inside Stream.new) runs. Cumulative for the
+  #                       process; see TODO (Args.reset) for the long-session caveat.
+  #   __Args_seen_this -- PER-PARSE (=). Reset every parse; backs duplicate-option
+  #                       detection, which must only consider the current parse.
+  declare -gA __Args_seen+=()
+  declare -gA __Args_seen_this=()
   declare -gA __Args_values=()
   declare -gA __Args_types=()     # varname → "array" | "map" | "" (scalar/bool)
   declare -gA __Args_fileload=()  # varname → "1" if value is a filename to load
@@ -562,12 +570,14 @@ Args.parse() {
       __Args_parse_vn="${__Args_alias_map[$__Args_parse_key]:-}"
       [[ -n "$__Args_parse_vn" ]] || { _Error "Args.parse: unknown option: $__Args_parse_key"; return 1; }
 
-      # Duplicate detection: scalars/booleans only; arrays and maps allow repeats
+      # Duplicate detection: scalars/booleans only; arrays and maps allow repeats.
+      # Checks the PER-PARSE table so a prior parse's options don't false-trip it.
       if [[ -z "${__Args_types[$__Args_parse_vn]:-}" ]]; then
-        [[ -z "${__Args_seen[$__Args_parse_vn]+set}" ]] ||
+        [[ -z "${__Args_seen_this[$__Args_parse_vn]+set}" ]] ||
           { _Error "Args.parse: duplicate option: $__Args_parse_key"; return 1; }
       fi
-      # Mark as given (all types). Survives parse for Args.given queries.
+      # Mark given (all types) in both the per-parse and persistent tables.
+      __Args_seen_this[$__Args_parse_vn]=1
       __Args_seen[$__Args_parse_vn]=1
 
       __Args_parse_scope="${__Args_var_scope[$__Args_parse_vn]:-}"
@@ -603,12 +613,13 @@ Args.parse() {
         __Args_parse_cvn="${__Args_alias_map["-${__Args_parse_c}"]:-}"
         [[ -n "$__Args_parse_cvn" ]] || { _Error "Args.parse: unknown option: -${__Args_parse_c}"; return 1; }
 
-        # Duplicate detection: scalars/booleans only
+        # Duplicate detection: scalars/booleans only (per-parse table).
         if [[ -z "${__Args_types[$__Args_parse_cvn]:-}" ]]; then
-          [[ -z "${__Args_seen[$__Args_parse_cvn]+set}" ]] ||
+          [[ -z "${__Args_seen_this[$__Args_parse_cvn]+set}" ]] ||
             { _Error "Args.parse: duplicate option: -${__Args_parse_c}"; return 1; }
         fi
-        # Mark as given (all types). Survives parse for Args.given queries.
+        # Mark given (all types) in both the per-parse and persistent tables.
+        __Args_seen_this[$__Args_parse_cvn]=1
         __Args_seen[$__Args_parse_cvn]=1
 
         __Args_parse_scope="${__Args_var_scope[$__Args_parse_cvn]:-}"
@@ -903,7 +914,7 @@ Args.parse() {
   unset __Args_alias_map __Args_takes_val __Args_required __Args_defaults \
         __Args_subcmd_map __Args_varlist __Args_var_scope \
         __Args_descriptions __Args_subcmd_desc __Args_usage \
-        __Args_values __Args_types __Args_fileload \
+        __Args_seen_this __Args_values __Args_types __Args_fileload \
         __Args_parser_bareKV __Args_parser_show __Args_exclusive \
         __Args_subscreen_map __Args_subscreen_sections __Args_subscreen_order \
         __Args_requires __Args_together
