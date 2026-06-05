@@ -7,16 +7,17 @@
 ## SYNOPSIS
 
 ```
-lens [--first N] [--last N] [--from N] [--to N] [--not] [FORMAT] [DELIM] [FILE...]
+lens [--first N] [--last N] [--from N] [--to N] [--not] [FORMAT] [DELIM] [SEEK] [FILE...]
 lens (--match PAT | --no-match PAT)... [--and | --or] [--not] [FORMAT] [DELIM] [FILE...]
-lens --fields SPEC [-f|-F|-W DELIM] [--not] [FORMAT] [DELIM] [FILE...]
-lens --chars SPEC [--not] [FORMAT] [DELIM] [FILE...]
+lens --fields SPEC [-f|-F|-W DELIM] [--ofs STR] [--ors STR] [--spec-sep C] [--not] [FORMAT] [DELIM] [FILE...]
+lens --chars SPEC [--ors STR] [--spec-sep C] [--not] [FORMAT] [DELIM] [FILE...]
 lens (-h | --help | --options | --examples | --about | --boop)
 ```
 
 Where:
 - **FORMAT** is any of `-n`/`--number`, `-c`/`--count`, `-H`/`--prefix`
 - **DELIM** sets the record delimiter: `-d CHAR`, `-D STRING`, or `-E CHARS`
+- **SEEK** is `--rec-after-byte N` or `--start-at-byte N` (bulk skip)
 - **FILE...** are input files; with none, lens reads standard input
 
 ## DESCRIPTION
@@ -66,6 +67,30 @@ attached (`-d:`) or separated (`-d :`).
 Bare file arguments work too: `lens --first 5 a.log` reads `a.log`. With
 multiple files, each is processed independently (see EXAMPLES).
 
+### Byte-seek (bulk skip for large inputs)
+
+Two long-only options cheaply skip past a byte offset before reading begins —
+useful for scanning the tail of a large file without parsing everything before
+it. Both work on **pipes as well as files** (the skip consumes a raw byte blast
+off the stream; it does not require a seekable file). They are mutually
+exclusive with each other, and not valid with multiple files.
+
+| Long | Argument | Meaning |
+|------|----------|---------|
+| `--rec-after-byte` | N | Skip N bytes, then discard the partial record landed in, resuming on a clean record boundary |
+| `--start-at-byte` | N | Skip N-1 bytes and resume at byte N exactly (the first record may be torn) |
+
+A raw byte offset almost never lands on a record boundary. `--rec-after-byte`
+handles that by letting the stream discard the straddled record (using the
+active record delimiter, so CRLF / paragraph / char-class all resync
+correctly); `--start-at-byte` does not — it resumes at the exact byte, by
+design, for when you want byte-precise positioning.
+
+Because the skipped region is never parsed, record *numbers* after a seek are
+relative to the seek point, not the true start of input. When `--number` is
+combined with either seek, the counter is **tilde-prefixed** (`~1`, `~2`, …) to
+flag that the numbering is seek-relative.
+
 ### Position (mutually exclusive with the other axes)
 
 | Long | Argument | Meaning |
@@ -110,9 +135,7 @@ one `--match` or `--no-match`.
 SPEC is a comma list of 1-based indices and ranges: `1`, `1,3`, `1,3-5`,
 `2-4,7`. Fields are emitted in the order listed, so a comma list can **reorder**
 columns (`--fields 3,1` emits field 3 then field 1). Ranges are ascending only
-(`3-1` selects nothing); reverse or reorder with an explicit list. The output
-separator is derived from the input field delimiter (the exact string for `-F`,
-the first character for `-f`/`-W`, otherwise a space).
+(`3-1` selects nothing); reverse or reorder with an explicit list.
 
 Field delimiter (choose at most one; defaults to whitespace-collapse):
 
@@ -122,6 +145,44 @@ Field delimiter (choose at most one; defaults to whitespace-collapse):
 | `-F` | STRING | Exact multi-character delimiter |
 | `-W` | CHARS | Character class, runs collapse (awk-style) |
 
+#### Literals in the spec
+
+Any spec token that is **not** a valid column reference (not a positive integer
+or ascending range) is emitted **verbatim as a literal**, in its position among
+the columns. This makes labels and separators trivial to interleave:
+
+```bash
+lens --fields '1,=>,3' -f : data        # field1, the text "=>", field3
+lens --chars '1-3,. ,5-7' file          # chars 1-3, the text ". ", chars 5-7
+```
+
+An empty input field is preserved as an empty value; an empty spec token
+(`1,,3`) is likewise a literal empty.
+
+To force a token that *looks* like a column spec to be a literal, or to embed
+the spec separator inside a literal, use a backslash escape (single-quote it at
+the shell so one backslash reaches lens):
+
+```bash
+lens --fields '1,\4,3' -f , --ofs ''    # literal "4", not column 4  → a4c
+lens --fields '1,x\,y,3' -f , --ofs ''  # literal "x,y" (escaped comma)
+```
+
+`\<sep>` is a literal separator character and `\\` a literal backslash; any
+token containing an escape is treated as a literal regardless of its shape.
+
+#### Changing the spec separator: `--spec-sep CHAR`
+
+The spec token separator defaults to comma. `--spec-sep CHAR` changes it, so
+commas inside literals need no escaping:
+
+```bash
+lens --fields '1;2,5;3' -f , --spec-sep ';'   # col1, literal "2,5", col3
+```
+
+CHAR must be a single character and cannot be `-` (the range operator), `\`
+(the escape), or a digit (which would shadow a column number).
+
 ### Chars (mutually exclusive with the other axes)
 
 | Long | Argument | Meaning |
@@ -129,7 +190,28 @@ Field delimiter (choose at most one; defaults to whitespace-collapse):
 | `--chars` | SPEC | Emit the named character positions of each record |
 
 Same SPEC grammar as `--fields`, addressing characters within each record.
-Useful for fixed-width data.
+Useful for fixed-width data. Literals and `--spec-sep` work the same way (chars
+mode concatenates with no separator between elements, so a literal sits
+directly between the character groups).
+
+### Output delimiters
+
+By default the **output field separator matches the input field delimiter**, so
+fields are reproduced as they came in. Override it to convert formats. The
+output is built by joining every emitted element — columns *and* literals
+alike — with the OFS.
+
+| Long | Argument | Meaning |
+|------|----------|---------|
+| `--ofs` / `--field-sep` | STR | Output field separator (default: the input field delimiter) |
+| `--ors` / `--rec-sep` | STR | Output record terminator (default: newline) |
+
+Both accept an explicit empty string (`--ofs ''`) — distinguished from being
+omitted — to abut elements with no separator, which is how you hand-build output
+with literals. When the input is split by a character *class* or
+*collapse* delimiter (`-f` with multiple chars, or `-W`), there is no single
+delimiter to echo back, so lens **requires an explicit `--ofs`** rather than
+silently guessing; omitting it is an error.
 
 ### Inversion
 
@@ -265,6 +347,41 @@ lens --fields 3,1,2 -f : data.txt     # rotate: 3, 1, 2
 Ranges (`3-5`) are ascending only; a "descending range" like `3-1` selects
 nothing. To reverse or reorder, use an explicit comma list (`5,4,3`), not a
 range.
+
+### Inserting literals and converting formats
+
+```bash
+# Insert a literal label/separator between columns
+lens --fields '1,: ,2' -f , data.csv         # "field1: field2"
+
+# Convert delimiter: read colon-separated, write CSV
+lens --fields '1,2,3' -f : --ofs , /etc/passwd
+
+# Read paragraph-mode records, emit one CSV line each
+lens --fields '1,2' -D '' --ofs , notes.txt
+
+# Hand-build output with --ofs '' and literals (escape the comma)
+lens --fields '1,\,,2,\,,3' -f : --ofs '' data    # "f1,f2,f3"
+
+# Avoid escaping by changing the spec separator
+lens --fields '1; , ;2' -f : --spec-sep ';' --ofs '' data   # "f1 , f2"
+```
+
+### Scanning the tail of a large file (byte-seek)
+
+```bash
+# Skip ~8MB of an 8MB log, then read the last records cleanly
+lens --rec-after-byte 8000000 --last 50 huge.log
+
+# Same idea on a pipe (no seekable file needed)
+producer | lens --rec-after-byte 100000 --match ERROR
+
+# Byte-exact positioning (first record may be torn)
+lens --start-at-byte 4096 --first 3 data.bin
+
+# Numbering after a seek is tilde-flagged as seek-relative
+lens --rec-after-byte 1000 --first 3 --number log     # ~1, ~2, ~3
+```
 
 ### Fixed-width columns
 
