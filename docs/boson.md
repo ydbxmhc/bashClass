@@ -7,7 +7,7 @@
 ## SYNOPSIS
 
 ```
-boson [-r | --emit | --into=VAR | -E] EXPR [FILE]
+boson [-r | -e | --into=VAR | -E] EXPR [FILE]
 boson (-h | --help | --examples | --about | --boop)
 ```
 

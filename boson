@@ -205,10 +205,14 @@ __boson_parse_expr() {
 # Escape a value for safe sourcing (handles quotes, newlines, special chars)
 __boson_quote_val() {
   local __boson_qv_val="$1"
-  # If it's a simple value (no special chars), use simple quotes
   if [[ "$__boson_qv_val" == *[\'\"\\$\`\!\ \	]* || "$__boson_qv_val" == *$'\n'* ]]; then
-    # Use $'...' quoting for safety
-    printf '%s' "$__boson_qv_val" | sed "s/'/'\\\\''/g; 1s/^/'/; \$s/\$/'/"
+    local __boson_qv_out="" __boson_qv_rest="$__boson_qv_val" __boson_qv_pfx
+    while [[ "$__boson_qv_rest" == *"'"* ]]; do
+      __boson_qv_pfx="${__boson_qv_rest%%"'"*}"
+      __boson_qv_out+="${__boson_qv_pfx}'\\''"
+      __boson_qv_rest="${__boson_qv_rest#*"'"}"
+    done
+    printf "'%s'" "${__boson_qv_out}${__boson_qv_rest}"
   else
     printf '%s' "$__boson_qv_val"
   fi
@@ -412,7 +416,10 @@ __boson_run() {
             printf '%s=%s\n' "$__boson_vname" "$(__boson_quote_val "${__boson_data[$__boson_k]}")"
           done
         else
-          printf '{...} (%d keys)\n' "$(printf '%s\n' "$__boson_children" | wc -l)"
+          local __boson_nkeys=0 __boson_ck
+          while IFS= read -r __boson_ck; do (( ++__boson_nkeys )); done \
+            <<< "$__boson_children"
+          printf '{...} (%d keys)\n' "$__boson_nkeys"
         fi
       else
         printf 'null\n'
