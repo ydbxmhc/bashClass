@@ -93,8 +93,10 @@ prefix            | H
 [Exclusive]
 (first last from to) | (match no_match) | (fields) | (chars)
 and | or
-(eolChar eolString eolClass)
-(fdelimSet fdelimStr fdelimCol)
+eolChar | eolString | eolClass
+fdelimSet | fdelimStr | fdelimCol
+file | fd
+count | number
 
 [Requires]
 and => match | no_match
@@ -227,6 +229,38 @@ lens is built on boop — an OOP framework for bash 4.3+.
 
   Repository: https://github.com/ydbxmhc/bashClass
 ' "$@" || exit 1
+
+# ---------------------------------------------------------------------------
+# Post-parse validation — catches combinations Args schema cannot express.
+# ---------------------------------------------------------------------------
+
+# Combining three or more position options is always reducible to --from/--to
+# and is only a source of confusion.
+declare -i __lens_npos=0
+[[ -n "${first:-}" ]] && (( ++__lens_npos ))
+[[ -n "${last:-}"  ]] && (( ++__lens_npos ))
+[[ -n "${from:-}"  ]] && (( ++__lens_npos ))
+[[ -n "${to:-}"    ]] && (( ++__lens_npos ))
+(( __lens_npos <= 2 )) || {
+  _Error "lens: combine at most two of --first/--last/--from/--to"
+  exit 1
+}
+
+# Position values must be positive integers (record numbers are 1-indexed).
+_lens_posint() {
+  [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || {
+    _Error "lens: --$1 requires a positive integer (got '${2:-}')"
+    exit 1
+  }
+}
+[[ -n "${first:-}" ]] && _lens_posint first "$first"
+[[ -n "${last:-}"  ]] && _lens_posint last  "$last"
+[[ -n "${from:-}"  ]] && _lens_posint from  "$from"
+[[ -n "${to:-}"    ]] && _lens_posint to    "$to"
+[[ -n "${from:-}" && -n "${to:-}" ]] && (( from > to )) && {
+  _Error "lens: --from $from > --to $to (empty range)"
+  exit 1
+}
 
 # Bare filenames: if positionals remain and are readable files, use them.
 # Multiple files are processed independently (like head/tail/grep), not
