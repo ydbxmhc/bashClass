@@ -457,8 +457,9 @@ Args.parse() {
   # Two seen-tables, deliberately separate:
   #   __Args_seen      -- PERSISTENT (+=). Records what the user supplied across
   #                       parses so Args.given still answers after a nested parse
-  #                       (e.g. inside Stream.new) runs. Cumulative for the
-  #                       process; see TODO (Args.reset) for the long-session caveat.
+  #                       (e.g. inside Stream.new) runs. The intended model is a
+  #                       single script-argv parse per process; constructors may
+  #                       parse internally without erasing the script's record.
   #   __Args_seen_this -- PER-PARSE (=). Reset every parse; backs duplicate-option
   #                       detection, which must only consider the current parse.
   declare -gA __Args_seen+=()

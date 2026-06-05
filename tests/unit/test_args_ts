@@ -674,4 +674,104 @@ $t.assert_eq "map file bare-key verbose" "${boolmap[verbose]}" "1"
 $t.assert_eq "map file bare-key debug"   "${boolmap[debug]}"   "1"
 rm -f "$__ta_tmpfile"
 
+# ============================================================================
+# Args.given — was an option supplied?
+# ============================================================================
+
+# ============================================================================
+# Args.given — was an option supplied?
+#
+# Design note: the intended model is one script-argv parse per process. The
+# seen-table persists across parses (so Args.given survives a constructor's
+# internal parse), which means "given" is cumulative for the process. These
+# tests therefore use a DISTINCT option name per case, so an "absent" check is
+# genuinely absent rather than lingering from an earlier parse.
+# ============================================================================
+
+$t.section "Args.given: given with value, and absent"
+
+unset gv_a gv_other
+Args.parse '
+[Options]
+gv_a =
+gv_other =
+' --gv_a ':' gv_other=x
+$t.assert_ok   "given: supplied option"   Args.given gv_a
+$t.assert_eq   "given: its value"         "$gv_a" ":"
+# gv_never appears in the schema but is not supplied — and is used nowhere else.
+$t.assert_fail "given: schema option not supplied" \
+  bash -c '. boop Args; Args.parse "[Options]
+gv_never =" ; Args.given gv_never'
+
+# The whole point: an omitted scalar and one given an empty value both leave
+# the variable empty, but Args.given tells them apart.
+$t.section "Args.given: empty value vs absent"
+
+unset gv_empty
+Args.parse '
+[Options]
+gv_empty =
+' --gv_empty ''
+$t.assert_eq   "empty: value is empty"         "$gv_empty" ""
+$t.assert_ok   "empty: but Args.given is true" Args.given gv_empty
+
+# Genuinely-absent option, queried in a fresh subshell so no prior parse in
+# THIS process has marked it.
+$t.assert_fail "absent: Args.given is false" \
+  bash -c '. boop Args; Args.parse "[Options]
+gv_absent =" ; Args.given gv_absent'
+
+$t.section "Args.given: boolean flag via alias"
+
+unset gv_verbose
+Args.parse '
+[Options]
+gv_verbose | v
+' -v
+$t.assert_ok   "given: boolean flag via short alias" Args.given gv_verbose
+
+$t.section "Args.given: array option"
+
+unset gv_tag
+Args.parse '
+[Options]
+gv_tag[] | t =
+' -t a -t b
+$t.assert_ok   "given: array option supplied"  Args.given gv_tag
+
+# Persistence: a later parse (standing in for a constructor's internal parse)
+# must NOT erase the caller's record from an earlier parse.
+$t.section "Args.given: survives a later parse"
+
+unset gv_alpha gv_beta
+Args.parse '
+[Options]
+gv_alpha =
+' --gv_alpha 1
+Args.parse '
+[Options]
+gv_beta =
+' --gv_beta 2
+$t.assert_ok   "persist: earlier parse's option still given" Args.given gv_alpha
+$t.assert_ok   "persist: later parse's option given"         Args.given gv_beta
+
+# Duplicate detection stays per-parse: supplying the SAME option in two
+# separate parses is not a duplicate error (persistence must not poison it).
+$t.section "Args.given: persistence doesn't break dup detection"
+
+unset gv_dup
+__ta_dup_rc=0
+Args.parse '
+[Options]
+gv_dup =
+' --gv_dup 1 || __ta_dup_rc=$?
+Args.parse '
+[Options]
+gv_dup =
+' --gv_dup 2 || __ta_dup_rc=$?
+$t.assert_eq "two separate parses of an option not a duplicate" "$__ta_dup_rc" "0"
+
+# Missing option name is an error.
+$t.assert_fail "given: requires an option name" Args.given
+
 $t.summary
