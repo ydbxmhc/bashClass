@@ -15,9 +15,7 @@ probe (-h | --help | --examples | --about)
 ## DESCRIPTION
 
 **probe** fetches HTTP URLs using bash's `/dev/tcp` pseudo-device — no `curl`,
-no `wget`. The only external dependency is `cat`, used to slurp the response
-body from the open file descriptor; all request construction, header parsing,
-and redirect handling are pure bash. It speaks HTTP/1.1 with
+no `wget`, no external dependencies. It speaks HTTP/1.1 with
 `Connection: close` and is intended for quick requests against local services,
 internal APIs, and health checks.
 
@@ -137,8 +135,8 @@ probe http://a.host/ http://b.host/   # several URLs, fetched in order
 
 ## NOTES
 
-probe is nearly pure bash — the one external dependency is `cat` for body
-slurping — built on the **boop** framework's `Net.Socket` and `Args` classes. It began as a thought experiment — what can an OOP bash standard
+probe is pure bash, built on the **boop** framework's `Net.Socket` and `Args`
+classes. It began as a thought experiment — what can an OOP bash standard
 library do with `/dev/tcp` alone? — and it is not competitive on speed or
 completeness with `curl`. Its value is reach: it runs anywhere **bash 4.3+** is
 present (with `/dev/tcp` support, standard on Linux/macOS and Git Bash), making

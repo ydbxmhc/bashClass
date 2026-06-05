@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 # probe — minimal HTTP client (plaintext HTTP only)
-#
-# External deps: cat (body slurp via $(cat <&fd)); all other I/O is pure bash.
 
 . boop Net::Socket Args
 
@@ -233,7 +231,7 @@ __probe_fetch() {
 
   # Read body
   local __probe_body
-  __probe_body=$(cat <&"$__probe_fd")
+  __probe_body=$(</dev/fd/"$__probe_fd")
   $__probe_s.close
 
   # Output
