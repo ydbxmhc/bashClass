@@ -566,8 +566,9 @@ Args.parse() {
       if [[ -z "${__Args_types[$__Args_parse_vn]:-}" ]]; then
         [[ -z "${__Args_seen[$__Args_parse_vn]+set}" ]] ||
           { _Error "Args.parse: duplicate option: $__Args_parse_key"; return 1; }
-        __Args_seen[$__Args_parse_vn]=1
       fi
+      # Mark as given (all types). Survives parse for Args.given queries.
+      __Args_seen[$__Args_parse_vn]=1
 
       __Args_parse_scope="${__Args_var_scope[$__Args_parse_vn]:-}"
       if [[ -n "$__Args_parse_scope" ]]; then
@@ -606,8 +607,9 @@ Args.parse() {
         if [[ -z "${__Args_types[$__Args_parse_cvn]:-}" ]]; then
           [[ -z "${__Args_seen[$__Args_parse_cvn]+set}" ]] ||
             { _Error "Args.parse: duplicate option: -${__Args_parse_c}"; return 1; }
-          __Args_seen[$__Args_parse_cvn]=1
         fi
+        # Mark as given (all types). Survives parse for Args.given queries.
+        __Args_seen[$__Args_parse_cvn]=1
 
         __Args_parse_scope="${__Args_var_scope[$__Args_parse_cvn]:-}"
         if [[ -n "$__Args_parse_scope" ]]; then
@@ -895,14 +897,46 @@ Args.parse() {
     done
   fi
 
-  # Cleanup working tables
+  # Cleanup working tables. __Args_seen is intentionally NOT unset here: it
+  # survives the parse to back Args.given (the "was this option supplied?"
+  # query). It is reset at the top of the next parse.
   unset __Args_alias_map __Args_takes_val __Args_required __Args_defaults \
         __Args_subcmd_map __Args_varlist __Args_var_scope \
         __Args_descriptions __Args_subcmd_desc __Args_usage \
-        __Args_seen __Args_values __Args_types __Args_fileload \
+        __Args_values __Args_types __Args_fileload \
         __Args_parser_bareKV __Args_parser_show __Args_exclusive \
         __Args_subscreen_map __Args_subscreen_sections __Args_subscreen_order \
         __Args_requires __Args_together
+}
+
+# ============================================================================
+# Args.given -- was an option supplied on the command line?
+#
+# After a scope-write Args.parse, a scalar option that was omitted and one
+# that was given an empty value (--opt '') both leave $opt empty, so the value
+# alone cannot tell them apart. Args.given answers the "was it supplied?"
+# question by consulting the seen-table that parse leaves behind.
+#
+# Arguments:
+#   $1 -- the option's variable name (the first name in its schema line,
+#         e.g. "ofs" for `ofs | --output-sep =`)
+# Returns: exit 0 if the option was supplied (any value, including empty),
+#          exit 1 if it was not. Prints nothing.
+#
+# Scope: reflects the most recent scope-write Args.parse. In object mode
+# (into=), query the returned object instead.
+#
+# Usage:
+#   Args.parse '...' "$@"
+#   if Args.given ofs; then printf 'output sep explicitly set to [%s]\n' "$ofs"; fi
+Args.given() {
+  local _Self="${_Self:-}" _Class="${_Class:-Args}"
+  [[ -n "${1:-}" ]] || { _Error "Args.given: option name required"; return 2; }
+  # Ensure the seen-table exists as an associative array before indexing it,
+  # so a call before any Args.parse can't trip arithmetic-index evaluation on
+  # a non-numeric key. Idempotent: creates it empty if absent, else no-op.
+  declare -gA __Args_seen+=()
+  [[ -n "${__Args_seen[$1]+set}" ]]
 }
 
 # ============================================================================
@@ -910,5 +944,5 @@ Args.parse() {
 # ============================================================================
 
 boopClass Args '
-  public:getOpts,parse
+  public:getOpts,parse,given
 '
