@@ -43,21 +43,20 @@ exclusivity is enforced by the Args schema; violating it is a hard error.
 
 | Axis | Options | Notes |
 |------|---------|-------|
-| Position (relative) | `--first N`, `--last N` | Combinable with each other |
-| Position (absolute) | `--from N`, `--to N` | Combinable with each other |
+| Position | `--first N`, `--last N`, `--from N`, `--to N` | All four freely combinable |
 | Match | `--match PAT`, `--no-match PAT` | Repeatable; `--and`/`--or` |
 | Fields | `--fields SPEC` | With a field delimiter |
 | Chars | `--chars SPEC` | Character positions |
 
-Relative and absolute position are also mutually exclusive with each other.
-
 ---
 
-## Position (relative): `--first`, `--last`
+## Position: `--first`, `--last`, `--from`, `--to`
 
-`--first N` keeps the first N records; `--last N` keeps the last N. They are
-combinable, and **argument order is pipeline order** — the left one is applied
-first, then the right one selects from that result.
+All four position options are freely combinable in a single invocation.
+
+`--first N` keeps the first N records; `--last N` keeps the last N.
+When both are given, the **larger value is the outer window** — argument order
+on the command line is irrelevant.
 
 ```bash
 lens --first 20 file.txt              # first 20
@@ -66,21 +65,19 @@ lens --first 20 --last 5 file.txt     # last 5 OF the first 20 → lines 16-20
 lens --last 20 --first 5 file.txt     # first 5 OF the last 20
 ```
 
-`--last` with no upper bound streams through a fixed-size circular buffer, so
-it does not hold the whole input in memory — only the trailing N records.
-
----
-
-## Position (absolute): `--from`, `--to`
-
 `--from N` starts at record N (1-indexed, inclusive); `--to N` ends at record N
-(inclusive). Either may be omitted.
+(inclusive). They anchor the window, and `--first`/`--last` further narrow within it.
 
 ```bash
 lens --from 5 --to 15 file.txt        # lines 5-15
 lens --from 8 file.txt                # line 8 to end
 lens --to 3 file.txt                  # first 3 lines
+lens --from 10 --first 5 file.txt     # lines 10-14
+lens --from 10 --to 50 --last 5 file.txt  # lines 46-50
 ```
+
+`--last` with no `--to` bound streams through a fixed-size circular buffer, so
+memory is bounded to the trailing N records regardless of input size.
 
 ---
 
@@ -222,11 +219,9 @@ Input:
   -P, --file PATH         Input file (default: stdin)
   -u, --fd N              Read from an open file descriptor
 
-Position (relative):
-      --first N           First N records
-      --last N            Last N records
-
-Position (absolute):
+Position (all freely combinable; exclusive with other axes):
+      --first N           First N records (of the current window)
+      --last N            Last N records (of the current window)
       --from N            Start at record N (1-indexed, inclusive)
       --to N              End at record N (inclusive)
 
