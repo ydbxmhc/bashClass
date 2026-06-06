@@ -15,7 +15,13 @@ probe (-h | --help | --examples | --about)
 ## DESCRIPTION
 
 **probe** fetches HTTP URLs using bash's `/dev/tcp` pseudo-device — no `curl`,
-no `wget`, no external dependencies. It speaks HTTP/1.1 with
+no `wget`, no external dependencies.
+
+> **NUL bytes.** Bash variables cannot hold or detect NUL bytes. Any response
+> body containing a NUL will be silently truncated at the first one. See
+> LIMITATIONS.
+
+It speaks HTTP/1.1 with
 `Connection: close` and is intended for quick requests against local services,
 internal APIs, and health checks.
 
