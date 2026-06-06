@@ -7,6 +7,11 @@ no third-party tools and no subshells in the dispatch path.
 
 The framework file is called `boop` because fun is a feature.
 
+> **NUL bytes.** Bash variables cannot hold or detect NUL bytes. Any value
+> containing a NUL will be silently truncated at the first one — no error,
+> no warning. This is a bash limitation that applies throughout the framework.
+> See [GOTCHAS.md](GOTCHAS.md) for details.
+
 ---
 
 ## Why This Exists

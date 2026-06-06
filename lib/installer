@@ -126,8 +126,8 @@ __installer_write_booprc() {
 #
 # Limitations:
 #   - HTTP only (no TLS/HTTPS)
-#   - Text content only: body is read line-by-line; null bytes are not
-#     preserved (bash variables cannot hold NUL)
+#   - Text content only: bash variables cannot hold or detect NUL bytes;
+#     any NUL in the response body is silently truncated
 #   - Follows at most one redirect
 #
 # External deps: none

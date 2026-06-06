@@ -686,9 +686,9 @@ Add explicit NUL byte warning (cannot hold or detect; silently truncated) near
 the top of documentation for any class or utility that handles values through
 bash variables:
 
-- [ ] README.md — general note near top
-- [ ] docs/Stream.md — stream values pass through bash vars
-- [ ] docs/JSON.md — parsed string values stored in vars
-- [ ] Full boop framework doc (wherever that lives)
-- [ ] GOTCHAS.md — in detail; explain cannot hold AND cannot detect,
-      silent truncation, covers all output modes, no workaround in pure bash
+- [x] README.md — general note near top
+- [x] docs/Stream.md — stream values pass through bash vars
+- [x] docs/JSON.md — parsed string values stored in vars
+- [x] Full boop framework doc (docs/boop.md)
+- [x] GOTCHAS.md — created; NUL, $() newline stripping, read partial-line,
+      $(</dev/fd/N) socket issue, nameref scoping
