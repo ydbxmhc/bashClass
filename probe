@@ -229,9 +229,14 @@ __probe_fetch() {
     fi
   fi
 
-  # Read body
+  # Read body. $(</dev/fd/N) fails for socket fds (bash's $(<) optimization
+  # doesn't fire; the open() fallback returns ENXIO). mapfile -u N reads
+  # directly from the fd number and works for sockets and pipes alike.
   local __probe_body
-  __probe_body=$(</dev/fd/"$__probe_fd")
+  local -a __probe_body_lines=()
+  mapfile -u "$__probe_fd" __probe_body_lines
+  local IFS=''
+  __probe_body="${__probe_body_lines[*]}"
   $__probe_s.close
 
   # Output

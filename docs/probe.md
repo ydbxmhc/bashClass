@@ -133,9 +133,10 @@ probe http://a.host/ http://b.host/   # several URLs, fetched in order
   rejects `https://` up front rather than failing obscurely. For TLS, use
   `curl` or `wget`; the bundle/installer machinery can also fetch a richer
   client (see [TODO.md](../TODO.md)).
-- **Text bodies only.** The body is slurped with `cat` into a bash variable
-  (`$(...)`), which strips trailing newlines; bash variables also cannot hold
-  NUL bytes. Binary responses are not preserved faithfully.
+- **Text bodies only.** The body is read line-by-line with `mapfile` into a
+  bash array, then joined. Trailing newlines on the final line are lost; bash
+  variables cannot hold NUL bytes. Binary responses are not preserved
+  faithfully.
 - **Pragmatic, not spec-complete.** probe follows the common redirect/parse
   cases, not every corner of HTTP/1.1.
 
