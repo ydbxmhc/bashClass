@@ -100,11 +100,26 @@ show = Use
 bareKV = false
 
 [Use]
-boson [-r] [--emit|--into=VAR|--eponymous] EXPR [file]
+boson [-r] [--emit | --into=VAR | --eponymous] EXPR [file]
 
-  Query JSON with path expressions. Reads stdin or file.
-  Output modes: default (values), -r (raw), --emit (sourceable),
-                --into=VAR (named assignment), --eponymous (leaf names).
+  Query JSON with jq-style path expressions. Reads stdin or file.
+
+  (default)
+    Type-aware: strings quoted, numbers/booleans/null bare.
+
+  -r, --raw
+    Unquoted values; one per line when iterating.
+
+  -e, --emit
+    Every leaf under EXPR as KEY=value. Variable names use the full
+    key path relative to EXPR, dots replaced by underscores.
+
+  --into=VAR
+    Scalar → VAR=value; iteration → VAR=(…). You choose the name.
+
+  -E, --eponymous
+    Subtrees like --emit; iteration → array named by the source field.
+
   More: --examples, --about, --boop
 
 [Options]
