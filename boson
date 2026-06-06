@@ -40,38 +40,27 @@ case "${1:-}" in
 boson — Examples
 
   Basic access:
-    boson '.name' < data.json                 top-level string
-    boson '.address.city' < data.json         nested key
-    boson '.scores[0]' < data.json            first array element
-    boson '.scores[2]' < data.json            third array element
+    boson '.name' data.json                # top-level string
+    boson '.address.city' < data.json      # nested key from stdin
+    boson '.scores[2]' data.json           # third array element
 
   Array iteration:
-    boson '.users[]' < data.json              all array elements (JSON)
-    boson '.users[].name' < data.json         extract field from each
-    boson '.tags[]' < data.json               simple array values
+    boson '.users[]' data.json             # all array elements (JSON)
+    boson '.users[].name' data.json        # extract field from each
 
   Raw output (-r):
-    boson -r '.name' < data.json              no quotes on strings
-    boson -r '.users[].email' < data.json     one email per line, unquoted
+    boson -r '.users[].email' data.json    # one email per line, unquoted
 
   Sourceable output (--emit):
-    boson --emit '.' < data.json              whole doc as var=value lines
-    boson --emit '.database' < config.json    subtree as assignments
-    . <(boson --emit '.' < config.json)       load all into current shell
+    boson --emit '.database' config.json   # subtree as assignments
+    . <(boson --emit '.' config.json)      # direct load to current shell
 
-  Named assignment (--into):
-    boson --into=host '.database.host' < c.json   → host=localhost
-    boson --into=names '.users[].name' < d.json   → names=("Alice" "Bob")
-    . <(boson --into=port '.server.port' < c.json)
+  Explicitly Named assignment (--into):
+    boson --into=names '.users[].name' d.json  # → names=("Alice" "Bob")
 
-  Eponymous (--eponymous / -E):
-    boson -E '.database.host' < c.json        → host=localhost
-    boson -E '.database' < c.json             → host=localhost\nport=5432\n...
-    boson -E '.users[].name' < d.json         → name=("Alice" "Bob")
-
-  File argument:
-    boson '.version' package.json             file as last arg
-    boson -r '.scripts.build' package.json    raw value from file
+  Eponymous tree tracing (--eponymous / -E):
+    boson -E '.database' c.json            # → host=localhost\nport=5432\n...
+    boson -E '.users[].name' d.json        # → name=("Alice" "Bob")
 EOF
     exit 0 ;;
   --about)
@@ -139,7 +128,7 @@ if [[ -n "${_ArgsRemaining[1]:-}" && -f "${_ArgsRemaining[1]}" ]]; then
   __boson_file="${_ArgsRemaining[1]}"
   __boson_input="$(< "$__boson_file")"
 elif [[ -n "${_ArgsRemaining[0]:-}" && ! -t 0 ]]; then
-  __boson_input="$(cat)"
+  __boson_input="$(</dev/stdin)"
 else
   printf 'boson: no input (pipe JSON or provide a file)\n' >&2
   exit 1
