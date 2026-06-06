@@ -51,16 +51,18 @@ boson — Examples
   Raw output (-r):
     boson -r '.users[].email' data.json    # one email per line, unquoted
 
-  Sourceable output (--emit):
-    boson --emit '.database' config.json   # subtree as assignments
-    . <(boson --emit '.' config.json)      # direct load to current shell
+  Sourceable output, pathed from given root point (--emit):
+    boson --emit '.' cfg.json          # dev_db_pw="Th3_p455w0rd"
+    boson --emit '.dev' cfg.json       # db_pw="Th3_p455w0rd"
+    boson --emit '.dev.db' cfg.json    # pw="Th3_p455w0rd"
 
   Explicitly Named assignment (--into):
     boson --into=names '.users[].id' d.json    # → names=("Alice" "Bob")
+    . <(boson --emit '.' config.json)          # direct load to current shell
 
-  Eponymous tree tracing (--eponymous / -E):
-    boson -E '.database' c.json            # → host=localhost\nport=5432\n...
-    boson -E '.users[].name' d.json        # → name=("Alice" "Bob")
+  Eponymous tree tracing *without* object path (--eponymous / -E):
+    boson -E '.dev.db' cfg.json        # → host=localhost\npw="Th3_p455w0rd"
+    boson -E '.users[].name' d.json    # → name=("Alice" "Bob")
 EOF
     exit 0 ;;
   --about)
