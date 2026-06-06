@@ -56,7 +56,7 @@ boson — Examples
     . <(boson --emit '.' config.json)      # direct load to current shell
 
   Explicitly Named assignment (--into):
-    boson --into=names '.users[].name' d.json  # → names=("Alice" "Bob")
+    boson --into=names '.users[].id' d.json    # → names=("Alice" "Bob")
 
   Eponymous tree tracing (--eponymous / -E):
     boson -E '.database' c.json            # → host=localhost\nport=5432\n...
