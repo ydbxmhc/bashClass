@@ -26,11 +26,10 @@ The name stands for "Bash Oriented Scripting Object Notation."
 > string value containing a NUL will be silently truncated at the first one.
 > This applies to all output modes. See CAVEATS.
 
-> **Status.** Path expressions, array iteration, and the output modes below are
-> implemented and tested. The richer jq surface — `select(...)`, pipe chaining,
-> object construction, `map`/`reduce`/`sort_by`, recursive descent (`..`) — is
-> on the roadmap; see [TODO.md](../TODO.md). In the default mode a non-leaf node
-> currently prints a `{...} (N keys)` placeholder rather than re-emitting JSON.
+> **Status.** Path expressions, array iteration, output modes, and non-leaf
+> JSON re-emission are implemented and tested. The richer jq surface —
+> `select(...)`, pipe chaining, object construction, `map`/`reduce`/`sort_by`,
+> recursive descent (`..`) — is on the roadmap; see [TODO.md](../TODO.md).
 
 ### Path syntax
 

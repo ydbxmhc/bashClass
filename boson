@@ -482,10 +482,9 @@ __boson_run() {
               "${__boson_ep_out[$(( __boson_ep_i + 1 ))]}"
           done
         else
-          local __boson_nkeys=0 __boson_ck
-          while IFS= read -r __boson_ck; do (( ++__boson_nkeys )); done \
-            <<< "$__boson_children"
-          printf '{...} (%d keys)\n' "$__boson_nkeys"
+          __Data_JSON_result=""
+          __Data_JSON_stringifyPrefix "$__boson_key" "$__boson_doc" 0
+          printf '%s\n' "$__Data_JSON_result"
         fi
       else
         printf 'null\n'
