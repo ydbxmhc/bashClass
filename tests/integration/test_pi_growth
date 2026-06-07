@@ -7,6 +7,14 @@ set -u
 # after each call so you can watch pi emerge digit by digit.
 
 . boop Math
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/timer"
+
+# Timing: bench_time (tests/lib/timer) -- EPOCHREALTIME (microsecond) on bash
+# 5+, the `time` keyword (millisecond) on older bash. Either way we get an
+# elapsed-seconds float; the threshold check below works on both. The pi
+# result persists because bench_time runs its target in the current shell.
+trap __timer_cleanup EXIT
+__timer_note
 
 printf "=== PI GROWTH TEST ===\n"
 printf "  Computing pi one digit at a time until a single digit takes >10s...\n\n"
@@ -18,24 +26,27 @@ printf "  Computing pi one digit at a time until a single digit takes >10s...\n\
 prec=5
 max_time=10
 
-while true; do
-  t1=$EPOCHREALTIME
-  into=pi Math.pi $prec
-  t2=$EPOCHREALTIME
+__pi_step() { into=pi Math.pi "$prec"; }
 
+while true; do
+  bench_time elapsed __pi_step
   into=v $pi.val
-  elapsed=$(awk "BEGIN{printf \"%.3f\", $t2 - $t1}")
 
   printf "  pi(%3d) = %-60s  [%s sec]\n" "$prec" "$v" "$elapsed"
 
-  # Check if this digit took more than the threshold
-  over=$(awk "BEGIN{print ($t2 - $t1 > $max_time) ? 1 : 0}")
-  if (( over )); then
+  # Threshold check on the elapsed float. Strip the radix point to compare as
+  # integer microseconds (epoch: 6 fractional digits; time: 3 -> pad). This
+  # avoids a fork to awk and works regardless of timing precision.
+  __pi_frac="${elapsed#*.}"
+  __pi_whole="${elapsed%.*}"
+  while (( ${#__pi_frac} < 6 )); do __pi_frac+="0"; done
+  __pi_us=$(( 10#${__pi_whole} * 1000000 + 10#${__pi_frac:0:6} ))
+  if (( __pi_us > max_time * 1000000 )); then
     printf "\n  Stopped: pi(%d) took %s seconds (threshold: %ds)\n" "$prec" "$elapsed" "$max_time"
     break
   fi
 
-  (( prec++ ))
+  (( ++prec ))
 done
 
 printf "\n=== PI GROWTH COMPLETE ===\n"

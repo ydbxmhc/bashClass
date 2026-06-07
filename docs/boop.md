@@ -6,6 +6,11 @@ and a universal return handler — all built on associative arrays and naming
 conventions. No external dependencies. No subshells in the hot path. No
 apologies.
 
+> **NUL bytes.** Bash variables cannot hold or detect NUL bytes. Any value
+> containing a NUL will be silently truncated at the first one — no error,
+> no warning. This applies to all object properties, map keys and values,
+> and anything else stored in a bash variable. See [GOTCHAS.md](../GOTCHAS.md).
+
 The framework file is called `boop` because life is too short for
 `bash_object_oriented_programming_framework.sh`. The internal namespace
 is `__boop_*` — the filename is the personality, the internals are

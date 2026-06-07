@@ -1,0 +1,273 @@
+#!/usr/bin/env bash
+# probe — minimal HTTP client (plaintext HTTP only)
+
+. boop Net::Socket Args
+
+# Distribution URLs — override with BOOP_DIST_URL for testing:
+#   BOOP_DIST_URL=http://localhost:8080 probe --self-update
+__installer_self_name="probe"
+__installer_self_url="${BOOP_DIST_URL:-http://get.boop.sh}/probe"
+
+# Installer dispatch
+declare -F __installer_dispatch >/dev/null ||
+  . "${__boop_root:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/lib/installer"
+__installer_dispatch "$@"
+
+(( $# )) || set -- --help
+
+Args.parse '
+[Parser]
+show = Use
+bareKV = false
+subscreen = examples=Examples
+subscreen = about=About
+
+[Use]
+probe [options] URL [URL...]
+
+[Options]
+# --- Request ---
+method     | X  =           # HTTP method (default: GET, POST when --data given)
+data       | d  =           # request body
+json       | j              # Content-Type + Accept: application/json
+header[]   | H  =           # add request header (repeatable): "Name: Value"
+
+# --- Response ---
+include    | i              # print response status line and headers
+output     | o  =           # write body to file instead of stdout
+status     | s              # print only the HTTP status code
+
+# --- Connection ---
+timeout    | t  = 30        # connection + read timeout in seconds
+no_follow  | no-follow      # do not follow redirects (3xx)
+
+# --- Verbosity ---
+verbose    | v              # print request headers to stderr
+quiet      | q              # suppress informational stderr messages
+
+[Exclusive]
+output | status
+include | status
+
+[Examples]
+probe — Examples
+
+  Basic GET:
+    probe http://example.com
+    probe http://api.example.com/users
+
+  POST with body:
+    probe -d "name=Alice&age=30" http://example.com/form
+    probe -j -d "{\"name\":\"Alice\"}" http://api.example.com/users
+
+  Custom headers:
+    probe -H "Authorization: Bearer TOKEN" http://api.example.com/me
+    probe -H "Accept: text/plain" -H "X-Custom: foo" http://example.com
+
+  JSON shorthand (-j adds Content-Type + Accept headers):
+    probe -j http://api.example.com/data
+
+  Response inspection:
+    probe -i http://example.com         status line + headers + body
+    probe -s http://example.com         status code only (e.g. 200)
+    probe -o page.html http://example.com
+
+  Verbose (show request headers on stderr):
+    probe -v http://example.com
+
+  Multiple URLs:
+    probe http://a.example.com http://b.example.com
+
+[About]
+probe — minimal plaintext HTTP client
+
+  Fetches HTTP URLs using bash /dev/tcp. No external dependencies,
+  no TLS (plaintext HTTP only). HTTP/1.1 with Connection: close.
+
+  Built on the boop framework and the Socket class.
+  https://github.com/ydbxmhc/bashClass
+' "$@" || exit 1
+
+# ============================================================================
+# URL parser  — sets __probe_scheme __probe_host __probe_port __probe_path
+# ============================================================================
+
+__probe_parse_url() {
+  local __probe_pu_url="$1"
+  __probe_scheme="" __probe_host="" __probe_port="" __probe_path=""
+
+  case "$__probe_pu_url" in
+    http://*)  __probe_scheme=http;  __probe_pu_url="${__probe_pu_url#http://}" ;;
+    https://*) __probe_scheme=https; __probe_pu_url="${__probe_pu_url#https://}" ;;
+    *)         __probe_scheme=http ;;
+  esac
+
+  local __probe_pu_hostport
+  if [[ "$__probe_pu_url" == */* ]]; then
+    __probe_pu_hostport="${__probe_pu_url%%/*}"
+    __probe_path="/${__probe_pu_url#*/}"
+  else
+    __probe_pu_hostport="$__probe_pu_url"
+    __probe_path="/"
+  fi
+
+  if [[ "$__probe_pu_hostport" == *:* ]]; then
+    __probe_host="${__probe_pu_hostport%%:*}"
+    __probe_port="${__probe_pu_hostport##*:}"
+  else
+    __probe_host="$__probe_pu_hostport"
+    [[ "$__probe_scheme" == https ]] && __probe_port=443 || __probe_port=80
+  fi
+}
+
+# ============================================================================
+# HTTP fetch
+# ============================================================================
+
+__probe_fetch() {
+  local __probe_fetch_url="$1"
+  __probe_parse_url "$__probe_fetch_url"
+
+  if [[ "$__probe_scheme" == https ]]; then
+    (( quiet )) || printf 'probe: HTTPS not supported (plaintext only)\n' >&2
+    return 1
+  fi
+
+  local __probe_method="${method:-}"
+  [[ -z "$__probe_method" ]] && { [[ -n "${data:-}" ]] && __probe_method=POST || __probe_method=GET; }
+  __probe_method="${__probe_method^^}"
+
+  local __probe_s
+  into=__probe_s Socket.new \
+    host="$__probe_host" port="$__probe_port" timeout="${timeout:-30}" || return 1
+  local __probe_fd="${__boop_static[${__probe_s}.fd]}"
+
+  # ── Request ──────────────────────────────────────────────────────────────
+
+  local __probe_req="${__probe_method} ${__probe_path} HTTP/1.1"
+  (( verbose )) && printf '> %s\n' "$__probe_req" >&2
+  $__probe_s.writeLine "$__probe_req"
+
+  $__probe_s.writeLine "Host: ${__probe_host}"
+  $__probe_s.writeLine "User-Agent: probe/1.0"
+  $__probe_s.writeLine "Connection: close"
+  if (( verbose )); then
+    printf '> Host: %s\n> User-Agent: probe/1.0\n> Connection: close\n' "$__probe_host" >&2
+  fi
+
+  if (( json )); then
+    $__probe_s.writeLine "Content-Type: application/json"
+    $__probe_s.writeLine "Accept: application/json"
+    (( verbose )) && printf '> Content-Type: application/json\n> Accept: application/json\n' >&2
+  fi
+
+  local __probe_hdr
+  for __probe_hdr in "${header[@]+"${header[@]}"}"; do
+    $__probe_s.writeLine "$__probe_hdr"
+    (( verbose )) && printf '> %s\n' "$__probe_hdr" >&2
+  done
+
+  if [[ -n "${data:-}" ]]; then
+    $__probe_s.writeLine "Content-Length: ${#data}"
+    (( verbose )) && printf '> Content-Length: %d\n' "${#data}" >&2
+    $__probe_s.writeLine ""
+    $__probe_s.write "$data"
+  else
+    $__probe_s.writeLine ""
+  fi
+  (( verbose )) && printf '>\n' >&2
+
+  # ── Response ─────────────────────────────────────────────────────────────
+
+  # Status line
+  local __probe_status_line=""
+  IFS= read -r -t "${timeout:-30}" __probe_status_line <&"$__probe_fd" || {
+    (( quiet )) || printf 'probe: no response from %s\n' "$__probe_host" >&2
+    $__probe_s.close; return 1
+  }
+  __probe_status_line="${__probe_status_line%$'\r'}"
+  local __probe_http_status="${__probe_status_line#* }"
+  __probe_http_status="${__probe_http_status%% *}"
+
+  # Headers
+  local -a __probe_resp_hdrs=()
+  local __probe_hline=""
+  while IFS= read -r -t "${timeout:-30}" __probe_hline <&"$__probe_fd"; do
+    __probe_hline="${__probe_hline%$'\r'}"
+    [[ -z "$__probe_hline" ]] && break
+    __probe_resp_hdrs+=("$__probe_hline")
+  done
+
+  # Redirect following
+  if [[ "$__probe_http_status" =~ ^3 ]] && (( ! no_follow )); then
+    local __probe_location=""
+    for __probe_hline in "${__probe_resp_hdrs[@]}"; do
+      [[ "${__probe_hline,,}" == location:* ]] && \
+        __probe_location="${__probe_hline#*: }" && break
+    done
+    $__probe_s.close
+    if [[ -n "$__probe_location" ]]; then
+      # Resolve the Location against the current request. Servers commonly
+      # return a relative target ("/target" or "next.html") rather than a
+      # full URL; only an absolute http(s):// value can be fetched as-is.
+      case "$__probe_location" in
+        http://*|https://*)
+          : "already absolute"
+          ;;
+        /*)
+          # Absolute path — keep scheme/host/port, swap the path.
+          __probe_location="${__probe_scheme}://${__probe_host}:${__probe_port}${__probe_location}"
+          ;;
+        *)
+          # Relative path — resolve against the current path's directory.
+          __probe_location="${__probe_scheme}://${__probe_host}:${__probe_port}${__probe_path%/*}/${__probe_location}"
+          ;;
+      esac
+      (( quiet )) || printf 'probe: redirect → %s\n' "$__probe_location" >&2
+      __probe_fetch "$__probe_location"
+      return
+    fi
+  fi
+
+  # Read body. $(</dev/fd/N) fails for socket fds (bash's $(<) optimization
+  # doesn't fire; the open() fallback returns ENXIO). mapfile -u N reads
+  # directly from the fd number and works for sockets and pipes alike.
+  local __probe_body
+  local -a __probe_body_lines=()
+  mapfile -u "$__probe_fd" __probe_body_lines
+  local IFS=''
+  __probe_body="${__probe_body_lines[*]}"
+  $__probe_s.close
+
+  # Output
+  if (( status )); then
+    printf '%s\n' "$__probe_http_status"
+    return
+  fi
+
+  if (( include )); then
+    printf '%s\n' "$__probe_status_line"
+    for __probe_hline in "${__probe_resp_hdrs[@]}"; do printf '%s\n' "$__probe_hline"; done
+    printf '\n'
+  fi
+
+  if [[ -n "${output:-}" ]]; then
+    printf '%s' "$__probe_body" > "$output"
+  else
+    printf '%s\n' "$__probe_body"
+  fi
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+if (( ${#_ArgsRemaining[@]} == 0 )); then
+  printf 'probe: no URL given\n' >&2; exit 1
+fi
+
+__probe_rc=0
+for __probe_url in "${_ArgsRemaining[@]}"; do
+  __probe_fetch "$__probe_url" || __probe_rc=1
+done
+exit $__probe_rc

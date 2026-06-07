@@ -1,0 +1,781 @@
+#!/usr/bin/env bash
+# boson — structured data query tool
+#
+# Queries JSON (and eventually YAML/Config) using jq-style path expressions.
+# Operates on Map.Fast storage — format-agnostic once parsed.
+#
+# Stage 1: path expressions, array iteration, raw output.
+#
+# Path syntax:
+#   .key            → top-level key
+#   .key.sub        → nested key
+#   .arr[0]         → array index
+#   .arr[]          → iterate all array elements (one per line)
+#   .obj[].name     → iterate array, extract .name from each
+#
+# Usage:
+#   boson '.name' < data.json
+#   boson '.users[0].email' < data.json
+#   boson '.users[].name' < data.json
+#   boson '.servers[]' config.json
+
+. boop Args Data::JSON
+
+# Distribution URLs — override with BOOP_DIST_URL for testing:
+#   BOOP_DIST_URL=http://localhost:8080 boson --self-update
+__installer_self_name="boson"
+__installer_self_url="${BOOP_DIST_URL:-http://get.boop.sh}/boson"
+
+# Installer dispatch
+declare -F __installer_dispatch >/dev/null ||
+  . "${__boop_root:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/lib/installer"
+__installer_dispatch "$@"
+
+(( $# )) || set -- --help
+
+# --- Help screens (before Args.parse) ---
+case "${1:-}" in
+  --examples)
+    cat <<'EOF'
+boson — Examples
+
+  Basic access:
+    boson '.name' data.json                # top-level string
+    boson '.address.city' < data.json      # nested key from stdin
+    boson '.scores[2]' data.json           # third array element
+
+  Array iteration:
+    boson '.users[]' data.json             # all array elements (JSON)
+    boson '.users[].name' data.json        # extract field from each
+
+  Non-leaf output (re-emits JSON):
+    boson '.database' < config.json        # {"host":"localhost","port":5432}
+    boson '.users[0]' < data.json          # {"name":"Alice","age":30}
+
+  Raw output (-r):
+    boson -r '.users[].email' data.json    # one email per line, unquoted
+
+  Pipe expressions and filtering ( | select(...) ):
+    boson -r '.users[] | select(.active) | .name' data.json
+    boson -r '.orders[] | select(.total > 100) | .id' data.json
+    boson -r '.items[] | select(.type == "fruit") | .name' data.json
+    boson -r '.files[] | select(.name =~ "\.sh$") | .name' data.json
+    boson -r '.users[] | select(has(.email)) | .email' data.json
+    boson -r '.items[] | select(-n .desc) | .name' data.json   # non-empty
+    boson -r '.items[] | select(-z .desc) | .name' data.json   # empty/missing
+    boson --into=hits '.logs[] | select(.level =~ "^err") | .msg' data.json
+
+  Sourceable output, pathed from given root point (--emit):
+    boson --emit '.' cfg.json          # dev_db_pw="Th3_p455w0rd"
+    boson --emit '.dev' cfg.json       # db_pw="Th3_p455w0rd"
+    boson --emit '.dev.db' cfg.json    # pw="Th3_p455w0rd"
+    . <(boson --emit '.' config.json)  # direct load to current shell
+
+  Explicitly Named assignment (--into):
+    boson --into=names '.users[].id' d.json    # → names=("Alice" "Bob")
+
+  Eponymous tree tracing *without* object path (--eponymous / -E):
+    boson -E '.dev.db' cfg.json        # → host=localhost  pw="Th3_p455w0rd"
+    boson -E '.users[].name' d.json    # → name=("Alice" "Bob")
+
+  See --caveats for gotchas (NUL bytes, -E collisions, numeric predicates).
+EOF
+    exit 0 ;;
+  --about)
+    cat <<'EOF'
+boson — structured data query tool
+
+  Query JSON files using jq-style path expressions. Pure bash, no
+  external dependencies beyond bash 4.3+.
+
+  Built on the boop framework. Run --boop for details.
+  https://github.com/ydbxmhc/bashClass
+EOF
+    exit 0 ;;
+  --boop)
+    cat <<'EOF'
+boson is built on boop — an OOP framework for bash 4.3+.
+
+  boop provides classes, objects, inheritance, method dispatch, a universal
+  return system, and a standard library including Data.JSON (recursive
+  descent parser), Map.Fast (compound-key store), Args (CLI parsing), and more.
+
+  This tool is a single-file bundle: the framework and required classes are
+  embedded inline. It works standalone with no installation.
+
+  To install the full boop framework:
+    boson --boop-install              install to ~/.local/lib/boop
+    boson --boop-install /opt/boop    install to custom path
+
+  Repository: https://github.com/ydbxmhc/bashClass
+EOF
+    exit 0 ;;
+  --caveats)
+    cat <<'EOF'
+boson — Caveats
+
+  NUL bytes
+    Bash variables CANNOT hold or detect NUL bytes. ANY JSON string value
+    containing a NUL will be silently truncated at the first one.
+
+  -E / --eponymous: variable name collisions
+    Variable names are derived from the key path relative to your expression
+    root, with dots replaced by underscores. Two source paths that differ only
+    in a key containing underscores vs. nested dots collide:
+
+      Given: { "a_b": 1, "a": { "b": 2 } }
+      boson -E '.' data.json
+        → boson: -E collision: "a_b" and "a.b" both map to variable "a_b"
+
+    boson detects this and exits nonzero, listing every collision. It does not
+    emit partial output. Your options:
+      · Use a deeper expression root to narrow the field set
+      · Assign specific values with --into=VAR
+      · Use --emit instead (same relative-path naming, fully explicit)
+      · Refactor the JSON to remove the ambiguous key names
+
+  Predicate numeric comparisons (< > <= >= -lt -gt -le -ge -eq -ne)
+    All use integer arithmetic. Floating-point values are truncated;
+    non-numeric strings are coerced to 0; missing or empty fields are
+    also coerced to 0. This means:
+
+      select(.count -eq 0)   matches records where count is absent
+      select(.count == "0")  does NOT match absent count fields
+
+    Use == / != for string comparisons, -eq / -ne when you specifically
+    want integer semantics and understand the missing-field coercion.
+
+  Pipe separator requires spaces
+    The pipe separator is ' | ' (space-pipe-space). A bare | without
+    surrounding spaces is not recognized and produces unexpected results.
+
+  $() strips trailing newlines
+    All captures use $(...) substitution, which bash unconditionally strips
+    trailing newlines from. A JSON string ending in one or more newlines will
+    lose them when assigned to a shell variable.
+EOF
+    exit 0 ;;
+esac
+
+Args.parse '
+[Parser]
+show = Use
+bareKV = false
+
+[Use]
+boson [-r] [--emit | --into=VAR | --eponymous] EXPR [file]
+
+  Query JSON with jq-style path expressions. Reads stdin or file.
+  EXPR may be a single path or a pipeline of stages joined by " | "
+  (space-pipe-space). See --examples.
+
+  (default)
+    Type-aware: strings quoted, numbers/booleans/null bare.
+    Non-leaf nodes (objects/arrays) are re-emitted as JSON.
+
+  -r, --raw
+    Unquoted values; one per line when iterating.
+
+  -e, --emit
+    Every leaf under EXPR as KEY=value. Variable names use the full
+    key path relative to EXPR, dots replaced by underscores.
+
+  --into=VAR
+    Scalar → VAR=value; iteration or pipe → VAR=(…). You choose the name.
+
+  -E, --eponymous
+    Subtrees like --emit; iteration → array named by the source field.
+
+  More: --examples, --caveats, --about, --boop
+
+[Options]
+raw       | r         # raw output (no quotes on strings)
+emit      | e         # emit all values as sourceable bash assignments
+into_var  | into  =   # emit single value as VAR=value (sourceable)
+eponymous | E         # emit using leaf key names as variable names
+
+[Exclusive]
+raw | emit
+raw | into_var
+raw | eponymous
+emit | into_var
+emit | eponymous
+into_var | eponymous
+' "$@" || exit 1
+
+# --- Determine input source ---
+__boson_input=""
+if [[ -n "${_ArgsRemaining[1]:-}" && -f "${_ArgsRemaining[1]}" ]]; then
+  __boson_file="${_ArgsRemaining[1]}"
+  __boson_input="$(< "$__boson_file")"
+elif [[ -n "${_ArgsRemaining[0]:-}" && ! -t 0 ]]; then
+  __boson_input="$(</dev/stdin)"
+else
+  printf 'boson: no input (pipe JSON or provide a file)\n' >&2
+  exit 1
+fi
+
+__boson_expr="${_ArgsRemaining[0]:-}"
+[[ -n "$__boson_expr" ]] || { printf 'boson: expression required\n' >&2; exit 1; }
+
+# --- Parse JSON ---
+into=__boson_doc Data.JSON.parse "$__boson_input" || {
+  printf 'boson: failed to parse JSON\n' >&2
+  exit 1
+}
+
+# ============================================================================
+# Path expression evaluator
+# ============================================================================
+
+# Convert a jq-style path to a Map.Fast compound key (or key prefix for []).
+#
+# .name           → "name"
+# .users[0].email → "users.0.email"
+# .users[]        → "users." (prefix — iterate)
+# .users[].name   → "users." + ".name" (iterate + suffix)
+#
+# Sets:
+#   __boson_key    — the resolved compound key (or prefix for iteration)
+#   __boson_iter   — "1" if [] iteration requested, "" otherwise
+#   __boson_suffix — the part after [] (e.g., ".name" → "name"), "" if none
+
+__boson_parse_expr() {
+  local __boson_pe_expr="$1"
+  __boson_key=""
+  __boson_iter=""
+  __boson_suffix=""
+
+  # Strip leading dot
+  [[ "$__boson_pe_expr" == .* ]] && __boson_pe_expr="${__boson_pe_expr:1}"
+
+  # Check for [] iteration
+  if [[ "$__boson_pe_expr" == *'[]'* ]]; then
+    __boson_iter="1"
+    local __boson_pe_before="${__boson_pe_expr%%'[]'*}"
+    local __boson_pe_after="${__boson_pe_expr#*'[]'}"
+    # Before [] becomes the prefix key
+    __boson_key="${__boson_pe_before//\[/.}"
+    __boson_key="${__boson_key//\]/}"
+    # After [] becomes the suffix (strip leading dot)
+    [[ "$__boson_pe_after" == .* ]] && __boson_pe_after="${__boson_pe_after:1}"
+    __boson_suffix="$__boson_pe_after"
+  else
+    # No iteration — straight key conversion
+    # Replace [N] with .N
+    __boson_key="${__boson_pe_expr//\[/.}"
+    __boson_key="${__boson_key//\]/}"
+  fi
+}
+
+# ============================================================================
+# Output helpers
+# ============================================================================
+
+# Escape a value for safe sourcing (handles quotes, newlines, special chars)
+__boson_quote_val() {
+  local __boson_qv_val="$1"
+  if [[ "$__boson_qv_val" == *[\'\"\\$\`\!\ \	]* || "$__boson_qv_val" == *$'\n'* ]]; then
+    local __boson_qv_out="" __boson_qv_rest="$__boson_qv_val" __boson_qv_pfx
+    while [[ "$__boson_qv_rest" == *"'"* ]]; do
+      __boson_qv_pfx="${__boson_qv_rest%%"'"*}"
+      __boson_qv_out+="${__boson_qv_pfx}'\\''"
+      __boson_qv_rest="${__boson_qv_rest#*"'"}"
+    done
+    printf "'%s'" "${__boson_qv_out}${__boson_qv_rest}"
+  else
+    printf '%s' "$__boson_qv_val"
+  fi
+}
+
+# Sanitize a key path into a valid bash variable name (dots/dashes → underscores)
+__boson_varname() {
+  local __boson_vn="$1"
+  __boson_vn="${__boson_vn//./_}"
+  __boson_vn="${__boson_vn//-/_}"
+  __boson_vn="${__boson_vn//[^a-zA-Z0-9_]/_}"
+  # Ensure starts with letter or underscore
+  [[ "$__boson_vn" =~ ^[a-zA-Z_] ]] || __boson_vn="_${__boson_vn}"
+  printf '%s' "$__boson_vn"
+}
+
+# Leaf keys for the parsed doc, in original document order.
+#
+# Data.JSON.parse maintains __boop_keys_${doc} — an indexed array recording
+# each leaf key as it was parsed. Iterating it reproduces the source key
+# order, which the raw hash (${!data[@]}) does not. Raw Fast objects with no
+# companion keys array fall back to (unordered) hash iteration.
+#
+# Arguments: none (reads global __boson_doc)
+# Returns:   populates the global array _boson_okeys[]
+__boson_ordered_keys() {
+  _boson_okeys=()
+  if [[ -v "__boop_keys_${__boson_doc}" ]]; then
+    local -n __boson_ok_ord="__boop_keys_${__boson_doc}"
+    _boson_okeys=( "${__boson_ok_ord[@]+"${__boson_ok_ord[@]}"}" )
+  else
+    local -n __boson_ok_data="__boop_data_${__boson_doc}"
+    _boson_okeys=( "${!__boson_ok_data[@]}" )
+  fi
+}
+
+# Output a single value in the current mode
+__boson_output() {
+  local __boson_out_val="$1" __boson_out_varname="${2:-}"
+
+  if [[ -n "$emit" || -n "$into_var" || -n "$eponymous" ]]; then
+    # Sourceable output mode
+    local __boson_out_name
+    if [[ -n "$into_var" ]]; then
+      __boson_out_name="$into_var"
+    elif [[ -n "$eponymous" ]]; then
+      __boson_out_name="$__boson_out_varname"
+    else
+      __boson_out_name="$__boson_out_varname"
+    fi
+    printf '%s=%s\n' "$__boson_out_name" "$(__boson_quote_val "$__boson_out_val")"
+
+  elif [[ -n "$raw" ]]; then
+    printf '%s\n' "$__boson_out_val"
+
+  else
+    # Default: quote strings, bare numbers/booleans
+    case "$__boson_out_val" in
+      true|false|null) printf '%s\n' "$__boson_out_val" ;;
+      *[!0-9.-]*) printf '"%s"\n' "$__boson_out_val" ;;
+      *) printf '%s\n' "$__boson_out_val" ;;
+    esac
+  fi
+}
+
+# Output an array in sourceable format
+__boson_output_array() {
+  local __boson_oa_name="$1"; shift
+  local -a __boson_oa_vals=("$@")
+  local __boson_oa_v __boson_oa_out=""
+  for __boson_oa_v in "${__boson_oa_vals[@]}"; do
+    [[ -n "$__boson_oa_out" ]] && __boson_oa_out+=" "
+    __boson_oa_out+="$(__boson_quote_val "$__boson_oa_v")"
+  done
+  printf '%s=(%s)\n' "$__boson_oa_name" "$__boson_oa_out"
+}
+
+# ============================================================================
+# Execute query
+# ============================================================================
+
+# Holds leaf keys in document order; populated by __boson_ordered_keys.
+declare -a _boson_okeys=()
+
+__boson_run() {
+  __boson_parse_expr "$__boson_expr"
+
+  if [[ -n "$__boson_iter" ]]; then
+    # Array iteration: enumerate numeric indices under the prefix
+    local -n __boson_data="__boop_data_${__boson_doc}"
+    local __boson_sep="."
+
+    # Find all numeric children of the prefix
+    local __boson_prefix="${__boson_key}${__boson_sep}"
+    local __boson_k __boson_idx __boson_rest __boson_val
+    local -A __boson_seen_idx=()
+
+    for __boson_k in "${!__boson_data[@]}"; do
+      [[ "$__boson_k" == "$__boson_prefix"* ]] || continue
+      __boson_rest="${__boson_k#"$__boson_prefix"}"
+      __boson_idx="${__boson_rest%%"$__boson_sep"*}"
+      [[ "$__boson_idx" =~ ^[0-9]+$ ]] || continue
+      [[ -n "${__boson_seen_idx[$__boson_idx]+set}" ]] && continue
+      __boson_seen_idx[$__boson_idx]=1
+    done
+
+    # Sort indices numerically
+    local -a __boson_indices=()
+    for __boson_idx in "${!__boson_seen_idx[@]}"; do
+      __boson_indices+=("$__boson_idx")
+    done
+    local -i __boson_i __boson_j __boson_tmp_idx
+    for (( __boson_i = 1; __boson_i < ${#__boson_indices[@]}; __boson_i++ )); do
+      __boson_tmp_idx=${__boson_indices[$__boson_i]}
+      __boson_j=$__boson_i
+      while (( __boson_j > 0 && __boson_indices[__boson_j-1] > __boson_tmp_idx )); do
+        __boson_indices[$__boson_j]=${__boson_indices[$((__boson_j-1))]}
+        (( --__boson_j ))
+      done
+      __boson_indices[$__boson_j]=$__boson_tmp_idx
+    done
+
+    # Collect values
+    local -a __boson_arr_vals=()
+    for __boson_idx in "${__boson_indices[@]}"; do
+      local __boson_full_key
+      if [[ -n "$__boson_suffix" ]]; then
+        __boson_full_key="${__boson_key}${__boson_sep}${__boson_idx}${__boson_sep}${__boson_suffix}"
+      else
+        __boson_full_key="${__boson_key}${__boson_sep}${__boson_idx}"
+      fi
+      into=__boson_val $__boson_doc.get "$__boson_full_key"
+      [[ -n "$__boson_val" ]] || continue
+
+      if [[ -n "$into_var" || -n "$eponymous" ]]; then
+        __boson_arr_vals+=("$__boson_val")
+      else
+        local __boson_leaf_name="${__boson_suffix:-$__boson_idx}"
+        __boson_output "$__boson_val" "$(__boson_varname "$__boson_leaf_name")"
+      fi
+    done
+
+    # Sourceable array output
+    if [[ -n "$into_var" ]]; then
+      __boson_output_array "$into_var" "${__boson_arr_vals[@]}"
+    elif [[ -n "$eponymous" ]]; then
+      local __boson_arr_name
+      if [[ -n "$__boson_suffix" ]]; then
+        __boson_arr_name="$(__boson_varname "$__boson_suffix")"
+      else
+        __boson_arr_name="$(__boson_varname "$__boson_key")"
+      fi
+      __boson_output_array "$__boson_arr_name" "${__boson_arr_vals[@]}"
+    fi
+
+  elif [[ -n "$emit" ]]; then
+    local -n __boson_data="__boop_data_${__boson_doc}"
+    local __boson_sep="."
+
+    # If the expression resolves to a scalar leaf, emit it as leafname=value.
+    local __boson_emit_scalar
+    [[ -n "$__boson_key" ]] && into=__boson_emit_scalar $__boson_doc.get "$__boson_key"
+    if [[ -n "$__boson_emit_scalar" ]]; then
+      local __boson_leaf="${__boson_key##*.}"
+      printf '%s=%s\n' "$(__boson_varname "$__boson_leaf")" \
+        "$(__boson_quote_val "$__boson_emit_scalar")"
+    else
+      # Subtree: dump all keys under the expression in document order.
+      local __boson_prefix=""
+      [[ -n "$__boson_key" ]] && __boson_prefix="${__boson_key}${__boson_sep}"
+      local __boson_k __boson_vname __boson_rel
+      __boson_ordered_keys
+      for __boson_k in "${_boson_okeys[@]+"${_boson_okeys[@]}"}"; do
+        if [[ -n "$__boson_prefix" ]]; then
+          [[ "$__boson_k" == "$__boson_prefix"* ]] || continue
+          __boson_rel="${__boson_k#"$__boson_prefix"}"
+        else
+          __boson_rel="$__boson_k"
+        fi
+        __boson_vname="$(__boson_varname "$__boson_rel")"
+        printf '%s=%s\n' "$__boson_vname" "$(__boson_quote_val "${__boson_data[$__boson_k]}")"
+      done
+    fi
+
+  else
+    # Direct key lookup
+    local __boson_val
+    [[ -n "$__boson_key" ]] && into=__boson_val $__boson_doc.get "$__boson_key"
+    if [[ -n "$__boson_val" ]]; then
+      local __boson_leaf="${__boson_key##*.}"
+      __boson_output "$__boson_val" "$(__boson_varname "$__boson_leaf")"
+    else
+      # Key not found — might be an object/array (has children).
+      # Root (empty key) always has children; others check keysUnder.
+      local __boson_children
+      if [[ -z "$__boson_key" ]]; then
+        __boson_children="1"
+      else
+        into=__boson_children $__boson_doc.keysUnder "$__boson_key"
+      fi
+      if [[ -n "$__boson_children" ]]; then
+        if [[ -n "$eponymous" ]]; then
+          # Emit subtree using relative-path varnames, in document order.
+          # Detect collisions (two source paths that sanitize to the same
+          # variable name) and error rather than silently overwrite.
+          local -n __boson_data="__boop_data_${__boson_doc}"
+          local __boson_sep="."
+          local __boson_prefix=""
+          [[ -n "$__boson_key" ]] && __boson_prefix="${__boson_key}${__boson_sep}"
+          local __boson_k __boson_rel __boson_vname
+          local -A __boson_ep_first=()
+          local -a __boson_ep_out=()
+          local -i __boson_ep_nc=0
+          __boson_ordered_keys
+          for __boson_k in "${_boson_okeys[@]+"${_boson_okeys[@]}"}"; do
+            if [[ -n "$__boson_prefix" ]]; then
+              [[ "$__boson_k" == "$__boson_prefix"* ]] || continue
+              __boson_rel="${__boson_k#"$__boson_prefix"}"
+            else
+              __boson_rel="$__boson_k"
+            fi
+            __boson_vname="$(__boson_varname "$__boson_rel")"
+            if [[ -v "__boson_ep_first[$__boson_vname]" ]]; then
+              printf 'boson: -E collision: "%s" and "%s" both map to variable "%s"\n' \
+                "${__boson_ep_first[$__boson_vname]}" "$__boson_k" "$__boson_vname" >&2
+              (( ++__boson_ep_nc ))
+            else
+              __boson_ep_first[$__boson_vname]="$__boson_k"
+              __boson_ep_out+=( "$__boson_vname" \
+                "$(__boson_quote_val "${__boson_data[$__boson_k]}")" )
+            fi
+          done
+          (( __boson_ep_nc == 0 )) || {
+            printf 'boson: use --into=VAR for specific values, or --emit for full-path names\n' >&2
+            exit 1
+          }
+          local __boson_ep_i
+          for (( __boson_ep_i = 0; __boson_ep_i < ${#__boson_ep_out[@]}; \
+                 __boson_ep_i += 2 )); do
+            printf '%s=%s\n' "${__boson_ep_out[$__boson_ep_i]}" \
+              "${__boson_ep_out[$(( __boson_ep_i + 1 ))]}"
+          done
+        else
+          __Data_JSON_result=""
+          __Data_JSON_stringifyPrefix "$__boson_key" "$__boson_doc" 0
+          printf '%s\n' "$__Data_JSON_result"
+        fi
+      else
+        printf 'null\n'
+      fi
+    fi
+  fi
+
+  $__boson_doc.destroy
+}
+
+# ============================================================================
+# Stage 2: pipe chaining + select() predicate filtering
+# Only compiled when the expression contains ' | '.
+# ============================================================================
+
+if [[ "$__boson_expr" == *' | '* ]]; then
+
+  declare -a _boson_pipe_indices=()
+
+  # Enumerate sorted numeric children of prefix into _boson_pipe_indices[].
+  __boson_pipe_indices() {
+    local __boson_pi_pfx="$1."
+    local -n __boson_pi_data="__boop_data_${__boson_doc}"
+    local __boson_pi_k __boson_pi_rest __boson_pi_idx
+    local -A __boson_pi_seen=()
+    for __boson_pi_k in "${!__boson_pi_data[@]}"; do
+      [[ "$__boson_pi_k" == "$__boson_pi_pfx"* ]] || continue
+      __boson_pi_rest="${__boson_pi_k#"$__boson_pi_pfx"}"
+      __boson_pi_idx="${__boson_pi_rest%%"."*}"
+      [[ "$__boson_pi_idx" =~ ^[0-9]+$ ]] || continue
+      __boson_pi_seen[$__boson_pi_idx]=1
+    done
+    local -a __boson_pi_arr=()
+    for __boson_pi_idx in "${!__boson_pi_seen[@]}"; do
+      __boson_pi_arr+=("$__boson_pi_idx")
+    done
+    local -i __boson_pi_i __boson_pi_j __boson_pi_tmp
+    for (( __boson_pi_i = 1; __boson_pi_i < ${#__boson_pi_arr[@]}; __boson_pi_i++ )); do
+      __boson_pi_tmp=${__boson_pi_arr[$__boson_pi_i]}
+      __boson_pi_j=$__boson_pi_i
+      while (( __boson_pi_j > 0 && __boson_pi_arr[__boson_pi_j-1] > __boson_pi_tmp )); do
+        __boson_pi_arr[$__boson_pi_j]=${__boson_pi_arr[$(( __boson_pi_j - 1 ))]}
+        (( --__boson_pi_j ))
+      done
+      __boson_pi_arr[$__boson_pi_j]=$__boson_pi_tmp
+    done
+    _boson_pipe_indices=( "${__boson_pi_arr[@]+"${__boson_pi_arr[@]}"}" )
+  }
+
+  # Evaluate a select() predicate against a context key prefix.
+  # Returns 0 (pass) or 1 (reject).
+  # Supported forms:
+  #   -n .field         — non-empty string (bash -n semantics; "false" passes)
+  #   -z .field         — empty or missing
+  #   has(.field)       — key present in document (even if null/false/"")
+  #   .field OP rhs     — comparison (OP: == != < > <= >= =~)
+  #   . OP rhs          — whole-element comparison
+  #   .field            — truthy (non-empty, non-null, non-false)
+  #   .                 — truthy (whole element)
+  __boson_pipe_predicate() {
+    local __boson_pp_pred="$1" __boson_pp_ctx="$2"
+    local -n __boson_pp_data="__boop_data_${__boson_doc}"
+    while [[ "$__boson_pp_pred" == ' '* ]]; do __boson_pp_pred="${__boson_pp_pred:1}"; done
+    while [[ "$__boson_pp_pred" == *' ' ]]; do __boson_pp_pred="${__boson_pp_pred%?}"; done
+
+    local __boson_pp_key __boson_pp_val
+
+    # Unary -n / -z
+    if [[ "$__boson_pp_pred" =~ ^(-n|-z)[[:space:]]+(.+)$ ]]; then
+      local __boson_pp_uop="${BASH_REMATCH[1]}" __boson_pp_uf="${BASH_REMATCH[2]}"
+      if [[ "$__boson_pp_uf" == "." ]]; then
+        __boson_pp_key="$__boson_pp_ctx"
+      else
+        local __boson_pp_ufn="${__boson_pp_uf#.}"
+        __boson_pp_ufn="${__boson_pp_ufn//\[/.}"; __boson_pp_ufn="${__boson_pp_ufn//\]/}"
+        if [[ -n "$__boson_pp_ctx" ]]; then
+          __boson_pp_key="${__boson_pp_ctx}.${__boson_pp_ufn}"
+        else
+          __boson_pp_key="$__boson_pp_ufn"
+        fi
+      fi
+      __boson_pp_val="${__boson_pp_data[$__boson_pp_key]:-}"
+      case "$__boson_pp_uop" in
+        -n) [[ -n "$__boson_pp_val" ]]; return ;;
+        -z) [[ -z "$__boson_pp_val" ]]; return ;;
+      esac
+    fi
+
+    # has(.field) — key exists in document regardless of value
+    if [[ "$__boson_pp_pred" =~ ^has\((.+)\)$ ]]; then
+      local __boson_pp_hf="${BASH_REMATCH[1]}"
+      if [[ "$__boson_pp_hf" == "." ]]; then
+        __boson_pp_key="$__boson_pp_ctx"
+      else
+        local __boson_pp_hfn="${__boson_pp_hf#.}"
+        __boson_pp_hfn="${__boson_pp_hfn//\[/.}"; __boson_pp_hfn="${__boson_pp_hfn//\]/}"
+        if [[ -n "$__boson_pp_ctx" ]]; then
+          __boson_pp_key="${__boson_pp_ctx}.${__boson_pp_hfn}"
+        else
+          __boson_pp_key="$__boson_pp_hfn"
+        fi
+      fi
+      [[ -v "__boop_data_${__boson_doc}[$__boson_pp_key]" ]]; return
+    fi
+
+    # Binary: .field OP rhs  (or . OP rhs)
+    local __boson_pp_field="" __boson_pp_op="truthy" __boson_pp_rhs=""
+    if [[ "$__boson_pp_pred" =~ ^(\.[a-zA-Z_][a-zA-Z0-9_]*|\.)?[[:space:]]*(==|!=|>=|<=|>|<|=~|-eq|-ne|-ge|-le|-gt|-lt)[[:space:]]*(.+)$ ]]; then
+      __boson_pp_field="${BASH_REMATCH[1]}"
+      __boson_pp_op="${BASH_REMATCH[2]}"
+      __boson_pp_rhs="${BASH_REMATCH[3]}"
+      [[ "$__boson_pp_rhs" == '"'*'"' ]] && \
+        __boson_pp_rhs="${__boson_pp_rhs:1:${#__boson_pp_rhs}-2}"
+    else
+      __boson_pp_field="$__boson_pp_pred"
+    fi
+
+    if [[ -n "$__boson_pp_field" && "$__boson_pp_field" != "." ]]; then
+      local __boson_pp_fname="${__boson_pp_field:1}"
+      __boson_pp_fname="${__boson_pp_fname//\[/.}"
+      __boson_pp_fname="${__boson_pp_fname//\]/}"
+      if [[ -n "$__boson_pp_ctx" ]]; then
+        __boson_pp_key="${__boson_pp_ctx}.${__boson_pp_fname}"
+      else
+        __boson_pp_key="$__boson_pp_fname"
+      fi
+    else
+      __boson_pp_key="$__boson_pp_ctx"
+    fi
+    __boson_pp_val="${__boson_pp_data[$__boson_pp_key]:-}"
+
+    case "$__boson_pp_op" in
+      truthy)
+        [[ -n "$__boson_pp_val" && "$__boson_pp_val" != "null" && "$__boson_pp_val" != "false" ]]
+        return ;;
+      ==) [[ "$__boson_pp_val" == "$__boson_pp_rhs" ]]; return ;;
+      !=) [[ "$__boson_pp_val" != "$__boson_pp_rhs" ]]; return ;;
+      =~) [[ "$__boson_pp_val" =~ $__boson_pp_rhs ]]; return ;;
+      '<'|-lt) (( ${__boson_pp_val:-0} <  ${__boson_pp_rhs:-0} )); return ;;
+      '>'|-gt) (( ${__boson_pp_val:-0} >  ${__boson_pp_rhs:-0} )); return ;;
+      '<='|-le) (( ${__boson_pp_val:-0} <= ${__boson_pp_rhs:-0} )); return ;;
+      '>='|-ge) (( ${__boson_pp_val:-0} >= ${__boson_pp_rhs:-0} )); return ;;
+      -eq) (( ${__boson_pp_val:-0} == ${__boson_pp_rhs:-0} )); return ;;
+      -ne) (( ${__boson_pp_val:-0} != ${__boson_pp_rhs:-0} )); return ;;
+    esac
+    return 1
+  }
+
+  # Split expr on ' | ', run each stage transforming the context array
+  # (array of compound key prefixes; "" = document root).
+  __boson_pipe_run() {
+    local -a __boson_pr_stages=()
+    local __boson_pr_rest="$__boson_expr"
+    while [[ "$__boson_pr_rest" == *' | '* ]]; do
+      __boson_pr_stages+=( "${__boson_pr_rest%%' | '*}" )
+      __boson_pr_rest="${__boson_pr_rest#*' | '}"
+    done
+    __boson_pr_stages+=( "$__boson_pr_rest" )
+
+    local -a __boson_pr_ctx=("") __boson_pr_new=()
+    local __boson_pr_stage __boson_pr_c __boson_pr_pred __boson_pr_prefix __boson_pr_idx
+
+    for __boson_pr_stage in "${__boson_pr_stages[@]}"; do
+      while [[ "$__boson_pr_stage" == ' '* ]]; do __boson_pr_stage="${__boson_pr_stage:1}"; done
+      while [[ "$__boson_pr_stage" == *' ' ]]; do __boson_pr_stage="${__boson_pr_stage%?}"; done
+
+      __boson_pr_new=()
+
+      if [[ "$__boson_pr_stage" == 'select('*')' ]]; then
+        __boson_pr_pred="${__boson_pr_stage:7:${#__boson_pr_stage}-8}"
+        for __boson_pr_c in "${__boson_pr_ctx[@]}"; do
+          __boson_pipe_predicate "$__boson_pr_pred" "$__boson_pr_c" && \
+            __boson_pr_new+=("$__boson_pr_c")
+        done
+
+      else
+        __boson_parse_expr "$__boson_pr_stage"
+        for __boson_pr_c in "${__boson_pr_ctx[@]}"; do
+          if [[ -n "$__boson_iter" ]]; then
+            if [[ -n "$__boson_pr_c" && -n "$__boson_key" ]]; then
+              __boson_pr_prefix="${__boson_pr_c}.${__boson_key}"
+            elif [[ -n "$__boson_key" ]]; then
+              __boson_pr_prefix="$__boson_key"
+            else
+              __boson_pr_prefix="$__boson_pr_c"
+            fi
+            __boson_pipe_indices "$__boson_pr_prefix"
+            for __boson_pr_idx in "${_boson_pipe_indices[@]+"${_boson_pipe_indices[@]}"}"; do
+              if [[ -n "$__boson_suffix" ]]; then
+                __boson_pr_new+=( "${__boson_pr_prefix}.${__boson_pr_idx}.${__boson_suffix}" )
+              else
+                __boson_pr_new+=( "${__boson_pr_prefix}.${__boson_pr_idx}" )
+              fi
+            done
+          else
+            if [[ -n "$__boson_pr_c" && -n "$__boson_key" ]]; then
+              __boson_pr_new+=( "${__boson_pr_c}.${__boson_key}" )
+            elif [[ -n "$__boson_key" ]]; then
+              __boson_pr_new+=( "$__boson_key" )
+            else
+              __boson_pr_new+=( "$__boson_pr_c" )
+            fi
+          fi
+        done
+      fi
+
+      __boson_pr_ctx=( "${__boson_pr_new[@]+"${__boson_pr_new[@]}"}" )
+    done
+
+    # Emit results
+    local -n __boson_pr_data="__boop_data_${__boson_doc}"
+    local -a __boson_pr_arr_vals=()
+    local __boson_pr_val __boson_pr_children __boson_pr_leaf
+
+    for __boson_pr_c in "${__boson_pr_ctx[@]+"${__boson_pr_ctx[@]}"}"; do
+      __boson_pr_val="${__boson_pr_data[$__boson_pr_c]:-}"
+      if [[ -n "$__boson_pr_val" ]]; then
+        if [[ -n "$into_var" || -n "$eponymous" ]]; then
+          __boson_pr_arr_vals+=("$__boson_pr_val")
+        else
+          __boson_pr_leaf="${__boson_pr_c##*.}"
+          __boson_output "$__boson_pr_val" "$(__boson_varname "$__boson_pr_leaf")"
+        fi
+      else
+        into=__boson_pr_children $__boson_doc.keysUnder "$__boson_pr_c"
+        if [[ -n "$__boson_pr_children" ]]; then
+          __Data_JSON_result=""
+          __Data_JSON_stringifyPrefix "$__boson_pr_c" "$__boson_doc" 0
+          printf '%s\n' "$__Data_JSON_result"
+        else
+          printf 'null\n'
+        fi
+      fi
+    done
+
+    if [[ -n "$into_var" && ${#__boson_pr_arr_vals[@]} -gt 0 ]]; then
+      __boson_output_array "$into_var" "${__boson_pr_arr_vals[@]}"
+    elif [[ -n "$eponymous" && ${#__boson_pr_arr_vals[@]} -gt 0 ]]; then
+      local __boson_pr_last="${__boson_pr_ctx[-1]:-}"
+      __boson_output_array "$(__boson_varname "${__boson_pr_last##*.}")" \
+        "${__boson_pr_arr_vals[@]}"
+    fi
+  }
+
+  __boson_pipe_run
+  $__boson_doc.destroy
+
+else
+  __boson_run
+fi

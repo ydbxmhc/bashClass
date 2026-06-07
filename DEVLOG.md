@@ -4,6 +4,134 @@ Completed work items, extracted from TODO.md. Most recent first.
 
 ---
 
+## Session: 2026-06-04
+
+**Tooling readiness pass — boson, lens, probe + bundle naming**
+
+Found the tool docs badly out of sync with reality: lens, boson, and probe
+were all far more complete than DEVLOG/PLAN/audit claimed. Verified by
+running them, fixed two real bugs, and added the missing test suites.
+
+- **Bundle naming convention**: bundles are now named `bundle-<tool>`
+  (was `<tool>.bundle`). `collider`'s default output changed accordingly.
+  Bare names stay as the boopRoot-dependent dev scripts. Bundles are
+  rename-safe — nothing in a bundle keys off its own filename (`--self-update`
+  uses `$0` only to know which path to overwrite; identity/URL are baked-in
+  literals). Verified by running a renamed copy. (A trailing-dot or colon
+  marker was considered and rejected: Windows/git can't represent either.)
+
+- **boson — emit key-order bug fixed**: `--emit` and `--eponymous` subtree
+  output iterated the raw Map.Fast hash, losing document order. Now they walk
+  the JSON parser's companion ordered-key index (`__boop_keys_${doc}`) via a
+  new `__boson_ordered_keys` helper, mirroring what `Data.JSON.stringify`
+  does. `--emit .database` now yields host, port, ssl in source order.
+
+- **probe — relative-redirect bug fixed**: a 3xx with a relative `Location`
+  (e.g. `/target`, the common case) crashed with "host required" because the
+  raw value was fed back through the URL parser. Now the target is resolved
+  against the current request's scheme/host/port (absolute-path and
+  relative-path cases both handled) before re-fetching.
+
+- **lib/installer refactor**: extracted `__installer_platform` and
+  `__installer_write_booprc` as real functions from inline logic in
+  `__installer_run`, which now delegates to them. Makes the booprc and
+  platform logic testable (primitives-inward per api-shape steering).
+
+- **New test suites**: `tests/tools/test_boson` (26 assertions, incl.
+  document-order and sourceable round-trip), `tests/tools/test_probe`
+  (17 assertions, with a self-contained python loopback HTTP server fixture
+  at `tests/tools/_http_server.py`; skips cleanly if python is absent).
+  `test_installer` (was stale, referencing two nonexistent functions) now
+  passes 21/21 against the extracted helpers.
+
+- **test_all footer**: utility tool tests are intentionally excluded from
+  `test_all` (slow unbundled, some need fixtures). Added a footer note to
+  the run output listing how to run each one individually.
+
+Tool test results: lens 38/38, boson 26/26, probe 17/17, collider 24/24,
+installer 21/21.
+
+---
+
+## Session: 2026-05-28
+
+**lens tool — Args schema and layered help**
+
+- Complete Args schema with mutual exclusion groups enforcing one-axis-at-a-time
+- Stream delimiter options passed through (-d/-D/-E/-f/-F/-W)
+- Compact POSIX synopsis for default --help (6 lines)
+- Layered help system: --options, --examples, --about, --boop
+- No implementation yet — schema and help screens only
+
+**Args: `show=` directive**
+
+- New `[Parser]` key: `show = Section1, Section2`
+- Controls which schema sections `--help` displays
+- Default (empty): shows all sections except `[Parser]` and `[Exclusive]`
+- `__Args.printHelp` rewritten to filter sections based on the directive
+
+---
+
+## Session: 2026-05-27
+
+**Error Severity Reclassification**
+
+- Reclassified data-condition `_Crash` calls to `_Error` + `return 1`
+  across all classes: List, Map, Stack, Queue, Config, Math, Args,
+  DateTime, Geometry, Serializable, Terminal, JSON, boop.destroy
+- Added `|| return 1` propagation in Math and Args internal call chains
+- Fixed Math.rawDiv trailing conditional returning non-zero on success
+- 34 `_Crash` calls remain — all security/corruption/programmer-error
+
+**Environment Resilience Testing**
+
+- New test harness: `tests/environ/test_environ` (15 configurations)
+- All pass: errexit, nounset, pipefail, failglob, nullglob, dotglob,
+  extglob, inherit_errexit, errtrace, functrace, 4 IFS variants, default
+- Fixed: `(( x++ ))` errexit issue in destroy (use `++x`)
+- Fixed: IFS independence in `__boopClass.parseTokens` (`local IFS`)
+- Fixed: bare `[[ ]] &&` errexit issue in Math.resolve (`|| true`)
+
+**Documentation**
+
+- `docs/STANDARDS.md`: Shell Options section expanded (errexit, IFS, nounset)
+- `docs/STANDARDS.md`: LSP section added
+- `docs/GOTCHAS.md`: errexit patterns, IFS, unset scoping, not-a-ternary
+- `README.md`: Design Principles subsection
+- Cross-links between STANDARDS and GOTCHAS
+
+---
+
+## Session: 2026-05-26
+
+**Object Lifecycle / GC**
+
+- `$obj.destroy` implemented on boop root class, inherited by all objects
+- `ClassName._destroy()` private hook convention for class-specific cleanup
+- Walks inheritance chain (most-derived first) calling each hook
+- Wipes __boop_static keys, unsets wrapper functions, removes registry entry
+- Hooks for: List, Map, Map.Fast, Set, Stack, Queue, Config, Stream, Iterator
+- Fixed pre-existing `_Class` leak in Stack/Queue constructors (`_Delegate`)
+- Removed old `Collection.Container.destroy` (replaced by core mechanism)
+- `test_destroy_ts`: 50 assertions covering full lifecycle
+
+**Collection Enhancements**
+
+- `List.filter`, `List.map`, `List.reduce` — functional operations
+- `List.do` — pipeline method with flexible syntax parsing
+- `List.contains`, `List.indexOf` — search methods
+- `Map.merge` — copy entries from another Map
+- `Collection.Stack.Fast`, `Collection.Queue.Fast` — inheritance-based
+  variants with blocked methods for contract enforcement
+- `Stream.putBack` — lookahead support for parsers
+
+**Test Infrastructure**
+
+- `test_destroy_ts` — dedicated destroy lifecycle test (50 assertions)
+- Renamed `test_stress_ts` → `test_adversarial_ts`
+
+---
+
 ## Stream Class -- Core Implementation
 
 **Completed:** 2026-05-20
@@ -625,3 +753,20 @@ Both subsumed by the Classpath/Namespace/Index implementation.
 the loader checks `__boop_preferred_version` from RC files. Version
 constraint enforcement is deferred to the Meta-Components / SemVer
 item in TODO.md.
+
+---
+
+## Delimiter Consistency -- Args and Map::Fast
+
+**Completed:** verified 2026-05-27
+
+Two items from TODO confirmed already resolved during audit:
+
+- **Args `_Delimiter` fallback**: `__Args_parse_d` (line ~357) already
+  uses `${_EOL:-$'\n'}` — not a hardcoded newline. Done.
+- **`Map::Fast` bare `${_Delimiter}`**: `keys`, `keysUnder`, and
+  `toString` all use `${_EOL:-$'\n'}` with proper fallback. Done.
+
+The Args CRLF stripping item remains in TODO, narrowed to a
+conditional fix (only relevant for Windows-saved files fed to
+`<`-type args).

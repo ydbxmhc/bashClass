@@ -90,8 +90,8 @@ Args.getOpts() {
   OPTIND=1
   while getopts "$__Args_getOpts_optstr" __Args_getOpts_opt "$@"; do
     case "$__Args_getOpts_opt" in
-      '?') _Crash "Args.getOpts: unknown option: -$OPTARG" ;;
-      ':') _Crash "Args.getOpts: -$OPTARG requires a value" ;;
+      '?') _Error "Args.getOpts: unknown option: -$OPTARG"; OPTIND=$((OPTIND-1)); return 1 ;;
+      ':') _Error "Args.getOpts: -$OPTARG requires a value"; OPTIND=$((OPTIND-1)); return 1 ;;
       *)
         if [[ -n "${__Args_getOpts_takes[$__Args_getOpts_opt]:-}" ]]; then
           _Debug "getOpts: -$__Args_getOpts_opt = '$OPTARG'"
@@ -231,8 +231,48 @@ __Args.parseOptLine() {
 # ============================================================================
 
 # Print formatted help from parsed schema tables, then exit 0.
+# Respects __Args_parser_show: if set, only prints sections listed there.
+# Default (empty): prints all sections except [Parser] and [Exclusive].
 __Args.printHelp() {
-  printf '%s\n' "$__Args_parse_schema"
+  local __Args_ph_show="${__Args_parser_show:-}"
+  local __Args_ph_section="" __Args_ph_line __Args_ph_printing=1
+
+  while IFS= read -r __Args_ph_line; do
+    # Detect section headers
+    if [[ "$__Args_ph_line" =~ ^\[([^]]+)\]$ ]]; then
+      __Args_ph_section="${BASH_REMATCH[1]}"
+      if [[ -n "$__Args_ph_show" ]]; then
+        # Only print sections in the show list
+        __Args_ph_printing=0
+        local __Args_ph_s
+        local IFS=','
+        for __Args_ph_s in $__Args_ph_show; do
+          # Strip whitespace
+          __Args_ph_s="${__Args_ph_s#"${__Args_ph_s%%[![:space:]]*}"}"
+          __Args_ph_s="${__Args_ph_s%"${__Args_ph_s##*[![:space:]]}"}"
+          if [[ "${__Args_ph_s,,}" == "${__Args_ph_section,,}" ]]; then
+            __Args_ph_printing=1
+            break
+          fi
+        done
+      else
+        # Default: skip internal sections and subscreen content sections
+        case "$__Args_ph_section" in
+          Parser|Exclusive|Requires|Together) __Args_ph_printing=0 ;;
+          *)
+            if [[ "${__Args_subscreen_sections[$__Args_ph_section]+_}" ]]; then
+              __Args_ph_printing=0
+            else
+              __Args_ph_printing=1
+            fi
+            ;;
+        esac
+      fi
+      # Don't print the section header bracket line itself for hidden sections
+      (( __Args_ph_printing )) || continue
+    fi
+    (( __Args_ph_printing )) && printf '%s\n' "$__Args_ph_line"
+  done <<< "$__Args_parse_schema"
 }
 
 # ============================================================================
@@ -264,6 +304,25 @@ __Args.schemaLine() {
         *) _Crash "Args.parse: [Parser] bareKV expects true|false, got '$__Args_sl_val'" ;;
       esac
       ;;
+    show) __Args_parser_show="$__Args_sl_val" ;;
+    subscreen)
+      [[ "$__Args_sl_val" =~ ^([A-Za-z_][A-Za-z0-9_]*)=([A-Za-z_][A-Za-z0-9_]*)$ ]] ||
+        _Crash "Args.parse: [Parser] subscreen expects varName=SectionName, got '$__Args_sl_val'"
+      local __Args_sl_vn="${BASH_REMATCH[1]}" __Args_sl_sn="${BASH_REMATCH[2]}"
+      __Args_subscreen_map[$__Args_sl_vn]="$__Args_sl_sn"
+      __Args_subscreen_sections[$__Args_sl_sn]="$__Args_sl_vn"
+      __Args_subscreen_order+=("$__Args_sl_vn")
+      # Register as a boolean option
+      __Args_varlist+=("$__Args_sl_vn")
+      __Args_required[$__Args_sl_vn]=0
+      __Args_defaults[$__Args_sl_vn]=""
+      __Args_descriptions[$__Args_sl_vn]=""
+      __Args_var_scope[$__Args_sl_vn]=""
+      __Args_types[$__Args_sl_vn]=""
+      __Args_fileload[$__Args_sl_vn]=0
+      __Args_takes_val[$__Args_sl_vn]=0
+      __Args_alias_map["--$__Args_sl_vn"]="$__Args_sl_vn"
+      ;;
     *) _Crash "Args.parse: [Parser] unknown key: $__Args_sl_key" ;;
   esac
 }
@@ -288,7 +347,7 @@ __Args_applyValue() {
     if [[ "$__Args_av_fl" == "1" ]]; then
       # Load each line of the file as one array element
       [[ -f "$__Args_av_raw" ]] ||
-        _Crash "Args.parse: $__Args_av_key: file not found: '$__Args_av_raw'"
+        { _Error "Args.parse: $__Args_av_key: file not found: '$__Args_av_raw'"; return 1; }
       local __Args_av_line
       while IFS= read -r __Args_av_line; do
         __Args_values[$__Args_av_vn]+="${__Args_values[$__Args_av_vn]:+${__Args_parse_d}}${__Args_av_line}"
@@ -302,7 +361,7 @@ __Args_applyValue() {
     local __Args_av_lines
     if [[ "$__Args_av_fl" == "1" ]]; then
       [[ -f "$__Args_av_raw" ]] ||
-        _Crash "Args.parse: $__Args_av_key: file not found: '$__Args_av_raw'"
+        { _Error "Args.parse: $__Args_av_key: file not found: '$__Args_av_raw'"; return 1; }
       local __Args_av_fline
       while IFS= read -r __Args_av_fline; do
         [[ -n "$__Args_av_fline" ]] && __Args_av_lines+="${__Args_av_lines:+$'\n'}${__Args_av_fline}"
@@ -321,7 +380,7 @@ __Args_applyValue() {
         __Args_av_mv="1"
       fi
       [[ -z "${__Args_values[${__Args_av_vn}.${__Args_av_mk}]+set}" ]] ||
-        _Crash "Args.parse: $__Args_av_key: duplicate map key '$__Args_av_mk'"
+        { _Error "Args.parse: $__Args_av_key: duplicate map key '$__Args_av_mk'"; return 1; }
       __Args_values[${__Args_av_vn}.${__Args_av_mk}]="$__Args_av_mv"
       # Track key list in sentinel value (delimiter-joined)
       __Args_values[$__Args_av_vn]+="${__Args_values[$__Args_av_vn]:+${__Args_parse_d}}${__Args_av_mk}"
@@ -330,7 +389,7 @@ __Args_applyValue() {
   elif [[ "$__Args_av_fl" == "1" ]]; then
     # Scalar file load: slurp entire file (no subshell)
     [[ -f "$__Args_av_raw" ]] ||
-      _Crash "Args.parse: $__Args_av_key: file not found: '$__Args_av_raw'"
+      { _Error "Args.parse: $__Args_av_key: file not found: '$__Args_av_raw'"; return 1; }
     local __Args_av_content="" __Args_av_fline __Args_av_first=1
     while IFS= read -r __Args_av_fline || [[ -n "$__Args_av_fline" ]]; do
       if (( __Args_av_first )); then
@@ -346,12 +405,40 @@ __Args_applyValue() {
   fi
 }
 
+# Print subscreen sections for the given active varNames (in that order).
+# Reads __Args_parse_schema (passed as $1) directly to preserve formatting.
+# Prints a blank line separator between multiple subscreens.
+__Args.printSubscreens() {
+  local __Args_ps_schema="$1"; shift
+  local -a __Args_ps_active=("$@")
+  local __Args_ps_vn __Args_ps_target_sn __Args_ps_first=1
+  for __Args_ps_vn in "${__Args_ps_active[@]}"; do
+    __Args_ps_target_sn="${__Args_subscreen_map[$__Args_ps_vn]:-}"
+    [[ -n "$__Args_ps_target_sn" ]] || continue
+    (( __Args_ps_first )) || printf '\n'
+    __Args_ps_first=0
+    local __Args_ps_section="" __Args_ps_line __Args_ps_printing=0
+    while IFS= read -r __Args_ps_line; do
+      if [[ "$__Args_ps_line" =~ ^\[([^]]+)\]$ ]]; then
+        __Args_ps_section="${BASH_REMATCH[1]}"
+        if [[ "$__Args_ps_section" == "$__Args_ps_target_sn" ]]; then
+          __Args_ps_printing=1
+        elif (( __Args_ps_printing )); then
+          break
+        fi
+        continue
+      fi
+      (( __Args_ps_printing )) && printf '%s\n' "$__Args_ps_line"
+    done <<< "$__Args_ps_schema"
+  done
+}
+
 # Args.parse -- GNU long + subcommand parser
 # ============================================================================
 
 Args.parse() {
   local __Args_parse_schema="${1:-}"; shift
-  [[ -n "$__Args_parse_schema" ]] || _Crash "Args.parse: schema required"
+  [[ -n "$__Args_parse_schema" ]] || { _Error "Args.parse: schema required"; return 1; }
 
   # Effective record separator for _ArgsRemaining in object mode
   local __Args_parse_d="${_EOL:-$'\n'}"
@@ -367,14 +454,31 @@ Args.parse() {
   declare -gA __Args_descriptions=()
   declare -gA __Args_subcmd_desc=()
   declare -g  __Args_usage=""
-  declare -gA __Args_seen=()
+  # Two seen-tables, deliberately separate:
+  #   __Args_seen      -- PERSISTENT (+=). Records what the user supplied across
+  #                       parses so Args.given still answers after a nested parse
+  #                       (e.g. inside Stream.new) runs. The intended model is a
+  #                       single script-argv parse per process; constructors may
+  #                       parse internally without erasing the script's record.
+  #   __Args_seen_this -- PER-PARSE (=). Reset every parse; backs duplicate-option
+  #                       detection, which must only consider the current parse.
+  declare -gA __Args_seen+=()
+  declare -gA __Args_seen_this=()
   declare -gA __Args_values=()
   declare -gA __Args_types=()     # varname → "array" | "map" | "" (scalar/bool)
   declare -gA __Args_fileload=()  # varname → "1" if value is a filename to load
   # Parser-behavior flags set by the [Parser] schema section.
   declare -gi __Args_parser_bareKV=0
+  declare -g  __Args_parser_show=""
   # Mutual exclusion groups from [Exclusive] section.
   declare -ga __Args_exclusive=()
+  # Subscreens: [Parser] subscreen = varName=SectionName
+  declare -gA __Args_subscreen_map=()      # varName → SectionName
+  declare -gA __Args_subscreen_sections=() # SectionName → varName
+  declare -ga __Args_subscreen_order=()    # varNames in declaration order
+  # Dependency validation from [Requires] and [Together] sections.
+  declare -ga __Args_requires=()
+  declare -ga __Args_together=()
 
   # --- Phase 1: Parse schema ---
   _Debug "parse: parsing schema"
@@ -393,7 +497,15 @@ Args.parse() {
       Options)     __Args.parseOptLine "" "$__Args_parse_ln" ;;
       Parser)      __Args.schemaLine "$__Args_parse_ln" ;;
       Exclusive)   __Args_exclusive+=("${__Args_parse_ln%%#*}") ;;
-      *)           __Args.parseOptLine "$__Args_parse_section" "$__Args_parse_ln" ;;
+      Requires)    __Args_requires+=("${__Args_parse_ln%%#*}") ;;
+      Together)    __Args_together+=("${__Args_parse_ln%%#*}") ;;
+      *)
+        if [[ "${__Args_subscreen_sections[$__Args_parse_section]+_}" ]]; then
+          : # subscreen content — printed on demand; skip option parsing
+        else
+          __Args.parseOptLine "$__Args_parse_section" "$__Args_parse_ln"
+        fi
+        ;;
     esac
   done <<< "$__Args_parse_schema"
 
@@ -457,33 +569,36 @@ Args.parse() {
         __Args_parse_key="$__Args_parse_arg"
       fi
       __Args_parse_vn="${__Args_alias_map[$__Args_parse_key]:-}"
-      [[ -n "$__Args_parse_vn" ]] || _Crash "Args.parse: unknown option: $__Args_parse_key"
+      [[ -n "$__Args_parse_vn" ]] || { _Error "Args.parse: unknown option: $__Args_parse_key"; return 1; }
 
-      # Duplicate detection: scalars/booleans only; arrays and maps allow repeats
+      # Duplicate detection: scalars/booleans only; arrays and maps allow repeats.
+      # Checks the PER-PARSE table so a prior parse's options don't false-trip it.
       if [[ -z "${__Args_types[$__Args_parse_vn]:-}" ]]; then
-        [[ -z "${__Args_seen[$__Args_parse_vn]+set}" ]] ||
-          _Crash "Args.parse: duplicate option: $__Args_parse_key"
-        __Args_seen[$__Args_parse_vn]=1
+        [[ -z "${__Args_seen_this[$__Args_parse_vn]+set}" ]] ||
+          { _Error "Args.parse: duplicate option: $__Args_parse_key"; return 1; }
       fi
+      # Mark given (all types) in both the per-parse and persistent tables.
+      __Args_seen_this[$__Args_parse_vn]=1
+      __Args_seen[$__Args_parse_vn]=1
 
       __Args_parse_scope="${__Args_var_scope[$__Args_parse_vn]:-}"
       if [[ -n "$__Args_parse_scope" ]]; then
         if [[ -z "$_Action" ]]; then
-          _Crash "Args.parse: $__Args_parse_key is only valid after subcommand '$__Args_parse_scope'"
+          _Error "Args.parse: $__Args_parse_key is only valid after subcommand '$__Args_parse_scope'"; return 1
         elif [[ "$__Args_parse_scope" != "$_Action" ]]; then
-          _Crash "Args.parse: $__Args_parse_key is not valid for subcommand '$_Action'"
+          _Error "Args.parse: $__Args_parse_key is not valid for subcommand '$_Action'"; return 1
         fi
       fi
       if [[ "${__Args_takes_val[$__Args_parse_vn]}" == 1 ]]; then
         if [[ $__Args_parse_hasval -eq 0 ]]; then
-          [[ $# -gt 0 ]] || _Crash "Args.parse: $__Args_parse_key requires a value"
+          [[ $# -gt 0 ]] || { _Error "Args.parse: $__Args_parse_key requires a value"; return 1; }
           __Args_parse_val="$1"; shift
         fi
         _Debug "parse: $__Args_parse_key ($__Args_parse_vn) = '$__Args_parse_val'"
-        __Args_applyValue "$__Args_parse_vn" "$__Args_parse_val" "$__Args_parse_key"
+        __Args_applyValue "$__Args_parse_vn" "$__Args_parse_val" "$__Args_parse_key" || return 1
       else
         [[ $__Args_parse_hasval -eq 0 ]] ||
-          _Crash "Args.parse: $__Args_parse_key is a boolean flag, does not take a value"
+          { _Error "Args.parse: $__Args_parse_key is a boolean flag, does not take a value"; return 1; }
         _Debug "parse: $__Args_parse_key ($__Args_parse_vn) = true"
         __Args_setVar "$__Args_parse_vn" "1"
       fi
@@ -497,32 +612,34 @@ Args.parse() {
         __Args_parse_c="${__Args_parse_cluster:0:1}"
         __Args_parse_cluster="${__Args_parse_cluster:1}"
         __Args_parse_cvn="${__Args_alias_map["-${__Args_parse_c}"]:-}"
-        [[ -n "$__Args_parse_cvn" ]] || _Crash "Args.parse: unknown option: -${__Args_parse_c}"
+        [[ -n "$__Args_parse_cvn" ]] || { _Error "Args.parse: unknown option: -${__Args_parse_c}"; return 1; }
 
-        # Duplicate detection: scalars/booleans only
+        # Duplicate detection: scalars/booleans only (per-parse table).
         if [[ -z "${__Args_types[$__Args_parse_cvn]:-}" ]]; then
-          [[ -z "${__Args_seen[$__Args_parse_cvn]+set}" ]] ||
-            _Crash "Args.parse: duplicate option: -${__Args_parse_c}"
-          __Args_seen[$__Args_parse_cvn]=1
+          [[ -z "${__Args_seen_this[$__Args_parse_cvn]+set}" ]] ||
+            { _Error "Args.parse: duplicate option: -${__Args_parse_c}"; return 1; }
         fi
+        # Mark given (all types) in both the per-parse and persistent tables.
+        __Args_seen_this[$__Args_parse_cvn]=1
+        __Args_seen[$__Args_parse_cvn]=1
 
         __Args_parse_scope="${__Args_var_scope[$__Args_parse_cvn]:-}"
         if [[ -n "$__Args_parse_scope" ]]; then
           if [[ -z "$_Action" ]]; then
-            _Crash "Args.parse: -$__Args_parse_c is only valid after subcommand '$__Args_parse_scope'"
+            _Error "Args.parse: -$__Args_parse_c is only valid after subcommand '$__Args_parse_scope'"; return 1
           elif [[ "$__Args_parse_scope" != "$_Action" ]]; then
-            _Crash "Args.parse: -$__Args_parse_c is not valid for subcommand '$_Action'"
+            _Error "Args.parse: -$__Args_parse_c is not valid for subcommand '$_Action'"; return 1
           fi
         fi
         if [[ "${__Args_takes_val[$__Args_parse_cvn]}" == 1 ]]; then
           if [[ -n "$__Args_parse_cluster" ]]; then
             __Args_parse_sv="$__Args_parse_cluster"; __Args_parse_cluster=""
           else
-            [[ $# -gt 0 ]] || _Crash "Args.parse: -${__Args_parse_c} requires a value"
+            [[ $# -gt 0 ]] || { _Error "Args.parse: -${__Args_parse_c} requires a value"; return 1; }
             __Args_parse_sv="$1"; shift
           fi
           _Debug "parse: -$__Args_parse_c ($__Args_parse_cvn) = '$__Args_parse_sv'"
-          __Args_applyValue "$__Args_parse_cvn" "$__Args_parse_sv" "-$__Args_parse_c"
+          __Args_applyValue "$__Args_parse_cvn" "$__Args_parse_sv" "-$__Args_parse_c" || return 1
         else
           _Debug "parse: -$__Args_parse_c ($__Args_parse_cvn) = true"
           __Args_setVar "$__Args_parse_cvn" "1"
@@ -546,6 +663,20 @@ Args.parse() {
 
   _Debug "parse: done -- action='$_Action', ${#_ArgsRemaining[@]} remaining"
 
+  # --- Phase 3.5: Print subscreens if any are set, then exit ---
+  if (( ${#__Args_subscreen_order[@]} > 0 )); then
+    local -a __Args_parse_active_ss=()
+    local __Args_parse_ss_vn
+    for __Args_parse_ss_vn in "${__Args_subscreen_order[@]}"; do
+      [[ -n "${__Args_values[$__Args_parse_ss_vn]:-}" ]] && \
+        __Args_parse_active_ss+=("$__Args_parse_ss_vn")
+    done
+    if (( ${#__Args_parse_active_ss[@]} > 0 )); then
+      __Args.printSubscreens "$__Args_parse_schema" "${__Args_parse_active_ss[@]}"
+      exit 0
+    fi
+  fi
+
   # --- Phase 4: Validate required ---
   # For scalars: __Args_values[v] is the string value, empty means unset.
   # For arrays:  __Args_values[v] is the delimiter-joined list, empty means no entries.
@@ -561,33 +692,133 @@ Args.parse() {
     fi
   done
   [[ -z "$__Args_parse_missing" ]] ||
-    _Crash "Args.parse: required options not provided: $__Args_parse_missing"
+    { _Error "Args.parse: required options not provided: $__Args_parse_missing"; return 1; }
 
   # --- Phase 4b: Validate mutual exclusion groups ---
-  local __Args_parse_group __Args_parse_gvar __Args_parse_grest
+  # Pairwise form:  a | b | c         — at most one may be set
+  # Group form:     (a b) | (c d) | e — at most one group may have any member set
+  local __Args_parse_group __Args_parse_gvar __Args_parse_grest __Args_parse_gpart
   local __Args_parse_set_names __Args_parse_set_count
+  local __Args_parse_gm __Args_parse_gmembers
   for __Args_parse_group in "${__Args_exclusive[@]+"${__Args_exclusive[@]}"}"; do
-    __Args_parse_set_names="" __Args_parse_set_count=0
-    __Args_parse_grest="$__Args_parse_group"
-    while [[ -n "$__Args_parse_grest" ]]; do
-      if [[ "$__Args_parse_grest" == *'|'* ]]; then
-        __Args_parse_gvar="${__Args_parse_grest%%|*}"
-        __Args_parse_grest="${__Args_parse_grest#*|}"
+    __Args_parse_group="${__Args_parse_group#"${__Args_parse_group%%[![:space:]]*}"}"
+    __Args_parse_group="${__Args_parse_group%"${__Args_parse_group##*[![:space:]]}"}"
+    [[ -z "$__Args_parse_group" ]] && continue
+
+    if [[ "$__Args_parse_group" == '('* ]]; then
+      # Group form: (a b c) | (d e) — at most one group may have any member set
+      local __Args_parse_groups_with_set=0 __Args_parse_group_names=""
+      __Args_parse_grest="$__Args_parse_group"
+      while [[ -n "$__Args_parse_grest" ]]; do
+        if [[ "$__Args_parse_grest" == *'|'* ]]; then
+          __Args_parse_gpart="${__Args_parse_grest%%|*}"
+          __Args_parse_grest="${__Args_parse_grest#*|}"
+        else
+          __Args_parse_gpart="$__Args_parse_grest"; __Args_parse_grest=""
+        fi
+        __Args_parse_gpart="${__Args_parse_gpart#"${__Args_parse_gpart%%[![:space:]]*}"}"
+        __Args_parse_gpart="${__Args_parse_gpart%"${__Args_parse_gpart##*[![:space:]]}"}"
+        __Args_parse_gpart="${__Args_parse_gpart#'('}"
+        __Args_parse_gpart="${__Args_parse_gpart%')'}"
+        __Args_parse_gpart="${__Args_parse_gpart#"${__Args_parse_gpart%%[![:space:]]*}"}"
+        __Args_parse_gpart="${__Args_parse_gpart%"${__Args_parse_gpart##*[![:space:]]}"}"
+        [[ -z "$__Args_parse_gpart" ]] && continue
+        local __Args_parse_g_has_set=0 __Args_parse_g_set_names=""
+        local IFS=$' \t\n'
+        read -ra __Args_parse_gmembers <<< "$__Args_parse_gpart"
+        for __Args_parse_gm in "${__Args_parse_gmembers[@]+"${__Args_parse_gmembers[@]}"}"; do
+          if [[ -n "${__Args_values[$__Args_parse_gm]:-}" ]]; then
+            __Args_parse_g_has_set=1
+            __Args_parse_g_set_names="${__Args_parse_g_set_names:+$__Args_parse_g_set_names, }$__Args_parse_gm"
+          fi
+        done
+        if (( __Args_parse_g_has_set )); then
+          (( __Args_parse_groups_with_set++ ))
+          __Args_parse_group_names="${__Args_parse_group_names:+$__Args_parse_group_names; }$__Args_parse_g_set_names"
+        fi
+      done
+      (( __Args_parse_groups_with_set <= 1 )) ||
+        { _Error "Args.parse: mutually exclusive option groups used together: $__Args_parse_group_names"; return 1; }
+
+    else
+      # Pairwise form: a | b | c — at most one may be set
+      __Args_parse_set_names="" __Args_parse_set_count=0
+      __Args_parse_grest="$__Args_parse_group"
+      while [[ -n "$__Args_parse_grest" ]]; do
+        if [[ "$__Args_parse_grest" == *'|'* ]]; then
+          __Args_parse_gvar="${__Args_parse_grest%%|*}"
+          __Args_parse_grest="${__Args_parse_grest#*|}"
+        else
+          __Args_parse_gvar="$__Args_parse_grest"; __Args_parse_grest=""
+        fi
+        __Args_parse_gvar="${__Args_parse_gvar#"${__Args_parse_gvar%%[![:space:]]*}"}"
+        __Args_parse_gvar="${__Args_parse_gvar%"${__Args_parse_gvar##*[![:space:]]}"}"
+        [[ -z "$__Args_parse_gvar" ]] && continue
+        if [[ -n "${__Args_values[$__Args_parse_gvar]:-}" ]]; then
+          (( __Args_parse_set_count++ ))
+          __Args_parse_set_names="${__Args_parse_set_names:+$__Args_parse_set_names, }$__Args_parse_gvar"
+        fi
+      done
+      (( __Args_parse_set_count <= 1 )) ||
+        { _Error "Args.parse: mutually exclusive options used together: $__Args_parse_set_names"; return 1; }
+    fi
+  done
+
+  # --- Phase 4c: Validate [Requires] — if A set, at least one of B|C must be set ---
+  local __Args_parse_req __Args_parse_req_lhs __Args_parse_req_rhs
+  local __Args_parse_req_rvar __Args_parse_req_rhs_names __Args_parse_req_rest __Args_parse_req_found
+  for __Args_parse_req in "${__Args_requires[@]+"${__Args_requires[@]}"}"; do
+    __Args_parse_req="${__Args_parse_req#"${__Args_parse_req%%[![:space:]]*}"}"
+    __Args_parse_req="${__Args_parse_req%"${__Args_parse_req##*[![:space:]]}"}"
+    [[ -z "$__Args_parse_req" || "$__Args_parse_req" != *'=>'* ]] && continue
+    __Args_parse_req_lhs="${__Args_parse_req%%'=>'*}"
+    __Args_parse_req_rhs="${__Args_parse_req#*'=>'}"
+    __Args_parse_req_lhs="${__Args_parse_req_lhs%"${__Args_parse_req_lhs##*[![:space:]]}"}"
+    __Args_parse_req_lhs="${__Args_parse_req_lhs#"${__Args_parse_req_lhs%%[![:space:]]*}"}"
+    __Args_parse_req_rhs="${__Args_parse_req_rhs#"${__Args_parse_req_rhs%%[![:space:]]*}"}"
+    __Args_parse_req_rhs="${__Args_parse_req_rhs%"${__Args_parse_req_rhs##*[![:space:]]}"}"
+    [[ -n "${__Args_values[$__Args_parse_req_lhs]:-}" ]] || continue
+    __Args_parse_req_found=0
+    __Args_parse_req_rhs_names=""
+    __Args_parse_req_rest="$__Args_parse_req_rhs"
+    while [[ -n "$__Args_parse_req_rest" ]]; do
+      if [[ "$__Args_parse_req_rest" == *'|'* ]]; then
+        __Args_parse_req_rvar="${__Args_parse_req_rest%%|*}"
+        __Args_parse_req_rest="${__Args_parse_req_rest#*|}"
       else
-        __Args_parse_gvar="$__Args_parse_grest"
-        __Args_parse_grest=""
+        __Args_parse_req_rvar="$__Args_parse_req_rest"; __Args_parse_req_rest=""
       fi
-      # Strip whitespace
-      __Args_parse_gvar="${__Args_parse_gvar#"${__Args_parse_gvar%%[![:space:]]*}"}"
-      __Args_parse_gvar="${__Args_parse_gvar%"${__Args_parse_gvar##*[![:space:]]}"}"
-      [[ -z "$__Args_parse_gvar" ]] && continue
-      if [[ -n "${__Args_values[$__Args_parse_gvar]:-}" ]]; then
-        (( __Args_parse_set_count++ ))
-        __Args_parse_set_names="${__Args_parse_set_names:+$__Args_parse_set_names, }$__Args_parse_gvar"
+      __Args_parse_req_rvar="${__Args_parse_req_rvar#"${__Args_parse_req_rvar%%[![:space:]]*}"}"
+      __Args_parse_req_rvar="${__Args_parse_req_rvar%"${__Args_parse_req_rvar##*[![:space:]]}"}"
+      [[ -z "$__Args_parse_req_rvar" ]] && continue
+      __Args_parse_req_rhs_names="${__Args_parse_req_rhs_names:+$__Args_parse_req_rhs_names | }$__Args_parse_req_rvar"
+      if [[ -n "${__Args_values[$__Args_parse_req_rvar]:-}" ]]; then
+        __Args_parse_req_found=1; break
       fi
     done
-    (( __Args_parse_set_count <= 1 )) ||
-      _Crash "Args.parse: mutually exclusive options used together: $__Args_parse_set_names"
+    (( __Args_parse_req_found )) ||
+      { _Error "Args.parse: $__Args_parse_req_lhs requires one of: $__Args_parse_req_rhs_names"; return 1; }
+  done
+
+  # --- Phase 4d: Validate [Together] — all or none ---
+  local __Args_parse_tog __Args_parse_tog_set __Args_parse_tog_unset __Args_parse_tog_m
+  local -a __Args_parse_tog_members
+  for __Args_parse_tog in "${__Args_together[@]+"${__Args_together[@]}"}"; do
+    __Args_parse_tog="${__Args_parse_tog#"${__Args_parse_tog%%[![:space:]]*}"}"
+    __Args_parse_tog="${__Args_parse_tog%"${__Args_parse_tog##*[![:space:]]}"}"
+    [[ -z "$__Args_parse_tog" ]] && continue
+    local IFS=$' \t\n'
+    read -ra __Args_parse_tog_members <<< "$__Args_parse_tog"
+    __Args_parse_tog_set=0; __Args_parse_tog_unset=0
+    for __Args_parse_tog_m in "${__Args_parse_tog_members[@]+"${__Args_parse_tog_members[@]}"}"; do
+      if [[ -n "${__Args_values[$__Args_parse_tog_m]:-}" ]]; then
+        (( __Args_parse_tog_set++ ))
+      else
+        (( __Args_parse_tog_unset++ ))
+      fi
+    done
+    (( __Args_parse_tog_set == 0 || __Args_parse_tog_unset == 0 )) ||
+      { _Error "Args.parse: options must be used together: ${__Args_parse_tog_members[*]:-}"; return 1; }
   done
 
   # --- Phase 5: Route parsed values to their destination ---
@@ -678,12 +909,46 @@ Args.parse() {
     done
   fi
 
-  # Cleanup working tables
+  # Cleanup working tables. __Args_seen is intentionally NOT unset here: it
+  # survives the parse to back Args.given (the "was this option supplied?"
+  # query). It is reset at the top of the next parse.
   unset __Args_alias_map __Args_takes_val __Args_required __Args_defaults \
         __Args_subcmd_map __Args_varlist __Args_var_scope \
         __Args_descriptions __Args_subcmd_desc __Args_usage \
-        __Args_seen __Args_values __Args_types __Args_fileload \
-        __Args_parser_bareKV __Args_exclusive
+        __Args_seen_this __Args_values __Args_types __Args_fileload \
+        __Args_parser_bareKV __Args_parser_show __Args_exclusive \
+        __Args_subscreen_map __Args_subscreen_sections __Args_subscreen_order \
+        __Args_requires __Args_together
+}
+
+# ============================================================================
+# Args.given -- was an option supplied on the command line?
+#
+# After a scope-write Args.parse, a scalar option that was omitted and one
+# that was given an empty value (--opt '') both leave $opt empty, so the value
+# alone cannot tell them apart. Args.given answers the "was it supplied?"
+# question by consulting the seen-table that parse leaves behind.
+#
+# Arguments:
+#   $1 -- the option's variable name (the first name in its schema line,
+#         e.g. "ofs" for `ofs | --output-sep =`)
+# Returns: exit 0 if the option was supplied (any value, including empty),
+#          exit 1 if it was not. Prints nothing.
+#
+# Scope: reflects the most recent scope-write Args.parse. In object mode
+# (into=), query the returned object instead.
+#
+# Usage:
+#   Args.parse '...' "$@"
+#   if Args.given ofs; then printf 'output sep explicitly set to [%s]\n' "$ofs"; fi
+Args.given() {
+  local _Self="${_Self:-}" _Class="${_Class:-Args}"
+  [[ -n "${1:-}" ]] || { _Error "Args.given: option name required"; return 2; }
+  # Ensure the seen-table exists as an associative array before indexing it,
+  # so a call before any Args.parse can't trip arithmetic-index evaluation on
+  # a non-numeric key. Idempotent: creates it empty if absent, else no-op.
+  declare -gA __Args_seen+=()
+  [[ -n "${__Args_seen[$1]+set}" ]]
 }
 
 # ============================================================================
@@ -691,5 +956,5 @@ Args.parse() {
 # ============================================================================
 
 boopClass Args '
-  public:getOpts,parse
+  public:getOpts,parse,given
 '

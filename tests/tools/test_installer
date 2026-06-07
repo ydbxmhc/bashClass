@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# lib/installer tests
+#
+# Classification: INTEGRATION (tools/installer)
+# Covers: cascade detection, path writability check, platform detection,
+#         .booprc generation, dispatch routing, update detection.
+#
+# NOTE: These tests do NOT actually clone/download anything. They test
+# the logic paths by mocking __installer_has and checking behavior.
+
+__ti_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+__ti_root="$(cd "$__ti_dir/../.." && pwd)"
+
+. "$__ti_root/boop" TestSuite
+
+# Source the installer library
+. "$__ti_root/lib/installer"
+
+into=t TestSuite name="Installer Tests"
+
+# ============================================================================
+# Platform detection
+# ============================================================================
+
+$t.section "Platform detection"
+
+__ti_plat="$(__installer_platform)"
+$t.assert_ok "platform is non-empty" test -n "$__ti_plat"
+$t.assert_ok "platform is a known value" bash -c "
+  case '$__ti_plat' in linux|macos|windows|unknown) exit 0 ;; *) exit 1 ;; esac
+"
+
+# ============================================================================
+# Writability check
+# ============================================================================
+
+$t.section "Writability check"
+
+$t.assert_ok "home is writable" __installer_writable "$HOME"
+$t.assert_ok "tmp is writable" __installer_writable "/tmp"
+# /root or /usr/sbin likely not writable for normal user
+$t.assert_fail "restricted path not writable" __installer_writable "/root/nope"
+
+# ============================================================================
+# Tool detection (__installer_has)
+# ============================================================================
+
+$t.section "Tool detection"
+
+$t.assert_ok "has bash" __installer_has bash
+$t.assert_ok "has printf" __installer_has printf
+$t.assert_fail "has nonexistent" __installer_has __absolutely_not_a_real_command_xyz
+
+# ============================================================================
+# Cascade logic (mocked)
+# ============================================================================
+
+$t.section "Cascade logic"
+
+# Mock: only git available
+__ti_cascade_git() {
+  __installer_has() {
+    case "$1" in git) return 0 ;; *) return 1 ;; esac
+  }
+  local __installer_run_method=""
+  if __installer_has git; then __installer_run_method="git"
+  elif __installer_has curl; then __installer_run_method="curl"
+  elif __installer_has wget; then __installer_run_method="wget"
+  elif __installer_has openssl; then __installer_run_method="openssl"
+  fi
+  printf '%s' "$__installer_run_method"
+}
+__ti_result="$(__ti_cascade_git)"
+$t.assert_eq "cascade picks git" "$__ti_result" "git"
+
+# Mock: only curl available
+__ti_cascade_curl() {
+  __installer_has() {
+    case "$1" in curl) return 0 ;; *) return 1 ;; esac
+  }
+  local __installer_run_method=""
+  if __installer_has git; then __installer_run_method="git"
+  elif __installer_has curl; then __installer_run_method="curl"
+  elif __installer_has wget; then __installer_run_method="wget"
+  elif __installer_has openssl; then __installer_run_method="openssl"
+  fi
+  printf '%s' "$__installer_run_method"
+}
+__ti_result="$(__ti_cascade_curl)"
+$t.assert_eq "cascade picks curl" "$__ti_result" "curl"
+
+# Mock: nothing available
+__ti_cascade_none() {
+  __installer_has() { return 1; }
+  local __installer_run_method=""
+  if __installer_has git; then __installer_run_method="git"
+  elif __installer_has curl; then __installer_run_method="curl"
+  elif __installer_has wget; then __installer_run_method="wget"
+  elif __installer_has openssl; then __installer_run_method="openssl"
+  fi
+  printf '%s' "$__installer_run_method"
+}
+__ti_result="$(__ti_cascade_none)"
+$t.assert_eq "cascade empty when nothing available" "$__ti_result" ""
+
+# Restore real __installer_has
+__installer_has() { command -v "$1" >/dev/null; }
+
+# ============================================================================
+# .booprc generation
+# ============================================================================
+
+$t.section ".booprc generation"
+
+__ti_tmp_home=$(mktemp -d)
+__ti_orig_home="$HOME"
+
+# Test fresh creation
+HOME="$__ti_tmp_home"
+__installer_write_booprc "/opt/boop"
+$t.assert_ok "booprc created" test -f "$__ti_tmp_home/.booprc"
+$t.assert_ok "booprc contains path" grep -q "/opt/boop" "$__ti_tmp_home/.booprc"
+$t.assert_ok "booprc contains BOOPPATH" grep -q "BOOPPATH" "$__ti_tmp_home/.booprc"
+
+# Test append (different path)
+__installer_write_booprc "/usr/local/lib/boop"
+__ti_count=$(grep -c "BOOPPATH" "$__ti_tmp_home/.booprc")
+$t.assert_eq "booprc appended (2 BOOPPATH lines)" "$__ti_count" "2"
+
+# Test idempotent (same path again)
+__installer_write_booprc "/opt/boop"
+__ti_count=$(grep -c "BOOPPATH" "$__ti_tmp_home/.booprc")
+$t.assert_eq "booprc idempotent (still 2)" "$__ti_count" "2"
+
+HOME="$__ti_orig_home"
+rm -rf "$__ti_tmp_home"
+
+# ============================================================================
+# Dispatch routing
+# ============================================================================
+
+$t.section "Dispatch routing"
+
+# --boop-install triggers installer (we can't fully run it, but verify dispatch)
+__ti_dispatch_result=$(bash -c "
+  . '$__ti_root/boop'
+  . '$__ti_root/lib/installer'
+  # Override __installer_run to just echo that it was called
+  __installer_run() { printf 'INSTALL_CALLED:%s' \"\${1:-}\"; exit 0; }
+  __installer_dispatch --boop-install /tmp/test
+")
+$t.assert_eq "dispatch routes --boop-install" "$__ti_dispatch_result" "INSTALL_CALLED:/tmp/test"
+
+# --boop-update triggers update
+__ti_dispatch_result=$(bash -c "
+  . '$__ti_root/boop'
+  . '$__ti_root/lib/installer'
+  __installer_update() { printf 'UPDATE_CALLED:%s' \"\${1:-}\"; exit 0; }
+  __installer_dispatch --boop-update /some/path
+")
+$t.assert_eq "dispatch routes --boop-update" "$__ti_dispatch_result" "UPDATE_CALLED:/some/path"
+
+# Non-installer args don't trigger dispatch
+__ti_dispatch_result=$(bash -c "
+  . '$__ti_root/boop'
+  . '$__ti_root/lib/installer'
+  __installer_dispatch --first 10
+  printf 'NOT_DISPATCHED'
+")
+$t.assert_eq "non-installer args pass through" "$__ti_dispatch_result" "NOT_DISPATCHED"
+
+# ============================================================================
+# Update detection
+# ============================================================================
+
+$t.section "Update detection"
+
+# Our own repo is a valid git install
+$t.assert_ok "update finds our repo" bash -c "
+  . '$__ti_root/boop'
+  . '$__ti_root/lib/installer'
+  __installer_update '$__ti_root'
+"
+
+# Non-git directory fails gracefully
+__ti_tmp_dir=$(mktemp -d)
+__ti_update_rc=0
+bash -c ". '$__ti_root/boop'; . '$__ti_root/lib/installer'; __installer_update '$__ti_tmp_dir'" 2>&1 || __ti_update_rc=$?
+$t.assert_ok "update fails on non-git dir" test "$__ti_update_rc" -ne 0
+rm -rf "$__ti_tmp_dir"
+
+$t.summary

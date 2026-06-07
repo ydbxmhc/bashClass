@@ -9,6 +9,9 @@ should be able to read any function and understand what it does, what
 it expects, and what it returns — without reading the entire framework
 first.
 
+See also [GOTCHAS.md](GOTCHAS.md) — the "what goes wrong and why" companion
+to this document's "how to write it correctly."
+
 ---
 
 ## API Tiers
@@ -203,13 +206,20 @@ __boop_logLevel        # global log level
 
 ### Inherited Identity Variables
 
-`_Self` and `_Class` are the two variables inherited via `local -I`
-through the dispatch chain. They are effectively reserved words.
+`_Self` and `_Class` are set by dispatch wrappers before each method call.
+They are effectively reserved words in class method code.
 
-- Every method that needs object identity starts with `local -I _Self _Class`
-- Constructors use `local -I _Class` only (no `_Self` yet)
-- Internal calls in `boop` should be explicit about setting or
-  occluding `_Self`/`_Class` unless inheritance is intentional
+The framework targets bash 4.3+ and deliberately does **not** use
+`local -I` (a bash 5.0 feature that inherits a variable's value from the
+calling scope). Dispatch wrappers instead set `_Self` and `_Class` as
+inline variables directly before calling the underlying function.
+
+- Methods read `_Self` and `_Class` as ordinary variables; the dispatch
+  wrapper has already set them correctly before the call.
+- Constructors re-localize with `local _Class="${_Class:-ClassName}"` so
+  the value is scoped to the constructor frame and defaults correctly.
+- Internal calls in `boop` should be explicit about setting or clearing
+  `_Self`/`_Class` when the dispatch wrapper won't run.
 
 ### User-Facing Variables
 
@@ -287,41 +297,172 @@ If boop ever needs to temporarily change a shell option internally,
 it must save and restore it. The caller's shell options are their
 business.
 
-All code in the framework should operate under the assumption that the 
-user *might* set such options. It should run as cleanly from a script
-that uses `set -eu` as one which blithely uses unset vars because they
-will return "nothing".
+All code in the framework must operate correctly regardless of the
+user's shell configuration. A user who sources boop from a script
+with `set -euo pipefail`, or from an interactive shell with custom
+IFS, or with `shopt -s failglob` — all of these must work. The
+environment resilience test (`tests/environ/test_environ`) verifies
+this across 15 configurations.
+
+### errexit Safety (`set -e`)
+
+Under `set -e`, any command that returns non-zero kills the shell —
+unless it's in a conditional context (`if`, `||`, `&&` as part of a
+compound that succeeds overall, or a `while`/`until` condition).
+
+**The `[[ ]] && action` pattern is a landmine.** When the test is
+false, the whole line returns non-zero:
+
+```bash
+# DANGEROUS under set -e: if digits is NOT all zeros, this kills the shell
+[[ "${digits//0/}" == "" ]] && neg=0
+
+# SAFE: the || true ensures the overall expression always succeeds
+[[ "${digits//0/}" == "" ]] && neg=0 || true
+
+# ALSO SAFE: if/fi is always a conditional context
+if [[ "${digits//0/}" == "" ]]; then neg=0; fi
+```
+
+Use `|| true` when the false case is normal (not an error). Use
+`if/fi` when the logic is complex enough to warrant it. The choice
+is readability — both are errexit-safe.
+
+**Arithmetic expressions return their truth value as an exit code.**
+`(( 0 ))` returns 1. `(( x++ ))` when x is 0 evaluates to 0 (the
+old value), which returns exit code 1. Under `set -e`, this kills.
+
+```bash
+# DANGEROUS: first iteration when count is 0, (( 0++ )) → exit 1
+(( count++ ))
+
+# SAFE: pre-increment evaluates to 1 on first call
+(( ++count ))
+
+# SAFE: addition assignment always evaluates to the new value
+(( count += 1 ))
+
+# ALSO FINE: inside an assignment context, the exit code doesn't matter
+foo[n++]=$x    # the assignment succeeds; the arithmetic is internal
+```
+
+The rule isn't "never use post-increment" — it's "understand what the
+expression evaluates to, because that becomes the exit code." In an
+assignment like `arr[n++]=val`, the assignment's success is the exit
+code, not the arithmetic's. But as a standalone statement, the
+arithmetic IS the exit code.
+
+### IFS Independence
+
+Never rely on the ambient IFS value. The user may have set it to
+anything — colon, empty, equals sign, or something exotic.
+
+```bash
+# DANGEROUS: relies on IFS being space/tab/newline for word splitting
+local input="$*"
+for token in $input; do ...
+
+# SAFE: explicitly set IFS for the scope that needs it
+local IFS=$' \t\n'
+local input="$*"
+for token in $input; do ...
+```
+
+Use `local IFS=...` to scope IFS to the current function. Bash
+restores the previous value automatically when the function returns —
+no manual save/restore needed, no risk of missing a restore path on
+early return or crash.
+
+When joining array elements with `"${array[*]}"`, always set IFS
+explicitly for the join:
+
+```bash
+# DANGEROUS: joins on whatever IFS happens to be
+printf '%s\n' "${arr[*]}"
+
+# SAFE: explicit join character
+local IFS=','; printf '%s\n' "${arr[*]}"
+
+# PREFERRED when you don't need a join: iterate instead
+printf '%s\n' "${arr[@]}"
+```
+
+### nounset Safety (`set -u`)
+
+Under `set -u`, referencing an unset variable is an error. Use
+`${var:-}` (default to empty) or `${var:-default}` for any variable
+that might legitimately be unset:
+
+```bash
+# DANGEROUS under set -u: crashes if _Class is unset
+local _Class="$_Class"
+
+# SAFE: provides a default
+local _Class="${_Class:-boop}"
+```
+
+### Framework Must Not Alter User Environment
+
+To be explicit: after `. boop` returns, the user's IFS, shell options,
+shopt settings, and trap state must be exactly as they were before.
+`local` scoping handles IFS. Shell options should never be changed by
+framework code at the global level. If a future need arises to
+temporarily change an option, use a subshell or save/restore — but
+prefer redesigning to avoid the need.
 
 ---
 
 ## Error Handling
 
-### Crash, Don't Silently Continue
+### The Two Error Paths: `_Crash` vs `_Error` + return 1
 
-When something is wrong, crash with a clear message. Do not silently
-return empty strings, default values, or success codes for invalid
-input. The user needs to know what happened and where.
+Every error in the framework falls into one of two categories with
+distinct handling:
+
+**`_Crash`** — always fatal, regardless of `_FatalLevel`. Reserved for:
+- Shell injection / invalid identifiers (security boundary)
+- Framework internal corruption (registry inconsistent, dispatch failure)
+- Class/mixin declaration errors at load time (`boopClass`, `boopMixin`)
+- Version constraint failures (`_Require`, `boop` version guard)
+- Abstract method stubs called on non-implementing subclasses
+- Invalid framework API misuse (`_Super` with no parent, `_Cast` with no class)
+
+**`_Error` + `return 1`** — recoverable. Callers check `$?` and handle it.
+Used for all runtime data conditions: bad input, missing files, empty
+collections, invalid arguments to user-facing methods. With the default
+`_FatalLevel crash`, `_Error` logs the message and continues; with
+`_FatalLevel error`, it escalates to fatal. Either way, the `return 1`
+ensures the function exits with a failure code so callers can check.
 
 ```bash
-# Bad — silently returns empty on invalid input, dies under `set -eu`
-[[ -z "$input" ]] && return
+# Framework corruption → _Crash (security/integrity boundary)
+[[ "$name" =~ $__boop_validate_pat ]] || _Crash "Invalid identifier: '$name'"
 
-# Better — safely tells the user at least SOME of what went wrong
-[[ -z "${input:-}" ]] && _Crash "Math.add: missing operand"
+# Runtime data condition → _Error + return 1 (recoverable)
+[[ -n "$file" ]] || { _Error "Config.load: file path required"; return 1; }
+[[ -f "$file" ]] || { _Error "Config.load: file not found: $file"; return 1; }
+
+# In a case arm:
+*) _Error "Signal.strict: expected 0/off or 1/on, got '$1'"; return 1 ;;
 ```
+
+Do not silently return empty strings or success codes for invalid input.
+Do not use `_Crash` for conditions the caller can reasonably handle.
 
 ### Tier-Appropriate Validation
 
 - Tier 1 (private): minimal validation. Callers are trusted.
                     Should consider context; lazy private code that *creates*
                     public code should validate appropriately!
-- Tier 2 (semi-private): validate inputs, crash with clear messages.
+- Tier 2 (semi-private): validate inputs, use `_Error` + return 1 for
+  runtime data conditions; `_Crash` for security/framework violations.
 - Tier 3 (public): validate everything. Error messages should say
   what was wrong AND suggest the correct usage.
 
 ```bash
 # Tier 3 error message — helpful
-_Crash "Math.add: invalid number '${input:-}' — expected a numeric value like '3.14' or '-42'"
+_Error "Math.add: invalid number '${input:-}' — expected a numeric value like '3.14' or '-42'"
+return 1
 ```
 
 ### `2>/dev/null` Policy
@@ -418,6 +559,47 @@ function":
 
 Compare to extracting the loop body into a private helper: zero. The
 refactor is cheaper than one invocation of the wrong design.
+
+---
+
+## Liskov Substitution Principle (LSP)
+
+The Liskov Substitution Principle states: if class B inherits from
+class A, then objects of type B should be usable anywhere objects of
+type A are expected, without breaking the program's correctness.
+
+In boop, this means:
+
+- **Inherited methods must work correctly on subclass instances.**
+  If `Box` has a `volume` method, and `Cube` inherits from `Box`,
+  then calling `volume` on a Cube must produce a correct result —
+  even if Cube doesn't override it.
+
+- **Overrides must honor the parent's contract.** If `List.pop`
+  returns the last element and crashes on empty, then `Stack.pop`
+  (which wraps a List) must do the same. A caller who expects List
+  behavior shouldn't be surprised by Stack behavior.
+
+- **Documented divergences are acceptable but must be explicit.**
+  When a class intentionally breaks substitutability — like Stream's
+  `read` method, which returns 0 on partial-read-at-EOF where bash's
+  raw `read` returns non-zero — that's an "LSP divergence." It's a
+  conscious design choice, not a bug. Document it in the class file
+  and in the relevant docs with the phrase "LSP divergence" so it's
+  searchable and unambiguous.
+
+### When to Diverge
+
+Diverge when the parent's behavior is *wrong for the use case* and
+honoring it would force every caller to work around it. Stream's
+`read` divergence exists because the raw `read` behavior (returning
+non-zero on the last record) causes silent data loss in `while` loops.
+Correctness wins over substitutability.
+
+When you diverge, document:
+1. What the parent does
+2. What you do instead
+3. Why the divergence is correct for this context
 
 ---
 

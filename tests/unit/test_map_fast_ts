@@ -6,7 +6,7 @@ set -uo pipefail
 # Tests: construction, get/set, has, delete, length, clear,
 # keys, keysUnder, deleteUnder, toString, custom separator.
 
-. boop TestSuite Fast
+. boop TestSuite Map::Fast   # loads as Map.Fast
 
 into=t TestSuite name="Fast Tests"
 
@@ -16,12 +16,12 @@ into=t TestSuite name="Fast Tests"
 
 $t.section "Construction"
 
-into=doc Fast
+into=doc Map.Fast
 $t.assert_match "constructor returns object ID" "$doc" "_*"
 into=sep $doc.sep
 $t.assert_eq "default separator is ." "$sep" "."
 
-into=doc2 Fast sep="/"
+into=doc2 Map.Fast sep="/"
 into=sep2 $doc2.sep
 $t.assert_eq "custom separator" "$sep2" "/"
 
@@ -31,7 +31,7 @@ $t.assert_eq "custom separator" "$sep2" "/"
 
 $t.section "set / get"
 
-into=d Fast
+into=d Map.Fast
 $d.set "server.host" "localhost"
 $d.set "server.port" "8080"
 $d.set "users.0.name" "Alice"
@@ -118,7 +118,7 @@ $t.assert_eq "length after deletes" "$n" "4"
 
 $t.section "clear"
 
-into=d2 Fast
+into=d2 Map.Fast
 $d2.set "a" "1"
 $d2.set "b" "2"
 $d2.clear
@@ -134,7 +134,7 @@ $t.assert_eq "has after clear fails" "$__fast_rc" "1"
 
 $t.section "keys"
 
-into=d3 Fast
+into=d3 Map.Fast
 $d3.set "x.a" "1"
 $d3.set "x.b" "2"
 $d3.set "y.c" "3"
@@ -166,7 +166,7 @@ $t.assert_eq "keysUnder nonexistent prefix is empty" "$ku" ""
 
 $t.section "deleteUnder"
 
-into=d4 Fast
+into=d4 Map.Fast
 $d4.set "a.1" "x"
 $d4.set "a.2" "y"
 $d4.set "b.1" "z"
@@ -185,7 +185,7 @@ $t.assert_ok "b.1 survives deleteUnder a" $d4.has "b.1"
 
 $t.section "toString"
 
-into=d5 Fast
+into=d5 Map.Fast
 $d5.set "k1" "v1"
 $d5.set "k2" "v2"
 into=s $d5.toString
@@ -198,7 +198,7 @@ $t.assert_contains "toString includes k2=v2" "$s" "k2=v2"
 
 $t.section "Custom separator"
 
-into=d6 Fast sep="/"
+into=d6 Map.Fast sep="/"
 $d6.set "a/b/c" "deep"
 into=v $d6.get "a/b/c"
 $t.assert_eq "custom sep get" "$v" "deep"
@@ -217,7 +217,7 @@ $t.assert_eq "custom sep deleteUnder clears all" "$n" "0"
 
 $t.section "FQN access"
 
-into=d7 Collection.Map.Fast
+into=d7 Map.Fast
 $d7.set "fqn.test" "works"
 into=v $d7.get "fqn.test"
 $t.assert_eq "FQN constructor works" "$v" "works"
@@ -228,10 +228,11 @@ $t.assert_eq "FQN constructor works" "$v" "works"
 
 $t.section "booprc index"
 
-# Verify Map::Fast is loadable via the short alias (from .boopIndex)
+# 'Fast' short name is excluded from .boopIndex (conflict: Map/Fast, Queue/Fast, Stack/Fast).
+# Verify Map::Fast is loadable via the :: namespace form.
 __mf_rc=0
-bash -c '. boop Fast; into=d Fast; $d.set "x" "1"; into=v $d.get "x"; [[ "$v" == "1" ]]' || __mf_rc=$?
-$t.assert_eq "Fast loadable via index short name" "$__mf_rc" "0"
+bash -c '. boop Map::Fast; into=d Map.Fast; $d.set "x" "1"; into=v $d.get "x"; [[ "$v" == "1" ]]' || __mf_rc=$?
+$t.assert_eq "Map::Fast loadable via :: namespace" "$__mf_rc" "0"
 
 # Verify loadable via classPath set with :: notation
 __mf_rc=0
@@ -239,7 +240,7 @@ bash -c '
   . boop
   boop.classPath set "Map::Fast" "'"$(realpath Collection/Map/Fast/Fast)"'"
   _Load Map::Fast
-  into=d Fast
+  into=d Map.Fast
   $d.set "y" "2"
   into=v $d.get "y"
   [[ "$v" == "2" ]]

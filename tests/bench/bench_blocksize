@@ -9,17 +9,38 @@
 # Usage: bash tests/bench/bench_blocksize
 
 . boop Stream
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/timer"
 
 __boop.setLogLevel warn
 
 LINES=500
 
-# Timing helper
-__bench_start=""
-bench_start() { __bench_start="$EPOCHREALTIME"; }
-bench_end() {
-  local __bench_end="$EPOCHREALTIME"
-  printf "%.3f" "$(( ${__bench_end//.} - ${__bench_start//.} ))e-6"
+# Timing: bench_time (tests/lib/timer) -- EPOCHREALTIME on bash 5+, the
+# `time` keyword (millisecond) on older bash. Many iterations average out
+# the coarser resolution. See tests/lib/timer.
+trap __timer_cleanup EXIT
+__timer_note
+
+# Time one block-size/record-length run. Sets global $elapsed.
+__bb_run_pe() {
+  into=s Stream.new -P "$tmp" -D $'\n' --blockSize="$blockSize" line
+  while $s.Read; do :; done
+  $s.close
+}
+__bb_run_regex() {
+  into=s Stream.new -P "$tmp" -E $'\n' --blockSize="$blockSize" line
+  while $s.Read; do :; done
+  $s.close
+}
+__bb_run_fields() {
+  into=s Stream.new -P "$tmp" -D $'\n' -f ':' a b c d e --blockSize="$blockSize"
+  while $s.Read; do :; done
+  $s.close
+}
+__bb_run_nfields() {
+  into=s Stream.new -P "$tmp" -D $'\n' -f ':' $local_names --blockSize="$blockSize"
+  while $s.Read; do :; done
+  $s.close
 }
 
 printf "=== Buffer Size vs Record Length (PE mode, -D newline) ===\n"
@@ -40,11 +61,7 @@ for blockSize in 32 64 128 256 512 1024 2048 4096 8192 16384; do
       printf '%s\n' "$local_line"
     done > "$tmp"
 
-    bench_start
-    into=s Stream.new -P "$tmp" -D $'\n' --blockSize="$blockSize" line
-    while $s.Read; do :; done
-    $s.close
-    elapsed=$(bench_end)
+    bench_time elapsed __bb_run_pe
     printf "%10s" "${elapsed}s"
 
     rm -f "$tmp"
@@ -69,11 +86,7 @@ for blockSize in 32 64 128 256 512 1024 2048 4096 8192 16384; do
       printf '%s\n' "$local_line"
     done > "$tmp"
 
-    bench_start
-    into=s Stream.new -P "$tmp" -E $'\n' --blockSize="$blockSize" line
-    while $s.Read; do :; done
-    $s.close
-    elapsed=$(bench_end)
+    bench_time elapsed __bb_run_regex
     printf "%10s" "${elapsed}s"
 
     rm -f "$tmp"
@@ -100,11 +113,7 @@ for blockSize in 32 64 128 256 512 1024 2048 4096 8192; do
       printf '%s:%s:%s:%s:%s\n' "$local_field" "$local_field" "$local_field" "$local_field" "$local_field"
     done > "$tmp"
 
-    bench_start
-    into=s Stream.new -P "$tmp" -D $'\n' -f ':' a b c d e --blockSize="$blockSize"
-    while $s.Read; do :; done
-    $s.close
-    elapsed=$(bench_end)
+    bench_time elapsed __bb_run_fields
     printf "%10s" "${elapsed}s"
 
     rm -f "$tmp"
@@ -142,11 +151,7 @@ for blockSize in 64 128 256 512 1024 2048 4096 8192; do
       local_names+="f$f "
     done
 
-    bench_start
-    into=s Stream.new -P "$tmp" -D $'\n' -f ':' $local_names --blockSize="$blockSize"
-    while $s.Read; do :; done
-    $s.close
-    elapsed=$(bench_end)
+    bench_time elapsed __bb_run_nfields
     printf "%10s" "${elapsed}s"
 
     rm -f "$tmp"

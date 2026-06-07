@@ -257,7 +257,7 @@ Text.String.lpadded() {
     __Text_String_lpadded_v="${1:-}"
     __Text_String_lpadded_w="${2}"; __Text_String_lpadded_c="${3:- }"
   fi
-  [[ "$__Text_String_lpadded_w" =~ ^[0-9]+$ ]] || _Crash "Text.String.lpadded: width must be a non-negative integer"
+  [[ "$__Text_String_lpadded_w" =~ ^[0-9]+$ ]] || { _Error "Text.String.lpadded: width must be a non-negative integer"; return 1; }
   if (( ${#__Text_String_lpadded_v} < __Text_String_lpadded_w )); then
     while (( ${#__Text_String_lpadded_v} < __Text_String_lpadded_w )); do
       __Text_String_lpadded_v="${__Text_String_lpadded_c}${__Text_String_lpadded_v}"
@@ -277,7 +277,7 @@ Text.String.rpadded() {
     __Text_String_rpadded_v="${1:-}"
     __Text_String_rpadded_w="${2}"; __Text_String_rpadded_c="${3:- }"
   fi
-  [[ "$__Text_String_rpadded_w" =~ ^[0-9]+$ ]] || _Crash "Text.String.rpadded: width must be a non-negative integer"
+  [[ "$__Text_String_rpadded_w" =~ ^[0-9]+$ ]] || { _Error "Text.String.rpadded: width must be a non-negative integer"; return 1; }
   if (( ${#__Text_String_rpadded_v} < __Text_String_rpadded_w )); then
     while (( ${#__Text_String_rpadded_v} < __Text_String_rpadded_w )); do
       __Text_String_rpadded_v="${__Text_String_rpadded_v}${__Text_String_rpadded_c}"
@@ -297,7 +297,7 @@ Text.String.centered() {
     __Text_String_centered_v="${1:-}"
     __Text_String_centered_w="${2}"; __Text_String_centered_c="${3:- }"
   fi
-  [[ "$__Text_String_centered_w" =~ ^[0-9]+$ ]] || _Crash "Text.String.centered: width must be a non-negative integer"
+  [[ "$__Text_String_centered_w" =~ ^[0-9]+$ ]] || { _Error "Text.String.centered: width must be a non-negative integer"; return 1; }
   local __Text_String_centered_total __Text_String_centered_l __Text_String_centered_r __Text_String_centered_i
   local __Text_String_centered_lp="" __Text_String_centered_rp=""
   (( __Text_String_centered_total = __Text_String_centered_w - ${#__Text_String_centered_v} ))
@@ -322,7 +322,7 @@ Text.String.folded() {
   else
     __Text_String_folded_v="${1:-}"; __Text_String_folded_w="${2:-80}"
   fi
-  [[ "$__Text_String_folded_w" =~ ^[1-9][0-9]*$ ]] || _Crash "Text.String.folded: width must be a positive integer"
+  [[ "$__Text_String_folded_w" =~ ^[1-9][0-9]*$ ]] || { _Error "Text.String.folded: width must be a positive integer"; return 1; }
   local __Text_String_folded_result="" __Text_String_folded_line="" __Text_String_folded_word
   for __Text_String_folded_word in $__Text_String_folded_v; do
     if [[ -z "$__Text_String_folded_line" ]]; then
@@ -369,7 +369,7 @@ Text.String.fold()        { local _Self="${_Self:-Text.String}"; local __Text_St
 Text.String.do() {
   local _Self="${_Self:-Text.String}"
   local __Text_String_do_pipeline="${1:-}"
-  [[ -n "$__Text_String_do_pipeline" ]] || _Crash "Text.String.do: empty pipeline"
+  [[ -n "$__Text_String_do_pipeline" ]] || { _Error "Text.String.do: empty pipeline"; return 1; }
 
   local __Text_String_do_type="" __Text_String_do_op __Text_String_do_name
   local -a __Text_String_do_ops __Text_String_do_opargs
@@ -380,15 +380,17 @@ Text.String.do() {
   for __Text_String_do_op in "${__Text_String_do_ops[@]}"; do
     __Text_String_do_name="${__Text_String_do_op%%:*}"
     if [[ -n "${__Text_String_mutators[$__Text_String_do_name]+set}" ]]; then
-      [[ "$__Text_String_do_type" == "ed" ]] &&
-        _Crash "Text.String.do: type mismatch — bare '$__Text_String_do_name' after -ed op"
+      if [[ "$__Text_String_do_type" == "ed" ]]; then
+        _Error "Text.String.do: type mismatch — bare '$__Text_String_do_name' after -ed op"; return 1
+      fi
       __Text_String_do_type="bare"
     elif [[ -n "${__Text_String_ed_to_bare[$__Text_String_do_name]+set}" ]]; then
-      [[ "$__Text_String_do_type" == "bare" ]] &&
-        _Crash "Text.String.do: type mismatch — -ed '$__Text_String_do_name' after bare op"
+      if [[ "$__Text_String_do_type" == "bare" ]]; then
+        _Error "Text.String.do: type mismatch — -ed '$__Text_String_do_name' after bare op"; return 1
+      fi
       __Text_String_do_type="ed"
     else
-      _Crash "Text.String.do: unknown pipeline op '$__Text_String_do_name'"
+      _Error "Text.String.do: unknown pipeline op '$__Text_String_do_name'"; return 1
     fi
   done
 

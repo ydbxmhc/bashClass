@@ -1,0 +1,26 @@
+{
+  "name": "boop",
+  "version": "0.1.0",
+  "active": true,
+  "count": 42,
+  "ratio": 3.14,
+  "nothing": null,
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "ssl": false
+  },
+  "users": [
+    { "name": "Alice", "email": "alice@example.com", "age": 30 },
+    { "name": "Bob",   "email": "bob@example.com",   "age": 25 }
+  ],
+  "tags": ["alpha", "beta", "gamma"],
+  "scores": [10, 20, 30],
+  "items": [
+    { "name": "apple",    "type": "fruit", "price": 1, "sale": true,  "note": "fresh" },
+    { "name": "carrot",   "type": "veg",   "price": 2, "sale": false, "note": ""      },
+    { "name": "banana",   "type": "fruit", "price": 3, "sale": true                   },
+    { "name": "broccoli", "type": "veg",   "price": 0, "sale": false                  },
+    { "name": "mango",    "type": "fruit"                                              }
+  ]
+}

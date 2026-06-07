@@ -7,6 +7,11 @@ no third-party tools and no subshells in the dispatch path.
 
 The framework file is called `boop` because fun is a feature.
 
+> **NUL bytes.** Bash variables cannot hold or detect NUL bytes. Any value
+> containing a NUL will be silently truncated at the first one — no error,
+> no warning. This is a bash limitation that applies throughout the framework.
+> See [GOTCHAS.md](GOTCHAS.md) for details.
+
 ---
 
 ## Why This Exists
@@ -46,6 +51,24 @@ convenient, memorable methods to do those things on instanced and easily
 organizable data. `$s.trim` edits in place; `$s.trimmed` returns an edited
 result without altering the original. Those are a lot easier than rolling
 your own multiline code.
+
+### Design Principles
+
+A few terms and principles that appear throughout the documentation:
+
+- **LSP (Liskov Substitution Principle):** a subtype should be usable
+  wherever its parent type is expected without breaking behavior. In boop,
+  this means inherited methods work correctly on subclass instances, and
+  when we intentionally *diverge* from a parent's contract (like Stream's
+  `read` vs bash's `read` builtin), we document it explicitly as an "LSP
+  divergence." See [STANDARDS.md](docs/STANDARDS.md) for the full treatment.
+
+- **Primitives inward, wrappers outward:** the core logic lives in one
+  place; variant entry points are thin wrappers that delegate to it.
+
+- **errexit-safe by default:** all framework code must survive `set -e`
+  without modification. See [STANDARDS.md](docs/STANDARDS.md#shell-options)
+  and [GOTCHAS.md](docs/GOTCHAS.md) for the patterns.
 
 ---
 
@@ -166,8 +189,22 @@ the methods to expose (method dispatch uses this). Everything else is inheritanc
 still operates on the right data. The method resolution order (MRO) cache means
 the lookup cost is paid once per class/method pair and then zero thereafter.
 
-You can also use `_Cast` to dispatch as a specific class, and `_Delegate` to
-redirect method calls to another object entirely for composition.
+See [docs/boop.md](docs/boop.md) for the full dispatch and return system reference.
+
+A few other dispatch helpers worth knowing:
+
+**`_Cast ClassName`** dispatches the next method call through a specific class
+in the hierarchy — useful when you need to bypass the MRO and call a particular
+ancestor's version directly, without changing `_Self`.
+
+**`_Delegate $other`** redirects all method lookups to a different object. The
+method runs in the context of `$other` — its `_Self`, its properties. Useful for
+composition patterns where one object borrows another's behavior wholesale.
+
+**`_Bless $obj ClassName`** changes an object's registered class without
+reconstructing it. Useful for state machines and type-narrowing after validation.
+
+See [docs/boop.md](docs/boop.md) for the full dispatch reference.
 
 ---
 
@@ -357,10 +394,12 @@ $c.set size 10               # mutate in place
 into=v $c.get size           # "10"
 ```
 
-Properties are stored as strings — bash has no type system. A value is
-interpreted by context: arithmetic expansion, pattern matching, or string
-operations as needed. `$(( v + 1 ))` treats a property as an integer;
-`[[ $v =~ ^[0-9]+$ ]]` treats it as a pattern.
+Properties are bash variables — bash stores everything as strings, so
+there are no int, float, or bool types at the storage level. Values are
+interpreted by how they're used: `$(( v + 1 ))` treats `v` as an integer,
+`[[ $v =~ ^[0-9]+$ ]]` tests it as a string pattern, `${v^^}` transforms
+it as text. The same property can legitimately be all three in different
+parts of the same script.
 
 ### Type Checking
 
@@ -584,6 +623,11 @@ boop                                    root — new, destroy, get, set, isa, mi
 | [docs/Container.md](docs/Container.md) | Container and Iterator API |
 | [docs/String.md](docs/String.md) | Text.String API reference — mutators, -ed forms, pipelines, mixin usage |
 | [docs/DateTime.md](docs/DateTime.md) | DateTime API reference — constructors, formatting, arithmetic, comparison, DST notes |
+| [docs/tools.md](docs/tools.md) | CLI tools overview and index — when to reach for each, shared conventions |
+| [docs/lens.md](docs/lens.md) | lens reference — text stream inspection (head/tail/grep/cut/wc) |
+| [docs/boson.md](docs/boson.md) | boson reference — jq-style JSON query |
+| [docs/probe.md](docs/probe.md) | probe reference — minimal plaintext HTTP client |
+| [docs/collider.md](docs/collider.md) | collider reference — single-file bundler |
 | [TODO.md](TODO.md) | Roadmap and open design questions |
 
 

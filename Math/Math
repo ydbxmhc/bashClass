@@ -330,7 +330,7 @@ __Math.strDiv() {
   local -i __Math_iDiv_maxdigits="${4:-$__Math_precision}"
   local -n __Math_iDiv_qscale="$5"
 
-  [[ "$__Math_iDiv_b" == "0" ]] && _Crash "Math: division by zero"
+  [[ "$__Math_iDiv_b" == "0" ]] && { _Error "Math: division by zero"; return 1; }
   [[ "$__Math_iDiv_a" == "0" ]] && { __Math_iDiv_quotient="0"; __Math_iDiv_qscale=0; return; }
 
   local __Math_iDiv_remainder="0"
@@ -442,7 +442,7 @@ __Math.resolve() {
   # The -n check ensures at least one digit is present somewhere.
   if ! [[ "${__Math_resolve_input:-}" =~ ^[[:space:]]*(-?)([0-9]*)([.]*)([0-9]*)[[:space:]]*$ \
        && -n "${BASH_REMATCH[2]:-}${BASH_REMATCH[4]:-}" ]]; then
-    _Crash "Math: invalid number '$1' — expected a numeric value like '3.14' or '-42'"
+    _Error "Math: invalid number '$1' — expected a numeric value like '3.14' or '-42'"; return 1
   fi
 
   __Math_resolve_neg=${#BASH_REMATCH[1]}                                  # "-" → length 1; empty → 0
@@ -467,7 +467,7 @@ __Math.resolve() {
   __Math_resolve_digits="${__Math_resolve_int}${__Math_resolve_frac}"                       # concatenate for arithmetic
   __Math_resolve_scale=${#__Math_resolve_frac}                                     # precision = fraction length
 
-  [[ "${__Math_resolve_digits//0/}" == "" ]] && __Math_resolve_neg=0               # no negative zero
+  [[ "${__Math_resolve_digits//0/}" == "" ]] && __Math_resolve_neg=0 || true       # no negative zero
 }
 
 # Align two numbers to the same scale by padding the shorter one with
@@ -662,7 +662,7 @@ __Math.i_div() {
   __Math.resolve "$_Self" __Math_iDiv_dA __Math_iDiv_sA __Math_iDiv_nA
   __Math.resolve "$1" __Math_iDiv_dB __Math_iDiv_sB __Math_iDiv_nB
 
-  [[ "$__Math_iDiv_dB" == "0" ]] && _Crash "Math: division by zero"
+  [[ "$__Math_iDiv_dB" == "0" ]] && { _Error "Math: division by zero"; return 1; }
 
   # Fast path: native integer division when operands are small enough.
   # After align, we multiply dividend by 10^extra for fractional digits.
@@ -729,15 +729,15 @@ __Math.i_mod() {
   __Math.resolve "$_Self" __Math_iMod_dA __Math_iMod_sA __Math_iMod_nA
   __Math.resolve "$1" __Math_iMod_dB __Math_iMod_sB __Math_iMod_nB
 
-  [[ "$__Math_iMod_dB" == "0" ]] && _Crash "Math: modulo by zero"
+  [[ "$__Math_iMod_dB" == "0" ]] && { _Error "Math: modulo by zero"; return 1; }
 
   __Math.alignScale __Math_iMod_dA __Math_iMod_sA __Math_iMod_dB __Math_iMod_sB
 
   local -i __Math_iMod_iA __Math_iMod_iB
-  __Math.toInt64 "$__Math_iMod_dA" $__Math_iMod_sA $__Math_iMod_nA __Math_iMod_iA \
-    || _Crash "Math: mod operand too large for native arithmetic"
-  __Math.toInt64 "$__Math_iMod_dB" $__Math_iMod_sB $__Math_iMod_nB __Math_iMod_iB \
-    || _Crash "Math: mod operand too large for native arithmetic"
+  __Math.toInt64 "$__Math_iMod_dA" $__Math_iMod_sA $__Math_iMod_nA __Math_iMod_iA ||
+    { _Error "Math: mod operand too large for native arithmetic"; return 1; }
+  __Math.toInt64 "$__Math_iMod_dB" $__Math_iMod_sB $__Math_iMod_nB __Math_iMod_iB ||
+    { _Error "Math: mod operand too large for native arithmetic"; return 1; }
 
   local __Math_iMod_fd; local -i __Math_iMod_fs __Math_iMod_fn
   __Math.fromInt64 $(( __Math_iMod_iA % __Math_iMod_iB )) $__Math_iMod_sA __Math_iMod_fd __Math_iMod_fs __Math_iMod_fn
@@ -754,8 +754,8 @@ __Math.i_pow() {
   local -i __Math_iPow_sB __Math_iPow_nB
   __Math.resolve "$1" __Math_iPow_dB __Math_iPow_sB __Math_iPow_nB
 
-  (( __Math_iPow_sB != 0 )) && _Crash "Math: fractional exponents not supported"
-  (( __Math_iPow_nB )) && _Crash "Math: negative exponents not supported"
+  (( __Math_iPow_sB != 0 )) && { _Error "Math: fractional exponents not supported"; return 1; }
+  (( __Math_iPow_nB )) && { _Error "Math: negative exponents not supported"; return 1; }
 
   # Exponent is a plain integer
   local -i __Math_iPow_exp=10#$__Math_iPow_dB
@@ -1089,7 +1089,7 @@ __Math.rawDiv() {
   local -n __Math_rawDiv_od="${7}" __Math_rawDiv_os="${8}" __Math_rawDiv_on="${9}"
   local -i __Math_rawDiv_prec="${10:-$__Math_precision}"
 
-  [[ "$__Math_rawDiv_dB" == "0" ]] && _Crash "Math: division by zero"
+  [[ "$__Math_rawDiv_dB" == "0" ]] && { _Error "Math: division by zero"; return 1; }
 
   __Math.alignScale __Math_rawDiv_dA __Math_rawDiv_sA __Math_rawDiv_dB __Math_rawDiv_sB
 
@@ -1108,6 +1108,7 @@ __Math.rawDiv() {
 
   __Math_rawDiv_os=$__Math_rawDiv_qs
   [[ "$__Math_rawDiv_od" == "0" ]] && __Math_rawDiv_on=0
+  return 0
 }
 
 # Raw div by small integer: (dA,sA,nA) / int → (dR,sR,nR)
@@ -1409,7 +1410,7 @@ __Math.formatVal() {
 # Three+ args folds: result = op(op(a,b), c) ...
 __Math.staticVariadicOp() {
   local __Math_staticVariadicOp_op="$1"; shift
-  (( $# >= 1 )) || _Crash "Math.${__Math_staticVariadicOp_op}: requires at least 1 argument"
+  (( $# >= 1 )) || { _Error "Math.${__Math_staticVariadicOp_op}: requires at least 1 argument"; return 1; }
 
   # Single argument: return the value itself (identity)
   if (( $# == 1 )); then
@@ -1427,10 +1428,10 @@ __Math.staticVariadicOp() {
 
   # Three+ arguments: fold left
   local __Math_staticVariadicOp_acc
-  into=__Math_staticVariadicOp_acc __Math.staticBinOp "$__Math_staticVariadicOp_op" "$1" "$2"
+  into=__Math_staticVariadicOp_acc __Math.staticBinOp "$__Math_staticVariadicOp_op" "$1" "$2" || return 1
   shift 2
   while (( $# > 0 )); do
-    into=__Math_staticVariadicOp_acc __Math.staticBinOp "$__Math_staticVariadicOp_op" "$__Math_staticVariadicOp_acc" "$1"
+    into=__Math_staticVariadicOp_acc __Math.staticBinOp "$__Math_staticVariadicOp_op" "$__Math_staticVariadicOp_acc" "$1" || return 1
     shift
   done
   boop.pass "$__Math_staticVariadicOp_acc" ${into:-}
@@ -1460,7 +1461,7 @@ __Math.staticBinOp() {
           case "$__Math_staticBinOp_op" in
             add) __Math.fromInt64 $(( __Math_staticBinOp_iA + __Math_staticBinOp_iB )) $__Math_staticBinOp_sA __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn ;;
             sub) __Math.fromInt64 $(( __Math_staticBinOp_iA - __Math_staticBinOp_iB )) $__Math_staticBinOp_sA __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn ;;
-            mod) [[ "$__Math_staticBinOp_dB" == "0" ]] && _Crash "Math: modulo by zero"
+            mod) [[ "$__Math_staticBinOp_dB" == "0" ]] && { _Error "Math: modulo by zero"; return 1; }
                  __Math.fromInt64 $(( __Math_staticBinOp_iA % __Math_staticBinOp_iB )) $__Math_staticBinOp_sA __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn ;;
           esac
           __Math.formatVal "$__Math_staticBinOp_rd" $__Math_staticBinOp_rs $__Math_staticBinOp_rn ${into:-}
@@ -1486,14 +1487,14 @@ __Math.staticBinOp() {
          __Math.rawSub "$__Math_staticBinOp_dA" $__Math_staticBinOp_sA $__Math_staticBinOp_nA "$__Math_staticBinOp_dB" $__Math_staticBinOp_sB $__Math_staticBinOp_nB __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn ;;
     mul) __Math.rawMul "$__Math_staticBinOp_dA" $__Math_staticBinOp_sA $__Math_staticBinOp_nA "$__Math_staticBinOp_dB" $__Math_staticBinOp_sB $__Math_staticBinOp_nB __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn ;;
     div) local -i __Math_staticBinOp_prec=${precision:-$__Math_precision}
-         __Math.rawDiv "$__Math_staticBinOp_dA" $__Math_staticBinOp_sA $__Math_staticBinOp_nA "$__Math_staticBinOp_dB" $__Math_staticBinOp_sB $__Math_staticBinOp_nB __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn $__Math_staticBinOp_prec ;;
-    mod) [[ "$__Math_staticBinOp_dB" == "0" ]] && _Crash "Math: modulo by zero"
+         __Math.rawDiv "$__Math_staticBinOp_dA" $__Math_staticBinOp_sA $__Math_staticBinOp_nA "$__Math_staticBinOp_dB" $__Math_staticBinOp_sB $__Math_staticBinOp_nB __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn $__Math_staticBinOp_prec || return 1 ;;
+    mod) [[ "$__Math_staticBinOp_dB" == "0" ]] && { _Error "Math: modulo by zero"; return 1; }
          __Math.alignScale __Math_staticBinOp_dA __Math_staticBinOp_sA __Math_staticBinOp_dB __Math_staticBinOp_sB
          local -i __Math_staticBinOp_iA __Math_staticBinOp_iB
-         __Math.toInt64 "$__Math_staticBinOp_dA" $__Math_staticBinOp_sA $__Math_staticBinOp_nA __Math_staticBinOp_iA \
-           || _Crash "Math: mod operand too large for native arithmetic"
-         __Math.toInt64 "$__Math_staticBinOp_dB" $__Math_staticBinOp_sB $__Math_staticBinOp_nB __Math_staticBinOp_iB \
-           || _Crash "Math: mod operand too large for native arithmetic"
+         __Math.toInt64 "$__Math_staticBinOp_dA" $__Math_staticBinOp_sA $__Math_staticBinOp_nA __Math_staticBinOp_iA ||
+           { _Error "Math: mod operand too large for native arithmetic"; return 1; }
+         __Math.toInt64 "$__Math_staticBinOp_dB" $__Math_staticBinOp_sB $__Math_staticBinOp_nB __Math_staticBinOp_iB ||
+           { _Error "Math: mod operand too large for native arithmetic"; return 1; }
          __Math.fromInt64 $(( __Math_staticBinOp_iA % __Math_staticBinOp_iB )) $__Math_staticBinOp_sA __Math_staticBinOp_rd __Math_staticBinOp_rs __Math_staticBinOp_rn ;;
   esac
 
@@ -1692,7 +1693,7 @@ Math.RPN() {
       __Math_RPN_stack[$__Math_RPN_sp]="$__Math_RPN_tok"
       (( __Math_RPN_sp++ ))
     elif [[ "$__Math_RPN_type" == "op" ]]; then
-      (( __Math_RPN_sp < 2 )) && _Crash "Math.RPN: not enough operands for '$__Math_RPN_tok'"
+      (( __Math_RPN_sp < 2 )) && { _Error "Math.RPN: not enough operands for '$__Math_RPN_tok'"; return 1; }
       (( __Math_RPN_sp-- ))
       local __Math_RPN_b="${__Math_RPN_stack[$__Math_RPN_sp]}"
       (( __Math_RPN_sp-- ))
@@ -1704,7 +1705,7 @@ Math.RPN() {
     fi
   done
 
-  (( __Math_RPN_sp != 1 )) && _Crash "Math.RPN: invalid expression (${__Math_RPN_sp} values remain)"
+  (( __Math_RPN_sp != 1 )) && { _Error "Math.RPN: invalid expression (${__Math_RPN_sp} values remain)"; return 1; }
   boop.pass "${__Math_RPN_stack[0]}" ${into:-}
 }
 

@@ -4,6 +4,10 @@ Pure bash JSON parser and serializer. No external dependencies (no jq,
 no python). Parses JSON into a `Collection.Map.Fast` flat store for
 O(1) point lookups via compound keys.
 
+> **NUL bytes.** Bash variables cannot hold or detect NUL bytes. Any JSON
+> string value containing a NUL will be silently truncated at the first one.
+> See [GOTCHAS.md](../GOTCHAS.md).
+
 ## Quick Start
 
 ```bash

@@ -1,0 +1,388 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# boson tool tests
+#
+# Classification: INTEGRATION (tools/boson)
+# Covers: path expressions (.key, .a.b, .arr[N]), array iteration (.arr[],
+#         .arr[].field), output modes (default/-r/--emit/--into/-E),
+#         type-aware quoting, document-order preservation, missing keys,
+#         input sources (stdin and file argument); pipe chaining, select()
+#         predicates (truthy, -n/-z, has, ==, !=, =~, < > <= >= -eq -ne
+#         -lt -gt -le -ge), missing-field numeric coercion gotcha.
+
+__tb_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+__tb_root="$(cd "$__tb_dir/../.." && pwd)"
+__tb_boson="$__tb_root/boson"
+__tb_json="$__tb_dir/_boson_sample.json"
+
+. "$__tb_root/boop" TestSuite
+
+into=t TestSuite name="Boson Tests"
+
+# Helper: run boson with the sample JSON on stdin, capture stdout
+__tb_run() {
+  "$__tb_boson" "$@" < "$__tb_json"
+}
+
+# ============================================================================
+# Default output mode (type-aware quoting)
+# ============================================================================
+
+$t.section "Default output"
+
+$t.assert_eq "string is quoted"  "$(__tb_run '.name')"           '"boop"'
+$t.assert_eq "nested string"     "$(__tb_run '.database.host')"  '"localhost"'
+$t.assert_eq "number is bare"    "$(__tb_run '.count')"          '42'
+$t.assert_eq "float is bare"     "$(__tb_run '.ratio')"          '3.14'
+$t.assert_eq "bool is bare"      "$(__tb_run '.active')"         'true'
+$t.assert_eq "null is bare"      "$(__tb_run '.nothing')"        'null'
+
+# ============================================================================
+# Raw output (-r)
+# ============================================================================
+
+$t.section "Raw output"
+
+$t.assert_eq "raw string unquoted" "$(__tb_run -r '.name')"          'boop'
+$t.assert_eq "raw nested"          "$(__tb_run -r '.database.host')" 'localhost'
+$t.assert_eq "raw number"          "$(__tb_run -r '.count')"         '42'
+
+# ============================================================================
+# Array indexing
+# ============================================================================
+
+$t.section "Array indexing"
+
+$t.assert_eq "index 0"  "$(__tb_run '.scores[0]')" '10'
+$t.assert_eq "index 1"  "$(__tb_run '.scores[1]')" '20'
+$t.assert_eq "index 2"  "$(__tb_run '.scores[2]')" '30'
+
+# ============================================================================
+# Array iteration
+# ============================================================================
+
+$t.section "Array iteration"
+
+$t.assert_eq "iterate scalars" "$(__tb_run -r '.tags[]')" 'alpha
+beta
+gamma'
+
+$t.assert_eq "iterate + field name" "$(__tb_run -r '.users[].name')" 'Alice
+Bob'
+
+$t.assert_eq "iterate + field age" "$(__tb_run -r '.users[].age')" '30
+25'
+
+# ============================================================================
+# Emit mode (sourceable, document order preserved)
+# ============================================================================
+
+$t.section "Emit mode"
+
+# Document order is host, port, ssl — NOT hash order. This is the bug fix:
+# emit walks the ordered key index, not the raw hash.
+$t.assert_eq "emit subtree in doc order" "$(__tb_run --emit '.database')" 'host=localhost
+port=5432
+ssl=false'
+
+# ============================================================================
+# Into mode (named assignment)
+# ============================================================================
+
+$t.section "Into mode"
+
+$t.assert_eq "into scalar" "$(__tb_run --into=myhost '.database.host')" 'myhost=localhost'
+
+$t.assert_eq "into array" "$(__tb_run --into=names '.users[].name')" 'names=(Alice Bob)'
+
+# ============================================================================
+# Eponymous mode (leaf-name variables)
+# ============================================================================
+
+$t.section "Eponymous mode"
+
+$t.assert_eq "eponymous scalar" "$(__tb_run -E '.database.host')" 'host=localhost'
+
+$t.assert_eq "eponymous subtree in doc order" "$(__tb_run -E '.database')" 'host=localhost
+port=5432
+ssl=false'
+
+# ============================================================================
+# Missing keys
+# ============================================================================
+
+$t.section "Missing keys"
+
+$t.assert_eq "missing top-level"  "$(__tb_run '.nope')"   'null'
+$t.assert_eq "missing nested"     "$(__tb_run '.a.b.c')"  'null'
+
+# ============================================================================
+# Input sources
+# ============================================================================
+
+$t.section "Input sources"
+
+# File as last argument (instead of stdin)
+$t.assert_eq "file argument" "$("$__tb_boson" -r '.name' "$__tb_json")" 'boop'
+
+# Emitted output is actually sourceable
+$t.section "Sourceable round-trip"
+__tb_eval_out="$(eval "$(__tb_run -E '.database.host')"; printf '%s' "$host")"
+$t.assert_eq "eponymous output sources cleanly" "$__tb_eval_out" 'localhost'
+
+# ============================================================================
+# Emit: edge cases
+# ============================================================================
+
+$t.section "Emit edge cases"
+
+# --emit '.' (root expression) must not produce a bad-array-subscript error
+# and must emit all root-level scalar keys
+__tb_emit_root="$(__tb_run --emit '.' 2>&1)"
+$t.assert_eq "emit root has no stderr" \
+  "$(printf '%s' "$__tb_emit_root" | grep -c 'bad array')" '0'
+$t.assert_eq "emit root includes name" \
+  "$(printf '%s\n' "$__tb_emit_root" | grep '^name=')" 'name=boop'
+
+# ============================================================================
+# Error / usage cases
+# ============================================================================
+
+$t.section "Error cases"
+
+# Mutually exclusive output modes
+$t.assert_fail "raw + emit exclusive" \
+  bash -c "cd '$__tb_root'; ./boson -r --emit '.name' < '$__tb_json'"
+
+$t.assert_fail "emit + into exclusive" \
+  bash -c "cd '$__tb_root'; ./boson --emit --into=x '.name' < '$__tb_json'"
+
+# -E collision detection: two keys that sanitize to the same variable name
+$t.assert_fail "-E collision exits nonzero" \
+  bash -c "cd '$__tb_root'; printf '{\"a_b\":1,\"a\":{\"b\":2}}' | ./boson -E '.'"
+
+# ============================================================================
+# Non-leaf default output (JSON re-emission)
+# ============================================================================
+
+$t.section "Non-leaf output"
+
+$t.assert_eq "object re-emits JSON" \
+  "$(__tb_run '.database')" \
+  '{"host":"localhost","port":5432,"ssl":false}'
+
+$t.assert_eq "nested array element re-emits JSON" \
+  "$(__tb_run '.users[0]')" \
+  '{"name":"Alice","email":"alice@example.com","age":30}'
+
+# ============================================================================
+# Pipe: basic chaining
+# ============================================================================
+
+$t.section "Pipe chaining"
+
+$t.assert_eq "pipe default output (quoted string)" \
+  "$(__tb_run '.users[] | select(.age > 25) | .name')" \
+  '"Alice"'
+
+$t.assert_eq "pipe raw output" \
+  "$(__tb_run -r '.users[] | select(.age > 25) | .name')" \
+  'Alice'
+
+$t.assert_eq "pipe selects bare number" \
+  "$(__tb_run '.users[] | select(.age > 25) | .age')" \
+  '30'
+
+$t.assert_eq "pipe with no matches produces no output" \
+  "$(__tb_run -r '.users[] | select(.age > 99) | .name')" \
+  ''
+
+# ============================================================================
+# Pipe: truthy predicate
+# ============================================================================
+
+$t.section "Predicate: truthy"
+
+# sale: true for apple and banana; false for carrot and broccoli; absent for mango
+$t.assert_eq "truthy boolean field" \
+  "$(__tb_run -r '.items[] | select(.sale) | .name')" \
+  'apple
+banana'
+
+# ============================================================================
+# Pipe: string equality / inequality
+# ============================================================================
+
+$t.section "Predicate: == and !="
+
+$t.assert_eq "string equality" \
+  "$(__tb_run -r '.items[] | select(.type == "fruit") | .name')" \
+  'apple
+banana
+mango'
+
+$t.assert_eq "string inequality" \
+  "$(__tb_run -r '.items[] | select(.type != "fruit") | .name')" \
+  'carrot
+broccoli'
+
+# ============================================================================
+# Pipe: regex
+# ============================================================================
+
+$t.section "Predicate: =~"
+
+$t.assert_eq "regex prefix match on type field" \
+  "$(__tb_run -r '.items[] | select(.type =~ "^f") | .name')" \
+  'apple
+banana
+mango'
+
+$t.assert_eq "regex substring match" \
+  "$(__tb_run -r '.items[] | select(.type =~ "veg") | .name')" \
+  'carrot
+broccoli'
+
+# ============================================================================
+# Pipe: numeric symbolic operators (< > <= >=)
+# ============================================================================
+
+$t.section "Predicate: symbolic numeric operators"
+
+# mango has no price; missing field coerces to 0
+$t.assert_eq "greater-than excludes zero and missing" \
+  "$(__tb_run -r '.items[] | select(.price > 1) | .name')" \
+  'carrot
+banana'
+
+$t.assert_eq "less-than includes zero and missing" \
+  "$(__tb_run -r '.items[] | select(.price < 2) | .name')" \
+  'apple
+broccoli
+mango'
+
+$t.assert_eq "greater-or-equal" \
+  "$(__tb_run -r '.items[] | select(.price >= 2) | .name')" \
+  'carrot
+banana'
+
+$t.assert_eq "less-or-equal includes zero and missing" \
+  "$(__tb_run -r '.items[] | select(.price <= 1) | .name')" \
+  'apple
+broccoli
+mango'
+
+# ============================================================================
+# Pipe: bash-style numeric operators (-eq -ne -lt -gt -le -ge)
+# ============================================================================
+
+$t.section "Predicate: bash-style numeric operators"
+
+$t.assert_eq "-gt matches same as >" \
+  "$(__tb_run -r '.items[] | select(.price -gt 1) | .name')" \
+  'carrot
+banana'
+
+$t.assert_eq "-lt matches same as <" \
+  "$(__tb_run -r '.items[] | select(.price -lt 2) | .name')" \
+  'apple
+broccoli
+mango'
+
+$t.assert_eq "-ge matches same as >=" \
+  "$(__tb_run -r '.items[] | select(.price -ge 2) | .name')" \
+  'carrot
+banana'
+
+$t.assert_eq "-le matches same as <=" \
+  "$(__tb_run -r '.items[] | select(.price -le 1) | .name')" \
+  'apple
+broccoli
+mango'
+
+# ============================================================================
+# Pipe: -eq / -ne and the missing-field coercion gotcha
+# ============================================================================
+
+$t.section "Predicate: -eq / -ne (missing-field coercion)"
+
+# broccoli has price:0; mango has no price field (coerces to 0)
+$t.assert_eq "-eq 0 matches explicit zero AND missing field" \
+  "$(__tb_run -r '.items[] | select(.price -eq 0) | .name')" \
+  'broccoli
+mango'
+
+# == "0" is a string comparison; mango has no price → empty string ≠ "0"
+$t.assert_eq '== "0" matches only explicit zero string' \
+  "$(__tb_run -r '.items[] | select(.price == "0") | .name')" \
+  'broccoli'
+
+$t.assert_eq "-ne 0 excludes zero and missing" \
+  "$(__tb_run -r '.items[] | select(.price -ne 0) | .name')" \
+  'apple
+carrot
+banana'
+
+# ============================================================================
+# Pipe: has() predicate
+# ============================================================================
+
+$t.section "Predicate: has()"
+
+# apple and carrot have note key (carrot's value is ""); banana broccoli mango do not
+$t.assert_eq "has() passes when key is present regardless of value" \
+  "$(__tb_run -r '.items[] | select(has(.note)) | .name')" \
+  'apple
+carrot'
+
+# apple banana broccoli carrot have sale key; mango does not
+$t.assert_eq "has() on field absent from some records" \
+  "$(__tb_run -r '.items[] | select(has(.sale)) | .name')" \
+  'apple
+carrot
+banana
+broccoli'
+
+# ============================================================================
+# Pipe: -n / -z predicates
+# ============================================================================
+
+$t.section "Predicate: -n and -z"
+
+# apple has note:"fresh" (non-empty); carrot has note:"" (empty); rest have no note
+$t.assert_eq "-n passes non-empty string only" \
+  "$(__tb_run -r '.items[] | select(-n .note) | .name')" \
+  'apple'
+
+$t.assert_eq "-z passes empty or missing" \
+  "$(__tb_run -r '.items[] | select(-z .note) | .name')" \
+  'carrot
+banana
+broccoli
+mango'
+
+# -n vs truthy: carrot's sale is false (string), truthy rejects it; -n passes it
+$t.assert_eq "-n passes false string (truthy would not)" \
+  "$(__tb_run -r '.items[] | select(-n .type) | .name')" \
+  'apple
+carrot
+banana
+broccoli
+mango'
+
+# ============================================================================
+# Pipe: output modes
+# ============================================================================
+
+$t.section "Pipe output modes"
+
+$t.assert_eq "--into collects pipe results as array" \
+  "$(__tb_run --into=hits '.items[] | select(.sale) | .name')" \
+  'hits=(apple banana)'
+
+$t.assert_eq "-E names array by source field" \
+  "$(__tb_run -E '.items[] | select(.sale) | .name')" \
+  'name=(apple banana)'
+
+$t.summary

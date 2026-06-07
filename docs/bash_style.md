@@ -628,19 +628,19 @@ TODO: Document nameref declaration, the name-collision problem (a
 nameref can't reference a variable with the same name as itself or
 any variable in the calling scope with the same name — bash resolves
 by name, not by scope). The `__ClassName_method_var` prefix convention
-exists specifically to prevent this. Gotchas with namerefs inside
-loops. Interaction with `local -I`.
+exists specifically to prevent this. Gotchas with namerefs inside loops.
 
 ---
 
 ## `local` Type Modifiers
 
 TODO: Document `local -i` (integer), `local -l` (lowercase value),
-`local -u` (uppercase value), `local -n` (nameref), `local -I`
-(inherited). Note: `-l` lowercases the *value*, not the variable
-name. `-i` enables arithmetic context on assignment. These compose:
-`local -li` gives you a lowercase integer (though that's rarely
-useful).
+`local -u` (uppercase value), `local -n` (nameref). Note: `-l`
+lowercases the *value*, not the variable name. `-i` enables arithmetic
+context on assignment. These compose: `local -li` gives you a lowercase
+integer (though that's rarely useful). Note: `local -I` (inherited,
+bash 5.0 only) is deliberately not used in this framework — see
+docs/STANDARDS.md "Inherited Identity Variables".
 
 ---
 

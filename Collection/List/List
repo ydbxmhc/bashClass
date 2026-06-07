@@ -72,7 +72,7 @@ Collection.List.new() {
 #        into=val $list.getAt -1     # last element
 #        $list.getAt 99              # empty string (no crash)
 Collection.List.getAt() {
-  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -i __Collection_List_getAt_idx="$1"
   local -n __Collection_List_getAt_arr="__boop_data_${_Self}"
   local -i __Collection_List_getAt_len=0; (( ${#__Collection_List_getAt_arr[@]} )) && __Collection_List_getAt_len=${#__Collection_List_getAt_arr[@]}
@@ -103,14 +103,14 @@ Collection.List.getAt() {
 #        $list.set -1 "new_last"    # replace last element
 #        $list.set 5 "append"       # append if length is 5
 Collection.List.setAt() {
-  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -i __Collection_List_setAt_idx="$1"
   local __Collection_List_setAt_val="$2"
   local -n __Collection_List_setAt_arr="__boop_data_${_Self}"
   local -i __Collection_List_setAt_len=0; (( ${#__Collection_List_setAt_arr[@]} )) && __Collection_List_setAt_len=${#__Collection_List_setAt_arr[@]}
   (( __Collection_List_setAt_idx < 0 )) && (( __Collection_List_setAt_idx += __Collection_List_setAt_len ))
-  (( __Collection_List_setAt_idx < 0 || __Collection_List_setAt_idx > __Collection_List_setAt_len )) &&
-    _Crash "List index out of range: $1 (length: $__Collection_List_setAt_len)"
+  (( __Collection_List_setAt_idx < 0 || __Collection_List_setAt_idx > __Collection_List_setAt_len )) && {
+    _Error "List index out of range: $1 (length: $__Collection_List_setAt_len)"; return 1; }
   _Trace "setAt: [$__Collection_List_setAt_idx] = '$__Collection_List_setAt_val'"
   __Collection_List_setAt_arr[$__Collection_List_setAt_idx]="$__Collection_List_setAt_val"
 }
@@ -132,13 +132,13 @@ Collection.List.setAt() {
 # Usage: $list.delete 0     # remove first, shift everything down
 #        $list.delete -1    # remove last (same as pop, but no return)
 Collection.List.delete() {
-  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -i __Collection_List_del_idx="$1"
   local -n __Collection_List_del_arr="__boop_data_${_Self}"
   local -i __Collection_List_del_len=0; (( ${#__Collection_List_del_arr[@]} )) && __Collection_List_del_len=${#__Collection_List_del_arr[@]}
   (( __Collection_List_del_idx < 0 )) && (( __Collection_List_del_idx += __Collection_List_del_len ))
-  (( __Collection_List_del_idx < 0 || __Collection_List_del_idx >= __Collection_List_del_len )) &&
-    _Crash "List index out of range: $1 (length: $__Collection_List_del_len)"
+  (( __Collection_List_del_idx < 0 || __Collection_List_del_idx >= __Collection_List_del_len )) && {
+    _Error "List index out of range: $1 (length: $__Collection_List_del_len)"; return 1; }
   _Debug "delete: [$__Collection_List_del_idx], length now $(( __Collection_List_del_len - 1 ))"
   unset '__Collection_List_del_arr[$__Collection_List_del_idx]'
   __Collection_List_del_arr=("${__Collection_List_del_arr[@]+"${__Collection_List_del_arr[@]}"}")
@@ -152,7 +152,7 @@ Collection.List.delete() {
 # Usage: into=len $list.length
 #        $list.length; printf "%s\n" "$_Out"
 Collection.List.length() {
-  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_length_arr="__boop_data_${_Self}"
   local -i __Collection_List_length_len=0; (( ${#__Collection_List_length_arr[@]} )) && __Collection_List_length_len=${#__Collection_List_length_arr[@]}
   boop.pass "$__Collection_List_length_len" ${into:-}
@@ -165,9 +165,9 @@ Collection.List.length() {
 #
 # Usage: $list.clear
 Collection.List.clear() {
-  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_clear_arr="__boop_data_${_Self}"
-  local -i __Collection_List_clear_len=0; [[ -n "${!__Collection_List_clear_arr[@]}" ]] && __Collection_List_clear_len=${#__Collection_List_clear_arr[@]}
+  local -i __Collection_List_clear_len=0; (( ${#__Collection_List_clear_arr[@]} )) && __Collection_List_clear_len=${#__Collection_List_clear_arr[@]} || true
   _Debug "clear: $__Collection_List_clear_len element(s) removed"
   __Collection_List_clear_arr=()
 }
@@ -183,7 +183,7 @@ Collection.List.clear() {
 #        $list.has -1 && printf "not empty"
 #        $list.has 99 || printf "out of range"
 Collection.List.has() {
-  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -i __Collection_List_has_idx="$1"
   local -n __Collection_List_has_arr="__boop_data_${_Self}"
   local -i __Collection_List_has_len=0; (( ${#__Collection_List_has_arr[@]} )) && __Collection_List_has_len=${#__Collection_List_has_arr[@]}
@@ -203,7 +203,7 @@ Collection.List.has() {
 # Usage: $list.push "alpha"
 #        $list.push "a" "b" "c"    # append three at once
 Collection.List.push() {
-  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_push_arr="__boop_data_${_Self}"
   __Collection_List_push_arr+=("$@")
   _Debug "push: +$# element(s), length now ${#__Collection_List_push_arr[@]}"
@@ -221,10 +221,10 @@ Collection.List.push() {
 # Usage: into=val $list.pop
 #        $list.pop; printf "%s\n" "$_Out"
 Collection.List.pop() {
-  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_pop_arr="__boop_data_${_Self}"
   local -i __Collection_List_pop_len=0; (( ${#__Collection_List_pop_arr[@]} )) && __Collection_List_pop_len=${#__Collection_List_pop_arr[@]}
-  (( __Collection_List_pop_len == 0 )) && _Crash "pop from empty List"
+  (( __Collection_List_pop_len == 0 )) && { _Error "pop from empty List"; return 1; }
   local __Collection_List_pop_val="${__Collection_List_pop_arr[-1]}"
   unset '__Collection_List_pop_arr[-1]'
   _Debug "pop: -> '$__Collection_List_pop_val', length now $(( __Collection_List_pop_len - 1 ))"
@@ -241,10 +241,10 @@ Collection.List.pop() {
 # Usage: into=val $list.shift
 #        $list.shift; printf "%s\n" "$_Out"
 Collection.List.shift() {
-  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_shift_arr="__boop_data_${_Self}"
   local -i __Collection_List_shift_len=0; (( ${#__Collection_List_shift_arr[@]} )) && __Collection_List_shift_len=${#__Collection_List_shift_arr[@]}
-  (( __Collection_List_shift_len == 0 )) && _Crash "shift from empty List"
+  (( __Collection_List_shift_len == 0 )) && { _Error "shift from empty List"; return 1; }
   local __Collection_List_shift_val="${__Collection_List_shift_arr[0]}"
   __Collection_List_shift_arr=("${__Collection_List_shift_arr[@]:1}")
   _Debug "shift: -> '$__Collection_List_shift_val', length now $(( __Collection_List_shift_len - 1 ))"
@@ -260,7 +260,7 @@ Collection.List.shift() {
 # Usage: $list.unshift "first"
 #        $list.unshift "a" "b"    # "a" becomes index 0, "b" index 1
 Collection.List.unshift() {
-  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_unshift_arr="__boop_data_${_Self}"
   __Collection_List_unshift_arr=("$@" "${__Collection_List_unshift_arr[@]+"${__Collection_List_unshift_arr[@]}"}")
   _Debug "unshift: +$# element(s), length now ${#__Collection_List_unshift_arr[@]}"
@@ -281,7 +281,7 @@ Collection.List.unshift() {
 #        into=s $list.slice 2      # index 2 through end
 #        into=s $list.slice -2     # last two elements
 Collection.List.slice() {
-  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -i __Collection_List_slice_start="${1:-0}" __Collection_List_slice_end
   local -n __Collection_List_slice_arr="__boop_data_${_Self}"
   local -i __Collection_List_slice_len=0; (( ${#__Collection_List_slice_arr[@]} )) && __Collection_List_slice_len=${#__Collection_List_slice_arr[@]}
@@ -311,7 +311,7 @@ Collection.List.slice() {
 #
 # Usage: into=all $list.toArray
 Collection.List.toArray() {
-  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_toArray_arr="__boop_data_${_Self}"
   local __Collection_List_toArray_d="${_EOL:-$'\n'}"
   local __Collection_List_toArray_out
@@ -341,7 +341,7 @@ Collection.List.toArray() {
 # Usage: $list.toString
 #        into=s $list.toString; printf "%s\n" "$s"
 Collection.List.toString() {
-  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local -n __Collection_List_ts_arr="__boop_data_${_Self}"
   local -i __Collection_List_ts_len=0; (( ${#__Collection_List_ts_arr[@]} )) && __Collection_List_ts_len=${#__Collection_List_ts_arr[@]}
   _Trace "toString: $__Collection_List_ts_len element(s)"
@@ -368,7 +368,7 @@ Collection.List.toString() {
 #                                  #        my_callback 1 "beta"
 #                                  #        ...
 Collection.List.each() {
-  local _Self="${_Self:-${Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
   local __Collection_List_each_fn="$1"
   local -n __Collection_List_each_arr="__boop_data_${_Self}"
   [[ -n "${__Collection_List_each_arr[@]:-}" ]] || return 0
@@ -567,7 +567,7 @@ Collection.List.do() {
   read -ra __Collection_List_do_tokens <<< "$__Collection_List_do_raw"
 
   (( ${#__Collection_List_do_tokens[@]} > 0 )) ||
-    _Crash "List.do: empty pipeline"
+    { _Error "List.do: empty pipeline"; return 1; }
 
   _Debug "do: ${#__Collection_List_do_tokens[@]} operation(s)"
 
@@ -581,7 +581,7 @@ Collection.List.do() {
     __Collection_List_do_op="${__Collection_List_do_tok%%:*}"
     __Collection_List_do_cb="${__Collection_List_do_tok#*:}"
     [[ -n "$__Collection_List_do_op" && -n "$__Collection_List_do_cb" && "$__Collection_List_do_op" != "$__Collection_List_do_cb" ]] ||
-      _Crash "List.do: malformed token '$__Collection_List_do_tok' — expected op:callback"
+      { _Error "List.do: malformed token '$__Collection_List_do_tok' — expected op:callback"; return 1; }
 
     _Trace "do: $__Collection_List_do_op:$__Collection_List_do_cb on $__Collection_List_do_current"
 
@@ -604,7 +604,7 @@ Collection.List.do() {
           _Self="$__Collection_List_do_current" _Class=Collection.List \
           Collection.List.reduce "$__Collection_List_do_cb" || __Collection_List_do_rc=$?
         ;;
-      *) _Crash "List.do: unknown operation '$__Collection_List_do_op' (expected: filter, map, reduce)" ;;
+      *) _Error "List.do: unknown operation '$__Collection_List_do_op' (expected: filter, map, reduce)"; return 1 ;;
     esac
 
     # Destroy the intermediate (but never the original input)

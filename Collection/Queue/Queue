@@ -44,7 +44,7 @@ Collection.Queue.peek() {
   local -n __Collection_Queue_peek_l="__Collection_Queue_list_${_Self}"
   local __Collection_Queue_peek_len
   into=__Collection_Queue_peek_len _Self="$__Collection_Queue_peek_l" Collection.List.length
-  (( __Collection_Queue_peek_len > 0 )) || _Crash "peek on empty Queue"
+  (( __Collection_Queue_peek_len > 0 )) || { _Error "peek on empty Queue"; return 1; }
   _Trace "peek"
   _Self="$__Collection_Queue_peek_l" Collection.List.getAt 0
 }

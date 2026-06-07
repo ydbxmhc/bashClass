@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# collider (bundler) tests
+#
+# Classification: INTEGRATION (tools/collider)
+# Covers: dependency resolution, topological ordering, bundle output
+#         correctness, bundle executability, installer embedding,
+#         boop.init override, `. boop` neutralization.
+
+__tc_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+__tc_root="$(cd "$__tc_dir/../.." && pwd)"
+__tc_collider="$__tc_root/collider"
+__tc_lens="$__tc_root/lens"
+
+. "$__tc_root/boop" TestSuite
+
+into=t TestSuite name="Collider Tests"
+
+# ============================================================================
+# Basic bundle generation
+# ============================================================================
+
+$t.section "Bundle generation"
+
+__tc_out=$(mktemp)
+"$__tc_collider" "$__tc_lens" -o "$__tc_out"
+$t.assert_ok "collider exits 0" test $? -eq 0
+$t.assert_ok "output file exists" test -f "$__tc_out"
+$t.assert_ok "output is executable" test -x "$__tc_out"
+
+__tc_lines=$(wc -l < "$__tc_out")
+$t.assert_ok "bundle has content (>100 lines)" test "$__tc_lines" -gt 100
+
+# ============================================================================
+# Bundle structure
+# ============================================================================
+
+$t.section "Bundle structure"
+
+# Shebang
+__tc_first=$(head -1 "$__tc_out")
+$t.assert_eq "shebang present" "$__tc_first" "#!/usr/bin/env bash"
+
+# boop core section
+$t.assert_ok "contains boop core marker" grep -q "# boop core" "$__tc_out"
+
+# boop.init override
+$t.assert_ok "boop.init overridden" grep -q "boop.init()" "$__tc_out"
+
+# Classes present
+$t.assert_ok "contains Stream class" grep -q "# Stream/Stream" "$__tc_out"
+$t.assert_ok "contains Args class" grep -q "# Args/Args" "$__tc_out"
+
+# Installer embedded
+$t.assert_ok "contains installer" grep -q "# lib/installer" "$__tc_out"
+$t.assert_ok "contains __installer_run" grep -q "__installer_run" "$__tc_out"
+
+# Tool at the end
+$t.assert_ok "contains tool marker" grep -q "# lens" "$__tc_out"
+
+# `. boop` lines neutralized
+__tc_dotboop=$(grep -c '^\. boop' "$__tc_out" || true)
+$t.assert_eq "no live '. boop' lines" "$__tc_dotboop" "0"
+
+# Neutralized lines present
+$t.assert_ok "has bundled markers" grep -q ': # bundled' "$__tc_out"
+
+# ============================================================================
+# Bundle executes correctly
+# ============================================================================
+
+$t.section "Bundle execution"
+
+# Basic operation
+__tc_result=$(printf '1\n2\n3\n4\n5\n' | "$__tc_out" --first 3)
+$t.assert_eq "bundle --first 3" "$__tc_result" "1
+2
+3"
+
+# Match mode
+__tc_result=$(printf 'foo\nbar\nfoo bar\nbaz\n' | "$__tc_out" --match foo)
+$t.assert_eq "bundle --match foo" "$__tc_result" "foo
+foo bar"
+
+# Fields mode
+__tc_result=$(printf 'a:b:c\n1:2:3\n' | "$__tc_out" --fields 1,3 -f :)
+$t.assert_eq "bundle --fields 1,3" "$__tc_result" "a:c
+1:3"
+
+# Count mode
+__tc_result=$(printf 'a\nb\nc\nd\ne\n' | "$__tc_out" --count --last 3)
+$t.assert_eq "bundle --count --last 3" "$__tc_result" "3"
+
+# Help
+__tc_result=$("$__tc_out" --help 2>&1 || true)
+$t.assert_ok "bundle --help works" test -n "$__tc_result"
+
+# --boop screen
+__tc_result=$("$__tc_out" --boop 2>&1 || true)
+$t.assert_contains "bundle --boop mentions framework" "$__tc_result" "boop"
+
+# ============================================================================
+# Dependency ordering
+# ============================================================================
+
+$t.section "Dependency ordering"
+
+# Container must appear before List (List isa Container)
+__tc_container_line=$(grep -n "# Collection/Container/Container" "$__tc_out" | head -1 | cut -d: -f1)
+__tc_list_line=$(grep -n "# Collection/List/List" "$__tc_out" | head -1 | cut -d: -f1)
+$t.assert_ok "Container before List" test "${__tc_container_line:-0}" -lt "${__tc_list_line:-999999}"
+
+# Args must appear before lens (lens uses Args)
+__tc_args_line=$(grep -n "# Args/Args" "$__tc_out" | head -1 | cut -d: -f1)
+__tc_tool_line=$(grep -n "# lens" "$__tc_out" | tail -1 | cut -d: -f1)
+$t.assert_ok "Args before tool" test "${__tc_args_line:-0}" -lt "${__tc_tool_line:-999999}"
+
+# ============================================================================
+# Error cases
+# ============================================================================
+
+$t.section "Error cases"
+
+$t.assert_fail "no args crashes" "$__tc_collider"
+$t.assert_fail "nonexistent file" "$__tc_collider" /nonexistent/file
+
+# ============================================================================
+# Cleanup
+# ============================================================================
+
+rm -f "$__tc_out"
+
+$t.summary

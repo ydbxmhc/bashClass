@@ -157,10 +157,23 @@ walkthrough, and links to detailed docs. Full framework reference in
 
 ---
 
-## Phase 5 — I/O Classes (Deferred)
+## Phase 5 — I/O Classes
 
-The idea is interesting. `read` has real limitations for high-record-count streams.
-No use-case pressure yet — flag and revisit when something concrete drives the need. @@
+No longer deferred — this phase happened. `Stream` (record-oriented reader,
+three parse modes, multi-char/char-class delimiters) and `Net.Socket`
+(`/dev/tcp` wrapper) both shipped, and three CLI tools are built on them:
+
+- **lens** — text stream inspection (head/tail/grep/cut/wc in one tool),
+  built on Stream. Done, 38 tests.
+- **probe** — minimal plaintext HTTP client, built on Net.Socket. Done,
+  17 tests.
+- **boson** — jq-style JSON query tool, built on Data.JSON + Map.Fast.
+  Stage 1 + sourceable output done, 26 tests; Stages 2-5 remain (see TODO).
+- **collider** — single-file bundler for the above. Done, 24 tests.
+
+See `docs/tools.md` for usage and `docs/Stream.md` for the Stream design.
+Remaining Stream work (multi-FD model, non-blocking reads, custom field
+regex) is tracked in TODO under "I/O Classes (Phase 5)".
 
 ---
 

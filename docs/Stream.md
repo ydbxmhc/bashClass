@@ -6,6 +6,10 @@ pre-built contract. Supports single-char delimiters (via bash `read`
 directly), multi-char exact-string delimiters, and char-class
 delimiters with run-collapsing.
 
+> **NUL bytes.** Bash variables cannot hold or detect NUL bytes. Any record
+> or field value containing a NUL will be silently truncated at the first one.
+> See [GOTCHAS.md](../GOTCHAS.md).
+
 ## Loading
 
 ```bash

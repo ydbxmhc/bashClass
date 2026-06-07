@@ -1,0 +1,914 @@
+#!/usr/bin/env bash
+# lens — text stream inspection tool
+#
+# One axis at a time:
+#   Position (relative): --first, --last (combinable; argument order = pipeline order)
+#   Position (absolute): --from, --to (combinable; any subset works)
+#   Match mode:          --match, --no-match (combinable with each other, --and/--or)
+#   Field mode:          --fields + field delimiter options
+#   Char mode:           --chars
+#
+# These axes are mutually exclusive. You pick one per invocation.
+# Position selectors (first/last/from/to) are freely combinable with each other.
+# --not inverts the final selection in any mode.
+# --number and --count are formatting options compatible with any mode.
+#
+# Record and field delimiters pass through to Stream. Use --examples for usage.
+
+. boop Stream Args
+
+# Distribution URLs — override with BOOP_DIST_URL for testing:
+#   BOOP_DIST_URL=http://localhost:8080 lens --self-update
+__installer_self_name="lens"
+__installer_self_url="${BOOP_DIST_URL:-http://get.boop.sh}/lens"
+
+# Installer dispatch — must run before Args.parse
+# In a bundle, lib/installer is already inline; in dev, source it.
+declare -F __installer_dispatch >/dev/null ||
+  . "${__boop_root:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/lib/installer"
+__installer_dispatch "$@"
+
+(( $# )) || set -- --help
+
+Args.parse '
+[Parser]
+show = Use
+bareKV = false
+subscreen = examples=Examples
+subscreen = options=OptionsRef
+subscreen = about=About
+subscreen = boop=Boop
+
+[Use]
+lens { --first N [--last N] | --last N [--first N]
+     | --from N [--to N]   | --to N [--from N]
+     | --match PAT...      [--no-match PAT...] [--and|--or]
+     | --fields SPEC       [-f|-F|-W DELIM]
+     | --chars SPEC }
+     [--not] [-d|-D|-E DELIM] [-n] [-c] [-H] [-P file]
+
+  More: --options, --examples, --about, --boop
+
+[Options]
+# --- Input ---
+file              | P =
+fd                | u =
+
+# --- Byte-seek (long-only; bulk skip for large inputs) ---
+rec_after_byte | rec-after-byte =
+start_at_byte  | start-at-byte  =
+
+# --- Position (relative) ---
+first                 =
+last                  =
+
+# --- Position (absolute) ---
+from                  =
+to                    =
+
+# --- Match ---
+match[]           | m =
+no_match[] | no-match | v =
+and               | A
+or                | O
+
+# --- Inversion ---
+not               | X
+
+# --- Column extraction ---
+fields                =
+chars                 =
+spec_sep | spec-sep =    # delimiter between spec tokens (default: comma)
+
+# --- Record delimiter ---
+eolChar           | d =
+eolString         | D =
+eolClass          | E =
+
+# --- Field delimiter ---
+fdelimSet         | f =
+fdelimStr         | F =
+fdelimCol         | W =
+
+# --- Output delimiters (default: same as the input delimiter) ---
+ofs | field-sep =
+ors | rec-sep   =
+
+# --- Formatting ---
+number            | n
+count             | c
+prefix            | H
+
+[Exclusive]
+(first last from to) | (match no_match) | (fields) | (chars)
+and | or
+eolChar | eolString | eolClass
+fdelimSet | fdelimStr | fdelimCol
+file | fd
+count | number
+rec_after_byte | start_at_byte
+
+[Requires]
+and => match | no_match
+or => match | no_match
+fdelimSet => fields
+fdelimStr => fields
+fdelimCol => fields
+
+[Examples]
+lens — Examples
+
+  Position (relative):
+    lens --first 20 file.txt              head
+    lens --last 20 file.txt               tail
+    lens --not --first 1 file.txt         skip header (all but first line)
+    lens --first 20 --last 5 file.txt     last 5 of the first 20 (lines 16-20)
+    lens --last 20 --first 5 file.txt     first 5 of the last 20
+
+  Position (absolute):
+    lens --from 5 --to 15 file.txt        lines 5-15
+    lens --not --from 20 --to 50 file.txt skip lines 20-50, print the rest
+
+  Match:
+    lens --match ERROR log.txt            grep
+    lens --no-match DEBUG log.txt         grep -v
+    lens --and --match foo --no-match bar lines with foo but without bar
+    lens --or --match error --match warn  lines with error OR warn
+    lens --not --match ERROR log.txt      everything except ERROR lines
+    lens --count --match ERROR log.txt    count of ERROR lines
+
+  Fields:
+    lens --fields 1,3-5 -f : /etc/passwd  cut -d: -f1,3-5
+    lens --fields 1,3 -W '"'"' '"'"' log.txt      awk-style whitespace collapse
+    lens --fields 2 -F '"'"'||'"'"' data.txt      multi-char field delimiter
+
+  Characters:
+    lens --chars 1-10,20-30 data.txt      fixed-width column extraction
+
+  Record delimiters:
+    lens -D '"'"''"'"' --match ERROR app.log      paragraph mode (blank-line separated)
+    lens -D $'"'"'\r\n'"'"' --first 5 win.log     CRLF records
+    lens -E $'"'"'\r\n'"'"' --count file.txt      any of CR or LF ends a record
+
+  Multiple files (per-file operation with ==> filename <== headers):
+    lens --first 5 a.log b.log           first 5 lines of each file
+    lens --match ERROR a.log b.log       matching lines from each (with headers)
+    lens --match ERROR -H a.log b.log    grep-style filename:line output
+    lens --count --match ERROR *.log     total match count across all files
+
+  Combining with pipes:
+    lens --last 100 file | lens --match error    errors in last 100 lines
+    lens --match error file | lens --fields 1,4  fields from matching lines
+
+[OptionsRef]
+lens — Options Reference
+
+  Input:
+    -P, --file PATH         Input file (default: stdin)
+
+  Position (relative — argument order = pipeline order):
+    --first N               First N records
+    --last N                Last N records
+
+  Position (absolute — defines a line range):
+    --from N                Start at record N (1-indexed, inclusive)
+    --to N                  End at record N (inclusive)
+
+  Match (content filtering):
+    -m, --match PATTERN     Include if record matches (repeatable)
+    -v, --no-match PATTERN  Include if record does NOT match (repeatable)
+    -A, --and               All predicates must pass (default)
+    -O, --or                Any predicate passing is enough
+
+  Inversion:
+    -X, --not               Invert final selection result
+
+  Column extraction:
+    --fields SPEC           Field numbers or ranges: 1,3-5
+    --chars SPEC            Character positions or ranges: 1-10,20-30
+
+  Record delimiter (mutually exclusive; default: newline):
+    -d CHAR                 Single-char record delimiter
+    -D STRING               Multi-char record delimiter (exact match)
+    -E CHARS                Char-class record delimiter (any char in set)
+
+  Field delimiter (mutually exclusive; for --fields mode):
+    -f CHARS                Char set, non-stacking (empties preserved)
+    -F STRING               Exact multi-char string
+    -W CHARS                Char class, runs collapse (like awk)
+
+  Formatting:
+    -n, --number            Prepend record numbers to output
+    -c, --count             Emit total count across all files
+    -H, --prefix            Prefix each output line with filename (instead of headers)
+
+  Help:
+    -h, --help              This synopsis
+    --options               Full options reference (this screen)
+    --examples              Usage examples
+    --about                 About lens
+    --boop                  About the boop framework
+
+[About]
+lens — text stream inspection tool
+
+  Reads stdin or a file. Filters, selects, and formats records.
+  One filtering axis per invocation; combine with pipes for complex queries.
+
+  Replaces common uses of head, tail, grep, cut, and wc in a single tool
+  with consistent syntax and support for multi-character record/field
+  delimiters, paragraph mode, and character-class splitting.
+
+  Built on the boop framework (bash OOP). Run --boop for details.
+  https://github.com/ydbxmhc/bashClass
+
+[Boop]
+lens is built on boop — an OOP framework for bash 4.3+.
+
+  boop provides classes, objects, inheritance, method dispatch, a universal
+  return system, and a standard library including Stream (buffered I/O with
+  multi-char delimiters), Args (CLI parsing), Math (arbitrary precision),
+  Collections (List, Map, Set, Stack, Queue), and more.
+
+  This tool is a single-file bundle: the framework and required classes are
+  embedded inline. It works standalone with no installation.
+
+  To install the full boop framework:
+    lens --boop-install              install to ~/.local/lib/boop
+    lens --boop-install /opt/boop    install to custom path
+
+  Repository: https://github.com/ydbxmhc/bashClass
+' "$@" || exit 1
+
+# ---------------------------------------------------------------------------
+# Post-parse validation — catches combinations the Args schema cannot express.
+# ---------------------------------------------------------------------------
+
+# Combining three or more position options is always reducible to a plain
+# --from/--to range, so it's only a source of confusion. Count how many are
+# set; more than two is an error.
+declare -i __lens_npos=0
+[[ -n "${first:-}" ]] && (( ++__lens_npos ))
+[[ -n "${last:-}"  ]] && (( ++__lens_npos ))
+[[ -n "${from:-}"  ]] && (( ++__lens_npos ))
+[[ -n "${to:-}"    ]] && (( ++__lens_npos ))
+if (( __lens_npos > 2 )); then
+  _Error "lens: combine at most two of --first/--last/--from/--to"
+  exit 1
+fi
+
+# _lens_posint NAME VALUE
+# what: Validate that a position option's value is a positive integer.
+#       Record numbers are 1-indexed, so zero and negatives are invalid.
+# args: NAME  — the option name, used only in the error message (e.g. "first")
+#       VALUE — the value to validate
+# returns: 0 if VALUE is a positive integer; otherwise prints a clear error
+#          and exits 1 (a bad position value can't be recovered for this run).
+_lens_posint() {
+  if [[ "${2:-}" =~ ^[1-9][0-9]*$ ]]; then
+    return 0
+  fi
+  _Error "lens: --$1 requires a positive integer (got '${2:-}')"
+  exit 1
+}
+[[ -n "${first:-}" ]] && _lens_posint first "$first"
+[[ -n "${last:-}"  ]] && _lens_posint last  "$last"
+[[ -n "${from:-}"  ]] && _lens_posint from  "$from"
+[[ -n "${to:-}"    ]] && _lens_posint to    "$to"
+
+# A --from greater than --to describes an empty range; reject it explicitly.
+if [[ -n "${from:-}" && -n "${to:-}" ]] && (( from > to )); then
+  _Error "lens: --from $from > --to $to (empty range)"
+  exit 1
+fi
+
+# Byte-seek values must be positive integers (byte positions are 1-indexed).
+[[ -n "${rec_after_byte:-}" ]] && _lens_posint rec-after-byte "$rec_after_byte"
+[[ -n "${start_at_byte:-}"  ]] && _lens_posint start-at-byte  "$start_at_byte"
+
+# --spec-sep: the delimiter between spec tokens (default comma). Must be a
+# single character, and cannot be one that would shadow spec syntax:
+#   '-'      is the range operator (N-M)
+#   '\'      is the literal escape
+#   a digit  would be read as a column number
+if [[ -n "${spec_sep:-}" ]]; then
+  if (( ${#spec_sep} != 1 )); then
+    _Error "lens: --spec-sep must be a single character (got '${spec_sep}')"
+    exit 1
+  fi
+  case "$spec_sep" in
+    [-0-9\\])
+      _Error "lens: --spec-sep cannot be '-', '\\', or a digit (they are part of spec syntax)"
+      exit 1
+      ;;
+  esac
+fi
+
+# Bare filenames: if positionals remain and are readable files, use them.
+# Multiple files are processed independently (like head/tail/grep), not
+# concatenated — so --first 5 f1 f2 gives the first 5 of each file.
+# If -P was given explicitly, positionals are ignored.
+declare -ga __lens_files=()
+if [[ -z "${file:-}" && ${#_ArgsRemaining[@]} -gt 0 ]]; then
+  for __lens_arg in "${_ArgsRemaining[@]}"; do
+    if [[ -f "$__lens_arg" && -r "$__lens_arg" ]]; then
+      __lens_files+=("$__lens_arg")
+    else
+      _Error "lens: not a readable file: '$__lens_arg'"
+      exit 1
+    fi
+  done
+  (( ${#__lens_files[@]} == 1 )) && file="${__lens_files[0]}"
+fi
+
+# Byte-seek addresses a single stream; "byte N" across several files is
+# meaningless. Reject the combination explicitly.
+if [[ -n "${rec_after_byte:-}${start_at_byte:-}" ]] && (( ${#__lens_files[@]} > 1 )); then
+  _Error "lens: --rec-after-byte/--start-at-byte work on a single input, not multiple files"
+  exit 1
+fi
+
+# ============================================================================
+# Implementation
+# ============================================================================
+
+# Global used by Stream.read (must not be local — read builtin assigns to it
+# at the call site, which is inside Stream.read's frame, not ours).
+declare -g _lens_line=""
+
+# Global output of _lens_parse_spec (0-based indices for columns; literal
+# strings for non-spec tokens). _lens_spec_kind[i] is "col" or "lit" and tells
+# the consumer how to interpret _lens_spec_out[i].
+declare -ga _lens_spec_out=()
+declare -ga _lens_spec_kind=()
+
+# Global output of _lens_split_fields (split record fields).
+declare -ga _lens_flds=()
+
+# Count of selected records (for --count mode).
+declare -gi _lens_sel_count=0
+
+# Current filename being processed (set by multi-file loop; used by --prefix).
+declare -g __lens_current_file=""
+
+# Record-number prefix for --number. Empty normally; set to "~" when a
+# byte-seek is active, since record numbers are then relative to the seek
+# point rather than the true start of input (see --rec-after-byte/--start-at-byte).
+declare -g __lens_num_prefix=""
+
+# Output record separator (terminator after each emitted record). Defaults to
+# newline; overridden by --ors/--rec-sep. Resolved once in _lens_run.
+declare -g __lens_ors=$'\n'
+
+# ---------------------------------------------------------------------------
+# _lens_emit_rec  N  REC
+# what: Emit one selected record, respecting --number and --count mode.
+# args: N   — 1-based record number (used when --number is active)
+#       REC — the record content to emit
+# returns: nothing; writes to stdout or increments _lens_sel_count
+# gotchas: _lens_sel_count is a global (declare -gi above); reset before run.
+#          __lens_num_prefix is "~" under a byte-seek (number is seek-relative).
+_lens_emit_rec() {
+  local __lens_emit_pfx=""
+  [[ -n "${__lens_current_file:-}" && -n "${prefix:-}" ]] && \
+    __lens_emit_pfx="${__lens_current_file}:"
+  if (( count )); then
+    (( ++_lens_sel_count ))
+  elif (( number )); then
+    printf '%s%s%d\t%s%s' "$__lens_emit_pfx" "$__lens_num_prefix" "$1" "$2" "$__lens_ors"
+  else
+    printf '%s%s%s' "$__lens_emit_pfx" "$2" "$__lens_ors"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# _lens_parse_spec  SPEC
+# what: Parse a field/char spec into parallel global arrays:
+#         _lens_spec_out[i]  — the token's payload
+#         _lens_spec_kind[i] — "col" (a 0-based column index in _out) or
+#                              "lit" (a literal string in _out, emitted verbatim)
+#       Tokens are comma-separated. A token is a COLUMN if it is a positive
+#       integer (`7`) or an ascending range (`3-5`, expanded to 2,3,4 zero-based).
+#       Any other token is a LITERAL, emitted verbatim — so `5-17,foo,2-4` yields
+#       columns 5-17, the literal "foo", then columns 2-4.
+#
+#       Backslash escapes let a literal contain the separator or look like a
+#       column spec:
+#         \<sep> → a literal separator char (does NOT split the token)
+#         \\     → a literal backslash
+#       A token containing ANY escape is forced to be a literal, so `\4` is the
+#       text "4" (not column 4) and `\2-5` is the text "2-5" (not a range). Use
+#       single quotes at the shell so one backslash reaches lens: --fields '3,\4,7'.
+#
+#       The token separator defaults to comma but can be changed with
+#       --spec-sep CHAR (e.g. ';'), so commas in literals need no escaping:
+#       `--fields '1;2,5;3' --spec-sep ';'` → col1, literal "2,5", col3.
+# args: SPEC — comma-separated tokens (e.g. "1,3-5", "5,foo,2-4", '3,\4,a\,b')
+# returns: populates _lens_spec_out[]/_lens_spec_kind[] (globals); returns 0
+# gotchas: column indices in _out are 0-based; the caller maps to 1-based for
+#          display.
+_lens_parse_spec() {
+  _lens_spec_out=()
+  _lens_spec_kind=()
+  local __lens_parse_spec="$1"
+  local __lens_parse_sep="${spec_sep:-,}"   # token separator (default comma)
+  local __lens_parse_tok="" __lens_parse_ch __lens_parse_forced=0
+  local -i __lens_parse_i __lens_parse_len=${#__lens_parse_spec}
+  local -a __lens_parse_toks=() __lens_parse_forcedlist=()
+
+  # --- Tokenize: split on UNescaped separators; unescape \<sep> and \\ in place. ---
+  for (( __lens_parse_i = 0; __lens_parse_i < __lens_parse_len; __lens_parse_i++ )); do
+    __lens_parse_ch="${__lens_parse_spec:__lens_parse_i:1}"
+    if [[ "$__lens_parse_ch" == "\\" ]]; then
+      # Escape: consume the next char literally; mark this token forced-literal.
+      (( ++__lens_parse_i ))
+      __lens_parse_tok+="${__lens_parse_spec:__lens_parse_i:1}"
+      __lens_parse_forced=1
+    elif [[ "$__lens_parse_ch" == "$__lens_parse_sep" ]]; then
+      __lens_parse_toks+=( "$__lens_parse_tok" )
+      __lens_parse_forcedlist+=( "$__lens_parse_forced" )
+      __lens_parse_tok=""; __lens_parse_forced=0
+    else
+      __lens_parse_tok+="$__lens_parse_ch"
+    fi
+  done
+  # Final token (the loop appends only on a separator).
+  __lens_parse_toks+=( "$__lens_parse_tok" )
+  __lens_parse_forcedlist+=( "$__lens_parse_forced" )
+
+  # --- Classify each token: forced literal, column spec, or plain literal. ---
+  local __lens_parse_part __lens_parse_lo __lens_parse_hi __lens_parse_j
+  for __lens_parse_j in "${!__lens_parse_toks[@]}"; do
+    __lens_parse_part="${__lens_parse_toks[$__lens_parse_j]}"
+    if (( __lens_parse_forcedlist[__lens_parse_j] )); then
+      # Contained an escape -> literal regardless of shape.
+      _lens_spec_out+=( "$__lens_parse_part" )
+      _lens_spec_kind+=( "lit" )
+    elif [[ "$__lens_parse_part" =~ ^[1-9][0-9]*-[1-9][0-9]*$ ]]; then
+      # Ascending range N-M → columns N..M (descending selects nothing).
+      __lens_parse_lo="${__lens_parse_part%%-*}"; __lens_parse_hi="${__lens_parse_part##*-}"
+      for (( __lens_parse_i = __lens_parse_lo; __lens_parse_i <= __lens_parse_hi; __lens_parse_i++ )); do
+        _lens_spec_out+=( "$(( __lens_parse_i - 1 ))" )
+        _lens_spec_kind+=( "col" )
+      done
+    elif [[ "$__lens_parse_part" =~ ^[1-9][0-9]*$ ]]; then
+      # Single positive column number.
+      _lens_spec_out+=( "$(( __lens_parse_part - 1 ))" )
+      _lens_spec_kind+=( "col" )
+    else
+      # Empty token, descending range, label, separator — a literal verbatim.
+      _lens_spec_out+=( "$__lens_parse_part" )
+      _lens_spec_kind+=( "lit" )
+    fi
+  done
+}
+
+# ---------------------------------------------------------------------------
+# _lens_split_fields  REC
+# what: Split REC into _lens_flds[] using the active field delimiter option.
+#   -F STRING : exact multi-char split (empties preserved)
+#   -W CHARS  : char-class, runs collapse (awk-style)
+#   -f CHARS  : char-set, no collapse (cut-style, empties preserved)
+#   default   : whitespace collapse (read -ra)
+# args: REC — the record string to split
+# returns: populates _lens_flds[] (global); returns 0 always
+# gotchas: reads fdelimStr/fdelimCol/fdelimSet globals set by Args.parse;
+#          fdelimSet uses a glob test per character — O(n) over record length
+_lens_split_fields() {
+  local __lens_split_rec="$1"
+  _lens_flds=()
+  if [[ -n "$fdelimStr" ]]; then
+    local __lens_split_r="$__lens_split_rec"
+    while [[ "$__lens_split_r" == *"$fdelimStr"* ]]; do
+      _lens_flds+=("${__lens_split_r%%"$fdelimStr"*}"); __lens_split_r="${__lens_split_r#*"$fdelimStr"}"
+    done
+    _lens_flds+=("$__lens_split_r")
+  elif [[ -n "$fdelimCol" ]]; then
+    local __lens_split_ifs="$IFS"; IFS="$fdelimCol"
+    read -ra _lens_flds <<< "$__lens_split_rec"
+    IFS="$__lens_split_ifs"
+  elif [[ -n "$fdelimSet" ]]; then
+    # Char-set delimiter, non-stacking (empties preserved).
+    # Uses glob bracket expression [chars] in parameter expansion — bash
+    # does the character-class matching in C, no per-char bash loop.
+    if (( ${#fdelimSet} == 1 )); then
+      # Single char — fast PE split
+      local __lens_split_r="$__lens_split_rec"
+      while [[ "$__lens_split_r" == *"$fdelimSet"* ]]; do
+        _lens_flds+=("${__lens_split_r%%"$fdelimSet"*}")
+        __lens_split_r="${__lens_split_r#*"$fdelimSet"}"
+      done
+      _lens_flds+=("$__lens_split_r")
+    else
+      # Multi-char set — bracket expression in PE
+      local __lens_split_r="$__lens_split_rec" __lens_split_field
+      while [[ "$__lens_split_r" == *["$fdelimSet"]* ]]; do
+        __lens_split_field="${__lens_split_r%%["$fdelimSet"]*}"
+        _lens_flds+=("$__lens_split_field")
+        __lens_split_r="${__lens_split_r:${#__lens_split_field}+1}"
+      done
+      _lens_flds+=("$__lens_split_r")
+    fi
+  else
+    read -ra _lens_flds <<< "$__lens_split_rec"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# _lens_byteseek  FD_OUTVAR
+# what: Open the input as a fresh FD and skip past a raw byte offset. Sets the
+#       global named by FD_OUTVAR to the post-skip FD, ready to hand to Stream.
+#
+#       --rec-after-byte N : skip N bytes. The caller (Stream) then discards
+#                            the partial record landed in, so reading resumes
+#                            on a clean record boundary.
+#       --start-at-byte N  : skip N-1 bytes and resume at byte N exactly, no
+#                            resync — the first record may be torn.
+#
+#       The skip is purely byte-oriented and delimiter-agnostic, which is the
+#       point: this function knows nothing about records. The resync for
+#       --rec-after-byte is performed by Stream itself (one discarded read in
+#       _lens_run), so CRLF, paragraph mode, char-class, and sentinel-line
+#       record delimiters are all handled by the one authority that knows them.
+#
+#       Works on pipes and files alike: `read -N` consumes a byte blast off any
+#       stream, skipping the framework's per-record parse (the slow part).
+#       LC_ALL=C forces byte counting so a multibyte locale can't make read -N
+#       count characters instead of bytes.
+# args: FD_OUTVAR — name of a variable to receive the opened FD number
+# returns: 0 and sets the FD; exits 1 if the input file can't be opened.
+# gotchas: only one input source applies (file | fd | stdin), enforced by the
+#          schema's `file | fd` exclusion.
+_lens_byteseek() {
+  local __lens_bs_out="$1"
+  local -i __lens_bs_fd
+
+  # Open the chosen input as our own FD.
+  if [[ -n "${file:-}" ]]; then
+    exec {__lens_bs_fd}< "$file" || { _Error "lens: cannot open '$file'"; exit 1; }
+  elif [[ -n "${fd:-}" ]]; then
+    exec {__lens_bs_fd}<&"$fd"
+  else
+    exec {__lens_bs_fd}<&0
+  fi
+
+  # Raw byte skip. rec-after-byte skips N; start-at-byte skips N-1 (resume AT N).
+  local -i __lens_bs_skip
+  if [[ -n "${rec_after_byte:-}" ]]; then
+    __lens_bs_skip=$rec_after_byte
+  else
+    __lens_bs_skip=$(( start_at_byte - 1 ))
+  fi
+  (( __lens_bs_skip > 0 )) && LC_ALL=C read -rN "$__lens_bs_skip" -u "$__lens_bs_fd" _
+
+  printf -v "$__lens_bs_out" '%d' "$__lens_bs_fd"
+}
+
+# ---------------------------------------------------------------------------
+# _lens_resolve_ofs  OUTVAR
+# what: Determine the effective output field separator and store it in the
+#       global named by OUTVAR. Rules:
+#         - explicit --ofs (even empty, via Args.given) wins.
+#         - else default to the INPUT field delimiter so fields are preserved:
+#             -F STRING  -> that exact string
+#             -f / -W with a SINGLE char -> that char
+#         - char-class / collapse / multi-char set input splitting has no
+#           single separator to echo back; rather than silently guess the
+#           first character, require an explicit --ofs and error without one.
+#         - no field delimiter at all (whitespace default) -> a single space.
+# args: OUTVAR — name of a variable to receive the resolved separator
+# returns: 0 on success; exits 1 if an explicit --ofs is required but missing.
+_lens_resolve_ofs() {
+  local __lens_rofs_out="$1"
+  if Args.given ofs; then
+    printf -v "$__lens_rofs_out" '%s' "$ofs"
+    return 0
+  fi
+  if [[ -n "$fdelimStr" ]]; then
+    printf -v "$__lens_rofs_out" '%s' "$fdelimStr"
+  elif [[ -n "$fdelimSet" && ${#fdelimSet} -eq 1 ]]; then
+    printf -v "$__lens_rofs_out" '%s' "$fdelimSet"
+  elif [[ -n "$fdelimSet" || -n "$fdelimCol" ]]; then
+    _Error "lens: character-class field splitting has no single output separator -- specify --ofs (or --field-sep)"
+    exit 1
+  else
+    printf -v "$__lens_rofs_out" '%s' " "
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# _lens_run
+# what: Main dispatch — opens a Stream, selects records per the parsed
+#       options, and emits them.  Mutually exclusive modes: fields, chars,
+#       match, position, pass-through.  --not inverts selection in all modes.
+# args: none; reads all variables set by Args.parse (file, fd, eolChar, …,
+#       first, last, from, to, match[], no_match[], fields, chars, not, …)
+# returns: exit 0 always; emits matching records to stdout
+# gotchas: uses (( ++__lens_run_n )) for safe pre-increment under set -e;
+#          _lens_sel_count must be 0 before call (initialized as declare -gi)
+_lens_run() {
+  # Output record separator: explicit --ors/--rec-sep (even empty) wins;
+  # otherwise records are newline-terminated.
+  if Args.given ors; then __lens_ors="$ors"; fi
+
+  # Build Stream constructor args
+  local -a __lens_run_sa=()
+
+  # Byte-seek: open our own FD, skip the raw byte blast, and feed that FD to
+  # Stream via -u. Stream then applies the correct record delimiter -- so the
+  # --rec-after-byte resync (one discarded record, below) works for CRLF,
+  # paragraph mode, char-class, and sentinel-line delimiters alike.
+  local __lens_run_seek_fd=""
+  if [[ -n "${rec_after_byte:-}" || -n "${start_at_byte:-}" ]]; then
+    _lens_byteseek __lens_run_seek_fd
+    __lens_run_sa+=(-u "$__lens_run_seek_fd")
+    __lens_num_prefix="~"   # record numbers are now seek-relative
+  else
+    [[ -n "$file"      ]] && __lens_run_sa+=(-P "$file")
+    [[ -n "$fd"        ]] && __lens_run_sa+=(-u "$fd")
+  fi
+  [[ -n "$eolChar"   ]] && __lens_run_sa+=(-d "$eolChar")
+  [[ -n "$eolString" ]] && __lens_run_sa+=(-D "$eolString")
+  [[ -n "$eolClass"  ]] && __lens_run_sa+=(-E "$eolClass")
+
+  local __lens_run_s
+  local -i __lens_run_n=0  # current record number
+
+  # Construct Stream: fields mode uses array splitting; everything else reads lines
+  if [[ -n "$fields" ]]; then
+    [[ -n "$fdelimSet" ]] && __lens_run_sa+=(-f "$fdelimSet")
+    [[ -n "$fdelimStr" ]] && __lens_run_sa+=(-F "$fdelimStr")
+    [[ -n "$fdelimCol" ]] && __lens_run_sa+=(-W "$fdelimCol")
+    [[ -z "$fdelimSet$fdelimStr$fdelimCol" ]] && __lens_run_sa+=(-W ' ')
+    __lens_run_sa+=(-a _lens_flds)
+    into=__lens_run_s Stream.new "${__lens_run_sa[@]}"
+  else
+    into=__lens_run_s Stream.new "${__lens_run_sa[@]}" _lens_line
+  fi
+
+  # --rec-after-byte resync: discard the partial record the raw byte skip
+  # landed in, using Stream's own delimiter logic (the authority on CRLF,
+  # paragraph mode, char-class, sentinel-line, etc.). --start-at-byte skips
+  # this on purpose -- it resumes at the exact byte, torn record and all.
+  [[ -n "${rec_after_byte:-}" ]] && $__lens_run_s.next >/dev/null 2>&1
+
+  # ---- fields mode ----
+  if [[ -n "$fields" ]]; then
+
+    _lens_parse_spec "$fields"
+    local -a __lens_run_fspec=("${_lens_spec_out[@]}")
+    local -a __lens_run_fkind=("${_lens_spec_kind[@]}")
+    local __lens_run_ofs; _lens_resolve_ofs __lens_run_ofs
+    local __lens_run_fi __lens_run_out
+    local -i __lens_run_first __lens_run_idx
+    local -A __lens_run_excl=()
+    if (( not )); then
+      # Only column tokens define exclusions; literals are meaningless here.
+      for __lens_run_idx in "${!__lens_run_fspec[@]}"; do
+        [[ "${__lens_run_fkind[$__lens_run_idx]}" == "col" ]] && \
+          __lens_run_excl[${__lens_run_fspec[$__lens_run_idx]}]=1
+      done
+    fi
+    while $__lens_run_s.next; do
+      (( ++__lens_run_n ))
+      # _lens_flds is populated by Stream's array mode — no manual split needed
+      __lens_run_out=""; __lens_run_first=1
+      if (( not )); then
+        for (( __lens_run_fi = 0; __lens_run_fi < ${#_lens_flds[@]}; __lens_run_fi++ )); do
+          [[ -n "${__lens_run_excl[$__lens_run_fi]+set}" ]] && continue
+          if (( ! __lens_run_first )); then __lens_run_out+="$__lens_run_ofs"; fi
+          __lens_run_first=0
+          __lens_run_out+="${_lens_flds[$__lens_run_fi]:-}"
+        done
+      else
+        # Walk the spec in order. OFS joins every emitted element -- columns AND
+        # literals alike (a literal is a full element, not glue). To hand-build
+        # output with no auto-separators, set --ofs '' and place separators
+        # inside literals (with \, to embed the spec's comma).
+        for __lens_run_idx in "${!__lens_run_fspec[@]}"; do
+          if (( ! __lens_run_first )); then __lens_run_out+="$__lens_run_ofs"; fi
+          __lens_run_first=0
+          if [[ "${__lens_run_fkind[$__lens_run_idx]}" == "lit" ]]; then
+            __lens_run_out+="${__lens_run_fspec[$__lens_run_idx]}"
+          else
+            __lens_run_out+="${_lens_flds[${__lens_run_fspec[$__lens_run_idx]}]:-}"
+          fi
+        done
+      fi
+      _lens_emit_rec "$__lens_run_n" "$__lens_run_out"
+    done
+
+  # ---- chars mode ----
+  elif [[ -n "$chars" ]]; then
+    _lens_parse_spec "$chars"
+    local -a __lens_run_cspec=("${_lens_spec_out[@]}")
+    local -a __lens_run_ckind=("${_lens_spec_kind[@]}")
+    local __lens_run_ci __lens_run_out
+    local -i __lens_run_cpos __lens_run_cidx
+    local -A __lens_run_excl=()
+    if (( not )); then
+      # Only column tokens define exclusions; literals are meaningless here.
+      for __lens_run_cidx in "${!__lens_run_cspec[@]}"; do
+        [[ "${__lens_run_ckind[$__lens_run_cidx]}" == "col" ]] && \
+          __lens_run_excl[${__lens_run_cspec[$__lens_run_cidx]}]=1
+      done
+    fi
+    while $__lens_run_s.next; do
+      (( ++__lens_run_n ))
+      __lens_run_out=""
+      if (( not )); then
+        for (( __lens_run_cpos = 0; __lens_run_cpos < ${#_lens_line}; __lens_run_cpos++ )); do
+          [[ -n "${__lens_run_excl[$__lens_run_cpos]+set}" ]] || __lens_run_out+="${_lens_line:__lens_run_cpos:1}"
+        done
+      else
+        # A column token emits its character; a literal token is inserted verbatim.
+        for __lens_run_cidx in "${!__lens_run_cspec[@]}"; do
+          if [[ "${__lens_run_ckind[$__lens_run_cidx]}" == "lit" ]]; then
+            __lens_run_out+="${__lens_run_cspec[$__lens_run_cidx]}"
+          else
+            __lens_run_out+="${_lens_line:${__lens_run_cspec[$__lens_run_cidx]}:1}"
+          fi
+        done
+      fi
+      _lens_emit_rec "$__lens_run_n" "$__lens_run_out"
+    done
+
+  # ---- match mode ----
+  elif (( ${#match[@]} + ${#no_match[@]} > 0 )); then
+    local __lens_run_pat __lens_run_pass
+    while $__lens_run_s.next; do
+      (( ++__lens_run_n ))
+      __lens_run_pass=1
+      if [[ -n "$or" ]]; then
+        __lens_run_pass=0
+        for __lens_run_pat in "${match[@]+"${match[@]}"}"; do
+          [[ "$_lens_line" =~ $__lens_run_pat ]] && { __lens_run_pass=1; break; }
+        done
+        if (( ! __lens_run_pass )); then
+          for __lens_run_pat in "${no_match[@]+"${no_match[@]}"}"; do
+            [[ ! "$_lens_line" =~ $__lens_run_pat ]] && { __lens_run_pass=1; break; }
+          done
+        fi
+      else
+        # AND (default)
+        for __lens_run_pat in "${match[@]+"${match[@]}"}"; do
+          [[ "$_lens_line" =~ $__lens_run_pat ]] || { __lens_run_pass=0; break; }
+        done
+        if (( __lens_run_pass )); then
+          for __lens_run_pat in "${no_match[@]+"${no_match[@]}"}"; do
+            [[ "$_lens_line" =~ $__lens_run_pat ]] && { __lens_run_pass=0; break; }
+          done
+        fi
+      fi
+      (( not )) && (( __lens_run_pass = ! __lens_run_pass ))
+      (( __lens_run_pass )) && _lens_emit_rec "$__lens_run_n" "$_lens_line"
+    done
+
+  # ---- position mode ----
+  elif [[ -n "$first$last$from$to" ]]; then
+    local -i __lens_run_ws=1 __lens_run_we=-1  # window start/end (-1 = unlimited)
+    local -i __lens_run_need_buf=0 __lens_run_buf_sz=0 __lens_run_buf_take=0
+
+    [[ -n "$from" ]] && __lens_run_ws=$from
+    [[ -n "$to"   ]] && __lens_run_we=$to
+
+    if [[ -n "$first" && -n "$last" ]]; then
+      if (( first >= last )); then
+        # first is outer: cap window at first N, then take last K of those
+        local -i __lens_run_fe=$(( __lens_run_ws + first - 1 ))
+        (( __lens_run_we < 0 || __lens_run_fe < __lens_run_we )) && __lens_run_we=$__lens_run_fe
+        local -i __lens_run_fs=$(( __lens_run_we - last + 1 ))
+        (( __lens_run_fs > __lens_run_ws )) && __lens_run_ws=$__lens_run_fs
+      else
+        # last is outer: take last N, then take first K of those
+        if (( __lens_run_we >= 0 )); then
+          local -i __lens_run_ls=$(( __lens_run_we - last + 1 ))
+          (( __lens_run_ls < __lens_run_ws )) && __lens_run_ls=$__lens_run_ws
+          __lens_run_ws=$__lens_run_ls
+          local -i __lens_run_le=$(( __lens_run_ls + first - 1 ))
+          (( __lens_run_le < __lens_run_we )) && __lens_run_we=$__lens_run_le
+        else
+          __lens_run_need_buf=1; __lens_run_buf_sz=$last; __lens_run_buf_take=$first
+        fi
+      fi
+    elif [[ -n "$first" ]]; then
+      local -i __lens_run_fe=$(( __lens_run_ws + first - 1 ))
+      (( __lens_run_we < 0 || __lens_run_fe < __lens_run_we )) && __lens_run_we=$__lens_run_fe
+    elif [[ -n "$last" ]]; then
+      if (( __lens_run_we >= 0 )); then
+        local -i __lens_run_ls=$(( __lens_run_we - last + 1 ))
+        (( __lens_run_ls < __lens_run_ws )) && __lens_run_ls=$__lens_run_ws
+        __lens_run_ws=$__lens_run_ls
+      else
+        __lens_run_need_buf=1; __lens_run_buf_sz=$last
+      fi
+    fi
+
+    if (( __lens_run_need_buf && not )); then
+      # Circular buffer of __lens_run_buf_sz: emit records as they're evicted
+      # (proven not in the last N), stop at EOF without emitting the remaining buffer.
+      local -a __lens_run_cbuf=()
+      local -i __lens_run_chead=0 __lens_run_cfill=0 __lens_run_buf_base_n=0
+      while $__lens_run_s.next; do
+        (( ++__lens_run_n ))
+        (( __lens_run_n >= __lens_run_ws )) || continue
+        if (( __lens_run_cfill >= __lens_run_buf_sz )); then
+          _lens_emit_rec "$__lens_run_buf_base_n" "${__lens_run_cbuf[$__lens_run_chead]}"
+          __lens_run_cbuf[$__lens_run_chead]="$_lens_line"
+          __lens_run_chead=$(( (__lens_run_chead + 1) % __lens_run_buf_sz ))
+          (( ++__lens_run_buf_base_n ))
+        else
+          __lens_run_cbuf+=("$_lens_line")
+          (( ++__lens_run_cfill ))
+          (( __lens_run_cfill == 1 )) && __lens_run_buf_base_n=$__lens_run_n
+        fi
+      done
+      # __lens_run_buf_take > 0: NOT (first K of last N) → emit tail of buffer too
+      if (( __lens_run_buf_take > 0 && __lens_run_cfill > __lens_run_buf_take )); then
+        local -i __lens_run_ri
+        for (( __lens_run_ri = __lens_run_buf_take; __lens_run_ri < __lens_run_cfill; __lens_run_ri++ )); do
+          _lens_emit_rec $(( __lens_run_buf_base_n + __lens_run_ri )) \
+            "${__lens_run_cbuf[(( (__lens_run_chead + __lens_run_ri) % __lens_run_buf_sz ))]}"
+        done
+      fi
+
+    elif (( __lens_run_need_buf )); then
+      # Circular buffer: fill slots then overwrite oldest; emit all at EOF in
+      # head order (no expensive array-slice shift on every record).
+      local -a __lens_run_cbuf=()
+      local -i __lens_run_chead=0 __lens_run_cfill=0
+      while $__lens_run_s.next; do
+        (( ++__lens_run_n ))
+        (( __lens_run_n >= __lens_run_ws )) || continue
+        if (( __lens_run_cfill < __lens_run_buf_sz )); then
+          __lens_run_cbuf+=("$_lens_line")
+          (( ++__lens_run_cfill ))
+        else
+          __lens_run_cbuf[$__lens_run_chead]="$_lens_line"
+          __lens_run_chead=$(( (__lens_run_chead + 1) % __lens_run_buf_sz ))
+        fi
+      done
+      local -i __lens_run_rb __lens_run_ee __lens_run_ri
+      __lens_run_rb=$(( __lens_run_n - __lens_run_cfill + 1 ))
+      __lens_run_ee=$(( __lens_run_cfill - 1 ))
+      (( __lens_run_buf_take > 0 && __lens_run_buf_take - 1 < __lens_run_ee )) && \
+        __lens_run_ee=$(( __lens_run_buf_take - 1 ))
+      for (( __lens_run_ri = 0; __lens_run_ri <= __lens_run_ee; __lens_run_ri++ )); do
+        _lens_emit_rec $(( __lens_run_rb + __lens_run_ri )) \
+          "${__lens_run_cbuf[(( (__lens_run_chead + __lens_run_ri) % __lens_run_buf_sz ))]}"
+      done
+
+    else
+      # Direct range [__lens_run_ws, __lens_run_we]
+      local -i __lens_run_in
+      while $__lens_run_s.next; do
+        (( ++__lens_run_n ))
+        __lens_run_in=0
+        if (( __lens_run_n >= __lens_run_ws )); then
+          if (( __lens_run_we < 0 || __lens_run_n <= __lens_run_we )); then
+            __lens_run_in=1
+          fi
+        fi
+        if (( not )); then
+          (( __lens_run_in )) || _lens_emit_rec "$__lens_run_n" "$_lens_line"
+        else
+          (( __lens_run_in )) && _lens_emit_rec "$__lens_run_n" "$_lens_line"
+          (( __lens_run_we >= 0 && __lens_run_n >= __lens_run_we )) && break
+        fi
+      done
+    fi
+
+  # ---- pass-through (no filter) ----
+  else
+    while $__lens_run_s.next; do
+      (( ++__lens_run_n ))
+      (( not )) || _lens_emit_rec "$__lens_run_n" "$_lens_line"
+    done
+  fi
+
+  $__lens_run_s.close
+}
+
+if (( ${#__lens_files[@]} > 1 )); then
+  declare -i __lens_multi_first=1 __lens_grand_total=0
+  for __lens_multi_f in "${__lens_files[@]}"; do
+    file="$__lens_multi_f"
+    __lens_current_file="$__lens_multi_f"
+    _lens_sel_count=0
+    if (( ! prefix && ! count )); then
+      (( __lens_multi_first )) || printf '\n'
+      __lens_multi_first=0
+      printf '==> %s <==\n' "$__lens_multi_f"
+    fi
+    _lens_run
+    if (( count )); then
+      printf '%d\t%s\n' "$_lens_sel_count" "$__lens_multi_f"
+      (( __lens_grand_total += _lens_sel_count ))
+    fi
+  done
+  if (( count )); then printf '%d\ttotal\n' "$__lens_grand_total"; fi
+else
+  [[ -n "${file:-}" ]] && __lens_current_file="${file}"
+  _lens_run
+  if (( count )); then printf '%d\n' "$_lens_sel_count"; fi
+fi

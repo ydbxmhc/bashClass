@@ -181,7 +181,7 @@ Signal.strict() {
   case "${1:-}" in
     0|off|false) __Signal_strict=0 ;;
     1|on|true|"") __Signal_strict=1 ;;
-    *) _Crash "Signal.strict: expected 0/off or 1/on, got '$1'" ;;
+    *) _Error "Signal.strict: expected 0/off or 1/on, got '$1'"; return 1 ;;
   esac
 }
 
@@ -191,8 +191,8 @@ Signal.strict() {
 Signal.on() {
   local _Class="${_Class:-Signal}"
   local __Signal_on_sig="${1:-}" __Signal_on_cb="${2:-}"
-  [[ -n "$__Signal_on_sig" ]] || _Crash "Signal.on: signal name required"
-  [[ -n "$__Signal_on_cb"  ]] || _Crash "Signal.on: callback required"
+  [[ -n "$__Signal_on_sig" ]] || { _Error "Signal.on: signal name required"; return 1; }
+  [[ -n "$__Signal_on_cb"  ]] || { _Error "Signal.on: callback required"; return 1; }
 
   # Warn if the callback is not yet a defined function.
   if (( __Signal_strict )) && ! declare -f "$__Signal_on_cb" >/dev/null 2>&1; then
@@ -214,8 +214,8 @@ Signal.push() {
 Signal.off() {
   local _Class="${_Class:-Signal}"
   local __Signal_off_sig="${1:-}" __Signal_off_cb="${2:-}"
-  [[ -n "$__Signal_off_sig" ]] || _Crash "Signal.off: signal name required"
-  [[ -n "$__Signal_off_cb"  ]] || _Crash "Signal.off: callback required"
+  [[ -n "$__Signal_off_sig" ]] || { _Error "Signal.off: signal name required"; return 1; }
+  [[ -n "$__Signal_off_cb"  ]] || { _Error "Signal.off: callback required"; return 1; }
   local __Signal_off_var="__Signal_handlers_${__Signal_off_sig}"
   [[ -v "$__Signal_off_var" ]] || return 0
   local -n __Signal_off_arr="$__Signal_off_var"
@@ -239,7 +239,7 @@ Signal.off() {
 Signal.pop() {
   local _Class="${_Class:-Signal}"
   local __Signal_pop_sig="${1:-}"
-  [[ -n "$__Signal_pop_sig" ]] || _Crash "Signal.pop: signal name required"
+  [[ -n "$__Signal_pop_sig" ]] || { _Error "Signal.pop: signal name required"; return 1; }
   local __Signal_pop_var="__Signal_handlers_${__Signal_pop_sig}"
   if [[ ! -v "$__Signal_pop_var" ]]; then
     boop.pass "" "${into:-}"; return 0
@@ -259,7 +259,7 @@ Signal.pop() {
 Signal.shift() {
   local _Class="${_Class:-Signal}"
   local __Signal_shift_sig="${1:-}"
-  [[ -n "$__Signal_shift_sig" ]] || _Crash "Signal.shift: signal name required"
+  [[ -n "$__Signal_shift_sig" ]] || { _Error "Signal.shift: signal name required"; return 1; }
   local __Signal_shift_var="__Signal_handlers_${__Signal_shift_sig}"
   if [[ ! -v "$__Signal_shift_var" ]]; then
     boop.pass "" "${into:-}"; return 0
@@ -277,7 +277,7 @@ Signal.shift() {
 Signal.clear() {
   local _Class="${_Class:-Signal}"
   local __Signal_clear_sig="${1:-}"
-  [[ -n "$__Signal_clear_sig" ]] || _Crash "Signal.clear: signal name required"
+  [[ -n "$__Signal_clear_sig" ]] || { _Error "Signal.clear: signal name required"; return 1; }
   local __Signal_clear_var="__Signal_handlers_${__Signal_clear_sig}"
   if [[ -v "$__Signal_clear_var" ]]; then
     local -n __Signal_clear_arr="$__Signal_clear_var"
@@ -294,7 +294,7 @@ Signal.clear() {
 Signal.list() {
   local _Class="${_Class:-Signal}"
   local __Signal_list_sig="${1:-}"
-  [[ -n "$__Signal_list_sig" ]] || _Crash "Signal.list: signal name required"
+  [[ -n "$__Signal_list_sig" ]] || { _Error "Signal.list: signal name required"; return 1; }
   local __Signal_list_var="__Signal_handlers_${__Signal_list_sig}"
   if [[ ! -v "$__Signal_list_var" ]]; then
     boop.pass "" "${into:-}"; return 0
@@ -314,7 +314,7 @@ Signal.list() {
 Signal.dispatch() {
   local _Class="${_Class:-Signal}"
   local __Signal_dispatch_sig="${1:-}"; shift || true
-  [[ -n "$__Signal_dispatch_sig" ]] || _Crash "Signal.dispatch: signal name required"
+  [[ -n "$__Signal_dispatch_sig" ]] || { _Error "Signal.dispatch: signal name required"; return 1; }
   __Signal.dispatch "$__Signal_dispatch_sig" "$@"
 }
 

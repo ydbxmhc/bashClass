@@ -269,8 +269,8 @@ Comparison:
 | Ruby method call | ~0.05µs |
 
 The gap between bare bash function calls (~0.1ms) and boop dispatch (~4ms)
-suggests there is room to optimize the dispatch chain. Primary candidates:
-the `boop.pass` nameref path, and the `local -I` inheritance overhead. @@
+suggests there is room to optimize the dispatch chain. Primary candidate:
+the `boop.pass` nameref path and the dispatch wrapper call overhead.
 
 ---
 

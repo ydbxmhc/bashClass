@@ -195,6 +195,46 @@ into=r $opts.get _remaining
 Scope variables are NOT set in object mode. The Config object owns
 all the parsed state.
 
+### Args.given -- was an option supplied?
+
+After a scope-write parse, an omitted scalar and one given an empty value both
+leave `$varName` empty, so the value alone cannot tell them apart. `Args.given`
+answers the "was it actually supplied?" question:
+
+```bash
+Args.parse '
+[Options]
+ofs =
+' "$@"
+
+if Args.given ofs; then
+  printf 'output separator explicitly set to [%s]\n' "$ofs"
+else
+  printf 'using the default separator\n'
+fi
+```
+
+The argument is the option's **variable name** (the first name in its schema
+line), not a CLI alias. It returns exit 0 if the option was supplied on the
+command line — with any value, including empty — and exit 1 otherwise. It works
+for every option type (scalar, boolean, array, map).
+
+**Persistence and the intended model.** The seen-record persists across parses
+for the life of the process. This is deliberate: the intended use is a single
+script-argv parse, and constructors (e.g. `Stream.new`) often run their *own*
+`Args.parse` internally — a fresh-each-time table would let those nested parses
+erase the script's record before you could query it. Persistence means
+`Args.given` still answers correctly after you have built such objects.
+
+The trade-off is that `Args.given` is **cumulative**: an option supplied to any
+earlier parse keeps reporting as given. For the intended one-parse-per-process
+model this is a non-issue. Repeated independent parsing belongs to object mode
+(where each object owns its own state), not to repeated top-level `Args.parse`.
+
+(Duplicate-option detection is *not* affected by this persistence — it uses a
+separate per-parse table, so giving the same option in two separate parses is
+not a "duplicate" error.)
+
 ### Error Handling
 
 All errors crash with a descriptive message:

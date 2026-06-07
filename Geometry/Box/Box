@@ -59,11 +59,12 @@ Geometry.Box.calc() {
   local -i __Geometry_Box_calc_tot=1 required="${required:-0}"
 
   if ((required)); then
-    (( required == $# )) || _Crash "$FUNCNAME requires $required INTEGER arguments to multiply"
+    (( required == $# )) || { _Error "$FUNCNAME requires $required INTEGER arguments to multiply"; return 1; }
   fi
 
   for __Geometry_Box_calc_arg in "$@"; do
-    [[ "${__Geometry_Box_calc_arg:-}" =~ ^[0-9]+$ ]] && ((__Geometry_Box_calc_arg)) || _Crash "$FUNCNAME arguments must be nonzero integers: $*"
+    [[ "${__Geometry_Box_calc_arg:-}" =~ ^[0-9]+$ ]] && ((__Geometry_Box_calc_arg)) ||
+      { _Error "$FUNCNAME arguments must be nonzero integers: $*"; return 1; }
     (( __Geometry_Box_calc_tot *= __Geometry_Box_calc_arg ))
   done
 
@@ -125,7 +126,7 @@ Geometry.Box.volume() {
   into=__Geometry_Box_volume_l $_Self.length
   into=__Geometry_Box_volume_h $_Self.height
   into=__Geometry_Box_volume_w $_Self.width
-  into=__Geometry_Box_volume_vol required=3 $_Self.calc "$__Geometry_Box_volume_l" "$__Geometry_Box_volume_h" "$__Geometry_Box_volume_w"
+  into=__Geometry_Box_volume_vol required=3 $_Self.calc "$__Geometry_Box_volume_l" "$__Geometry_Box_volume_h" "$__Geometry_Box_volume_w" || return 1
   _Debug "volume: ${__Geometry_Box_volume_l}x${__Geometry_Box_volume_h}x${__Geometry_Box_volume_w} = $__Geometry_Box_volume_vol"
   boop.pass "$__Geometry_Box_volume_vol" ${into:-}
 }

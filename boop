@@ -95,7 +95,7 @@ declare -gA __boop_alias
 
 # Framework version string. Used for mismatch detection when RC files indicate
 # a preferred version. Read-only after initialization.
-declare -gr __boop_version="0.1.0"
+declare -gr __boop_version="1.0.0"
 
 # ============================================================================
 # GLOBALS - Configuration
@@ -238,6 +238,12 @@ declare -gi __boop_loaded=0
 
 # Global object counter for unique ID generation. Incremented by __boop.new.
 declare -gi __boop_id=0
+
+# EXIT guard: if the script crashes mid-load (e.g. inside a sourced tmpfile),
+# remove any in-progress class-loading tmpfiles for this PID so they don't
+# accumulate in /tmp. On normal exit these files are already gone; the trap
+# is a no-op in that case.
+trap 'rm -f "${TMPDIR:-/tmp}/__boop_bf_$$" "${TMPDIR:-/tmp}/__boop_rc_$$" "${TMPDIR:-/tmp}/__boop_alias_$$"' EXIT
 
 # ============================================================================
 # UTILITY
@@ -1088,7 +1094,7 @@ __boop.serialize() {
 # each object after deserializing if you need to call methods on them.
 __boop.deserialize() {
   local __boop_deserialize_file="${1:-objects.dat}"
-  [[ -f "$__boop_deserialize_file" ]] || _Crash "File not found: $__boop_deserialize_file"
+  [[ -f "$__boop_deserialize_file" ]] || { _Error "File not found: $__boop_deserialize_file"; return 1; }
   local __boop_deserialize_key __boop_deserialize_descriptor
   while IFS=$'\t' read -r __boop_deserialize_key __boop_deserialize_descriptor; do
     type=class __boop.validate "$__boop_deserialize_key"
@@ -1399,8 +1405,8 @@ __boop.inspect() {
 __boop.destroy() {
   local _Self="${_Self:-}"; local _Class="${_Class:-boop}"
   [[ -n "$_Self" ]] || _Crash "destroy: no object identity (_Self is empty)"
-  [[ -n "${__boop_registry[$_Self]+set}" ]] ||
-    _Crash "destroy: '$_Self' is not a registered object"
+  [[ -n "${__boop_registry[$_Self]+set}" ]] || {
+    _Error "destroy: '$_Self' is not a registered object"; return 1; }
 
   _Debug "destroy: $_Self ($_Class) — beginning teardown"
 
@@ -1433,7 +1439,7 @@ __boop.destroy() {
   for __boop_destroy_key in "${!__boop_static[@]}"; do
     if [[ "$__boop_destroy_key" == "$__boop_destroy_prefix"* ]]; then
       unset '__boop_static[$__boop_destroy_key]'
-      (( __boop_destroy_static_count++ ))
+      (( ++__boop_destroy_static_count ))
     fi
   done
   _Trace "destroy: phase 2 — removed $__boop_destroy_static_count __boop_static keys"
@@ -1445,7 +1451,7 @@ __boop.destroy() {
   local -i __boop_destroy_fn_count=0
   while IFS= read -r __boop_destroy_fn; do
     unset -f "$__boop_destroy_fn"
-    (( __boop_destroy_fn_count++ ))
+    (( ++__boop_destroy_fn_count ))
   done < <(compgen -A function "${_Self}.")
   _Trace "destroy: phase 3 — unset $__boop_destroy_fn_count wrapper functions"
 
@@ -1896,6 +1902,7 @@ __boop.loader() {
   # Build the effective root list: . + BOOPPATH + PATH
   local -A __boop_loader_seen
   local -a __boop_loader_roots=()
+  trap 'unset -f __boop_loader_addRoot' RETURN
 
   __boop_loader_addRoot() {
     local __boop_loader_addRoot_r="$1"
@@ -2013,6 +2020,7 @@ __boop.classResolve() {
   # Deduplicate via scratchpad associative array (exact path match only).
   local -A __boop_classResolve_seen
   local -a __boop_classResolve_roots=()
+  trap 'unset -f __boop_classResolve_addRoot __boop_classResolve_r1' RETURN
 
   # Helper: add a root if not already seen
   __boop_classResolve_addRoot() {
@@ -2763,6 +2771,7 @@ __boopClass.registerMethods() {
 # Sets caller-scoped variables: __boopClass_class, __boopClass_parent,
 # __boopClass_public, __boopClass_custom, __boopClass_has.
 __boopClass.parseTokens() {
+  local IFS=$' \t\n'
   local __boopClass_pt_input="$*"
   __boopClass_class="" ; __boopClass_parent="boop"
   __boopClass_public=""; __boopClass_custom=""; __boopClass_has=""

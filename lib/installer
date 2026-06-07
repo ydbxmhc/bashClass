@@ -1,0 +1,459 @@
+#!/usr/bin/env bash
+# lib/installer — boop framework installer
+#
+# Embedded by collider into bundled tools. Provides:
+#   --self-update    fetch latest version of this tool from its distribution URL
+#   --fetch-probe    fetch probe to ~/.local/bin (unlocks full HTTP capability)
+#   --boop-install   download and install the full boop framework
+#   --boop-update    git-pull an existing boop installation
+#
+# Each bundled tool sets these before calling __installer_dispatch:
+#   __installer_self_url   URL of this tool's bundle (set in the tool)
+#   __installer_self_name  display name of this tool  (set in the tool)
+#
+# Download strategy for --boop-install (cascade — first available wins):
+#   1. git clone (full repo, updatable)
+#   2. __installer_http_get (pure bash /dev/tcp, HTTP only, no external deps)
+#   3. curl
+#   4. wget
+#   5. openssl s_client
+#
+# This file is NOT a class or mixin. It's a plain function library
+# with the __installer_ prefix. Collider pastes it into every bundle.
+
+# --- Distribution configuration ---
+# Override BOOP_DIST_URL for testing: BOOP_DIST_URL=http://localhost:8080 probe --self-update
+__installer_dist_url="${BOOP_DIST_URL:-http://get.boop.sh}"
+__installer_probe_url="${__installer_dist_url}/probe"
+__installer_bundle_url="${__installer_dist_url}/boop-full.bundle"
+
+# Full-repo git URL (for --boop-install git path)
+__installer_repo="https://github.com/ydbxmhc/bashClass.git"
+
+# __installer_self_url — set by each tool before calling __installer_dispatch
+# __installer_self_name — set by each tool before calling __installer_dispatch
+
+# --- Utility ---
+
+__installer_has() { command -v "$1" >/dev/null; }
+
+__installer_prompt() {
+  local __installer_prompt_msg="$1" __installer_prompt_default="${2:-}"
+  local __installer_prompt_reply
+  if [[ -n "$__installer_prompt_default" ]]; then
+    printf '%s [%s]: ' "$__installer_prompt_msg" "$__installer_prompt_default" >&2
+  else
+    printf '%s: ' "$__installer_prompt_msg" >&2
+  fi
+  read -r __installer_prompt_reply
+  printf '%s' "${__installer_prompt_reply:-$__installer_prompt_default}"
+}
+
+__installer_confirm() {
+  local __installer_confirm_msg="$1"
+  local __installer_confirm_reply
+  printf '%s [Y/n]: ' "$__installer_confirm_msg" >&2
+  read -r __installer_confirm_reply
+  [[ "${__installer_confirm_reply,,}" == "n" ]] && return 1
+  return 0
+}
+
+__installer_writable() {
+  local __installer_writable_dir="$1"
+  while [[ -n "$__installer_writable_dir" ]]; do
+    if [[ -d "$__installer_writable_dir" ]]; then
+      [[ -w "$__installer_writable_dir" ]] && return 0 || return 1
+    fi
+    __installer_writable_dir="${__installer_writable_dir%/*}"
+  done
+  return 1
+}
+
+# Detect the host platform.
+#
+# Returns one of: linux, macos, windows, unknown (on stdout). Used to tailor
+# install hints. Pure bash -- inspects $OSTYPE, falling back to `uname` only
+# when $OSTYPE is unset (rare, but some minimal shells don't export it).
+#
+# Arguments: none
+# Returns:   platform name on stdout; always exits 0
+__installer_platform() {
+  local __installer_platform_os="${OSTYPE:-}"
+  [[ -z "$__installer_platform_os" ]] && command -v uname >/dev/null &&
+    __installer_platform_os="$(uname -s)"
+  case "${__installer_platform_os,,}" in
+    linux*)            printf 'linux' ;;
+    darwin*)           printf 'macos' ;;
+    msys*|cygwin*|win*) printf 'windows' ;;
+    *)                 printf 'unknown' ;;
+  esac
+}
+
+# Write (or update) ~/.booprc so it puts TARGET on BOOPPATH.
+#
+# First-write creates the file with a single BOOPPATH line. If the file
+# already exists and does NOT already mention TARGET, a new BOOPPATH line is
+# appended (prepending TARGET to any existing BOOPPATH). If TARGET is already
+# referenced, the file is left untouched -- the operation is idempotent, so
+# calling it repeatedly with the same path never duplicates entries.
+#
+# Arguments:
+#   $1 -- install target path to place on BOOPPATH
+# Returns:   0 on success; writes to $HOME/.booprc
+__installer_write_booprc() {
+  local __installer_wb_target="$1"
+  local __installer_wb_rcfile="$HOME/.booprc"
+
+  if [[ -f "$__installer_wb_rcfile" ]] &&
+      grep -q "$__installer_wb_target" "$__installer_wb_rcfile"; then
+    printf '  .booprc already references this path.\n' >&2
+  elif [[ -f "$__installer_wb_rcfile" ]]; then
+    printf '\n# Added by boop installer\nBOOPPATH="%s${BOOPPATH:+:$BOOPPATH}"\n' \
+      "$__installer_wb_target" >> "$__installer_wb_rcfile"
+    printf '  Appended to %s\n' "$__installer_wb_rcfile" >&2
+  else
+    printf '# boop framework configuration\nBOOPPATH="%s"\n' \
+      "$__installer_wb_target" > "$__installer_wb_rcfile"
+    printf '  Created %s\n' "$__installer_wb_rcfile" >&2
+  fi
+}
+
+# ============================================================================
+# Pure bash HTTP GET — no external dependencies
+#
+# Fetches a plain HTTP URL via bash /dev/tcp and writes the response body
+# to dest_file (or stdout if omitted).
+#
+# Limitations:
+#   - HTTP only (no TLS/HTTPS)
+#   - Text content only: bash variables cannot hold or detect NUL bytes;
+#     any NUL in the response body is silently truncated
+#   - Follows at most one redirect
+#
+# External deps: none
+# Requires: bash compiled with /dev/tcp support (standard on Linux/macOS)
+# ============================================================================
+
+__installer_http_get() {
+  local __installer_hg_url="$1" __installer_hg_dest="${2:-}"
+  local __installer_hg_host __installer_hg_port __installer_hg_path
+
+  case "$__installer_hg_url" in
+    http://*) __installer_hg_url="${__installer_hg_url#http://}" ;;
+    https://*) printf 'installer: HTTPS not supported; use curl or wget\n' >&2; return 1 ;;
+  esac
+
+  if [[ "$__installer_hg_url" == */* ]]; then
+    __installer_hg_host="${__installer_hg_url%%/*}"
+    __installer_hg_path="/${__installer_hg_url#*/}"
+  else
+    __installer_hg_host="$__installer_hg_url"
+    __installer_hg_path="/"
+  fi
+
+  if [[ "$__installer_hg_host" == *:* ]]; then
+    __installer_hg_port="${__installer_hg_host##*:}"
+    __installer_hg_host="${__installer_hg_host%%:*}"
+  else
+    __installer_hg_port=80
+  fi
+
+  local -i __installer_hg_fd
+  exec {__installer_hg_fd}<>/dev/tcp/"$__installer_hg_host"/"$__installer_hg_port" || {
+    printf 'installer: cannot connect to %s:%s\n' "$__installer_hg_host" "$__installer_hg_port" >&2
+    return 1
+  }
+
+  printf 'GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: boop-installer/1.0\r\nConnection: close\r\n\r\n' \
+    "$__installer_hg_path" "$__installer_hg_host" >&"$__installer_hg_fd"
+
+  local __installer_hg_status __installer_hg_code
+  IFS= read -r -t 30 __installer_hg_status <&"$__installer_hg_fd" || {
+    printf 'installer: no response from %s\n' "$__installer_hg_host" >&2
+    exec {__installer_hg_fd}>&-; return 1
+  }
+  __installer_hg_status="${__installer_hg_status%$'\r'}"
+  __installer_hg_code="${__installer_hg_status#* }"; __installer_hg_code="${__installer_hg_code%% *}"
+
+  local __installer_hg_hline __installer_hg_location=""
+  while IFS= read -r -t 30 __installer_hg_hline <&"$__installer_hg_fd"; do
+    __installer_hg_hline="${__installer_hg_hline%$'\r'}"
+    [[ -z "$__installer_hg_hline" ]] && break
+    [[ "${__installer_hg_hline,,}" == location:* ]] && \
+      __installer_hg_location="${__installer_hg_hline#*: }"
+  done
+
+  if [[ "$__installer_hg_code" =~ ^3 ]]; then
+    exec {__installer_hg_fd}>&-
+    if [[ -n "$__installer_hg_location" ]]; then
+      printf 'installer: redirect → %s\n' "$__installer_hg_location" >&2
+      __installer_http_get "$__installer_hg_location" "$__installer_hg_dest"
+      return
+    fi
+    printf 'installer: redirect with no Location header\n' >&2; return 1
+  fi
+
+  if [[ "$__installer_hg_code" != "200" ]]; then
+    exec {__installer_hg_fd}>&-
+    printf 'installer: HTTP %s from %s\n' "$__installer_hg_code" "$__installer_hg_host" >&2
+    return 1
+  fi
+
+  local __installer_hg_body="" __installer_hg_line
+  while IFS= read -r -t 30 __installer_hg_line <&"$__installer_hg_fd" \
+      || [[ -n "$__installer_hg_line" ]]; do
+    __installer_hg_body+="${__installer_hg_line}"$'\n'
+  done
+  exec {__installer_hg_fd}>&-
+
+  if [[ -n "$__installer_hg_dest" ]]; then
+    printf '%s' "$__installer_hg_body" > "$__installer_hg_dest"
+  else
+    printf '%s' "$__installer_hg_body"
+  fi
+}
+
+# ============================================================================
+# Self-update — fetch latest version of this tool from its distribution URL
+#
+# Replaces $0 in-place (download to temp, chmod, mv).
+# __installer_self_url must be set by the tool before calling dispatch.
+#
+# External deps: chmod (make executable), mv (atomic replace)
+# Temp file: ${TMPDIR:-/tmp}/__boop_update_$$ (no mktemp required)
+# ============================================================================
+
+__installer_self_update() {
+  local __installer_su_url="${__installer_self_url:-}"
+  [[ -n "$__installer_su_url" ]] || {
+    printf 'installer: __installer_self_url not set\n' >&2; return 1
+  }
+
+  local __installer_su_tmp="${TMPDIR:-/tmp}/__boop_update_$$"
+  printf '  Fetching %s from %s\n' "${__installer_self_name:-update}" "$__installer_su_url" >&2
+
+  __installer_http_get "$__installer_su_url" "$__installer_su_tmp" || {
+    rm -f "$__installer_su_tmp"; return 1
+  }
+
+  [[ -s "$__installer_su_tmp" ]] || {
+    printf '  ERROR: empty download\n' >&2; rm -f "$__installer_su_tmp"; return 1
+  }
+
+  chmod +x "$__installer_su_tmp"
+  mv "$__installer_su_tmp" "$0" || {
+    printf '  ERROR: cannot replace %s (permission denied?)\n' "$0" >&2
+    rm -f "$__installer_su_tmp"; return 1
+  }
+
+  printf '  ✓ %s updated: %s\n' "${__installer_self_name:-tool}" "$0" >&2
+}
+
+# ============================================================================
+# Fetch probe — install probe to a local path
+#
+# Once probe is available, it handles all further HTTP and install operations
+# more efficiently than the embedded pure-bash fetch.
+#
+# External deps: chmod (make executable), mkdir (create parent dir if needed)
+# ============================================================================
+
+__installer_fetch_probe() {
+  local __installer_fp_dest="${1:-${HOME}/.local/bin/probe}"
+  local __installer_fp_dir="${__installer_fp_dest%/*}"
+
+  [[ -d "$__installer_fp_dir" ]] || mkdir -p "$__installer_fp_dir" || {
+    printf 'installer: cannot create %s\n' "$__installer_fp_dir" >&2; return 1
+  }
+
+  printf '  Fetching probe from %s\n' "$__installer_probe_url" >&2
+  __installer_http_get "$__installer_probe_url" "$__installer_fp_dest" || return 1
+  chmod +x "$__installer_fp_dest"
+  printf '  ✓ probe installed to: %s\n' "$__installer_fp_dest" >&2
+  printf '  Add %s to PATH if not already present.\n' "$__installer_fp_dir" >&2
+}
+
+# ============================================================================
+# Full framework install
+# ============================================================================
+
+__installer_run() {
+  local __installer_run_target="${1:-}"
+
+  printf '\n'
+  printf '  ╔══════════════════════════════════╗\n'
+  printf '  ║   boop framework installer       ║\n'
+  printf '  ╚══════════════════════════════════╝\n'
+  printf '\n'
+
+  # --- Determine install location ---
+  if [[ -z "$__installer_run_target" ]]; then
+    printf '  Where should boop be installed?\n\n'
+
+    local __installer_run_default="$HOME/.local/lib/boop"
+    if __installer_writable "/usr/local/lib"; then
+      printf '    1) /usr/local/lib/boop  (system-wide, writable)\n'
+      __installer_run_default="/usr/local/lib/boop"
+    else
+      printf '    1) /usr/local/lib/boop  (system-wide, needs sudo)\n'
+    fi
+    printf '    2) %s/.local/lib/boop  (user-local)\n' "$HOME"
+    printf '    3) Custom path\n\n'
+
+    local __installer_run_choice
+    __installer_run_choice="$(__installer_prompt "  Choice (1/2/3 or path)" "$__installer_run_default")"
+
+    case "$__installer_run_choice" in
+      1) __installer_run_target="/usr/local/lib/boop" ;;
+      2) __installer_run_target="$HOME/.local/lib/boop" ;;
+      3) __installer_run_target="$(__installer_prompt "  Install path")" ;;
+      /*) __installer_run_target="$__installer_run_choice" ;;
+      *) __installer_run_target="$__installer_run_default" ;;
+    esac
+  fi
+
+  printf '\n  Install target: %s\n' "$__installer_run_target"
+
+  # --- Check for existing installation ---
+  if [[ -d "$__installer_run_target" ]]; then
+    if [[ -f "$__installer_run_target/boop" ]]; then
+      printf '  WARNING: boop already installed at this location.\n' >&2
+      __installer_confirm "  Overwrite?" || { printf '  Aborted.\n' >&2; return 1; }
+      rm -rf "$__installer_run_target"
+    else
+      printf '  WARNING: directory exists but does not contain boop.\n' >&2
+      __installer_confirm "  Use this directory anyway?" || { printf '  Aborted.\n' >&2; return 1; }
+    fi
+  fi
+
+  local __installer_run_parent="${__installer_run_target%/*}"
+  if [[ -n "$__installer_run_parent" && ! -d "$__installer_run_parent" ]]; then
+    mkdir -p "$__installer_run_parent" || {
+      printf '  ERROR: cannot create %s\n' "$__installer_run_parent" >&2; return 1
+    }
+  fi
+
+  # --- Download cascade ---
+  printf '\n  Downloading boop framework...\n'
+
+  local -i __installer_run_rc=0
+
+  if __installer_has git; then
+    printf '  Using git clone...\n' >&2
+    git clone --depth 1 "$__installer_repo" "$__installer_run_target" || __installer_run_rc=$?
+
+  elif [[ "$__installer_bundle_url" == http://* ]]; then
+    printf '  Using built-in HTTP fetch...\n' >&2
+    mkdir -p "$__installer_run_target"
+    __installer_http_get "$__installer_bundle_url" \
+      "$__installer_run_target/boop-full.bundle" || __installer_run_rc=$?
+
+  elif __installer_has curl; then
+    printf '  Using curl...\n' >&2
+    mkdir -p "$__installer_run_target"
+    curl -fsSL "$__installer_bundle_url" \
+      -o "$__installer_run_target/boop-full.bundle" || __installer_run_rc=$?
+
+  elif __installer_has wget; then
+    printf '  Using wget...\n' >&2
+    mkdir -p "$__installer_run_target"
+    wget -q "$__installer_bundle_url" \
+      -O "$__installer_run_target/boop-full.bundle" || __installer_run_rc=$?
+
+  elif __installer_has openssl; then
+    printf '  Using openssl s_client...\n' >&2
+    mkdir -p "$__installer_run_target"
+    local __installer_run_host="${__installer_bundle_url#https://}"
+    __installer_run_host="${__installer_run_host%%/*}"
+    local __installer_run_path="/${__installer_bundle_url#*://*/}"
+    {
+      printf 'GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n' \
+        "$__installer_run_path" "$__installer_run_host"
+    } | openssl s_client -connect "${__installer_run_host}:443" -quiet | {
+      local __installer_run_ol
+      while IFS= read -r __installer_run_ol; do
+        [[ "$__installer_run_ol" == $'\r' || -z "$__installer_run_ol" ]] && break
+      done
+      cat
+    } > "$__installer_run_target/boop-full.bundle" || __installer_run_rc=$?
+
+  else
+    printf '  No download method available.\n' >&2
+    printf '  Install git, curl, or wget, or set BOOP_DIST_URL to an http:// URL.\n' >&2
+    return 1
+  fi
+
+  if (( __installer_run_rc )); then
+    printf '  ERROR: download failed (exit %d)\n' "$__installer_run_rc" >&2; return 1
+  fi
+
+  # --- Write .booprc ---
+  printf '\n'
+  if __installer_confirm "  Configure ~/.booprc?"; then
+    __installer_write_booprc "$__installer_run_target"
+  fi
+
+  printf '\n  ✓ boop installed to: %s\n' "$__installer_run_target"
+  printf '\n  To activate in this session:\n'
+  printf '    export BOOPPATH="%s"\n' "$__installer_run_target"
+  printf '    . "%s/boop"\n\n' "$__installer_run_target"
+  printf '  Add to ~/.bashrc or ~/.bash_profile to make permanent.\n\n'
+}
+
+# ============================================================================
+# Update existing git-based installation
+# ============================================================================
+
+__installer_update() {
+  local __installer_update_path="${1:-}"
+
+  if [[ -z "$__installer_update_path" ]]; then
+    local __installer_update_candidate
+    for __installer_update_candidate in \
+        "${BOOPPATH%%:*}" "/usr/local/lib/boop" "$HOME/.local/lib/boop"; do
+      if [[ -d "$__installer_update_candidate/.git" ]]; then
+        __installer_update_path="$__installer_update_candidate"; break
+      fi
+    done
+  fi
+
+  [[ -n "$__installer_update_path" ]] || {
+    printf '  Cannot find a git-based boop installation.\n' >&2
+    printf '  Specify path: --boop-update /path/to/boop\n' >&2; return 1
+  }
+
+  [[ -d "$__installer_update_path/.git" ]] || {
+    printf '  %s is not a git repository.\n' "$__installer_update_path" >&2; return 1
+  }
+
+  printf '  Updating boop at: %s\n' "$__installer_update_path"
+  git -C "$__installer_update_path" pull || {
+    printf '  ERROR: git pull failed\n' >&2; return 1
+  }
+  printf '  ✓ Updated.\n'
+}
+
+# ============================================================================
+# Dispatch — called from each bundled tool's argument handling
+# ============================================================================
+
+__installer_dispatch() {
+  case "${1:-}" in
+    --self-update)
+      __installer_self_update
+      exit $?
+      ;;
+    --fetch-probe)
+      __installer_fetch_probe "${2:-}"
+      exit $?
+      ;;
+    --boop-install)
+      __installer_run "${2:-}"
+      exit $?
+      ;;
+    --boop-update)
+      __installer_update "${2:-}"
+      exit $?
+      ;;
+  esac
+}

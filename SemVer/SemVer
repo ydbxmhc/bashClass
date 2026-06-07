@@ -42,8 +42,8 @@ boop.init SemVer || return 0
 SemVer.satisfies() {
   local _Self="${_Self:-SemVer}" _Class="${_Class:-SemVer}"
   local __SemVer_satisfies_ver="$1" __SemVer_satisfies_con="$2"
-  [[ -n "$__SemVer_satisfies_ver" ]] || _Crash "SemVer.satisfies: version required"
-  [[ -n "$__SemVer_satisfies_con" ]] || _Crash "SemVer.satisfies: constraint required"
+  [[ -n "$__SemVer_satisfies_ver" ]] || { _Error "SemVer.satisfies: version required"; return 1; }
+  [[ -n "$__SemVer_satisfies_con" ]] || { _Error "SemVer.satisfies: constraint required"; return 1; }
   _Trace "satisfies: '$__SemVer_satisfies_ver' vs '$__SemVer_satisfies_con'"
   __boop.versionSatisfies "$__SemVer_satisfies_ver" "$__SemVer_satisfies_con"
 }
@@ -58,8 +58,8 @@ SemVer.satisfies() {
 SemVer.compare() {
   local _Self="${_Self:-SemVer}" _Class="${_Class:-SemVer}"
   local __SemVer_compare_a="$1" __SemVer_compare_b="$2"
-  [[ -n "$__SemVer_compare_a" ]] || _Crash "SemVer.compare: version A required"
-  [[ -n "$__SemVer_compare_b" ]] || _Crash "SemVer.compare: version B required"
+  [[ -n "$__SemVer_compare_a" ]] || { _Error "SemVer.compare: version A required"; return 1; }
+  [[ -n "$__SemVer_compare_b" ]] || { _Error "SemVer.compare: version B required"; return 1; }
   _Trace "compare: '$__SemVer_compare_a' vs '$__SemVer_compare_b'"
   local __SemVer_compare_result
   __SemVer_compare_result="$(__boop.versionCompare "$__SemVer_compare_a" "$__SemVer_compare_b")"

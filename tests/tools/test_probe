@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# probe tool tests
+#
+# Classification: INTEGRATION (tools/probe)
+# Covers: GET, status codes (-s), header inclusion (-i), POST body echo (-d),
+#         JSON shorthand (-j), custom headers (-H), redirect following
+#         (absolute and relative Location), --no-follow, HTTPS rejection,
+#         multiple URLs.
+#
+# Requires: python (3.x) for the loopback test server. The server binds to
+#           127.0.0.1 on an ephemeral port -- never exposed off-host. If
+#           python is unavailable, the suite skips with a clear message.
+
+__tp_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+__tp_root="$(cd "$__tp_dir/../.." && pwd)"
+__tp_probe="$__tp_root/probe"
+__tp_server="$__tp_dir/_http_server.py"
+
+. "$__tp_root/boop" TestSuite
+
+# --- Locate a usable python ---
+__tp_py=""
+for __tp_cand in python python3; do
+  if command -v "$__tp_cand" >/dev/null 2>&1 && "$__tp_cand" --version >/dev/null 2>&1; then
+    __tp_py="$__tp_cand"; break
+  fi
+done
+
+if [[ -z "$__tp_py" ]]; then
+  printf 'test_probe: python not found -- skipping (probe needs a test HTTP server)\n' >&2
+  exit 0
+fi
+
+# --- Start the loopback test server ---
+__tp_portfile="$(mktemp)"
+"$__tp_py" "$__tp_server" "$__tp_portfile" &
+__tp_server_pid=$!
+
+# Ensure the server is torn down no matter how we exit.
+__tp_cleanup() {
+  [[ -n "${__tp_server_pid:-}" ]] && kill "$__tp_server_pid" 2>/dev/null
+  rm -f "$__tp_portfile"
+}
+trap __tp_cleanup EXIT
+
+# Wait for the server to publish its port (up to ~5s).
+__tp_port=""
+for __tp_i in $(seq 1 50); do
+  __tp_port="$(< "$__tp_portfile")"
+  [[ -n "$__tp_port" ]] && break
+  sleep 0.1
+done
+
+if [[ -z "$__tp_port" ]]; then
+  printf 'test_probe: server did not start -- aborting\n' >&2
+  exit 1
+fi
+
+__tp_base="http://127.0.0.1:${__tp_port}"
+
+into=t TestSuite name="Probe Tests"
+
+# ============================================================================
+# Basic GET
+# ============================================================================
+
+$t.section "Basic GET"
+
+$t.assert_eq "GET / body" "$("$__tp_probe" "$__tp_base/")" "hello from test server"
+$t.assert_eq "GET /json body" "$("$__tp_probe" "$__tp_base/json")" '{"ok": true, "n": 42}'
+
+# ============================================================================
+# Status code (-s)
+# ============================================================================
+
+$t.section "Status code"
+
+$t.assert_eq "200 status"  "$("$__tp_probe" -s "$__tp_base/")"            "200"
+$t.assert_eq "404 status"  "$("$__tp_probe" -s "$__tp_base/nope")"        "404"
+$t.assert_eq "500 status"  "$("$__tp_probe" -s "$__tp_base/status/500")"  "500"
+
+# ============================================================================
+# Header inclusion (-i)
+# ============================================================================
+
+$t.section "Header inclusion"
+
+__tp_inc="$("$__tp_probe" -i "$__tp_base/")"
+$t.assert_contains "include shows status line" "$__tp_inc" "HTTP/1.1 200"
+$t.assert_contains "include shows a header"    "$__tp_inc" "Content-Type:"
+$t.assert_contains "include shows body"        "$__tp_inc" "hello from test server"
+
+# ============================================================================
+# POST body (-d) and JSON shorthand (-j)
+# ============================================================================
+
+$t.section "POST"
+
+$t.assert_eq "POST echoes body" \
+  "$("$__tp_probe" -d "hello=world" "$__tp_base/echo")" "hello=world"
+
+$t.assert_eq "POST json echoes body" \
+  "$("$__tp_probe" -j -d '{"a":1}' "$__tp_base/echo")" '{"a":1}'
+
+# The server's /headers route echoes received request headers; -j should
+# have set Content-Type: application/json.
+__tp_jhdrs="$("$__tp_probe" -j "$__tp_base/headers")"
+$t.assert_contains "json shorthand sets content-type" "$__tp_jhdrs" "application/json"
+
+# ============================================================================
+# Custom headers (-H)
+# ============================================================================
+
+$t.section "Custom headers"
+
+__tp_hdrs="$("$__tp_probe" -H "X-Test: abc" "$__tp_base/headers")"
+$t.assert_contains "custom header sent" "$__tp_hdrs" "X-Test: abc"
+
+# ============================================================================
+# Redirects
+# ============================================================================
+
+$t.section "Redirects"
+
+# /redirect returns 302 Location: /target (a RELATIVE path). Following it
+# must resolve against the current host and land on /target.
+$t.assert_eq "follows relative redirect" \
+  "$("$__tp_probe" "$__tp_base/redirect")" "redirected ok"
+
+# --no-follow stops at the 3xx and reports its status.
+$t.assert_eq "no-follow stops at 302" \
+  "$("$__tp_probe" --no-follow -s "$__tp_base/redirect")" "302"
+
+# ============================================================================
+# HTTPS rejection
+# ============================================================================
+
+$t.section "HTTPS rejection"
+
+$t.assert_fail "https is rejected" \
+  "$__tp_probe" "https://127.0.0.1:${__tp_port}/"
+
+# ============================================================================
+# Multiple URLs
+# ============================================================================
+
+$t.section "Multiple URLs"
+
+__tp_multi="$("$__tp_probe" "$__tp_base/" "$__tp_base/target")"
+$t.assert_contains "first url body present"  "$__tp_multi" "hello from test server"
+$t.assert_contains "second url body present" "$__tp_multi" "redirected ok"
+
+$t.summary

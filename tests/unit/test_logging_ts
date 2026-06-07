@@ -109,9 +109,12 @@ _LogLevel warn
 $t.section "Caller context"
 
 # Define a temporary test method on Box and call it with explicit _Self/_Class,
-# which is exactly what the baked wrapper does internally.
+# which is exactly what the baked wrapper does internally. The preamble reads
+# _Self/_Class from the calling scope (set by the command-prefix below) using
+# the standard `${_Self:-}` form -- NOT `local -I`, which is bash 5.0+ and was
+# removed framework-wide. See docs/bash_version_audit.md.
 Box.test_log() {
-  local -I _Self; local _Class="${_Class:-Geometry.Box}"
+  local _Self="${_Self:-}" _Class="${_Class:-Geometry.Box}"
   _Warn "from method"
 }
 into=__lt_box Box length=1 width=1 height=1

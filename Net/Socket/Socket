@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# Socket — plaintext TCP connection via bash /dev/tcp.
+#
+# Manages the connection lifecycle (open, write, close) and exposes the
+# underlying fd. Reading is left to the caller using bash primitives —
+# bare read(1) for line-oriented protocols, $(cat <&$fd) for bulk slurp.
+# No TLS (bash /dev/tcp is plaintext only).
+#
+# Usage:
+#   into=s Socket.new host=example.com port=80 [timeout=30]
+#   fd="${__boop_static[$s.fd]}"
+#
+#   printf 'GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n' >&"$fd"
+#
+#   IFS= read -r status <&"$fd"; status="${status%$'\r'}"
+#   while IFS= read -r h <&"$fd"; do h="${h%$'\r'}"; [[ -z "$h" ]] && break; done
+#   body=$(cat <&"$fd")
+#
+#   $s.close
+
+. boop
+boop.init Socket || return 0
+
+# ============================================================================
+# Constructor
+# ============================================================================
+
+Socket.new() {
+  local _Class="${_Class:-Socket}"
+  local __Socket_new_self __Socket_new_host="" __Socket_new_port="" __Socket_new_timeout=30
+  local __Socket_new_arg
+  for __Socket_new_arg in "$@"; do
+    case "$__Socket_new_arg" in
+      host=*)    __Socket_new_host="${__Socket_new_arg#host=}" ;;
+      port=*)    __Socket_new_port="${__Socket_new_arg#port=}" ;;
+      timeout=*) __Socket_new_timeout="${__Socket_new_arg#timeout=}" ;;
+    esac
+  done
+  [[ -n "$__Socket_new_host" ]] || { _Error "Socket.new: host required"; return 1; }
+  [[ -n "$__Socket_new_port" ]] || { _Error "Socket.new: port required"; return 1; }
+
+  local -i __Socket_new_fd=0
+  exec {__Socket_new_fd}<>/dev/tcp/"$__Socket_new_host"/"$__Socket_new_port" || {
+    _Error "Socket.new: could not connect to ${__Socket_new_host}:${__Socket_new_port}"
+    return 1
+  }
+
+  into=__Socket_new_self __boop.new \
+    host="$__Socket_new_host" \
+    port="$__Socket_new_port" \
+    fd="$__Socket_new_fd" \
+    timeout="$__Socket_new_timeout" \
+    closed="0"
+  boop.pass "$__Socket_new_self" "${into:-}"
+}
+
+# ============================================================================
+# Write
+# ============================================================================
+
+# Write raw bytes (no newline appended).
+Socket.write() {
+  local _Self="${_Self:-}" _Class="${_Class:-Socket}"
+  printf '%s' "$1" >&"${__boop_static[${_Self}.fd]}"
+}
+
+# Write a line terminated with \r\n (HTTP, SMTP, etc.).
+Socket.writeLine() {
+  local _Self="${_Self:-}" _Class="${_Class:-Socket}"
+  printf '%s\r\n' "$1" >&"${__boop_static[${_Self}.fd]}"
+}
+
+# ============================================================================
+# Lifecycle
+# ============================================================================
+
+Socket.close() {
+  local _Self="${_Self:-}" _Class="${_Class:-Socket}"
+  [[ "${__boop_static[${_Self}.closed]:-0}" == "1" ]] && return
+  local __Socket_close_fd="${__boop_static[${_Self}.fd]:-}"
+  [[ -n "$__Socket_close_fd" && "$__Socket_close_fd" =~ ^[0-9]+$ ]] && \
+    exec {__Socket_close_fd}>&-
+  __boop_static["${_Self}.closed"]="1"
+}
+
+Socket._destroy() {
+  local _Self="${_Self:-}" _Class="${_Class:-Socket}"
+  [[ "${__boop_static[${_Self}.closed]:-0}" == "1" ]] && return
+  local __Socket_destroy_fd="${__boop_static[${_Self}.fd]:-}"
+  [[ -n "$__Socket_destroy_fd" && "$__Socket_destroy_fd" =~ ^[0-9]+$ ]] && \
+    exec {__Socket_destroy_fd}>&-
+}
+
+# ============================================================================
+# Registration
+# ============================================================================
+
+boopClass Socket 'has:host,port,fd,timeout,closed public:new,write,writeLine,close'
