@@ -1410,7 +1410,7 @@ __Math.formatVal() {
 # Three+ args folds: result = op(op(a,b), c) ...
 __Math.staticVariadicOp() {
   local __Math_staticVariadicOp_op="$1"; shift
-  (( $# >= 1 )) || _Crash "Math.${__Math_staticVariadicOp_op}: requires at least 1 argument"
+  (( $# >= 1 )) || { _Error "Math.${__Math_staticVariadicOp_op}: requires at least 1 argument"; return 1; }
 
   # Single argument: return the value itself (identity)
   if (( $# == 1 )); then

@@ -567,7 +567,7 @@ Collection.List.do() {
   read -ra __Collection_List_do_tokens <<< "$__Collection_List_do_raw"
 
   (( ${#__Collection_List_do_tokens[@]} > 0 )) ||
-    _Crash "List.do: empty pipeline"
+    { _Error "List.do: empty pipeline"; return 1; }
 
   _Debug "do: ${#__Collection_List_do_tokens[@]} operation(s)"
 
@@ -581,7 +581,7 @@ Collection.List.do() {
     __Collection_List_do_op="${__Collection_List_do_tok%%:*}"
     __Collection_List_do_cb="${__Collection_List_do_tok#*:}"
     [[ -n "$__Collection_List_do_op" && -n "$__Collection_List_do_cb" && "$__Collection_List_do_op" != "$__Collection_List_do_cb" ]] ||
-      _Crash "List.do: malformed token '$__Collection_List_do_tok' — expected op:callback"
+      { _Error "List.do: malformed token '$__Collection_List_do_tok' — expected op:callback"; return 1; }
 
     _Trace "do: $__Collection_List_do_op:$__Collection_List_do_cb on $__Collection_List_do_current"
 
@@ -604,7 +604,7 @@ Collection.List.do() {
           _Self="$__Collection_List_do_current" _Class=Collection.List \
           Collection.List.reduce "$__Collection_List_do_cb" || __Collection_List_do_rc=$?
         ;;
-      *) _Crash "List.do: unknown operation '$__Collection_List_do_op' (expected: filter, map, reduce)" ;;
+      *) _Error "List.do: unknown operation '$__Collection_List_do_op' (expected: filter, map, reduce)"; return 1 ;;
     esac
 
     # Destroy the intermediate (but never the original input)

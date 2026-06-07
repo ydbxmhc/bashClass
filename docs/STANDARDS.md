@@ -414,32 +414,55 @@ prefer redesigning to avoid the need.
 
 ## Error Handling
 
-### Crash, Don't Silently Continue
+### The Two Error Paths: `_Crash` vs `_Error` + return 1
 
-When something is wrong, crash with a clear message. Do not silently
-return empty strings, default values, or success codes for invalid
-input. The user needs to know what happened and where.
+Every error in the framework falls into one of two categories with
+distinct handling:
+
+**`_Crash`** — always fatal, regardless of `_FatalLevel`. Reserved for:
+- Shell injection / invalid identifiers (security boundary)
+- Framework internal corruption (registry inconsistent, dispatch failure)
+- Class/mixin declaration errors at load time (`boopClass`, `boopMixin`)
+- Version constraint failures (`_Require`, `boop` version guard)
+- Abstract method stubs called on non-implementing subclasses
+- Invalid framework API misuse (`_Super` with no parent, `_Cast` with no class)
+
+**`_Error` + `return 1`** — recoverable. Callers check `$?` and handle it.
+Used for all runtime data conditions: bad input, missing files, empty
+collections, invalid arguments to user-facing methods. With the default
+`_FatalLevel crash`, `_Error` logs the message and continues; with
+`_FatalLevel error`, it escalates to fatal. Either way, the `return 1`
+ensures the function exits with a failure code so callers can check.
 
 ```bash
-# Bad — silently returns empty on invalid input, dies under `set -eu`
-[[ -z "$input" ]] && return
+# Framework corruption → _Crash (security/integrity boundary)
+[[ "$name" =~ $__boop_validate_pat ]] || _Crash "Invalid identifier: '$name'"
 
-# Better — safely tells the user at least SOME of what went wrong
-[[ -z "${input:-}" ]] && _Crash "Math.add: missing operand"
+# Runtime data condition → _Error + return 1 (recoverable)
+[[ -n "$file" ]] || { _Error "Config.load: file path required"; return 1; }
+[[ -f "$file" ]] || { _Error "Config.load: file not found: $file"; return 1; }
+
+# In a case arm:
+*) _Error "Signal.strict: expected 0/off or 1/on, got '$1'"; return 1 ;;
 ```
+
+Do not silently return empty strings or success codes for invalid input.
+Do not use `_Crash` for conditions the caller can reasonably handle.
 
 ### Tier-Appropriate Validation
 
 - Tier 1 (private): minimal validation. Callers are trusted.
                     Should consider context; lazy private code that *creates*
                     public code should validate appropriately!
-- Tier 2 (semi-private): validate inputs, crash with clear messages.
+- Tier 2 (semi-private): validate inputs, use `_Error` + return 1 for
+  runtime data conditions; `_Crash` for security/framework violations.
 - Tier 3 (public): validate everything. Error messages should say
   what was wrong AND suggest the correct usage.
 
 ```bash
 # Tier 3 error message — helpful
-_Crash "Math.add: invalid number '${input:-}' — expected a numeric value like '3.14' or '-42'"
+_Error "Math.add: invalid number '${input:-}' — expected a numeric value like '3.14' or '-42'"
+return 1
 ```
 
 ### `2>/dev/null` Policy

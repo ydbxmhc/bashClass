@@ -366,8 +366,8 @@ Iterator.new() {
     esac
   done
 
-  [[ -n "$__Iter_new_target" ]] || _Crash "Iterator: target is required"
-  [[ -n "$__Iter_new_tclass" ]] || _Crash "Iterator: target_class is required"
+  [[ -n "$__Iter_new_target" ]] || { _Error "Iterator: target is required"; return 1; }
+  [[ -n "$__Iter_new_tclass" ]] || { _Error "Iterator: target_class is required"; return 1; }
 
   local __Iter_new_self
   into=__Iter_new_self __boop.new target="$__Iter_new_target" target_class="$__Iter_new_tclass" position=-1

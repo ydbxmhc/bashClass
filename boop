@@ -95,7 +95,7 @@ declare -gA __boop_alias
 
 # Framework version string. Used for mismatch detection when RC files indicate
 # a preferred version. Read-only after initialization.
-declare -gr __boop_version="0.1.0"
+declare -gr __boop_version="1.0.0"
 
 # ============================================================================
 # GLOBALS - Configuration

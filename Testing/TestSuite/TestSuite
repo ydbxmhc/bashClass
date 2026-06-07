@@ -166,9 +166,9 @@ Testing.TestSuite.new() {
     esac
   done
 
-  [[ -n "$__TS_new_name" ]] || _Crash "TestSuite: name is required"
-  [[ "$__TS_new_mode" == "immediate" || "$__TS_new_mode" == "queue" ]] || 
-    _Crash "TestSuite: mode must be 'immediate' or 'queue', got '$__TS_new_mode'"
+  [[ -n "$__TS_new_name" ]] || { _Error "TestSuite: name is required"; return 1; }
+  [[ "$__TS_new_mode" == "immediate" || "$__TS_new_mode" == "queue" ]] ||
+    { _Error "TestSuite: mode must be 'immediate' or 'queue', got '$__TS_new_mode'"; return 1; }
 
   __TS_now
   __TS_new_args=( name="$__TS_new_name" mode="$__TS_new_mode" verbose="$__TS_new_verbose" 

@@ -6,46 +6,19 @@ Inline TODOs in source files should reference entries here by section name.
 
 ---
 
-## ★ Error Severity Reclassification
+## Error Severity Reclassification — DONE (2026-06-07)
 
-Priority: HIGH. The framework over-uses `_Crash` for conditions that are
-recoverable. The fatality level system (`_FatalLevel`) already exists to
-escalate `_Error` to fatal — use it. The default should be survivable.
+All data-condition `_Crash` calls reclassified to `_Error` + return 1.
+Contract documented in `docs/STANDARDS.md` "Error Handling" section.
 
-Principle: `_Crash` is for framework corruption and security violations.
-Everything else is `_Error` + return 1. The caller checks the exit code.
-Users who want strict mode set `_FatalLevel error`.
+`_Crash` now reserved exclusively for: security/injection violations,
+framework internal corruption, class/mixin declaration errors, version
+constraint failures, and abstract method stubs. Everything a caller can
+reasonably recover from uses `_Error` + return 1 so `_FatalLevel` applies.
 
-### Stay as `_Crash`:
-- Shell injection / invalid identifiers (security boundary)
-- Framework internal corruption (registry inconsistent with expectations)
-- Explicit user `_Crash` calls
-- `__boop.validate` failures
-- `__boop.registerMethod` on non-existent function
-
-### Reclassify to `_Error` + return 1:
-- `pop`/`shift` on empty collection
-- `peek` on empty stack/queue
-- Out-of-range `set`/`delete` on List
-- `destroy` on non-existent object (double-free)
-- `Config.load` / `Config.loadINI` file not found
-- `Args.parse` missing required option
-- `Args.parse` unknown option
-- Math division by zero
-- `Stream.new` unable to open file
-- Any "the data wasn't what I expected" condition
-
-### Migration path:
-1. Change each call site from `_Crash` to `_Error` + `return 1`
-2. Update tests: `assert_fail` tests that spawn subshells expecting a
-   crash need to check for non-zero exit instead
-3. Verify `_FatalLevel error` still makes all of these fatal
-4. Document the new contract in STANDARDS.md
-
-### Tests affected:
-Every `assert_fail` that tests a data-condition crash (empty pop, bad
-index, missing file, etc.) will need updating. Tests for security
-crashes (injection, invalid names) stay as-is.
+Files changed: `Collection/List/List`, `Collection/Container/Container`,
+`Math/Math`, `Text/String/String`, `SemVer/SemVer`,
+`Testing/TestSuite/TestSuite`, `Signal/Signal`. All test suites pass.
 
 ---
 
@@ -321,21 +294,21 @@ Mixins/*. (Signal, String, DateTime already well-commented.)
 
 ---
 
-## Documentation Sync Pass
+## Documentation Sync Pass — DONE (2026-06-07)
 
-Several docs reference `local -I` which the framework no longer uses:
-- `docs/STANDARDS.md`, `docs/Container.md`, `docs/comparison.md`,
-  `docs/PLAN.md`, `docs/bash_style.md`
-- Add "why we don't use local -I" section to STANDARDS.md.
+All `local -I` references removed from docs. STANDARDS.md "Inherited
+Identity Variables" section rewritten to document the actual mechanism
+(direct assignment in dispatch wrappers; framework targets bash 4.3+
+and deliberately avoids `local -I` which is bash 5.0 only).
+Files updated: STANDARDS.md, Container.md, comparison.md, bash_style.md.
 
 ---
 
-## README Accuracy Audit
+## README Accuracy Audit — DONE (2026-06-07)
 
-1. "encapsulated state" -> convention-private, not mechanism-private
-2. Helper docs (`_Super`, `_Cast`, `_Delegate`, `_Bless`) need examples
-3. "Properties are typed as strings" -> meaningless in bash, rewrite
-4. Every non-obvious claim needs a reference to docs/
+Properties section rewritten (bash stores everything as strings, no type
+system). `_Cast`/`_Delegate`/`_Bless` expanded with descriptions and
+examples. Added `See docs/boop.md` reference after `_Super` description.
 
 ---
 
