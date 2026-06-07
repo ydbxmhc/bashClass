@@ -206,13 +206,20 @@ __boop_logLevel        # global log level
 
 ### Inherited Identity Variables
 
-`_Self` and `_Class` are the two variables inherited via `local -I`
-through the dispatch chain. They are effectively reserved words.
+`_Self` and `_Class` are set by dispatch wrappers before each method call.
+They are effectively reserved words in class method code.
 
-- Every method that needs object identity starts with `local -I _Self _Class`
-- Constructors use `local -I _Class` only (no `_Self` yet)
-- Internal calls in `boop` should be explicit about setting or
-  occluding `_Self`/`_Class` unless inheritance is intentional
+The framework targets bash 4.3+ and deliberately does **not** use
+`local -I` (a bash 5.0 feature that inherits a variable's value from the
+calling scope). Dispatch wrappers instead set `_Self` and `_Class` as
+inline variables directly before calling the underlying function.
+
+- Methods read `_Self` and `_Class` as ordinary variables; the dispatch
+  wrapper has already set them correctly before the call.
+- Constructors re-localize with `local _Class="${_Class:-ClassName}"` so
+  the value is scoped to the constructor frame and defaults correctly.
+- Internal calls in `boop` should be explicit about setting or clearing
+  `_Self`/`_Class` when the dispatch wrapper won't run.
 
 ### User-Facing Variables
 

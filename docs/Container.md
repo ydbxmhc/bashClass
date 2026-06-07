@@ -195,7 +195,7 @@ that crash with a clear message:
 
 ```bash
 MyStack.new() {
-  local -I _Class; : "${_Class:=MyStack}"
+  local _Class="${_Class:-MyStack}"
   local __MyStack_new_self
   into=__MyStack_new_self __boop.new "$@"
   declare -ga "__boop_data_${__MyStack_new_self}"

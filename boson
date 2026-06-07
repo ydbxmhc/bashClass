@@ -444,7 +444,7 @@ __boson_run() {
 
     # If the expression resolves to a scalar leaf, emit it as leafname=value.
     local __boson_emit_scalar
-    into=__boson_emit_scalar $__boson_doc.get "$__boson_key"
+    [[ -n "$__boson_key" ]] && into=__boson_emit_scalar $__boson_doc.get "$__boson_key"
     if [[ -n "$__boson_emit_scalar" ]]; then
       local __boson_leaf="${__boson_key##*.}"
       printf '%s=%s\n' "$(__boson_varname "$__boson_leaf")" \
@@ -470,14 +470,19 @@ __boson_run() {
   else
     # Direct key lookup
     local __boson_val
-    into=__boson_val $__boson_doc.get "$__boson_key"
+    [[ -n "$__boson_key" ]] && into=__boson_val $__boson_doc.get "$__boson_key"
     if [[ -n "$__boson_val" ]]; then
       local __boson_leaf="${__boson_key##*.}"
       __boson_output "$__boson_val" "$(__boson_varname "$__boson_leaf")"
     else
-      # Key not found — might be an object/array (has children)
+      # Key not found — might be an object/array (has children).
+      # Root (empty key) always has children; others check keysUnder.
       local __boson_children
-      into=__boson_children $__boson_doc.keysUnder "$__boson_key"
+      if [[ -z "$__boson_key" ]]; then
+        __boson_children="1"
+      else
+        into=__boson_children $__boson_doc.keysUnder "$__boson_key"
+      fi
       if [[ -n "$__boson_children" ]]; then
         if [[ -n "$eponymous" ]]; then
           # Emit subtree using relative-path varnames, in document order.
@@ -485,15 +490,20 @@ __boson_run() {
           # variable name) and error rather than silently overwrite.
           local -n __boson_data="__boop_data_${__boson_doc}"
           local __boson_sep="."
-          local __boson_prefix="${__boson_key}${__boson_sep}"
+          local __boson_prefix=""
+          [[ -n "$__boson_key" ]] && __boson_prefix="${__boson_key}${__boson_sep}"
           local __boson_k __boson_rel __boson_vname
           local -A __boson_ep_first=()
           local -a __boson_ep_out=()
           local -i __boson_ep_nc=0
           __boson_ordered_keys
           for __boson_k in "${_boson_okeys[@]+"${_boson_okeys[@]}"}"; do
-            [[ "$__boson_k" == "$__boson_prefix"* ]] || continue
-            __boson_rel="${__boson_k#"$__boson_prefix"}"
+            if [[ -n "$__boson_prefix" ]]; then
+              [[ "$__boson_k" == "$__boson_prefix"* ]] || continue
+              __boson_rel="${__boson_k#"$__boson_prefix"}"
+            else
+              __boson_rel="$__boson_k"
+            fi
             __boson_vname="$(__boson_varname "$__boson_rel")"
             if [[ -v "__boson_ep_first[$__boson_vname]" ]]; then
               printf 'boson: -E collision: "%s" and "%s" both map to variable "%s"\n' \

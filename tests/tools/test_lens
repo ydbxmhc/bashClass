@@ -437,6 +437,18 @@ $t.assert_eq "class split with --ofs" "$__tl_out" "a-c"
 __tl_out="$(__tl_run "$(printf 'a\nb\nc')" --chars '1' --ors ' ')"
 $t.assert_eq "--ors space joins records" "$__tl_out" "a b c "
 
+# --ors with --fields mode (previously only tested with --chars)
+__tl_out="$(printf 'a:b:c\nd:e:f\ng:h:i\n' | "$__tl_lens" --fields '2' -f : --ors ',')"
+$t.assert_eq "--ors with --fields mode" "$__tl_out" "b,e,h,"
+
+# --rec-sep alias for --ors
+__tl_out="$(printf 'a:b:c\nd:e:f\n' | "$__tl_lens" --fields '1' -f : --rec-sep ';')"
+$t.assert_eq "--rec-sep alias works" "$__tl_out" "a;d;"
+
+# multi-char --ofs
+__tl_out="$(__tl_run 'a:b:c' --fields '1,2,3' -f : --ofs ' -> ')"
+$t.assert_eq "multi-char --ofs" "$__tl_out" "a -> b -> c"
+
 # ============================================================================
 # Byte-seek (--rec-after-byte / --start-at-byte)
 # ============================================================================
@@ -468,5 +480,18 @@ $t.assert_fail "both seeks mutually exclusive" \
   bash -c "cd '$__tl_root'; printf 'a\nb\n' | ./lens --rec-after-byte 1 --start-at-byte 1 --first 1"
 $t.assert_fail "seek rejects non-positive" \
   bash -c "cd '$__tl_root'; printf 'a\nb\n' | ./lens --start-at-byte 0 --first 1"
+
+# rec-after-byte with --match: after byte 6 (resync at 5), match lines starting with "1"
+# Records 5-20, matching ^1: 10 11 12 13 14 15 16 17 18 19
+__tl_out="$(printf '%s\n' "$__tl_seekdata" | "$__tl_lens" --rec-after-byte 6 --match '^1')"
+$t.assert_eq "rec-after-byte with --match" "$__tl_out" "$(printf '%s\n' 10 11 12 13 14 15 16 17 18 19)"
+
+# rec-after-byte with --count: records 5-20 = 16 records
+__tl_out="$(printf '%s\n' "$__tl_seekdata" | "$__tl_lens" --rec-after-byte 6 --count)"
+$t.assert_eq "rec-after-byte with --count" "$__tl_out" "16"
+
+# start-at-byte with --last: start at byte 7 ("4"), last 3 of [4..20] = 18 19 20
+__tl_out="$(printf '%s\n' "$__tl_seekdata" | "$__tl_lens" --start-at-byte 7 --last 3)"
+$t.assert_eq "start-at-byte with --last" "$__tl_out" "$(printf '%s\n' 18 19 20)"
 
 $t.summary

@@ -132,6 +132,20 @@ __tb_eval_out="$(eval "$(__tb_run -E '.database.host')"; printf '%s' "$host")"
 $t.assert_eq "eponymous output sources cleanly" "$__tb_eval_out" 'localhost'
 
 # ============================================================================
+# Emit: edge cases
+# ============================================================================
+
+$t.section "Emit edge cases"
+
+# --emit '.' (root expression) must not produce a bad-array-subscript error
+# and must emit all root-level scalar keys
+__tb_emit_root="$(__tb_run --emit '.' 2>&1)"
+$t.assert_eq "emit root has no stderr" \
+  "$(printf '%s' "$__tb_emit_root" | grep -c 'bad array')" '0'
+$t.assert_eq "emit root includes name" \
+  "$(printf '%s\n' "$__tb_emit_root" | grep '^name=')" 'name=boop'
+
+# ============================================================================
 # Error / usage cases
 # ============================================================================
 
@@ -143,6 +157,10 @@ $t.assert_fail "raw + emit exclusive" \
 
 $t.assert_fail "emit + into exclusive" \
   bash -c "cd '$__tb_root'; ./boson --emit --into=x '.name' < '$__tb_json'"
+
+# -E collision detection: two keys that sanitize to the same variable name
+$t.assert_fail "-E collision exits nonzero" \
+  bash -c "cd '$__tb_root'; printf '{\"a_b\":1,\"a\":{\"b\":2}}' | ./boson -E '.'"
 
 # ============================================================================
 # Non-leaf default output (JSON re-emission)

@@ -189,8 +189,22 @@ the methods to expose (method dispatch uses this). Everything else is inheritanc
 still operates on the right data. The method resolution order (MRO) cache means
 the lookup cost is paid once per class/method pair and then zero thereafter.
 
-You can also use `_Cast` to dispatch as a specific class, and `_Delegate` to
-redirect method calls to another object entirely for composition.
+See [docs/boop.md](docs/boop.md) for the full dispatch and return system reference.
+
+A few other dispatch helpers worth knowing:
+
+**`_Cast ClassName`** dispatches the next method call through a specific class
+in the hierarchy — useful when you need to bypass the MRO and call a particular
+ancestor's version directly, without changing `_Self`.
+
+**`_Delegate $other`** redirects all method lookups to a different object. The
+method runs in the context of `$other` — its `_Self`, its properties. Useful for
+composition patterns where one object borrows another's behavior wholesale.
+
+**`_Bless $obj ClassName`** changes an object's registered class without
+reconstructing it. Useful for state machines and type-narrowing after validation.
+
+See [docs/boop.md](docs/boop.md) for the full dispatch reference.
 
 ---
 
@@ -380,10 +394,12 @@ $c.set size 10               # mutate in place
 into=v $c.get size           # "10"
 ```
 
-Properties are stored as strings — bash has no type system. A value is
-interpreted by context: arithmetic expansion, pattern matching, or string
-operations as needed. `$(( v + 1 ))` treats a property as an integer;
-`[[ $v =~ ^[0-9]+$ ]]` treats it as a pattern.
+Properties are bash variables — bash stores everything as strings, so
+there are no int, float, or bool types at the storage level. Values are
+interpreted by how they're used: `$(( v + 1 ))` treats `v` as an integer,
+`[[ $v =~ ^[0-9]+$ ]]` tests it as a string pattern, `${v^^}` transforms
+it as text. The same property can legitimately be all three in different
+parts of the same script.
 
 ### Type Checking
 

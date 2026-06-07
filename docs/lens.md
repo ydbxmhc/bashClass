@@ -367,6 +367,23 @@ lens --fields '1,\,,2,\,,3' -f : --ofs '' data    # "f1,f2,f3"
 lens --fields '1; , ;2' -f : --spec-sep ';' --ofs '' data   # "f1 , f2"
 ```
 
+### Custom output record separator (--ors / --rec-sep)
+
+`--ors` (alias `--rec-sep`) overrides the newline that normally terminates each
+output record. Combine it with `--fields` to reformat output for pipelines that
+expect a different delimiter:
+
+```bash
+# Emit usernames tab-separated on one line
+lens --fields 1 -f : --ors $'\t' /etc/passwd
+
+# --rec-sep is identical; choose whichever reads more clearly
+lens --fields 1 -f : --rec-sep $'\t' /etc/passwd
+
+# NUL-delimited output for xargs -0 (safe with filenames containing spaces)
+lens --match '\.log$' filelist.txt --ors $'\0' | xargs -0 gzip
+```
+
 ### Scanning the tail of a large file (byte-seek)
 
 ```bash
@@ -375,6 +392,9 @@ lens --rec-after-byte 8000000 --last 50 huge.log
 
 # Same idea on a pipe (no seekable file needed)
 producer | lens --rec-after-byte 100000 --match ERROR
+
+# Count records in the tail section (no tilde prefix with --count)
+lens --rec-after-byte 8000000 --count huge.log
 
 # Byte-exact positioning (first record may be torn)
 lens --start-at-byte 4096 --first 3 data.bin
