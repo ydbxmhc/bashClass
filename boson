@@ -537,9 +537,12 @@ if [[ "$__boson_expr" == *' | '* ]]; then
   # Evaluate a select() predicate against a context key prefix.
   # Returns 0 (pass) or 1 (reject).
   # Supported forms:
-  #   .field OP value   — field comparison (OP: == != < > <= >=)
-  #   . OP value        — whole-element comparison
-  #   .field            — truthy (.field is non-empty, non-null, non-false)
+  #   -n .field         — non-empty string (bash -n semantics; "false" passes)
+  #   -z .field         — empty or missing
+  #   has(.field)       — key present in document (even if null/false/"")
+  #   .field OP rhs     — comparison (OP: == != < > <= >= =~)
+  #   . OP rhs          — whole-element comparison
+  #   .field            — truthy (non-empty, non-null, non-false)
   #   .                 — truthy (whole element)
   __boson_pipe_predicate() {
     local __boson_pp_pred="$1" __boson_pp_ctx="$2"
@@ -547,8 +550,49 @@ if [[ "$__boson_expr" == *' | '* ]]; then
     while [[ "$__boson_pp_pred" == ' '* ]]; do __boson_pp_pred="${__boson_pp_pred:1}"; done
     while [[ "$__boson_pp_pred" == *' ' ]]; do __boson_pp_pred="${__boson_pp_pred%?}"; done
 
+    local __boson_pp_key __boson_pp_val
+
+    # Unary -n / -z
+    if [[ "$__boson_pp_pred" =~ ^(-n|-z)[[:space:]]+(.+)$ ]]; then
+      local __boson_pp_uop="${BASH_REMATCH[1]}" __boson_pp_uf="${BASH_REMATCH[2]}"
+      if [[ "$__boson_pp_uf" == "." ]]; then
+        __boson_pp_key="$__boson_pp_ctx"
+      else
+        local __boson_pp_ufn="${__boson_pp_uf#.}"
+        __boson_pp_ufn="${__boson_pp_ufn//\[/.}"; __boson_pp_ufn="${__boson_pp_ufn//\]/}"
+        if [[ -n "$__boson_pp_ctx" ]]; then
+          __boson_pp_key="${__boson_pp_ctx}.${__boson_pp_ufn}"
+        else
+          __boson_pp_key="$__boson_pp_ufn"
+        fi
+      fi
+      __boson_pp_val="${__boson_pp_data[$__boson_pp_key]:-}"
+      case "$__boson_pp_uop" in
+        -n) [[ -n "$__boson_pp_val" ]]; return ;;
+        -z) [[ -z "$__boson_pp_val" ]]; return ;;
+      esac
+    fi
+
+    # has(.field) — key exists in document regardless of value
+    if [[ "$__boson_pp_pred" =~ ^has\((.+)\)$ ]]; then
+      local __boson_pp_hf="${BASH_REMATCH[1]}"
+      if [[ "$__boson_pp_hf" == "." ]]; then
+        __boson_pp_key="$__boson_pp_ctx"
+      else
+        local __boson_pp_hfn="${__boson_pp_hf#.}"
+        __boson_pp_hfn="${__boson_pp_hfn//\[/.}"; __boson_pp_hfn="${__boson_pp_hfn//\]/}"
+        if [[ -n "$__boson_pp_ctx" ]]; then
+          __boson_pp_key="${__boson_pp_ctx}.${__boson_pp_hfn}"
+        else
+          __boson_pp_key="$__boson_pp_hfn"
+        fi
+      fi
+      [[ -v "__boop_data_${__boson_doc}[$__boson_pp_key]" ]]; return
+    fi
+
+    # Binary: .field OP rhs  (or . OP rhs)
     local __boson_pp_field="" __boson_pp_op="truthy" __boson_pp_rhs=""
-    if [[ "$__boson_pp_pred" =~ ^(\.[a-zA-Z_][a-zA-Z0-9_]*|\.)?[[:space:]]*(==|!=|>=|<=|>|<)[[:space:]]*(.+)$ ]]; then
+    if [[ "$__boson_pp_pred" =~ ^(\.[a-zA-Z_][a-zA-Z0-9_]*|\.)?[[:space:]]*(==|!=|>=|<=|>|<|=~)[[:space:]]*(.+)$ ]]; then
       __boson_pp_field="${BASH_REMATCH[1]}"
       __boson_pp_op="${BASH_REMATCH[2]}"
       __boson_pp_rhs="${BASH_REMATCH[3]}"
@@ -558,7 +602,6 @@ if [[ "$__boson_expr" == *' | '* ]]; then
       __boson_pp_field="$__boson_pp_pred"
     fi
 
-    local __boson_pp_key __boson_pp_val
     if [[ -n "$__boson_pp_field" && "$__boson_pp_field" != "." ]]; then
       local __boson_pp_fname="${__boson_pp_field:1}"
       __boson_pp_fname="${__boson_pp_fname//\[/.}"
@@ -579,6 +622,7 @@ if [[ "$__boson_expr" == *' | '* ]]; then
         return ;;
       ==) [[ "$__boson_pp_val" == "$__boson_pp_rhs" ]]; return ;;
       !=) [[ "$__boson_pp_val" != "$__boson_pp_rhs" ]]; return ;;
+      =~) [[ "$__boson_pp_val" =~ $__boson_pp_rhs ]]; return ;;
       '<') (( ${__boson_pp_val:-0} < ${__boson_pp_rhs:-0} )); return ;;
       '>') (( ${__boson_pp_val:-0} > ${__boson_pp_rhs:-0} )); return ;;
       '<=') (( ${__boson_pp_val:-0} <= ${__boson_pp_rhs:-0} )); return ;;
