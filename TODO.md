@@ -258,19 +258,23 @@ same backend as Data.JSON. API mirrors Config.
 "Bash Oriented Scripting Object Notation" — a jq-like query engine
 for structured data. Operates on any Map.Fast (JSON, YAML, Config).
 
-STATUS (2026-06-04): Stage 1 shipped as the `boson` CLI script, plus
-sourceable output modes that weren't in the original roadmap. 26 assertions
-in `tests/tools/test_boson`. Stages 2-5 (select/pipe/construction/recursive
-descent) remain. The standalone `Data.Boson` query *class* is not yet
-extracted — the query logic currently lives in the `boson` script.
+STATUS (2026-06-07): Stage 1 and Stage 2 shipped. Stage 1: path/iteration/raw
++ sourceable output modes (26 assertions in `tests/tools/test_boson`). Stage 2:
+pipe chaining + `select()` with full predicate set — `==`, `!=`, `<`, `>`,
+`<=`, `>=`, `=~` (ERE), `-n`/`-z` (unary string tests), `has()` (key
+existence). Non-leaf default output now re-emits JSON via
+`__Data_JSON_stringifyPrefix`. Stages 3-5 remain. The standalone `Data.Boson`
+query *class* is not yet extracted — the query logic lives inline in `boson`.
 
 ```bash
 # CLI usage (working today)
 boson '.users[0].name' < data.json
-boson -r '.users[].email' < data.json    # raw, one per line
-boson --emit '.database' < config.json   # sourceable assignments
+boson -r '.users[].email' < data.json                       # raw, one per line
+boson --emit '.database' < config.json                      # sourceable assignments
 boson --into=host '.database.host' < c.json
-boson -E '.database' < c.json            # eponymous (leaf-name vars)
+boson -E '.database' < c.json                               # eponymous (leaf-name vars)
+boson -r '.users[] | select(.age > 30) | .name' < d.json   # pipe + select
+boson -r '.items[] | select(.tag =~ "^err") | .msg' < d.json  # regex predicate
 ```
 
 ### Staged Roadmap
@@ -279,27 +283,24 @@ boson -E '.database' < c.json            # eponymous (leaf-name vars)
 |-------|----------|--------|
 | 1 | Path expressions (`.foo.bar[2]`), array iteration (`[]`), raw output | DONE |
 | — | Sourceable output: `--emit`, `--into=VAR`, `-E`/`--eponymous` | DONE (doc-order preserved) |
-| 2 | Select with comparisons (`select(.age > 30)`), pipe chaining | TODO |
+| 2 | Pipe chaining, `select()` with comparisons, `-n`/`-z`, `has()`, `=~` | DONE |
 | 3 | String interpolation (`"Hello \(.name)"`), object construction (`{k: .v}`) | TODO |
 | 4 | map/reduce/group_by, sort_by | TODO |
 | 5 | Recursive descent (`..`), multiple outputs | TODO |
 
 ### What exists already:
-- `boson` CLI — Stage 1 path/iteration/raw + sourceable output modes
+- `boson` CLI — Stage 1+2 complete
 - `Data.JSON.parse` — recursive descent parser → Map.Fast
-- `Data.JSON.stringify` — serialize Map.Fast → JSON
+- `Data.JSON.stringify` / `__Data_JSON_stringifyPrefix` — serialize Map.Fast → JSON
 - `Map.Fast.get` — point lookups by compound key
 - `Map.Fast.keysUnder` — enumerate children at a prefix
 - `List.filter/map/reduce/do` — functional collection ops
 - `Math.DO` — expression tokenizer/evaluator (reusable for comparisons)
 
-### What needs building (Stage 2+):
-- Comparison expression evaluator for select predicates
-- Pipe chaining between query stages
-- Construction syntax parser (mini-language for building output objects)
+### What needs building (Stage 3+):
+- String interpolation parser: find `\(...)` spans, substitute resolved values
+- Object construction parser: `{key: .path, ...}` → build JSON from context
 - Pure-bash sort for sort_by (quicksort, ~40 lines)
-- Object/array re-emission in default mode (currently prints `{...} (N keys)`
-  placeholder for non-leaf nodes)
 - Extract the format-agnostic query engine into a `Data.Boson` class so
   it's reusable as a library, not only via the CLI
 
