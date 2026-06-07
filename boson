@@ -134,10 +134,16 @@ boson — Caveats
       · Use --emit instead (same relative-path naming, fully explicit)
       · Refactor the JSON to remove the ambiguous key names
 
-  Predicate numeric comparisons (< > <= >=)
-    These use integer arithmetic. Floating-point values are truncated;
-    non-numeric field values are treated as 0. Use == or =~ for string
-    comparisons.
+  Predicate numeric comparisons (< > <= >= -lt -gt -le -ge -eq -ne)
+    All use integer arithmetic. Floating-point values are truncated;
+    non-numeric strings are coerced to 0; missing or empty fields are
+    also coerced to 0. This means:
+
+      select(.count -eq 0)   matches records where count is absent
+      select(.count == "0")  does NOT match absent count fields
+
+    Use == / != for string comparisons, -eq / -ne when you specifically
+    want integer semantics and understand the missing-field coercion.
 
   Pipe separator requires spaces
     The pipe separator is ' | ' (space-pipe-space). A bare | without
@@ -620,7 +626,7 @@ if [[ "$__boson_expr" == *' | '* ]]; then
 
     # Binary: .field OP rhs  (or . OP rhs)
     local __boson_pp_field="" __boson_pp_op="truthy" __boson_pp_rhs=""
-    if [[ "$__boson_pp_pred" =~ ^(\.[a-zA-Z_][a-zA-Z0-9_]*|\.)?[[:space:]]*(==|!=|>=|<=|>|<|=~)[[:space:]]*(.+)$ ]]; then
+    if [[ "$__boson_pp_pred" =~ ^(\.[a-zA-Z_][a-zA-Z0-9_]*|\.)?[[:space:]]*(==|!=|>=|<=|>|<|=~|-eq|-ne|-ge|-le|-gt|-lt)[[:space:]]*(.+)$ ]]; then
       __boson_pp_field="${BASH_REMATCH[1]}"
       __boson_pp_op="${BASH_REMATCH[2]}"
       __boson_pp_rhs="${BASH_REMATCH[3]}"
@@ -651,10 +657,12 @@ if [[ "$__boson_expr" == *' | '* ]]; then
       ==) [[ "$__boson_pp_val" == "$__boson_pp_rhs" ]]; return ;;
       !=) [[ "$__boson_pp_val" != "$__boson_pp_rhs" ]]; return ;;
       =~) [[ "$__boson_pp_val" =~ $__boson_pp_rhs ]]; return ;;
-      '<') (( ${__boson_pp_val:-0} < ${__boson_pp_rhs:-0} )); return ;;
-      '>') (( ${__boson_pp_val:-0} > ${__boson_pp_rhs:-0} )); return ;;
-      '<=') (( ${__boson_pp_val:-0} <= ${__boson_pp_rhs:-0} )); return ;;
-      '>=') (( ${__boson_pp_val:-0} >= ${__boson_pp_rhs:-0} )); return ;;
+      '<'|-lt) (( ${__boson_pp_val:-0} <  ${__boson_pp_rhs:-0} )); return ;;
+      '>'|-gt) (( ${__boson_pp_val:-0} >  ${__boson_pp_rhs:-0} )); return ;;
+      '<='|-le) (( ${__boson_pp_val:-0} <= ${__boson_pp_rhs:-0} )); return ;;
+      '>='|-ge) (( ${__boson_pp_val:-0} >= ${__boson_pp_rhs:-0} )); return ;;
+      -eq) (( ${__boson_pp_val:-0} == ${__boson_pp_rhs:-0} )); return ;;
+      -ne) (( ${__boson_pp_val:-0} != ${__boson_pp_rhs:-0} )); return ;;
     esac
     return 1
   }

@@ -73,13 +73,27 @@ for scalar iteration). String values on the right-hand side may be quoted
 | `-n .field` | non-empty string (bash `-n` semantics; `"false"` passes) |
 | `-z .field` | empty or missing value |
 | `has(.field)` | key is present in document (even if `null`, `false`, or `""`) |
-| `.field == VALUE` | string equality |
-| `.field != VALUE` | string inequality |
-| `.field < N` | numeric less-than |
-| `.field > N` | numeric greater-than |
-| `.field <= N` | numeric less-than-or-equal |
-| `.field >= N` | numeric greater-than-or-equal |
+| `.field == VALUE` | **string** equality (byte-for-byte) |
+| `.field != VALUE` | **string** inequality |
+| `.field -eq N` | **numeric** equality — missing/empty field coerces to 0 |
+| `.field -ne N` | **numeric** inequality |
+| `.field < N` or `.field -lt N` | numeric less-than |
+| `.field > N` or `.field -gt N` | numeric greater-than |
+| `.field <= N` or `.field -le N` | numeric less-than-or-equal |
+| `.field >= N` or `.field -ge N` | numeric greater-than-or-equal |
 | `.field =~ PAT` | ERE regex match — covers startswith (`^pfx`), endswith (`sfx$`), contains |
+
+**`==` vs `-eq`:** `==` compares bytes; `-eq` compares integers. For
+well-formed JSON numbers they usually agree, but they differ in two
+important cases:
+
+- **Missing or empty field:** `-eq 0` matches a record where the field is
+  absent (empty string coerces to 0); `== "0"` does not.
+- **Leading zeros / whitespace:** `"007" -eq 7` passes; `"007" == "7"` does not.
+
+Use `==` when the field is a string or when exact byte identity matters.
+Use `-eq` / `-ne` when you're comparing JSON numbers and want integer
+semantics, particularly when the field might be absent in some records.
 
 The `-n`/`-z` distinction from truthy matters when a field holds the
 string `"false"` or `"0"`: truthy rejects both, `-n` passes them (the
@@ -257,9 +271,12 @@ newlines will lose them when assigned to a shell variable.
 
 ### Predicate numeric comparisons
 
-`<`, `>`, `<=`, `>=` use integer arithmetic (`(( ))`). Floating-point
-values are truncated; non-numeric field values are treated as 0. Use `==`
-and `=~` for string comparisons.
+`<`/`-lt`, `>`/`-gt`, `<=`/`-le`, `>=`/`-ge`, `-eq`, `-ne` all use
+integer arithmetic (`(( ))`). Floating-point values are truncated;
+non-numeric strings are coerced to 0; **missing or empty fields are also
+coerced to 0**, which means `select(.count -eq 0)` will match records
+where `count` is absent. Use `== "0"` (string equality) if you want to
+match the literal value `0` without catching missing fields.
 
 ### Pipe spaces are required
 
