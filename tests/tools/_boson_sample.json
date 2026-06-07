@@ -12,8 +12,15 @@
   },
   "users": [
     { "name": "Alice", "email": "alice@example.com", "age": 30 },
-    { "name": "Bob", "email": "bob@example.com", "age": 25 }
+    { "name": "Bob",   "email": "bob@example.com",   "age": 25 }
   ],
   "tags": ["alpha", "beta", "gamma"],
-  "scores": [10, 20, 30]
+  "scores": [10, 20, 30],
+  "items": [
+    { "name": "apple",    "type": "fruit", "price": 1, "sale": true,  "note": "fresh" },
+    { "name": "carrot",   "type": "veg",   "price": 2, "sale": false, "note": ""      },
+    { "name": "banana",   "type": "fruit", "price": 3, "sale": true                   },
+    { "name": "broccoli", "type": "veg",   "price": 0, "sale": false                  },
+    { "name": "mango",    "type": "fruit"                                              }
+  ]
 }
