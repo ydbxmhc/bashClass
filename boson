@@ -48,8 +48,22 @@ boson — Examples
     boson '.users[]' data.json             # all array elements (JSON)
     boson '.users[].name' data.json        # extract field from each
 
+  Non-leaf output (re-emits JSON):
+    boson '.database' < config.json        # {"host":"localhost","port":5432}
+    boson '.users[0]' < data.json          # {"name":"Alice","age":30}
+
   Raw output (-r):
     boson -r '.users[].email' data.json    # one email per line, unquoted
+
+  Pipe expressions and filtering ( | select(...) ):
+    boson -r '.users[] | select(.active) | .name' data.json
+    boson -r '.orders[] | select(.total > 100) | .id' data.json
+    boson -r '.items[] | select(.type == "fruit") | .name' data.json
+    boson -r '.files[] | select(.name =~ "\.sh$") | .name' data.json
+    boson -r '.users[] | select(has(.email)) | .email' data.json
+    boson -r '.items[] | select(-n .desc) | .name' data.json   # non-empty
+    boson -r '.items[] | select(-z .desc) | .name' data.json   # empty/missing
+    boson --into=hits '.logs[] | select(.level =~ "^err") | .msg' data.json
 
   Sourceable output, pathed from given root point (--emit):
     boson --emit '.' cfg.json          # dev_db_pw="Th3_p455w0rd"
@@ -61,8 +75,10 @@ boson — Examples
     boson --into=names '.users[].id' d.json    # → names=("Alice" "Bob")
 
   Eponymous tree tracing *without* object path (--eponymous / -E):
-    boson -E '.dev.db' cfg.json        # → host=localhost\npw="Th3_p455w0rd"
+    boson -E '.dev.db' cfg.json        # → host=localhost  pw="Th3_p455w0rd"
     boson -E '.users[].name' d.json    # → name=("Alice" "Bob")
+
+  See --caveats for gotchas (NUL bytes, -E collisions, numeric predicates).
 EOF
     exit 0 ;;
   --about)
@@ -118,6 +134,15 @@ boson — Caveats
       · Use --emit instead (same relative-path naming, fully explicit)
       · Refactor the JSON to remove the ambiguous key names
 
+  Predicate numeric comparisons (< > <= >=)
+    These use integer arithmetic. Floating-point values are truncated;
+    non-numeric field values are treated as 0. Use == or =~ for string
+    comparisons.
+
+  Pipe separator requires spaces
+    The pipe separator is ' | ' (space-pipe-space). A bare | without
+    surrounding spaces is not recognized and produces unexpected results.
+
   $() strips trailing newlines
     All captures use $(...) substitution, which bash unconditionally strips
     trailing newlines from. A JSON string ending in one or more newlines will
@@ -135,9 +160,12 @@ bareKV = false
 boson [-r] [--emit | --into=VAR | --eponymous] EXPR [file]
 
   Query JSON with jq-style path expressions. Reads stdin or file.
+  EXPR may be a single path or a pipeline of stages joined by " | "
+  (space-pipe-space). See --examples.
 
   (default)
     Type-aware: strings quoted, numbers/booleans/null bare.
+    Non-leaf nodes (objects/arrays) are re-emitted as JSON.
 
   -r, --raw
     Unquoted values; one per line when iterating.
@@ -147,7 +175,7 @@ boson [-r] [--emit | --into=VAR | --eponymous] EXPR [file]
     key path relative to EXPR, dots replaced by underscores.
 
   --into=VAR
-    Scalar → VAR=value; iteration → VAR=(…). You choose the name.
+    Scalar → VAR=value; iteration or pipe → VAR=(…). You choose the name.
 
   -E, --eponymous
     Subtrees like --emit; iteration → array named by the source field.

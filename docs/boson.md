@@ -2,7 +2,7 @@
 
 ## NAME
 
-**boson** — query JSON with jq-style path expressions
+**boson** — query JSON with jq-style path expressions and pipelines
 
 ## SYNOPSIS
 
@@ -11,12 +11,13 @@ boson [-r | -e | --into=VAR | -E] EXPR [FILE]
 boson (-h | --help | --examples | --caveats | --about | --boop)
 ```
 
-EXPR is a path expression. With no FILE, boson reads JSON from standard input.
+EXPR is a path expression, or a pipeline of stages joined by ` | `.
+With no FILE, boson reads JSON from standard input.
 
 ## DESCRIPTION
 
-**boson** parses a JSON document into a flat key-value store and resolves a
-path expression against it, like a small `jq`. It reads standard input or a
+**boson** parses a JSON document into a flat key-value store and evaluates
+an expression against it, like a small `jq`. It reads standard input or a
 single file given as the final argument, and writes the selected value(s) in
 one of several output formats.
 
@@ -26,12 +27,9 @@ The name stands for "Bash Oriented Scripting Object Notation."
 > string value containing a NUL will be silently truncated at the first one.
 > This applies to all output modes. See CAVEATS.
 
-> **Status.** Path expressions, array iteration, output modes, and non-leaf
-> JSON re-emission are implemented and tested. The richer jq surface —
-> `select(...)`, pipe chaining, object construction, `map`/`reduce`/`sort_by`,
-> recursive descent (`..`) — is on the roadmap; see [TODO.md](../TODO.md).
+### Path expressions
 
-### Path syntax
+A path expression selects a value or set of values from the document.
 
 | Expression | Meaning |
 |------------|---------|
@@ -41,14 +39,59 @@ The name stands for "Bash Oriented Scripting Object Notation."
 | `.arr[]` | Iterate all array elements (one per line) |
 | `.obj[].name` | Iterate an array, extract `.name` from each element |
 
-Internally a path becomes a compound key — `.users[0].email` → `users.0.email`.
-Array iteration (`[]`) enumerates the numeric children under a prefix, in index
-order. A key that does not exist yields `null`.
+Internally a path becomes a compound key — `.users[0].email` →
+`users.0.email`. Array iteration (`[]`) enumerates the numeric children
+under a prefix, in index order. A key that does not exist yields `null`.
+A non-leaf node (an object or array) is re-emitted as JSON.
+
+### Pipe expressions
+
+Stages are joined by ` | ` (spaces required). Each stage receives the
+set of contexts produced by the previous one and transforms or filters them:
+
+```bash
+boson -r '.users[] | select(.active) | .name' < data.json
+```
+
+The two stage types are:
+
+- **Path** — any path expression from the table above; advances every
+  context by that path relative to where it currently sits.
+- **`select(PRED)`** — filter; keeps only the contexts where PRED is true.
+
+### Predicates
+
+Predicates are used inside `select(...)`. The field reference may be
+`.field` (relative to the current context) or `.` (the whole element,
+for scalar iteration). String values on the right-hand side may be quoted
+(`"value"`) or bare. Numeric comparisons use integer arithmetic.
+
+| Form | Passes when |
+|------|-------------|
+| `.field` | non-empty, not `null`, not `false` (truthy) |
+| `.` | current element is truthy |
+| `-n .field` | non-empty string (bash `-n` semantics; `"false"` passes) |
+| `-z .field` | empty or missing value |
+| `has(.field)` | key is present in document (even if `null`, `false`, or `""`) |
+| `.field == VALUE` | string equality |
+| `.field != VALUE` | string inequality |
+| `.field < N` | numeric less-than |
+| `.field > N` | numeric greater-than |
+| `.field <= N` | numeric less-than-or-equal |
+| `.field >= N` | numeric greater-than-or-equal |
+| `.field =~ PAT` | ERE regex match — covers startswith (`^pfx`), endswith (`sfx$`), contains |
+
+The `-n`/`-z` distinction from truthy matters when a field holds the
+string `"false"` or `"0"`: truthy rejects both, `-n` passes them (the
+string is non-empty).
+
+The `has` / truthy distinction matters when a field exists but holds
+`null` or `false`: `has(.field)` passes, `.field` (truthy) does not.
 
 ## OPTIONS
 
-The output modes are mutually exclusive; choose at most one. With none, boson
-uses type-aware default output.
+The output modes are mutually exclusive; choose at most one. With none,
+boson uses type-aware default output.
 
 | Short | Long | Meaning |
 |-------|------|---------|
@@ -56,7 +99,7 @@ uses type-aware default output.
 | `-r` | `--raw` | Raw values, unquoted (one per line when iterating) |
 | `-e` | `--emit` | Every leaf under EXPR as sourceable `var=value` lines |
 | | `--into=VAR` | The value as `VAR=value`, or an array as `VAR=(...)` |
-| `-E` | `--eponymous` | Like `--emit`; errors on variable name collisions — see `--caveats` |
+| `-E` | `--eponymous` | Like `--emit`; errors on variable name collisions — see CAVEATS |
 
 Help:
 
@@ -92,6 +135,17 @@ boson -r '.users[].email' < data.json # one unquoted email per line
 boson '.users[].age' < data.json      # a field extracted from each element
 ```
 
+### Non-leaf output
+
+When an expression resolves to an object or array rather than a scalar,
+boson re-emits it as JSON:
+
+```bash
+boson '.database' < config.json       # {"host":"localhost","port":5432,...}
+boson '.users[0]' < data.json         # {"name":"Alice","age":30}
+boson '.users[]' < data.json          # one JSON object per line
+```
+
 ### Type-aware default output
 
 ```bash
@@ -99,6 +153,42 @@ boson '.count'   < d.json   # 42      (number, bare)
 boson '.active'  < d.json   # true    (boolean, bare)
 boson '.nothing' < d.json   # null
 boson '.name'    < d.json   # "boop"  (string, quoted)
+```
+
+### Pipe expressions and filtering
+
+Pipe stages filter or transform an iterating result set. The output mode
+(`-r`, `--into`, etc.) applies to the final stage.
+
+```bash
+# Keep users where active is true, extract name
+boson -r '.users[] | select(.active) | .name' < data.json
+
+# Numeric comparison
+boson '.orders[] | select(.total > 100) | .id' < data.json
+
+# String equality
+boson -r '.items[] | select(.type == "fruit") | .name' < data.json
+
+# Regex — startswith, endswith, or contains
+boson -r '.files[] | select(.name =~ "\.sh$") | .name' < data.json
+boson -r '.logs[]  | select(.msg  =~ "error|warn") | .msg' < data.json
+
+# Key existence — field present even if null or false
+boson -r '.users[] | select(has(.email)) | .email' < data.json
+
+# Non-empty string — field is set and not empty (unlike truthy, "false" passes)
+boson -r '.items[] | select(-n .description) | .name' < data.json
+
+# Missing or empty — inverse of the above
+boson -r '.items[] | select(-z .description) | .name' < data.json
+
+# Collect filtered results into a shell array
+boson --into=active '.users[] | select(.active) | .name' < data.json
+# → active=(Alice Carol)
+
+# Non-leaf output through a pipe
+boson '.users[] | select(.active)' < data.json   # one JSON object per line
 ```
 
 ### Sourceable output for shell scripts
@@ -165,6 +255,18 @@ All variable captures use `$(...)` substitution, which bash unconditionally
 strips trailing newlines from. A JSON string value ending in one or more
 newlines will lose them when assigned to a shell variable.
 
+### Predicate numeric comparisons
+
+`<`, `>`, `<=`, `>=` use integer arithmetic (`(( ))`). Floating-point
+values are truncated; non-numeric field values are treated as 0. Use `==`
+and `=~` for string comparisons.
+
+### Pipe spaces are required
+
+The pipe separator is ` | ` — a space, pipe, space. A bare `|` without
+surrounding spaces is not recognized and will be treated as part of the
+expression, producing unexpected results.
+
 ## EXIT STATUS
 
 - **0** — query succeeded; a value (or `null`) was written.
@@ -184,8 +286,8 @@ dependable fallback on stripped containers and minimal hosts where those are
 absent.
 
 The query engine operates on the flat key-value store, not on JSON syntax, so
-the same engine is intended to serve YAML and INK/Config sources once those
-parsers feed the same backend. For repeated use, bundle boson with `collider`
+the same engine is intended to serve YAML and Config sources once those parsers
+feed the same backend. For repeated use, bundle boson with `collider`
 (`collider boson` → `bundle-boson`) to avoid the per-invocation framework load.
 
 ## SEE ALSO
