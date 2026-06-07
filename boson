@@ -495,4 +495,197 @@ __boson_run() {
   $__boson_doc.destroy
 }
 
-__boson_run
+# ============================================================================
+# Stage 2: pipe chaining + select() predicate filtering
+# Only compiled when the expression contains ' | '.
+# ============================================================================
+
+if [[ "$__boson_expr" == *' | '* ]]; then
+
+  declare -a _boson_pipe_indices=()
+
+  # Enumerate sorted numeric children of prefix into _boson_pipe_indices[].
+  __boson_pipe_indices() {
+    local __boson_pi_pfx="$1."
+    local -n __boson_pi_data="__boop_data_${__boson_doc}"
+    local __boson_pi_k __boson_pi_rest __boson_pi_idx
+    local -A __boson_pi_seen=()
+    for __boson_pi_k in "${!__boson_pi_data[@]}"; do
+      [[ "$__boson_pi_k" == "$__boson_pi_pfx"* ]] || continue
+      __boson_pi_rest="${__boson_pi_k#"$__boson_pi_pfx"}"
+      __boson_pi_idx="${__boson_pi_rest%%"."*}"
+      [[ "$__boson_pi_idx" =~ ^[0-9]+$ ]] || continue
+      __boson_pi_seen[$__boson_pi_idx]=1
+    done
+    local -a __boson_pi_arr=()
+    for __boson_pi_idx in "${!__boson_pi_seen[@]}"; do
+      __boson_pi_arr+=("$__boson_pi_idx")
+    done
+    local -i __boson_pi_i __boson_pi_j __boson_pi_tmp
+    for (( __boson_pi_i = 1; __boson_pi_i < ${#__boson_pi_arr[@]}; __boson_pi_i++ )); do
+      __boson_pi_tmp=${__boson_pi_arr[$__boson_pi_i]}
+      __boson_pi_j=$__boson_pi_i
+      while (( __boson_pi_j > 0 && __boson_pi_arr[__boson_pi_j-1] > __boson_pi_tmp )); do
+        __boson_pi_arr[$__boson_pi_j]=${__boson_pi_arr[$(( __boson_pi_j - 1 ))]}
+        (( --__boson_pi_j ))
+      done
+      __boson_pi_arr[$__boson_pi_j]=$__boson_pi_tmp
+    done
+    _boson_pipe_indices=( "${__boson_pi_arr[@]+"${__boson_pi_arr[@]}"}" )
+  }
+
+  # Evaluate a select() predicate against a context key prefix.
+  # Returns 0 (pass) or 1 (reject).
+  # Supported forms:
+  #   .field OP value   — field comparison (OP: == != < > <= >=)
+  #   . OP value        — whole-element comparison
+  #   .field            — truthy (.field is non-empty, non-null, non-false)
+  #   .                 — truthy (whole element)
+  __boson_pipe_predicate() {
+    local __boson_pp_pred="$1" __boson_pp_ctx="$2"
+    local -n __boson_pp_data="__boop_data_${__boson_doc}"
+    while [[ "$__boson_pp_pred" == ' '* ]]; do __boson_pp_pred="${__boson_pp_pred:1}"; done
+    while [[ "$__boson_pp_pred" == *' ' ]]; do __boson_pp_pred="${__boson_pp_pred%?}"; done
+
+    local __boson_pp_field="" __boson_pp_op="truthy" __boson_pp_rhs=""
+    if [[ "$__boson_pp_pred" =~ ^(\.[a-zA-Z_][a-zA-Z0-9_]*|\.)?[[:space:]]*(==|!=|>=|<=|>|<)[[:space:]]*(.+)$ ]]; then
+      __boson_pp_field="${BASH_REMATCH[1]}"
+      __boson_pp_op="${BASH_REMATCH[2]}"
+      __boson_pp_rhs="${BASH_REMATCH[3]}"
+      [[ "$__boson_pp_rhs" == '"'*'"' ]] && \
+        __boson_pp_rhs="${__boson_pp_rhs:1:${#__boson_pp_rhs}-2}"
+    else
+      __boson_pp_field="$__boson_pp_pred"
+    fi
+
+    local __boson_pp_key __boson_pp_val
+    if [[ -n "$__boson_pp_field" && "$__boson_pp_field" != "." ]]; then
+      local __boson_pp_fname="${__boson_pp_field:1}"
+      __boson_pp_fname="${__boson_pp_fname//\[/.}"
+      __boson_pp_fname="${__boson_pp_fname//\]/}"
+      if [[ -n "$__boson_pp_ctx" ]]; then
+        __boson_pp_key="${__boson_pp_ctx}.${__boson_pp_fname}"
+      else
+        __boson_pp_key="$__boson_pp_fname"
+      fi
+    else
+      __boson_pp_key="$__boson_pp_ctx"
+    fi
+    __boson_pp_val="${__boson_pp_data[$__boson_pp_key]:-}"
+
+    case "$__boson_pp_op" in
+      truthy)
+        [[ -n "$__boson_pp_val" && "$__boson_pp_val" != "null" && "$__boson_pp_val" != "false" ]]
+        return ;;
+      ==) [[ "$__boson_pp_val" == "$__boson_pp_rhs" ]]; return ;;
+      !=) [[ "$__boson_pp_val" != "$__boson_pp_rhs" ]]; return ;;
+      '<') (( ${__boson_pp_val:-0} < ${__boson_pp_rhs:-0} )); return ;;
+      '>') (( ${__boson_pp_val:-0} > ${__boson_pp_rhs:-0} )); return ;;
+      '<=') (( ${__boson_pp_val:-0} <= ${__boson_pp_rhs:-0} )); return ;;
+      '>=') (( ${__boson_pp_val:-0} >= ${__boson_pp_rhs:-0} )); return ;;
+    esac
+    return 1
+  }
+
+  # Split expr on ' | ', run each stage transforming the context array
+  # (array of compound key prefixes; "" = document root).
+  __boson_pipe_run() {
+    local -a __boson_pr_stages=()
+    local __boson_pr_rest="$__boson_expr"
+    while [[ "$__boson_pr_rest" == *' | '* ]]; do
+      __boson_pr_stages+=( "${__boson_pr_rest%%' | '*}" )
+      __boson_pr_rest="${__boson_pr_rest#*' | '}"
+    done
+    __boson_pr_stages+=( "$__boson_pr_rest" )
+
+    local -a __boson_pr_ctx=("") __boson_pr_new=()
+    local __boson_pr_stage __boson_pr_c __boson_pr_pred __boson_pr_prefix __boson_pr_idx
+
+    for __boson_pr_stage in "${__boson_pr_stages[@]}"; do
+      while [[ "$__boson_pr_stage" == ' '* ]]; do __boson_pr_stage="${__boson_pr_stage:1}"; done
+      while [[ "$__boson_pr_stage" == *' ' ]]; do __boson_pr_stage="${__boson_pr_stage%?}"; done
+
+      __boson_pr_new=()
+
+      if [[ "$__boson_pr_stage" == 'select('*')' ]]; then
+        __boson_pr_pred="${__boson_pr_stage:7:${#__boson_pr_stage}-8}"
+        for __boson_pr_c in "${__boson_pr_ctx[@]}"; do
+          __boson_pipe_predicate "$__boson_pr_pred" "$__boson_pr_c" && \
+            __boson_pr_new+=("$__boson_pr_c")
+        done
+
+      else
+        __boson_parse_expr "$__boson_pr_stage"
+        for __boson_pr_c in "${__boson_pr_ctx[@]}"; do
+          if [[ -n "$__boson_iter" ]]; then
+            if [[ -n "$__boson_pr_c" && -n "$__boson_key" ]]; then
+              __boson_pr_prefix="${__boson_pr_c}.${__boson_key}"
+            elif [[ -n "$__boson_key" ]]; then
+              __boson_pr_prefix="$__boson_key"
+            else
+              __boson_pr_prefix="$__boson_pr_c"
+            fi
+            __boson_pipe_indices "$__boson_pr_prefix"
+            for __boson_pr_idx in "${_boson_pipe_indices[@]+"${_boson_pipe_indices[@]}"}"; do
+              if [[ -n "$__boson_suffix" ]]; then
+                __boson_pr_new+=( "${__boson_pr_prefix}.${__boson_pr_idx}.${__boson_suffix}" )
+              else
+                __boson_pr_new+=( "${__boson_pr_prefix}.${__boson_pr_idx}" )
+              fi
+            done
+          else
+            if [[ -n "$__boson_pr_c" && -n "$__boson_key" ]]; then
+              __boson_pr_new+=( "${__boson_pr_c}.${__boson_key}" )
+            elif [[ -n "$__boson_key" ]]; then
+              __boson_pr_new+=( "$__boson_key" )
+            else
+              __boson_pr_new+=( "$__boson_pr_c" )
+            fi
+          fi
+        done
+      fi
+
+      __boson_pr_ctx=( "${__boson_pr_new[@]+"${__boson_pr_new[@]}"}" )
+    done
+
+    # Emit results
+    local -n __boson_pr_data="__boop_data_${__boson_doc}"
+    local -a __boson_pr_arr_vals=()
+    local __boson_pr_val __boson_pr_children __boson_pr_leaf
+
+    for __boson_pr_c in "${__boson_pr_ctx[@]+"${__boson_pr_ctx[@]}"}"; do
+      __boson_pr_val="${__boson_pr_data[$__boson_pr_c]:-}"
+      if [[ -n "$__boson_pr_val" ]]; then
+        if [[ -n "$into_var" || -n "$eponymous" ]]; then
+          __boson_pr_arr_vals+=("$__boson_pr_val")
+        else
+          __boson_pr_leaf="${__boson_pr_c##*.}"
+          __boson_output "$__boson_pr_val" "$(__boson_varname "$__boson_pr_leaf")"
+        fi
+      else
+        into=__boson_pr_children $__boson_doc.keysUnder "$__boson_pr_c"
+        if [[ -n "$__boson_pr_children" ]]; then
+          __Data_JSON_result=""
+          __Data_JSON_stringifyPrefix "$__boson_pr_c" "$__boson_doc" 0
+          printf '%s\n' "$__Data_JSON_result"
+        else
+          printf 'null\n'
+        fi
+      fi
+    done
+
+    if [[ -n "$into_var" && ${#__boson_pr_arr_vals[@]} -gt 0 ]]; then
+      __boson_output_array "$into_var" "${__boson_pr_arr_vals[@]}"
+    elif [[ -n "$eponymous" && ${#__boson_pr_arr_vals[@]} -gt 0 ]]; then
+      local __boson_pr_last="${__boson_pr_ctx[-1]:-}"
+      __boson_output_array "$(__boson_varname "${__boson_pr_last##*.}")" \
+        "${__boson_pr_arr_vals[@]}"
+    fi
+  }
+
+  __boson_pipe_run
+  $__boson_doc.destroy
+
+else
+  __boson_run
+fi
