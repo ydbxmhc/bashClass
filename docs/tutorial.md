@@ -453,7 +453,7 @@ Widget.render() {
 Dashboard.show() {
   local _Class="${_Class:-Dashboard}" _Self="${_Self:-}"
   local __Dashboard_show_w
-  into=__Dashboard_show_w $_Self.widget   # get the sub-object ID
+  into=__Dashboard_show_w $_Self.widget   # properties CAN be other objects!
   $__Dashboard_show_w.render              # dispatch on it
 }
 ```
