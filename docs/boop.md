@@ -297,7 +297,7 @@ function call when you don't want the confirmation printed.
 
 ## Creating Objects
 
-Three equivalent syntaxes. Pick whichever reads best in context:
+Two syntaxes. Pick whichever reads best in context:
 
 ```bash
 # Class-as-constructor (most common)
@@ -305,9 +305,6 @@ into=b Box length=5 width=3 height=7
 
 # Explicit `new` keyword
 into=b new Box length=5 width=3 height=7
-
-# Full dispatch (rarely needed)
-into=b _Class=Box __boop.dispatch new length=5 width=3 height=7
 ```
 
 Constructor arguments are `key=value` pairs. They land in the object's
