@@ -640,7 +640,7 @@ printf 'count:  %s\n' "$_count"
 Boolean flags become `_flagname` (0 or 1). Options with `=` become
 `_optname` (string). Remaining positional args go into `_ArgsRemaining`.
 
-See `docs/boop.md` for the full Args reference.
+See `docs/Args.md` for the full Args reference.
 
 ### Config — key/value store
 
