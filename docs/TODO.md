@@ -26,6 +26,32 @@ Specifically look for:
 
 ---
 
+## `_Self` Preamble Audit
+
+Nearly every method in Collection, Config, Geometry/Cube, Text/String, and
+Collection/Queue/Stack/Fast uses:
+
+```bash
+local _Self="${_Self:-${_Class:-ClassName}}" _Class="${_Class:-ClassName}"
+```
+
+The `_Self` fallback to `_Class` is wrong: `_Self` is an object ID, never
+a class name. If a method is called without `_Self` set, it should fail
+loudly (empty `_Self`, broken nameref) rather than silently use the class
+name as if it were an object.
+
+The correct form is:
+
+```bash
+local _Class="${_Class:-ClassName}" _Self="${_Self:-}"
+```
+
+Methods are always called through the baked dispatch wrapper in practice,
+so this is not causing failures today — but it masks direct-call misuse
+and is wrong per STANDARDS.md. Fix across all class files.
+
+---
+
 ## Error Severity Reclassification — DONE (2026-06-07)
 
 All data-condition `_Crash` calls reclassified to `_Error` + return 1.

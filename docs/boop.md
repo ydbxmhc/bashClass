@@ -863,17 +863,15 @@ Here's `Config` — a real class in the project:
 ```bash
 #!/bin/bash
 
-[[ -n "${__boop_registry[Config]+set}" ]] && return 2>/dev/null
-
 . boop
+
+boop.init Config || return 0
 
 # ... method implementations ...
 
 Config.get() {
-  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
-  local __Config_get_key="$1"
-  local -n __Config_get_data="__boop_config_${_Self}"
-  boop.pass "${__Config_get_data[$__Config_get_key]:-}" ${into:-}
+  local _Class="${_Class:-Config}" _Self="${_Self:-}"
+  # ...
 }
 
 Config.set() { ... }
