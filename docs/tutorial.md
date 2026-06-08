@@ -143,6 +143,47 @@ runs every time:
 Each class file has its own idempotence guard (`boop.init ClassName`),
 so sourcing an already-loaded class is a no-op.
 
+### Other ways to load classes
+
+`. boop ClassName` is the idiomatic entry point for scripts, but there
+are two lower-level loaders you will encounter inside class files:
+
+**`_Require ClassName`** — fatal hard dependency. Crashes with a clear
+error if the class cannot be found or fails to source. This is what
+`. boop ClassName` uses internally, and it is the right choice when
+your code cannot function without the dependency.
+
+```bash
+_Require Config             # crash if Config unavailable
+_Require Math Config List   # crash if any are unavailable
+```
+
+**`_Load ClassName`** — non-fatal soft dependency. Returns 1 if the
+class is unavailable; never crashes. Use it when you want to try for
+a dependency and gracefully degrade if it is missing.
+
+```bash
+_Load Math || { printf 'precision math unavailable\n'; return 1; }
+if _Load Prometheus; then Prometheus.record "$metric" "$value"; fi
+```
+
+Both functions are idempotent — calling them for an already-loaded
+class is a cheap no-op (registry check, no file I/O).
+
+### Class resolution and `BOOPPATH`
+
+When boop looks for a class file it searches in order: the current
+directory, entries in `BOOPPATH` (colon-separated, like `PATH`), and
+finally entries from `PATH` itself. You can also register an explicit
+path for a class:
+
+```bash
+__boop_classPath["MyClass"]="/opt/lib/myproject/MyClass"
+```
+
+For most use cases — running from the repo root or with `PATH` set as
+shown above — the defaults work without any configuration.
+
 ### Verify it loaded
 
 ```bash
