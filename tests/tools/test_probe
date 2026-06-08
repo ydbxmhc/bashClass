@@ -15,7 +15,7 @@ set -uo pipefail
 
 __tp_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 __tp_root="$(cd "$__tp_dir/../.." && pwd)"
-__tp_probe="$__tp_root/probe"
+__tp_probe="$__tp_root/bin/probe"
 __tp_server="$__tp_dir/_http_server.py"
 
 . "$__tp_root/boop" TestSuite

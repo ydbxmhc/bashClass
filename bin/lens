@@ -15,7 +15,8 @@
 #
 # Record and field delimiters pass through to Stream. Use --examples for usage.
 
-. boop Stream Args
+__lens_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$__lens_root/boop" Stream Args
 
 # Distribution URLs — override with BOOP_DIST_URL for testing:
 #   BOOP_DIST_URL=http://localhost:8080 lens --self-update

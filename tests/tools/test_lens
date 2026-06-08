@@ -10,7 +10,7 @@ set -uo pipefail
 
 __tl_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 __tl_root="$(cd "$__tl_dir/../.." && pwd)"
-__tl_lens="$__tl_root/lens"
+__tl_lens="$__tl_root/bin/lens"
 
 . "$__tl_root/boop" TestSuite
 
@@ -332,13 +332,13 @@ $t.assert_eq "no filter passthrough" "$__tl_out" "$__tl_10"
 $t.section "Mutual exclusion"
 
 $t.assert_fail "first + match exclusive" \
-  bash -c "cd '$__tl_root'; printf 'x\n' | ./lens --first 1 --match x"
+  bash -c "cd '$__tl_root'; printf 'x\n' | ./bin/lens --first 1 --match x"
 
 $t.assert_fail "fields + chars exclusive" \
-  bash -c "cd '$__tl_root'; printf 'x\n' | ./lens --fields 1 --chars 1"
+  bash -c "cd '$__tl_root'; printf 'x\n' | ./bin/lens --fields 1 --chars 1"
 
 $t.assert_fail "and + or exclusive" \
-  bash -c "cd '$__tl_root'; printf 'x\n' | ./lens --and --or --match x"
+  bash -c "cd '$__tl_root'; printf 'x\n' | ./bin/lens --and --or --match x"
 
 # ============================================================================
 # Field reordering and auto-literals
@@ -398,11 +398,11 @@ $t.assert_eq "spec-sep ; with range" "$__tl_out" "abZ"
 
 # Invalid spec separators are rejected
 $t.assert_fail "spec-sep rejects dash" \
-  bash -c "cd '$__tl_root'; printf 'a,b\n' | ./lens --fields 1 --spec-sep -"
+  bash -c "cd '$__tl_root'; printf 'a,b\n' | ./bin/lens --fields 1 --spec-sep -"
 $t.assert_fail "spec-sep rejects digit" \
-  bash -c "cd '$__tl_root'; printf 'a,b\n' | ./lens --fields 1 --spec-sep 5"
+  bash -c "cd '$__tl_root'; printf 'a,b\n' | ./bin/lens --fields 1 --spec-sep 5"
 $t.assert_fail "spec-sep rejects multichar" \
-  bash -c "cd '$__tl_root'; printf 'a,b\n' | ./lens --fields 1 --spec-sep ';;'"
+  bash -c "cd '$__tl_root'; printf 'a,b\n' | ./bin/lens --fields 1 --spec-sep ';;'"
 
 # ============================================================================
 # Output delimiters (--ofs/--ors)
@@ -428,7 +428,7 @@ $t.assert_eq "--field-sep alias" "$__tl_out" "a-c"
 
 # Character-class input split has no single output sep -> error without --ofs
 $t.assert_fail "class split needs explicit --ofs" \
-  bash -c "cd '$__tl_root'; printf 'a:b;c\n' | ./lens --fields 1,3 -f ':;'"
+  bash -c "cd '$__tl_root'; printf 'a:b;c\n' | ./bin/lens --fields 1,3 -f ':;'"
 # ...but works with --ofs
 __tl_out="$(__tl_run 'a:b;c' --fields '1,3' -f ':;' --ofs '-')"
 $t.assert_eq "class split with --ofs" "$__tl_out" "a-c"
@@ -477,9 +477,9 @@ $t.assert_eq "seek --number tilde prefix" "$__tl_out" "$(printf '~1\t5')"
 
 # Guards
 $t.assert_fail "both seeks mutually exclusive" \
-  bash -c "cd '$__tl_root'; printf 'a\nb\n' | ./lens --rec-after-byte 1 --start-at-byte 1 --first 1"
+  bash -c "cd '$__tl_root'; printf 'a\nb\n' | ./bin/lens --rec-after-byte 1 --start-at-byte 1 --first 1"
 $t.assert_fail "seek rejects non-positive" \
-  bash -c "cd '$__tl_root'; printf 'a\nb\n' | ./lens --start-at-byte 0 --first 1"
+  bash -c "cd '$__tl_root'; printf 'a\nb\n' | ./bin/lens --start-at-byte 0 --first 1"
 
 # rec-after-byte with --match: after byte 6 (resync at 5), match lines starting with "1"
 # Records 5-20, matching ^1: 10 11 12 13 14 15 16 17 18 19

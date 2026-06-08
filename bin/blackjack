@@ -39,7 +39,8 @@ __BJ_loading "Unwrapping a fresh deck..."
 #   - Terminal mixin for clear/redraw and single-keypress input
 # ─────────────────────────────────────────────────────────────────────
 
-. boop PlayingCard Deck Terminal Args
+__BJ_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$__BJ_root/boop" PlayingCard Deck Terminal Args
 
 # ═════════════════════════════════════════════════════════════════════
 # BlackjackHand — a List of PlayingCards with blackjack scoring

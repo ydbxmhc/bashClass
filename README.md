@@ -10,7 +10,7 @@ The framework file is called `boop` because fun is a feature.
 > **NUL bytes.** Bash variables cannot hold or detect NUL bytes. Any value
 > containing a NUL will be silently truncated at the first one — no error,
 > no warning. This is a bash limitation that applies throughout the framework.
-> See [GOTCHAS.md](GOTCHAS.md) for details.
+> See [GOTCHAS.md](docs/GOTCHAS.md) for details.
 
 ---
 
@@ -628,7 +628,7 @@ boop                                    root — new, destroy, get, set, isa, mi
 | [docs/boson.md](docs/boson.md) | boson reference — jq-style JSON query |
 | [docs/probe.md](docs/probe.md) | probe reference — minimal plaintext HTTP client |
 | [docs/collider.md](docs/collider.md) | collider reference — single-file bundler |
-| [TODO.md](TODO.md) | Roadmap and open design questions |
+| [docs/TODO.md](docs/TODO.md) | Roadmap and open design questions |
 
 
 ---

@@ -1,5 +1,6 @@
 
-. boop Stream # locates and loads
+__se_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$__se_root/boop" Stream # locates and loads
 
 _Warn "input file intentionally has no EOL at EOF!"
 

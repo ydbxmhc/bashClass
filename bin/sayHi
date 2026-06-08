@@ -1,6 +1,7 @@
 #!/usr/bin/bash
 
-. boop Greeter
+__sayhi_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$__sayhi_root/boop" Greeter
 
 Greeter.greet
 

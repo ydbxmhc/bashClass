@@ -10,8 +10,8 @@ set -uo pipefail
 
 __tc_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 __tc_root="$(cd "$__tc_dir/../.." && pwd)"
-__tc_collider="$__tc_root/collider"
-__tc_lens="$__tc_root/lens"
+__tc_collider="$__tc_root/bin/collider"
+__tc_lens="$__tc_root/bin/lens"
 
 . "$__tc_root/boop" TestSuite
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # probe — minimal HTTP client (plaintext HTTP only)
 
-. boop Net::Socket Args
+__probe_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$__probe_root/boop" Net::Socket Args
 
 # Distribution URLs — override with BOOP_DIST_URL for testing:
 #   BOOP_DIST_URL=http://localhost:8080 probe --self-update
@@ -10,7 +11,7 @@ __installer_self_url="${BOOP_DIST_URL:-http://get.boop.sh}/probe"
 
 # Installer dispatch
 declare -F __installer_dispatch >/dev/null ||
-  . "${__boop_root:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/lib/installer"
+  . "$__probe_root/lib/installer"
 __installer_dispatch "$@"
 
 (( $# )) || set -- --help

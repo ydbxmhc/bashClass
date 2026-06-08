@@ -3,10 +3,11 @@ set -uo pipefail
 
 # Blackjack class tests — exercises Card, PlayingCard, Deck, BlackjackHand
 
-. boop TestSuite PlayingCard Deck
+__tbj_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$__tbj_root/boop" TestSuite PlayingCard Deck
 
 # Source blackjack for BlackjackHand (game loop won't run — BASH_SOURCE guard)
-. blackjack
+. "$__tbj_root/bin/blackjack"
 
 into=t TestSuite name="Blackjack Tests"
 

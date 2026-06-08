@@ -14,7 +14,7 @@ __bs_version="0.1.0"
 __bs_history="${HOME}/.boop_history"
 __bs_preload=("$@")
 __bs_loglevel="warn"
-__bs_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+__bs_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Colors (if terminal supports them)
 __bs_bold=$'\033[1m'

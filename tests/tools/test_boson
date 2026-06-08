@@ -13,7 +13,7 @@ set -uo pipefail
 
 __tb_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 __tb_root="$(cd "$__tb_dir/../.." && pwd)"
-__tb_boson="$__tb_root/boson"
+__tb_boson="$__tb_root/bin/boson"
 __tb_json="$__tb_dir/_boson_sample.json"
 
 . "$__tb_root/boop" TestSuite
@@ -153,14 +153,14 @@ $t.section "Error cases"
 
 # Mutually exclusive output modes
 $t.assert_fail "raw + emit exclusive" \
-  bash -c "cd '$__tb_root'; ./boson -r --emit '.name' < '$__tb_json'"
+  bash -c "cd '$__tb_root'; ./bin/boson -r --emit '.name' < '$__tb_json'"
 
 $t.assert_fail "emit + into exclusive" \
-  bash -c "cd '$__tb_root'; ./boson --emit --into=x '.name' < '$__tb_json'"
+  bash -c "cd '$__tb_root'; ./bin/boson --emit --into=x '.name' < '$__tb_json'"
 
 # -E collision detection: two keys that sanitize to the same variable name
 $t.assert_fail "-E collision exits nonzero" \
-  bash -c "cd '$__tb_root'; printf '{\"a_b\":1,\"a\":{\"b\":2}}' | ./boson -E '.'"
+  bash -c "cd '$__tb_root'; printf '{\"a_b\":1,\"a\":{\"b\":2}}' | ./bin/boson -E '.'"
 
 # ============================================================================
 # Non-leaf default output (JSON re-emission)

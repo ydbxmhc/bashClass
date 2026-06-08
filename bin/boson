@@ -19,7 +19,8 @@
 #   boson '.users[].name' < data.json
 #   boson '.servers[]' config.json
 
-. boop Args Data::JSON
+__boson_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$__boson_root/boop" Args Data::JSON
 
 # Distribution URLs — override with BOOP_DIST_URL for testing:
 #   BOOP_DIST_URL=http://localhost:8080 boson --self-update
