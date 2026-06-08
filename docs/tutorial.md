@@ -777,8 +777,8 @@ into=r Math.mul 3.14 2          # r = "6.28"
 into=r Math.div 22 7 scale=10   # r = "3.1428571428"
 into=r Math.pow 2 64            # r = "18446744073709551616"
 
-# Chained expression
-into=r Math.eval '(3 + 4) * 2'  # r = "14"
+# Infix expression with precedence and parens
+into=r Math.DO '(3 + 4) * 2'   # r = "14"
 ```
 
 Math is pure bash — no `bc`, no `awk`, no subshells. It handles
