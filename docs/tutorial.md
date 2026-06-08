@@ -226,7 +226,7 @@ $a.increment
 for (( i=0; i<3; i++ )); do $b.increment; done
 
 for obj in a b; do
-  into=n "${!obj}".count
+  into=n ${!obj}.count
   printf '%s.count = %s\n' "$obj" "$n"
 done
 # a.count = 1
@@ -258,6 +258,11 @@ baked wrapper.
 Registers the class. `has:count` tells boop that `count` is a
 property (getter and setter auto-generated, no method needed).
 `public:` names the author-written methods that become dispatchable.
+
+**Object IDs are always safe unquoted.** They are generated as
+`__obj_` followed by lowercase hex digits — no spaces, no glob
+characters, no special characters. You never need to quote `$a`,
+`$_Self`, or `${!obj}` for word-splitting or globbing safety.
 
 ---
 
