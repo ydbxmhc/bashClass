@@ -3,6 +3,34 @@
 Complete index and conventions guide. Each class has a dedicated doc —
 this page covers the common patterns, the base `boop` object, and where to find everything.
 
+## Contents
+
+- [Conventions](#conventions)
+  - [Returning values — `into=` and `boop.pass`](#returning-values--into--and-booppass)
+  - [Exit codes — predicate methods](#exit-codes--predicate-methods)
+  - [Property initialization — `has:` and `key=value`](#property-initialization--has-and-keyvalue)
+  - [Delimiter for multi-value returns](#delimiter-for-multi-value-returns)
+  - [Crash behavior](#crash-behavior)
+- [Loading Classes](#loading-classes)
+  - [Index names (shorthand)](#index-names-shorthand)
+- [boop root — Universal Base Object](#boop-root--universal-base-object)
+  - [Properties — `get` / `set`](#properties--get--set)
+  - [Type checking — `isa` / `mixes`](#type-checking--isa--mixes)
+  - [Introspection](#introspection)
+  - [Lifecycle](#lifecycle)
+- [Quick Reference by Class](#quick-reference-by-class)
+  - [Geometry](#geometry)
+  - [Collection](#collection)
+  - [Data](#data)
+  - [Config](#config)
+  - [Args](#args)
+  - [Math](#math)
+  - [SemVer](#semver)
+  - [Games](#games)
+  - [Testing](#testing)
+  - [Mixins](#mixins)
+- [Inheritance Hierarchy](#inheritance-hierarchy)
+
 ---
 
 ## Conventions

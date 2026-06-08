@@ -1,5 +1,22 @@
 # collider(1)
 
+## Contents
+
+- [NAME](#name)
+- [SYNOPSIS](#synopsis)
+- [DESCRIPTION](#description)
+  - [What it does](#what-it-does)
+- [OPTIONS](#options)
+- [EXAMPLES](#examples)
+  - [A bundle is also an installer](#a-bundle-is-also-an-installer)
+- [BUNDLE NAMING](#bundle-naming)
+- [WHAT IT DOES NOT DO](#what-it-does-not-do)
+- [EXIT STATUS](#exit-status)
+- [NOTES](#notes)
+- [SEE ALSO](#see-also)
+
+---
+
 ## NAME
 
 **collider** — bundle a boop tool and its dependencies into one file

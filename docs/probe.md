@@ -1,5 +1,29 @@
 # probe(1)
 
+## Contents
+
+- [NAME](#name)
+- [SYNOPSIS](#synopsis)
+- [DESCRIPTION](#description)
+- [OPTIONS](#options)
+  - [Request](#request)
+  - [Response](#response)
+  - [Connection](#connection)
+  - [Verbosity](#verbosity)
+  - [Help](#help)
+- [EXAMPLES](#examples)
+  - [Basic requests](#basic-requests)
+  - [POST and JSON](#post-and-json)
+  - [Headers](#headers)
+  - [Inspecting redirects](#inspecting-redirects)
+  - [Debugging and timeouts](#debugging-and-timeouts)
+- [EXIT STATUS](#exit-status)
+- [LIMITATIONS](#limitations)
+- [NOTES](#notes)
+- [SEE ALSO](#see-also)
+
+---
+
 ## NAME
 
 **probe** — minimal plaintext HTTP client

@@ -4,6 +4,34 @@ A date/time class for the boop framework. Stores time as a UTC epoch integer
 and exposes construction, formatting, arithmetic, and comparison methods.
 Every method after construction is subshell-free.
 
+## Contents
+
+- [Quick Start](#quick-start)
+- [Performance](#performance)
+  - [The subshell problem](#the-subshell-problem)
+  - [How DateTime avoids it](#how-datetime-avoids-it)
+  - [Construction cost](#construction-cost)
+- [Constructors](#constructors)
+  - [`now`](#now)
+  - [`fromEpoch`](#fromepoch)
+  - [`utc`](#utc)
+  - [`parse`](#parse)
+    - [Timezone handling in `parse`](#timezone-handling-in-parse)
+- [Getters](#getters)
+  - [`epoch`](#epoch)
+  - [`format`](#format)
+  - [Component getters](#component-getters)
+  - [`iso`, `isoDate`, `isoTime`](#iso-isodate-isotime)
+- [Arithmetic](#arithmetic)
+- [Difference](#difference)
+- [Comparison](#comparison)
+- [Design Notes](#design-notes)
+  - [Why epoch as the single stored value](#why-epoch-as-the-single-stored-value)
+  - [`printf '%(format)T'` as a bash builtin](#printf-formatt-as-a-bash-builtin)
+  - [The pure-bash epoch computation](#the-pure-bash-epoch-computation)
+  - [DST and local time](#dst-and-local-time)
+  - [What is not here](#what-is-not-here)
+
 ---
 
 ## Quick Start

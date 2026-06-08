@@ -7,6 +7,28 @@ See also [STANDARDS.md](STANDARDS.md) — particularly the Shell Options
 section, which covers the same errexit/IFS/nounset patterns from the
 "how to write it correctly" angle rather than the "what goes wrong" angle.
 
+## Contents
+
+- [Environment Prefix Leakage (`into=`, `_EOL=`, etc.)](#environment-prefix-leakage-into-_eol-etc)
+- [`read` Drops the Last Record Without a Trailing Delimiter](#read-drops-the-last-record-without-a-trailing-delimiter)
+- [`${array[*]}` Joins on IFS](#array-joins-on-ifs)
+- [Here-String (`<<<`) Appends a Newline](#here-string--appends-a-newline)
+- [`declare -g` Can't Punch Through a `local`](#declare--g-cant-punch-through-a-local)
+- [`set -e` Kills on Innocent Patterns](#set--e-kills-on-innocent-patterns)
+  - [`[[ test ]] && action`](#test--action)
+  - [`x && y || z` is not a ternary](#x--y--z-is-not-a-ternary)
+  - [`(( arithmetic ))` as a standalone statement](#arithmetic--as-a-standalone-statement)
+- [IFS Isn't Always What You Think](#ifs-isnt-always-what-you-think)
+- [`unset` Inside Nested Functions May Not Reach Globals](#unset-inside-nested-functions-may-not-reach-globals)
+- [Fork Bomb Awareness (the `:` joke)](#fork-bomb-awareness-the--joke)
+- [NUL Bytes — Silent Truncation, No Detection](#nul-bytes--silent-truncation-no-detection)
+  - [Where this matters in boop](#where-this-matters-in-boop)
+  - [What you can do](#what-you-can-do)
+  - [Why there is no workaround](#why-there-is-no-workaround)
+- [`$()` Strips Trailing Newlines](#strips-trailing-newlines)
+- [`$(</dev/fd/N)` Does Not Work for Socket FDs](#devfdn-does-not-work-for-socket-fds)
+- [Nameref Loops (`local -n`) and Same-Named Variables](#nameref-loops-local--n-and-same-named-variables)
+
 ---
 
 ## Environment Prefix Leakage (`into=`, `_EOL=`, etc.)

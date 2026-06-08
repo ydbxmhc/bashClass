@@ -1,5 +1,46 @@
 # lens(1)
 
+## Contents
+
+- [NAME](#name)
+- [SYNOPSIS](#synopsis)
+- [DESCRIPTION](#description)
+  - [The one-axis rule](#the-one-axis-rule)
+- [OPTIONS](#options)
+  - [Input](#input)
+  - [Byte-seek (bulk skip for large inputs)](#byte-seek-bulk-skip-for-large-inputs)
+  - [Position (mutually exclusive with the other axes)](#position-mutually-exclusive-with-the-other-axes)
+  - [Match (mutually exclusive with the other axes)](#match-mutually-exclusive-with-the-other-axes)
+  - [Fields (mutually exclusive with the other axes)](#fields-mutually-exclusive-with-the-other-axes)
+    - [Literals in the spec](#literals-in-the-spec)
+    - [Changing the spec separator: `--spec-sep CHAR`](#changing-the-spec-separator---spec-sep-char)
+  - [Chars (mutually exclusive with the other axes)](#chars-mutually-exclusive-with-the-other-axes)
+  - [Output delimiters](#output-delimiters)
+  - [Inversion](#inversion)
+  - [Record delimiter (choose at most one; default is newline)](#record-delimiter-choose-at-most-one-default-is-newline)
+  - [Formatting](#formatting)
+  - [Help](#help)
+- [EXAMPLES](#examples)
+  - [Replacing head / tail / wc](#replacing-head--tail--wc)
+  - [Slicing by line range](#slicing-by-line-range)
+  - [Combining two position options](#combining-two-position-options)
+  - [Replacing grep](#replacing-grep)
+  - [Replacing cut / awk field selection](#replacing-cut--awk-field-selection)
+  - [Reordering fields](#reordering-fields)
+  - [Inserting literals and converting formats](#inserting-literals-and-converting-formats)
+  - [Custom output record separator (--ors / --rec-sep)](#custom-output-record-separator---ors---rec-sep)
+  - [Scanning the tail of a large file (byte-seek)](#scanning-the-tail-of-a-large-file-byte-seek)
+  - [Fixed-width columns](#fixed-width-columns)
+  - [Non-line records](#non-line-records)
+  - [Multiple files](#multiple-files)
+  - [Composing axes with pipes](#composing-axes-with-pipes)
+- [EXIT STATUS](#exit-status)
+- [NOTES](#notes)
+  - [Streaming](#streaming)
+- [SEE ALSO](#see-also)
+
+---
+
 ## NAME
 
 **lens** — inspect, filter, and slice text streams

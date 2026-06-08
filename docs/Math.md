@@ -6,6 +6,27 @@ All arithmetic is done digit-by-digit using bash's native `$(( ))` on
 small chunks. No forks, no subshells, no external tools. Precision is
 bounded only by available memory and your patience.
 
+## Contents
+
+- [Dependencies](#dependencies)
+- [Constructor](#constructor)
+- [Global Configuration](#global-configuration)
+- [Fast Path](#fast-path)
+- [Static API — Class-Level Functions](#static-api-class-level-functions)
+  - [Symbol Aliases](#symbol-aliases)
+  - [Math.DO — Infix Expression Evaluator](#mathdo-infix-expression-evaluator)
+  - [Math.RPN — Reverse Polish Notation Evaluator](#mathrpn-reverse-polish-notation-evaluator)
+- [Instance Methods](#instance-methods)
+  - [Arithmetic](#arithmetic)
+  - [Comparisons](#comparisons)
+  - [Utility](#utility)
+  - [Pi](#pi)
+- [Performance](#performance)
+- [Internal Representation](#internal-representation)
+- [Examples](#examples)
+
+---
+
 ## Dependencies
 
 ```bash

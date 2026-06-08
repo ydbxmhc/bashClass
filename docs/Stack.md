@@ -3,6 +3,30 @@
 LIFO (last-in, first-out) stack. Backed internally by a List; exposes only
 the stack surface. Push to the top, pop from the top.
 
+## Contents
+
+- [Dependencies](#dependencies)
+- [Constructor](#constructor)
+- [Basic Usage](#basic-usage)
+- [Methods](#methods)
+  - [$s.push val [val...]](#s-push-val-val)
+  - [$s.pop](#s-pop)
+  - [$s.peek](#s-peek)
+  - [$s.size](#s-size)
+  - [$s.isEmpty](#s-isempty)
+- [Common Patterns](#common-patterns)
+  - [Undo stack](#undo-stack)
+  - [Depth-first traversal](#depth-first-traversal)
+  - [Reversing a list](#reversing-a-list)
+- [Design Notes](#design-notes)
+- [Collection.Stack.Fast](#collectionstackfast)
+  - [When to Use Fast](#when-to-use-fast)
+  - [When to Use the Composition Version](#when-to-use-the-composition-version)
+  - [Usage](#usage)
+  - [Blocked Methods](#blocked-methods)
+
+---
+
 ## Dependencies
 
 ```bash

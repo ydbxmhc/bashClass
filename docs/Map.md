@@ -4,6 +4,24 @@ Insertion-ordered associative array container. Wraps a bash associative
 array with object semantics. Key-value storage with string keys that
 preserves the order in which keys were first added.
 
+## Contents
+
+- [Dependencies](#dependencies)
+- [Constructor](#constructor)
+- [Insertion Order](#insertion-order)
+- [Methods](#methods)
+  - [Element Access](#element-access)
+  - [Enumeration (Insertion Order)](#enumeration-insertion-order)
+  - [Callback Iteration](#callback-iteration)
+  - [Iterator (Stateful Cursor)](#iterator-stateful-cursor)
+  - [Utility](#utility)
+  - [Merging](#merging)
+  - [Serialization](#serialization)
+- [Composition](#composition)
+- [Example](#example)
+
+---
+
 ## Dependencies
 
 ```bash

@@ -3,6 +3,27 @@
 Test runner with section grouping, assertion helpers, and a summary report.
 Used by all boop test suites and available for any bash project.
 
+## Contents
+
+- [Dependencies](#dependencies)
+- [Quick Start](#quick-start)
+- [Constructor](#constructor)
+- [Sections](#sections)
+- [Assertions](#assertions)
+  - [`assert_ok` — command exits 0](#assert_ok-command-exits-0)
+  - [`assert_fail` — command exits non-zero](#assert_fail-command-exits-non-zero)
+  - [`assert_eq` — string equality](#assert_eq-string-equality)
+  - [`assert_ne` — string inequality](#assert_ne-string-inequality)
+  - [`assert_match` — glob pattern](#assert_match-glob-pattern)
+  - [`assert_contains` — substring](#assert_contains-substring)
+  - [`run` — alias for `assert_ok`](#run-alias-for-assert_ok)
+- [Info Lines](#info-lines)
+- [Summary](#summary)
+- [Full Example — Unit Test File](#full-example-unit-test-file)
+- [Design Notes](#design-notes)
+
+---
+
 ## Dependencies
 
 ```bash

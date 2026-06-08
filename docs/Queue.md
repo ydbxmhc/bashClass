@@ -3,6 +3,31 @@
 FIFO (first-in, first-out) queue. Backed internally by a List; exposes only
 the queue surface. Enqueue to the back, dequeue from the front.
 
+## Contents
+
+- [Dependencies](#dependencies)
+- [Constructor](#constructor)
+- [Basic Usage](#basic-usage)
+- [Methods](#methods)
+  - [$q.enqueue val [val...]](#q-enqueue-val-val)
+  - [$q.dequeue](#q-dequeue)
+  - [$q.peek](#q-peek)
+  - [$q.size](#q-size)
+  - [$q.isEmpty](#q-isempty)
+- [Common Patterns](#common-patterns)
+  - [Work queue](#work-queue)
+  - [BFS traversal](#bfs-traversal)
+  - [Rate-limited dispatch](#rate-limited-dispatch)
+- [Design Notes](#design-notes)
+- [Collection.Queue.Fast](#collectionqueuefast)
+  - [When to Use Fast](#when-to-use-fast)
+  - [When to Use the Composition Version](#when-to-use-the-composition-version)
+  - [Usage](#usage)
+  - [Blocked Methods](#blocked-methods)
+  - [Performance Note](#performance-note)
+
+---
+
 ## Dependencies
 
 ```bash

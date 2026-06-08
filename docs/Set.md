@@ -4,6 +4,28 @@ Unordered collection of unique values. Backed by a bash associative array
 (keys are members, values are unused). Membership tests, add, and remove are
 O(1). Set operations (`union`, `intersect`, `difference`) return new Set objects.
 
+## Contents
+
+- [Dependencies](#dependencies)
+- [Constructor](#constructor)
+- [Membership](#membership)
+  - [$s.add val [val...]](#s-add-val-val)
+  - [$s.has val](#s-has-val)
+  - [$s.remove val [val...]](#s-remove-val-val)
+- [Size](#size)
+- [Iteration](#iteration)
+- [Set Operations](#set-operations)
+  - [union — members in A or B](#union-members-in-a-or-b)
+  - [intersect — members in both A and B](#intersect-members-in-both-a-and-b)
+  - [difference — members in A but not B](#difference-members-in-a-but-not-b)
+- [Common Patterns](#common-patterns)
+  - [Deduplication](#deduplication)
+  - [Tag/label system](#taglabel-system)
+  - [Computing changed items](#computing-changed-items)
+- [Design Notes](#design-notes)
+
+---
+
 ## Dependencies
 
 ```bash

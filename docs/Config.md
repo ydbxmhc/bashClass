@@ -3,6 +3,27 @@
 Structured config file reader/writer. Parses two formats — flat `key=value`
 and sectioned INI — behind a single interface. Pure bash, zero forks.
 
+## Contents
+
+- [Dependencies](#dependencies)
+- [Formats](#formats)
+  - [Flat](#flat)
+  - [INI](#ini)
+- [Constructor](#constructor)
+- [Loading](#loading)
+  - [From a file](#from-a-file)
+  - [From a string](#from-a-string)
+- [Reading Keys](#reading-keys)
+  - [Listing keys](#listing-keys)
+  - [Listing sections (INI)](#listing-sections-ini)
+- [Writing Keys](#writing-keys)
+- [Saving](#saving)
+  - [Serializing to string](#serializing-to-string)
+- [Full Example](#full-example)
+- [Design Notes](#design-notes)
+
+---
+
 ## Dependencies
 
 ```bash

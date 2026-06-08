@@ -3,6 +3,30 @@
 Indexed array container. Wraps a bash indexed array with object semantics.
 Supports push/pop, shift/unshift, random access, negative indices, and slicing.
 
+## Contents
+
+- [Dependencies](#dependencies)
+- [Constructor](#constructor)
+- [Methods](#methods)
+  - [Element Access](#element-access)
+  - [Stack Operations (LIFO)](#stack-operations-lifo)
+  - [Queue Operations (FIFO)](#queue-operations-fifo)
+  - [Slicing](#slicing)
+  - [Callback Iteration](#callback-iteration)
+  - [Search](#search)
+  - [Iterator (Stateful Cursor)](#iterator-stateful-cursor)
+  - [Utility](#utility)
+  - [Serialization](#serialization)
+  - [Functional Operations](#functional-operations)
+    - [filter](#filter)
+    - [map](#map)
+    - [reduce](#reduce)
+    - [do (pipeline)](#do-pipeline)
+- [Composition](#composition)
+- [Example](#example)
+
+---
+
 ## Dependencies
 
 ```bash

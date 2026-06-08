@@ -7,6 +7,30 @@ The comparison engine lives in **boop core**, not in this class. SemVer exposes
 it as a clean public API. This design is not an accident — read the architecture
 section before using the class.
 
+## Contents
+
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+  - [The bootstrapping problem](#the-bootstrapping-problem)
+  - [The SemVer class](#the-semver-class)
+  - [Consequence for user code](#consequence-for-user-code)
+- [Version Strings](#version-strings)
+- [Constraint Syntax](#constraint-syntax)
+- [SemVer.compare](#semvercompare)
+- [SemVer.satisfies](#semversatisfies)
+  - [In scripts](#in-scripts)
+- [The boop Version Guard](#the-boop-version-guard)
+  - [What happens when the constraint is not satisfied](#what-happens-when-the-constraint-is-not-satisfied)
+  - [Why `require:` and not a flag or variable](#why-require-and-not-a-flag-or-variable)
+- [Class Version Declarations](#class-version-declarations)
+  - [Enforcing class versions with `_Require`](#enforcing-class-versions-with-_require)
+  - [Classes with no version declaration](#classes-with-no-version-declaration)
+- [Design Notes](#design-notes)
+  - [Why the comparison engine is in boop core](#why-the-comparison-engine-is-in-boop-core)
+  - [Why SemVer is a separate class at all](#why-semver-is-a-separate-class-at-all)
+  - [Pre-release tags](#pre-release-tags)
+  - [What is not here](#what-is-not-here)
+
 ---
 
 ## Quick Start

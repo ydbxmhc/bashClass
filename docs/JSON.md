@@ -8,6 +8,22 @@ O(1) point lookups via compound keys.
 > string value containing a NUL will be silently truncated at the first one.
 > See [GOTCHAS.md](../GOTCHAS.md).
 
+## Contents
+
+- [Quick Start](#quick-start)
+- [API](#api)
+  - [Data.JSON.parse jsonString](#datajsonparse-jsonstring)
+  - [Data.JSON.stringify docObject](#datajsonstringify-docobject)
+  - [Data.JSON.validate jsonString](#datajsonvalidate-jsonstring)
+  - [Not Instantiable](#not-instantiable)
+- [Supported JSON Features](#supported-json-features)
+- [Limitations](#limitations)
+- [Performance](#performance)
+- [Error Handling](#error-handling)
+- [Examples](#examples)
+
+---
+
 ## Quick Start
 
 ```bash

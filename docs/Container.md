@@ -5,6 +5,23 @@ contract that List, Map, and future containers (Stack, Queue, etc.)
 must implement. Also defines the Iterator companion class for stateful
 cursor traversal.
 
+## Contents
+
+- [Dependencies](#dependencies)
+- [Architecture](#architecture)
+- [Virtual Methods](#virtual-methods)
+- [Provided Methods](#provided-methods)
+- [Callback Iteration: each](#callback-iteration-each)
+- [Deep Traversal](#deep-traversal)
+- [Iterator: Stateful Cursor](#iterator-stateful-cursor)
+  - [Lazy Delegation (Implicit Iterator)](#lazy-delegation-implicit-iterator)
+  - [Explicit Iterators (Independent Cursors)](#explicit-iterators-independent-cursors)
+  - [Map Iterator Snapshots](#map-iterator-snapshots)
+  - [Opting Out: noIterators](#opting-out-noiterators)
+- [Inheritance Hierarchy](#inheritance-hierarchy)
+
+---
+
 ## Dependencies
 
 ```bash

@@ -1,5 +1,33 @@
 # boson(1)
 
+## Contents
+
+- [NAME](#name)
+- [SYNOPSIS](#synopsis)
+- [DESCRIPTION](#description)
+  - [Path expressions](#path-expressions)
+  - [Pipe expressions](#pipe-expressions)
+  - [Predicates](#predicates)
+- [OPTIONS](#options)
+- [EXAMPLES](#examples)
+  - [Reading values](#reading-values)
+  - [Iterating arrays](#iterating-arrays)
+  - [Non-leaf output](#non-leaf-output)
+  - [Type-aware default output](#type-aware-default-output)
+  - [Pipe expressions and filtering](#pipe-expressions-and-filtering)
+  - [Sourceable output for shell scripts](#sourceable-output-for-shell-scripts)
+- [CAVEATS](#caveats)
+  - [NUL bytes](#nul-bytes)
+  - [`-E` / `--eponymous`: variable name collisions](#e--eponymous-variable-name-collisions)
+  - [`$()` strips trailing newlines](#strips-trailing-newlines)
+  - [Predicate numeric comparisons](#predicate-numeric-comparisons)
+  - [Pipe spaces are required](#pipe-spaces-are-required)
+- [EXIT STATUS](#exit-status)
+- [NOTES](#notes)
+- [SEE ALSO](#see-also)
+
+---
+
 ## NAME
 
 **boson** — query JSON with jq-style path expressions and pipelines
