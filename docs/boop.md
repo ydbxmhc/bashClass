@@ -756,7 +756,7 @@ boop.classPath dirs
 Two layers prevent double-loading and circular recursion:
 
 - **Registry check**: If `__boop_registry[ClassName]` is already set,
-  the class file's load guard (`return 2>/dev/null`) exits immediately.
+  `boop.init ClassName || return 0` exits immediately.
 - **Loading flag**: `__boop_loading[ClassName]` is set while a class
   file is being sourced. Re-entry for the same class skips it.
 
@@ -789,9 +789,9 @@ Here's `Config` — a real class in the project:
 ```bash
 #!/bin/bash
 
-[[ -n "${__boop_registry[Config]+set}" ]] && return 2>/dev/null
-
 . boop
+
+boop.init Config || return 0
 
 # ... method implementations ...
 
@@ -854,11 +854,11 @@ Here's a complete class from scratch. FQN-aware, uses `boopClass`:
 ```bash
 #!/bin/bash
 
-# Load guard — skip if already registered
-[[ -n "${__boop_registry[Point]+set}" ]] && return 2>/dev/null
-
 # Load the framework (and any parent classes)
 . boop
+
+# Guard — skip if already registered, print help if run directly
+boop.init Point || return 0
 
 # --- Method Implementations ---
 # Convention: ClassName.methodName() { ... }
@@ -888,8 +888,9 @@ boopClass Point has:x,y public:new,distanceTo
 
 ### The Pattern, Step by Step
 
-1. **Load guard**: `[[ -n "${__boop_registry[ClassName]+set}" ]] && return 2>/dev/null`
-   — skip if already loaded, without crashing when run directly.
+1. **Load guard**: `. boop ParentClass` then `boop.init ClassName || return 0`
+   — source the framework first (so the registry exists), then guard: already
+   loaded exits via `|| return 0`; run directly prints help and exits 1.
 
 2. **Source dependencies**: `. boop ParentClass` loads the framework
    and parent. The import system handles circular prevention.
@@ -928,9 +929,9 @@ __boop.registerClass Box
 
 ```bash
 #!/bin/bash
-[[ -n "${__boop_registry[Cube]+set}" ]] && return 2>/dev/null
-
 . boop Geometry::Box    # load parent
+
+boop.init Cube || return 0
 
 Cube.new() {
   local _Class="${_Class:-Cube}"
