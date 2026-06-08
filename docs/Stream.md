@@ -10,6 +10,51 @@ delimiters with run-collapsing.
 > or field value containing a NUL will be silently truncated at the first one.
 > See [GOTCHAS.md](../GOTCHAS.md).
 
+## Contents
+
+- [Loading](#loading)
+- [Quick Start](#quick-start)
+- [Construction](#construction)
+  - [Source options (mutually exclusive with fallback)](#source-options-mutually-exclusive-with-fallback)
+  - [Record delimiter options (mutually exclusive)](#record-delimiter-options-mutually-exclusive)
+  - [Field delimiter options (mutually exclusive)](#field-delimiter-options-mutually-exclusive)
+  - [Other options](#other-options)
+  - [Positional arguments](#positional-arguments)
+- [Methods](#methods)
+  - [`$s.read` (direct mode)](#sread-direct-mode)
+  - [`$s.Read` (buffered mode)](#sread-buffered-mode)
+  - [`$s.next`](#snext)
+  - [`$s.field INDEX_OR_NAME`](#sfield-index_or_name)
+  - [`$s.fieldCount`](#sfieldcount)
+  - [`$s.buffered`](#sbuffered)
+  - [`$s.eof`](#seof)
+  - [`$s.close`](#sclose)
+  - [`$s.write STR`](#swrite-str)
+  - [`$s.writeLine STR`](#swriteline-str)
+  - [`$s.putBack STR`](#sputback-str)
+- [The CRLF Contract](#the-crlf-contract)
+- [Parse Modes in Detail](#parse-modes-in-detail)
+  - [Direct Mode](#direct-mode)
+  - [Regex Mode (buffered)](#regex-mode-buffered)
+  - [PE Mode (buffered)](#pe-mode-buffered)
+- [Field Assignment](#field-assignment)
+- [Performance](#performance)
+  - [Overhead](#overhead)
+  - [Block Size](#block-size)
+  - [Optimization: `__Stream_data`](#optimization-__stream_data)
+- [Null Bytes](#null-bytes)
+- [Examples](#examples)
+  - [CSV with header](#csv-with-header)
+  - [Paragraph mode (double-newline separated)](#paragraph-mode-double-newline-separated)
+  - [Mixed line endings (any CR/LF combination)](#mixed-line-endings-any-crlf-combination)
+  - [Fixed-width records](#fixed-width-records)
+  - [Array mode](#array-mode)
+  - [Writing](#writing)
+- [Design: Two-Layer Delimiter Architecture](#design-two-layer-delimiter-architecture)
+- [Design: Multi-FD I/O Model (planned)](#design-multi-fd-io-model-planned)
+
+---
+
 ## Loading
 
 ```bash

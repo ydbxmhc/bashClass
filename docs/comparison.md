@@ -8,6 +8,28 @@ All boop timings were collected on the development machine (Linux 6.18,
 bash 5.x). Python 3, Ruby 3.x. Times are wall-clock; no CPU pinning.
 Treat them as order-of-magnitude guidance, not precise measurements.
 
+## Contents
+
+- [Model Overview](#model-overview)
+- [OOP Syntax](#oop-syntax)
+  - [Object Creation](#object-creation)
+  - [Method Calls](#method-calls)
+  - [Inheritance](#inheritance)
+  - [Return Values](#return-values)
+  - [isa / isinstance](#isa--isinstance)
+- [Precision Arithmetic](#precision-arithmetic)
+  - [What Each Language Does](#what-each-language-does)
+  - [Benchmark: Addition](#benchmark-addition)
+  - [Benchmark: Pi](#benchmark-pi)
+- [Zero-Fork Philosophy](#zero-fork-philosophy)
+  - [When subshell overhead matters](#when-subshell-overhead-matters)
+- [Object Lifecycle](#object-lifecycle)
+- [Collection Operations](#collection-operations)
+- [Method Dispatch Cost Breakdown](#method-dispatch-cost-breakdown)
+- [When to Use What](#when-to-use-what)
+- [Known Limitations vs Other Languages](#known-limitations-vs-other-languages)
+- [Benchmark Notes](#benchmark-notes)
+
 ---
 
 ## Model Overview

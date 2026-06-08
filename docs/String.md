@@ -9,6 +9,40 @@ exists to explain when Text.String is the right tool and when it is not.
 Using it in the wrong place is slower for no benefit; using it in the
 right place pays for itself many times over.
 
+## Contents
+
+- [Quick Start](#quick-start)
+- [Design Rationale and Performance](#design-rationale-and-performance)
+  - [What this class actually is](#what-this-class-actually-is)
+  - [The performance cost](#the-performance-cost)
+  - [When the cost pays for itself](#when-the-cost-pays-for-itself)
+  - [When to avoid it](#when-to-avoid-it)
+- [Method Reference](#method-reference)
+  - [Constructor](#constructor)
+  - [Getters](#getters)
+    - [`read`](#read)
+    - [`raw`](#raw)
+  - [Read-Only Queries](#read-only-queries)
+    - [`length`](#length)
+    - [`isEmpty`](#isempty)
+    - [`contains`](#contains)
+    - [`startsWith`](#startswith)
+    - [`endsWith`](#endswith)
+    - [`indexOf`](#indexof)
+    - [`substr`](#substr)
+  - [Bare Mutators](#bare-mutators)
+  - [`-ed` Forms](#-ed-forms)
+  - [`do` — Pipeline Executor](#do--pipeline-executor)
+    - [Type homogeneity](#type-homogeneity)
+    - [Performance](#performance)
+- [As a Mixin](#as-a-mixin)
+- [Design Notes](#design-notes)
+  - [Naming convention: bare vs `-ed`](#naming-convention-bare-vs--ed)
+  - [`raw` as an audit anchor](#raw-as-an-audit-anchor)
+  - [Why `do` enforces type homogeneity](#why-do-enforces-type-homogeneity)
+  - [`fold` and word splitting](#fold-and-word-splitting)
+  - [What is not here](#what-is-not-here)
+
 ---
 
 ## Quick Start
