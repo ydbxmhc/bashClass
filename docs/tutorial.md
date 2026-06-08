@@ -551,12 +551,25 @@ $d.isa Cat         # returns 1 (false)
 
 ### `_Cast`
 
-`_Cast ClassName method args…` calls `method` through a specific class
-in the hierarchy, bypassing the MRO. `_Self` is unchanged.
+`_Cast ClassName $obj methodName args…` calls a specific class's
+implementation on the given object, bypassing the MRO.
+
+You might wonder: why not just call `Animal.speak` directly? You can,
+*if* you know `Animal.speak` never calls `_Super`. But if it does,
+calling it directly is a bug: `_Class` in the calling method is still
+`"Dog"`, so when `Animal.speak` captures `local _Class="${_Class:-Animal}"`,
+it gets `"Dog"` — and any `_Super` call inside it walks from Dog's
+parent (Animal) rather than Animal's parent, causing wrong dispatch or
+infinite recursion.
+
+`_Cast` sets `_Class` to the target class as an inline env var on the
+call, so `_Super` inside the called method chains correctly upward from
+there.
 
 ```bash
-# Call Animal.speak on a Dog object, skipping Dog's override:
-_Cast Animal speak   # inside a Dog method
+# Inside a Dog method — call Animal.speak on the current object,
+# with _Class correctly set to Animal for any _Super calls within it:
+_Cast Animal $_Self speak
 ```
 
 ---
