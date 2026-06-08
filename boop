@@ -923,16 +923,6 @@ __boop.validate() {
 # CONFIGURATION
 # ============================================================================
 
-# Set global default return mode. Affects all subsequent calls to
-# boop.pass that don't have an explicit nameref target.
-# This is a process-wide setting — use with intention.
-__boop.setDefaultMode() {
-  case "$1" in
-    auto|nameref|stdout|global|filesystem) _OutMode="$1" ;;
-    *) _Crash "Invalid mode: $1 (use: auto, nameref, stdout, global, filesystem)" ;;
-  esac
-}
-
 # ============================================================================
 # PARSING & DATA ACCESS
 # ============================================================================

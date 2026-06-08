@@ -251,10 +251,9 @@ They are different things.
 _OutMode=stdout $cube.volume
 _OutMode=global $cube.volume
 
-# Process default — three equivalent ways to set it
+# Process default — two ways to set it
 _OutMode=global                 # silent assignment
 _OutMode global                 # sets and prints the new mode
-__boop.setDefaultMode global    # sets with validation, crashes on bad input
 
 # Now all subsequent calls write to $_Out until you change it
 $cube.volume                    # → $_Out
@@ -266,8 +265,9 @@ _OutMode                        # print current mode without changing it
 
 Available modes: `auto` (default), `global`, `reply`, `stdout`, `nameref`, `filesystem`.
 `auto` is equivalent to `stdout` — always. `reply` writes to `$REPLY`.
-`__boop.setDefaultMode` does not accept `reply`; use `_OutMode reply` or
-`_OutMode=reply` instead.
+`nameref` can only be set via silent assignment (`_OutMode=nameref`); calling
+`_OutMode nameref` crashes because the function itself tries to return a value
+in nameref mode with no target.
 
 ### Output Formatting: `_EOL` and `_Delimiter`
 
@@ -1455,7 +1455,6 @@ Where `caller` is the function name from the call stack.
 
 | Function | Description |
 |----------|-------------|
-| `__boop.setDefaultMode` | Set global return mode (auto/nameref/stdout/global/filesystem). |
 | `__boop.inSubshell` | Returns 0 if current context is a subshell. |
 
 ### Global Variables
