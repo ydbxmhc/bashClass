@@ -657,6 +657,8 @@ printf 'host: %s\n' "$host"
 
 Config supports nested keys (dot-separated), defaults, and iteration.
 
+See `docs/Config.md` for the full Config reference.
+
 ### List — ordered collection
 
 ```bash
@@ -676,6 +678,8 @@ $lst.each my_callback_function   # calls my_callback_function item index
 $lst.do | filter 'alpha' | count
 ```
 
+See `docs/List.md` for the full List reference.
+
 ### Map — key/value object store
 
 ```bash
@@ -693,6 +697,8 @@ $m.has score           # returns 1 (false)
 $m.each my_callback    # calls my_callback key value
 ```
 
+See `docs/Map.md` for the full Map reference.
+
 ### Map.Fast — high-performance flat map
 
 For hot paths where you need key/value storage without object overhead:
@@ -704,6 +710,8 @@ declare -A mymap
 Map.Fast.set mymap key "value"
 Map.Fast.get mymap key   # returns via boop.pass / into=
 ```
+
+See `docs/Map.Fast.md` for the full Map.Fast reference.
 
 ### Stack and Queue
 
@@ -721,6 +729,8 @@ $q.enqueue "second"
 into=front $q.dequeue  # front = "first"  (FIFO)
 ```
 
+See `docs/Stack.md` and `docs/Queue.md` for the full references.
+
 ### Set
 
 ```bash
@@ -735,6 +745,8 @@ into=n $s.size   # n = 2
 $s.has "apple"   # returns 0 (true)
 $s.has "cherry"  # returns 1 (false)
 ```
+
+See `docs/Set.md` for the full Set reference.
 
 ### SemVer — version handling
 
@@ -753,6 +765,8 @@ $v.lessThan $v2       # returns 0 (true — 2.4.1 < 3.0.0)
 require: ">=1.0.0"    # in a class file, guards against old boop
 ```
 
+See `docs/SemVer.md` for the full SemVer reference.
+
 ### Math — arbitrary-precision arithmetic
 
 ```bash
@@ -769,6 +783,8 @@ into=r Math.eval '(3 + 4) * 2'  # r = "14"
 
 Math is pure bash — no `bc`, no `awk`, no subshells. It handles
 integers and decimals to arbitrary precision.
+
+See `docs/Math.md` for the full Math reference.
 
 ### Text.String — string manipulation
 
@@ -787,6 +803,8 @@ into=s Text.String "foo bar baz"
 $s.do | upper | replace 'BAR' 'BAZ' | trimmed
 ```
 
+See `docs/String.md` for the full Text.String reference.
+
 ### Data.JSON — JSON parsing
 
 ```bash
@@ -798,6 +816,8 @@ into=doc Data.JSON.parse "$input"
 into=name  $doc.get name             # name = "Alice"
 into=score $doc.get 'scores[1]'      # score = "20"
 ```
+
+See `docs/JSON.md` for the full Data.JSON reference.
 
 ### DateTime — date/time handling
 
@@ -812,6 +832,8 @@ into=d DateTime "2026-01-01"
 into=tomorrow $d.addDays 1
 into=result $tomorrow.format "%Y-%m-%d"   # result = "2026-01-02"
 ```
+
+See `docs/DateTime.md` for the full DateTime reference.
 
 ### Stream — line-oriented file/stdin processing
 
@@ -832,6 +854,8 @@ done
 Stream handles large files without reading them all into memory. It
 supports custom record delimiters, field delimiters, paragraph mode,
 array mode, and more.
+
+See `docs/Stream.md` for the full Stream reference.
 
 ---
 
@@ -938,6 +962,8 @@ Signal refuses to manage `KILL`, `STOP`, `DEBUG`, and `RETURN`:
 - `DEBUG`/`RETURN`: bash pseudo-signals that fire per-command/per-return.
   Incompatible with the callback-stack model.
 
+See `docs/Signal.md` for the full Signal reference.
+
 ---
 
 ## 12. Testing with TestSuite
@@ -1004,6 +1030,8 @@ Default is to print only failures.
 ```bash
 TESTSUITE_VERBOSE=1 bash tests/unit/test_signal_ts
 ```
+
+See `docs/TestSuite.md` for the full TestSuite reference.
 
 ---
 
