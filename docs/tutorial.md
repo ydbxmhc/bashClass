@@ -898,21 +898,30 @@ _FatalLevel=crash   # only _Crash kills (default)
 
 This lets callers decide how fatal errors should be for their context.
 
-### Warning and info
+### Log levels
+
+Six levels, from loudest to quietest threshold:
 
 ```bash
-_Warn "this is suspicious"    # printed at warn level and above
-_Info "this is informational" # printed at info level and above
-_Debug "deep tracing"         # printed only at debug level
+_Warn  "this is suspicious"          # level 2 — default threshold
+_Info  "this is informational"       # level 3
+_Debug "verbose operational detail"  # level 4
+_Trace "framework-level tracing"     # level 5 — used by boop internals
 ```
 
 Control verbosity with `__boop.setLogLevel`:
 
 ```bash
-__boop.setLogLevel warn    # show warnings and above (default)
-__boop.setLogLevel debug   # show everything
-__boop.setLogLevel silent  # show nothing
+__boop.setLogLevel warn    # show warn and above (default)
+__boop.setLogLevel info    # show info and above
+__boop.setLogLevel debug   # show debug and above
+__boop.setLogLevel trace   # show everything, including framework internals
+__boop.setLogLevel silent  # suppress all output
 ```
+
+`_Trace` is what boop itself uses for dispatch, loader, and destroy
+internals. It is rarely useful in application code, but invaluable
+when debugging the framework.
 
 ---
 
