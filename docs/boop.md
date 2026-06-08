@@ -488,20 +488,19 @@ clearly when that's your intent.
 ```bash
 # Compact (default)
 into=s $b.toString
-# Box(_64d...){{ length=5 width=3 height=7 }
+# Box(__obj_01){ length=5 width=3 height=7 }
 
 # Pretty — columnar with alignment
 into=s $b.toString pretty
-# Box(_64d...) {
+# Box(__obj_01) {
 #   length = 5
 #   width  = 3
 #   height = 7
 # }
 ```
 
-Internal metadata (`class`, `parent`, `methods`, `properties`, `trueClass`)
-is hidden. Only user-defined properties show up. Container subclasses
-(List, Map) override `toString` to show their contents.
+Only user-defined properties show up. Container subclasses (List, Map)
+override `toString` to show their contents.
 
 ### `inspect` — Debug View
 
@@ -510,22 +509,18 @@ $obj.inspect              # always prints to stdout — pipe it, page it
 $obj.inspect | less
 ```
 
-`inspect` shows everything `toString` hides. You get the full
-inheritance chain, every property including internal ones (decoded),
-and the complete method list gathered from the entire ancestry:
+`inspect` shows the full inheritance chain, all properties with current
+values, and the complete method list gathered from the entire ancestry:
 
 ```
-object:  _64d0895be1590
-class:   Cube extends Box extends boop
-  class      = Cube
-  trueClass  = Geometry.Cube
-  parent     = Box
-  size       = 4
-  unit       = cm
-  length     = 4
-  width      = 4
-  height     = 4
-methods: new, side, top, end, bottom, volume, calc, area, get, set, isa, toString, inspect, super
+[Geometry.Cube __obj_01]
+  class:   Geometry.Cube extends Geometry.Box extends boop
+  size   = 4
+  unit   = cm
+  length = 4
+  width  = 4
+  height = 4
+  methods: new, side, top, end, bottom, volume, calc, area, get, set, ...
 ```
 
 This is your first stop when something isn't dispatching the way you
@@ -1204,8 +1199,8 @@ for every method:
 
 ```bash
 # What stubAll generates (conceptually):
-_64d0895be1590.volume() {
-  __init=true _Self='_64d0895be1590' _Class='Box' \
+__obj_01.volume() {
+  __init=true _Self='__obj_01' _Class='Box' \
     __boop.dispatch volume "$@"
 }
 ```
@@ -1214,11 +1209,11 @@ On first call, `__init=true` tells dispatch to bake a direct wrapper:
 
 ```bash
 # What dispatch bakes (conceptually):
-_64d0895be1590.volume() {
+__obj_01.volume() {
   if [[ ${_Class:-Box} != 'Box' ]]; then
-    _Self='_64d0895be1590' __boop.dispatch volume "$@"
+    _Self='__obj_01' __boop.dispatch volume "$@"
   else
-    _Self='_64d0895be1590' _Class='Box' Box.volume "$@"
+    _Self='__obj_01' _Class='Box' Box.volume "$@"
   fi
 }
 ```
