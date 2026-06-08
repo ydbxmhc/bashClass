@@ -383,8 +383,8 @@ Rectangle.new() {
 
   # Post-construction validation
   local __Rectangle_new_w __Rectangle_new_h
-  into=__Rectangle_new_w _Self.width
-  into=__Rectangle_new_h _Self.height
+  into=__Rectangle_new_w $_Self.width
+  into=__Rectangle_new_h $_Self.height
   if (( __Rectangle_new_w <= 0 || __Rectangle_new_h <= 0 )); then
     _Error "Rectangle: width and height must be positive"; return 1
   fi
@@ -393,8 +393,8 @@ Rectangle.new() {
 Rectangle.area() {
   local _Class="${_Class:-Rectangle}" _Self="${_Self:-}"
   local __Rectangle_area_w __Rectangle_area_h
-  into=__Rectangle_area_w _Self.width
-  into=__Rectangle_area_h _Self.height
+  into=__Rectangle_area_w $_Self.width
+  into=__Rectangle_area_h $_Self.height
   boop.pass "$(( __Rectangle_area_w * __Rectangle_area_h ))" "${into:-}"
 }
 
@@ -409,8 +409,9 @@ printf 'Area: %s\n' "$a"   # Area: 20
 
 ### `_Self` shortcuts
 
-Inside any method, `_Self.propname` is shorthand for `$(_Self).propname`.
-Use `into=var _Self.prop` to read and `_Self.prop="value"` to write.
+Inside any method, `$_Self` expands to the object ID and `.propname`
+is appended to form the baked accessor function name.
+Use `into=var $_Self.prop` to read and `$_Self.prop "value"` to write.
 
 ---
 
@@ -425,8 +426,8 @@ methods on it, call `_Super`, or dispatch to other objects.
 Widget.render() {
   local _Class="${_Class:-Widget}" _Self="${_Self:-}"
   local __Widget_render_label __Widget_render_size
-  into=__Widget_render_label _Self.label
-  into=__Widget_render_size  _Self.size
+  into=__Widget_render_label $_Self.label
+  into=__Widget_render_size  $_Self.size
   printf '[%s:%s]' "$__Widget_render_label" "$__Widget_render_size"
   boop.pass "" "${into:-}"  # no meaningful return value — side effect only
 }
@@ -438,7 +439,7 @@ Widget.render() {
 Dashboard.show() {
   local _Class="${_Class:-Dashboard}" _Self="${_Self:-}"
   local __Dashboard_show_w
-  into=__Dashboard_show_w _Self.widget    # get the sub-object ID
+  into=__Dashboard_show_w $_Self.widget   # get the sub-object ID
   $__Dashboard_show_w.render              # dispatch on it
 }
 ```
@@ -470,7 +471,7 @@ run a method on another with the same `into=` target:
 Wrapper.process() {
   local _Class="${_Class:-Wrapper}" _Self="${_Self:-}"
   local __Wrapper_process_inner
-  into=__Wrapper_process_inner _Self.inner  # get inner object
+  into=__Wrapper_process_inner $_Self.inner  # get inner object
   _Delegate $__Wrapper_process_inner.doWork "$@"
 }
 ```
@@ -1071,9 +1072,9 @@ set -euo pipefail
 Task.describe() {
   local _Class="${_Class:-Task}" _Self="${_Self:-}"
   local __Task_describe_id __Task_describe_title __Task_describe_done
-  into=__Task_describe_id    _Self.id
-  into=__Task_describe_title _Self.title
-  into=__Task_describe_done  _Self.done
+  into=__Task_describe_id    $_Self.id
+  into=__Task_describe_title $_Self.title
+  into=__Task_describe_done  $_Self.done
   local __Task_describe_mark="[ ]"
   [[ "$__Task_describe_done" == "1" ]] && __Task_describe_mark="[x]"
   boop.pass "${__Task_describe_mark} #${__Task_describe_id}: ${__Task_describe_title}" "${into:-}"
@@ -1081,7 +1082,7 @@ Task.describe() {
 
 Task.complete() {
   local _Class="${_Class:-Task}" _Self="${_Self:-}"
-  _Self.done="1"
+  $_Self.done "1"
 }
 
 boopClass Task 'has:id,title,done public:describe,complete'
@@ -1092,19 +1093,19 @@ TaskList.new() {
   local _Class="${_Class:-TaskList}" _Self="${_Self:-}"
   __boop.new "$@"
   into=__TaskList_new_lst List
-  _Self.tasks="$__TaskList_new_lst"
-  _Self.nextId="1"
+  $_Self.tasks "$__TaskList_new_lst"
+  $_Self.nextId "1"
 }
 
 TaskList.add() {
   local _Class="${_Class:-TaskList}" _Self="${_Self:-}"
   local __TaskList_add_title="${1:-}" __TaskList_add_id __TaskList_add_lst
   [[ -n "$__TaskList_add_title" ]] || { _Error "TaskList.add: title required"; return 1; }
-  into=__TaskList_add_id  _Self.nextId
-  into=__TaskList_add_lst _Self.tasks
+  into=__TaskList_add_id  $_Self.nextId
+  into=__TaskList_add_lst $_Self.tasks
   into=task Task id="$__TaskList_add_id" title="$__TaskList_add_title" done="0"
   $__TaskList_add_lst.push "$task"
-  _Self.nextId="$(( __TaskList_add_id + 1 ))"
+  $_Self.nextId "$(( __TaskList_add_id + 1 ))"
   boop.pass "$task" "${into:-}"
 }
 
@@ -1112,7 +1113,7 @@ TaskList.show() {
   local _Class="${_Class:-TaskList}" _Self="${_Self:-}"
   local __TaskList_show_lst __TaskList_show_n __TaskList_show_i
   local __TaskList_show_task __TaskList_show_desc
-  into=__TaskList_show_lst _Self.tasks
+  into=__TaskList_show_lst $_Self.tasks
   into=__TaskList_show_n   $__TaskList_show_lst.length
   for (( __TaskList_show_i=0; __TaskList_show_i<__TaskList_show_n; __TaskList_show_i++ )); do
     into=__TaskList_show_task $__TaskList_show_lst.get "$__TaskList_show_i"
@@ -1126,7 +1127,7 @@ TaskList.pending() {
   local __TaskList_pending_lst __TaskList_pending_n
   local __TaskList_pending_i __TaskList_pending_task __TaskList_pending_done
   local -i __TaskList_pending_count=0
-  into=__TaskList_pending_lst _Self.tasks
+  into=__TaskList_pending_lst $_Self.tasks
   into=__TaskList_pending_n   $__TaskList_pending_lst.length
   for (( __TaskList_pending_i=0;
          __TaskList_pending_i<__TaskList_pending_n;
