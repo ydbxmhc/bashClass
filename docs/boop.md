@@ -309,8 +309,7 @@ into=b new Box length=5 width=3 height=7
 
 Constructor arguments are `key=value` pairs. They land in the object's
 descriptor as encoded properties. The object gets a unique ID generated
-from `EPOCHREALTIME` (hex-encoded microseconds — fast, no subshell,
-monotonically increasing).
+from a global counter (`__obj_01`, `__obj_02`, …).
 
 After construction, the object has lazy stubs for every method in its
 class and all ancestor classes. The first call to any method triggers
