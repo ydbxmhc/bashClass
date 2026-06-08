@@ -144,50 +144,16 @@ re-executing the framework.
 
 ## The Five-Minute Tour
 
-```bash
-. boop Geometry::Cube Math Collection::Map
+I assume you read the [README](/README.md)? Yes? Good. I'll skip this.
 
-# Create objects
-into=c Cube size=4 unit=cm
-into=m Math 3.14
-into=mp Map
-
-# Call methods
-into=vol $c.volume          # vol="64"
-into=v   $m.val             # v="3.14"
-$mp.set host localhost
-$mp.set port 5432
-into=h $mp.get host         # h="localhost"
-
-# Type checking walks the inheritance chain
-$c.isa Cube && printf "yes\n"   # yes
-$c.isa Box  && printf "yes\n"   # yes (Cube inherits Box)
-$c.isa Map  && printf "nope\n"  # (silence — returns 1)
-
-# Display
-into=s $c.toString pretty
-printf "%s\n" "$s"
-# Cube(_64d...) {
-#   size   = 4
-#   unit   = cm
-#   ...
-# }
-
-# Deep dive — full descriptor + inheritance chain
-$c.inspect
-# object:  _64d0895be1590
-# class:   Cube extends Box extends boop
-#   size     = 4
-#   unit     = cm
-#   length   = 4
-#   width    = 4
-#   height   = 4
-# methods: new, side, top, end, bottom, volume, calc, area, get, set, ...
-```
+### Short Names
 
 Short names (`Cube`, `Map`) work immediately after loading because the
 framework auto-aliases them when the class is registered. Details in
 [Fully Qualified Names & Aliases](#fully-qualified-names--aliases).
+
+The synopsis - if it's unique, you can use the shortest node. If there
+are conflicts, include the parent nodes until there aren't.
 
 ---
 
@@ -207,7 +173,7 @@ into=v $pi.val                  # v="3.14159265358979323846"
 ```
 
 `into=varname` creates a nameref binding. The value is written directly
-into your variable — zero-copy, no subshell, no global side-channel.
+into your variable — zero-copy, no subshell, and it doesn't have to be global.
 This is the fast path and the one you should use almost everywhere.
 
 ### Just Print It
@@ -217,7 +183,10 @@ This is the fast path and the one you should use almost everywhere.
 into=vol $cube.volume
 printf "%s\n" "$vol"            # 64
 
-# Force stdout mode for one call — prints directly, no variable needed
+# just print it - the out of the box default
+$cube.volume                    # prints 64 *unless you changed _OutMode*
+
+# Force stdout mode for one call, regardless of the global setting
 _OutMode=stdout $cube.volume
 
 # Alias makes it readable
