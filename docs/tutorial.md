@@ -211,7 +211,9 @@ into=a Hero team=Avengers name='Iron Man' wealth=999999999
 _EOL=$' is here!\n' $a.name
 ```
 
-To add your own functionality, just write the methods and declare them public.
+To add your own functionality, just write the methods and declare them public.  
+You *will* have to name them according to the convention, which prefixes the
+class name at the front of the method name for dispatch.
 
 ```bash
 #!/usr/bin/env bash
