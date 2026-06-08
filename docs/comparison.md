@@ -116,7 +116,7 @@ bash runs:
 # boop -- caller controls where the value goes
 into=vol $rect.volume    # nameref: zero-copy write into 'vol'
 $rect.volume             # stdout: captured by $() or redirected
-_OutMode=global $rect.volume; echo "$_Out"  # side channel: $_Out
+_OutMode=global $rect.volume; echo "$_Out"  # result stored in $_Out
 
 # Python / Ruby -- always a return value; caller chooses what to do with it
 vol = rect.volume()      # assignment

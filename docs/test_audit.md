@@ -15,7 +15,7 @@ or a public API changes. It is not optional.
 
 - [ ] Every public method on the class under test has at least one passing
       assertion and at least one rejection/crash assertion (where applicable).
-- [ ] No test captures values via `$_Out` (the global side-channel). All
+- [ ] No test captures values via `$_Out` (`_OutMode=global`). All
       captures use `into=varname`.
 - [ ] No test inspects `__boop_registry` or other internal globals directly
       unless the thing being tested IS the registry (e.g., destroy, serialize).

@@ -796,7 +796,7 @@ boop.pass() {
 #
 # Modes:
 #   auto        default — stdout (safe for subshell callers)
-#   global      always write to _Out (the default side-channel)
+#   global      always write to _Out (caller reads it after the call)
 #   reply       always write to REPLY (bash convention; pairs with read/select/${| })
 #   stdout      always print to stdout (good for CLI use)
 #   nameref     requires into= — crashes without one

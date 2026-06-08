@@ -25,7 +25,7 @@ the plumbing.
   - [`into=` — The Recommended Way](#into--the-recommended-way)
   - [Just Print It](#just-print-it)
   - [Subshell Capture](#subshell-capture)
-  - [Global Side-Channel](#global-side-channel)
+  - [Write to `$_Out`](#write-to-_out)
   - [Explicit Mode Override](#explicit-mode-override)
   - [Output Formatting: `_EOL` and `_Delimiter`](#output-formatting-_eol-and-_delimiter)
 - [Creating Objects](#creating-objects)
@@ -230,7 +230,7 @@ For nested containers, `itemAt` is the best of both worlds:
 into=val $matrix.itemAt 0 1     # one line, zero forks
 ```
 
-### Global Side-Channel
+### Write to `$_Out`
 
 ```bash
 _OutMode=global $cube.volume
@@ -1068,7 +1068,7 @@ caller once the function returns.
 | `_EOL` | `$'\n'` | Line ending appended in stdout mode |
 | `_Delimiter` | `""` (→`_EOL`) | Multi-value separator for keys/values/arrays |
 | `_AutoAlias` | `"full"` | Alias depth: full, best, short, none |
-| `_Out` | (side-channel) | Global return value when mode=global |
+| `_Out` | | Return value written by `_OutMode=global` calls |
 
 Set per-call with environment prefix:
 
