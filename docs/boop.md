@@ -243,31 +243,31 @@ Rarely needed; `into=` is clearer and avoids the global state.
 
 ### Explicit Mode Override
 
-The mode can be set per-call (inline env var) or as a process-wide default
-(plain assignment). They are different things.
+The mode can be set per-call (inline env var) or as a process-wide default.
+They are different things.
 
 ```bash
 # Per-call — affects only this one call
 _OutMode=stdout $cube.volume
 _OutMode=global $cube.volume
 
-# Process default — affects every subsequent call until changed
-_OutMode=global                 # now all calls write to $_Out
+# Process default — three equivalent ways to set it
+_OutMode=global                 # silent assignment
+_OutMode global                 # sets and prints the new mode
+__boop.setDefaultMode global    # sets with validation, crashes on bad input
+
+# Now all subsequent calls write to $_Out until you change it
 $cube.volume                    # → $_Out
 $cube.area                      # → $_Out
-_OutMode=auto                   # restore default
-```
 
-`__boop.setDefaultMode` is an alternative to direct assignment that validates
-the value and crashes on an unrecognized mode:
-
-```bash
-__boop.setDefaultMode global    # same effect as _OutMode=global, with validation
+_OutMode auto                   # restore default; prints "auto"
+_OutMode                        # print current mode without changing it
 ```
 
 Available modes: `auto` (default), `global`, `reply`, `stdout`, `nameref`, `filesystem`.
-`auto` is equivalent to `stdout` — always. `reply` writes to `$REPLY`
-(per-call only; `__boop.setDefaultMode` does not accept `reply`).
+`auto` is equivalent to `stdout` — always. `reply` writes to `$REPLY`.
+`__boop.setDefaultMode` does not accept `reply`; use `_OutMode reply` or
+`_OutMode=reply` instead.
 
 ### Output Formatting: `_EOL` and `_Delimiter`
 
