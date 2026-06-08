@@ -61,7 +61,7 @@ the plumbing.
   - [Load Guards and Circular Prevention](#load-guards-and-circular-prevention)
   - [RC Files](#rc-files)
 - [Writing a Class](#writing-a-class)
-  - [The Modern Way: `boopClass`](#the-modern-way-boopclass)
+  - [`boopClass`](#boopclass)
   - [`boopExtend` — Adding Methods to an Existing Class](#boopextend--adding-methods-to-an-existing-class)
   - [Full Class Anatomy](#full-class-anatomy)
   - [The Pattern, Step by Step](#the-pattern-step-by-step)
@@ -852,7 +852,7 @@ RC files can set `_AutoAlias`, `_OutMode`, `_LogLevel`, add roots to
 
 ## Writing a Class
 
-### The Modern Way: `boopClass`
+### `boopClass`
 
 `boopClass` declares a class in a single call. It builds the registry
 descriptor, registers all methods, finalizes the class, and runs
