@@ -1,6 +1,6 @@
 # boop — The Framework
 
-An OOP dispatch system for bash 5+. Classes, objects, inheritance, method
+An OOP dispatch system for bash 4.3+. Classes, objects, inheritance, method
 resolution, property accessors, type checking, value encoding, serialization,
 and a universal return handler — all built on associative arrays and naming
 conventions. No external dependencies. No subshells in the hot path. No
@@ -110,7 +110,7 @@ the plumbing.
 
 ## Requirements
 
-- bash 5.0+ (associative arrays, namerefs)
+- bash 4.3+ (associative arrays, namerefs)
 - That's it. Seriously.
 
 macOS ships bash 3.2 (thanks, GPL3). `brew install bash` fixes that.
