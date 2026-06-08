@@ -307,9 +307,9 @@ into=b Box length=5 width=3 height=7
 into=b new Box length=5 width=3 height=7
 ```
 
-Constructor arguments are `key=value` pairs. They land in the object's
-descriptor as encoded properties. The object gets a unique ID generated
-from a global counter (`__obj_01`, `__obj_02`, …).
+Constructor arguments are `key=value` pairs. Values go directly into
+`__boop_static`; the descriptor stores metadata only. The object gets a
+unique ID from a global counter (`__obj_01`, `__obj_02`, …).
 
 After construction, the object has lazy stubs for every method in its
 class and all ancestor classes. The first call to any method triggers
@@ -439,15 +439,17 @@ $b.length 10                    # one arg = set
 
 ### Value Encoding
 
-Properties are stored in a pipe-delimited descriptor string. Values
-containing pipes, equals signs, percents, newlines, or tabs are
-automatically encoded on write and decoded on read. You never see the
-encoding:
+Property values are stored as plain strings in `__boop_static`, keyed
+by `objectId.propertyName`. No encoding is applied — any value bash can
+hold in a variable works:
 
 ```bash
 $b.set "notes" "width=3|height=7"
 into=n $b.get "notes"           # n="width=3|height=7" (clean)
 ```
+
+The only constraint is NUL bytes, which bash variables cannot hold or
+detect (see [GOTCHAS.md](GOTCHAS.md)).
 
 ---
 
@@ -1170,21 +1172,30 @@ the lifetime of the shell process. Math uses it for pi memoization.
 
 ### Object Storage
 
-Objects are entries in `__boop_registry`, a global associative array.
-The key is the object ID (e.g., `_64d0895be1590`), the value is a
-pipe-delimited descriptor string:
+Objects and classes share `__boop_registry`, a global associative array.
+An object entry holds a pipe-delimited metadata descriptor:
 
 ```
-|class=Box|trueClass=Geometry.Box|parent=boop|length=%335|width=%333|height=%337|
+|class=Box|trueClass=Geometry.Box|
 ```
 
-Values are percent-encoded (pipes, equals, percents, newlines, tabs)
-so they don't corrupt the delimiter structure. `__boop.parse` extracts
-and decodes fields by regex match on the descriptor.
+A class entry holds schema metadata:
 
-Classes are also entries in the same registry — distinguished by context.
-`__boop_registry["Box"]` holds the class descriptor (methods, properties,
-parent, trueClass). `__boop_registry["_64d..."]` holds an object descriptor.
+```
+|class=Box|trueClass=Geometry.Box|parent=boop|methods=new,volume,...|properties=length,width,height|
+```
+
+Property **values** are not in the descriptor. They live in a separate
+associative array, `__boop_static`, keyed as `objectId.propertyName`:
+
+```
+__boop_static["__obj_01.length"] = "5"
+__boop_static["__obj_01.width"]  = "3"
+__boop_static["__obj_01.height"] = "7"
+```
+
+`__boop.parse` reads schema fields from the descriptor. `__boop.get` and
+`__boop.set` read and write property values directly in `__boop_static`.
 
 ### Lazy Stubs and Baking
 
@@ -1435,8 +1446,6 @@ Where `caller` is the function name from the call stack.
 
 | Function | Description |
 |----------|-------------|
-| `__boop.encode` | Percent-encode pipes, equals, percents, newlines, tabs. |
-| `__boop.decode` | Reverse of encode. |
 | `__boop.validate` | Reject unsafe identifiers or function names (type=function mode). |
 
 ### Serialization

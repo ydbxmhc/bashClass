@@ -929,8 +929,8 @@ __boop.validate() {
 
 # Extract a single field from a pipe-delimited descriptor string.
 # The descriptor format is: |field1=value1|field2=value2|...
-# Values are stored encoded (via __boop.encode); this function
-# decodes them before returning.
+# Used for schema/metadata fields (class, trueClass, parent, methods,
+# properties). Values are decoded on read for historical safety.
 #
 # Accepts an optional $3 nameref target for zero-copy extraction.
 # If the field doesn't exist, returns empty string (not an error —
@@ -1305,21 +1305,32 @@ __boop.inspect() {
     __boop.parse "$__boop_inspect_walk" "parent" __boop_inspect_walk
   done
 
-  : "collect user-defined properties from object descriptor"
-  local __boop_inspect_desc="${__boop_registry[$_Self]:-}"
-  local __boop_inspect_field __boop_inspect_raw __boop_inspect_decoded
+  : "collect properties from __boop_static (declared first, then dynamic extras)"
+  local __boop_inspect_field __boop_inspect_trueClass __boop_inspect_props
   local -a __boop_inspect_keys=() __boop_inspect_vals=()
+  local -A __boop_inspect_seen=()
   local -i __boop_inspect_maxlen=0
-  while [[ "$__boop_inspect_desc" =~ \|([^=]+)=([^|]*) ]]; do
-    __boop_inspect_field="${BASH_REMATCH[1]}"
-    __boop_inspect_raw="${BASH_REMATCH[2]}"
-    __boop_inspect_desc="${__boop_inspect_desc#*"${BASH_REMATCH[0]}"}"
-    case "$__boop_inspect_field" in
-      class|parent|methods|properties) continue ;;
-    esac
-    __boop.decode "$__boop_inspect_raw" __boop_inspect_decoded
+  __boop.parse "$_Self" "trueClass" __boop_inspect_trueClass
+  : "${__boop_inspect_trueClass:=$_Class}"
+  __boop.parse "$__boop_inspect_trueClass" "properties" __boop_inspect_props
+  if [[ -n "$__boop_inspect_props" ]]; then
+    local -a __boop_inspect_propArr
+    IFS=',' read -ra __boop_inspect_propArr <<< "$__boop_inspect_props"
+    for __boop_inspect_field in "${__boop_inspect_propArr[@]}"; do
+      [[ -n "$__boop_inspect_field" ]] || continue
+      __boop_inspect_keys+=("$__boop_inspect_field")
+      __boop_inspect_vals+=("${__boop_static[${_Self}.${__boop_inspect_field}]:-}")
+      __boop_inspect_seen[$__boop_inspect_field]=1
+      (( ${#__boop_inspect_field} > __boop_inspect_maxlen )) && __boop_inspect_maxlen=${#__boop_inspect_field} || true
+    done
+  fi
+  local __boop_inspect_k __boop_inspect_prefix="${_Self}."
+  for __boop_inspect_k in "${!__boop_static[@]}"; do
+    [[ "$__boop_inspect_k" == "${__boop_inspect_prefix}"* ]] || continue
+    __boop_inspect_field="${__boop_inspect_k#"$__boop_inspect_prefix"}"
+    [[ -n "${__boop_inspect_seen[$__boop_inspect_field]+set}" ]] && continue
     __boop_inspect_keys+=("$__boop_inspect_field")
-    __boop_inspect_vals+=("$__boop_inspect_decoded")
+    __boop_inspect_vals+=("${__boop_static[$__boop_inspect_k]}")
     (( ${#__boop_inspect_field} > __boop_inspect_maxlen )) && __boop_inspect_maxlen=${#__boop_inspect_field} || true
   done
 
@@ -1452,10 +1463,9 @@ __boop.destroy() {
 
 # Object constructor. This is the beating heart of object creation.
 #
-# 1. Generates a unique object ID from a global counter (hex-encoded
-#    microseconds — fast, no subshell, monotonically increasing).
-# 2. Builds a pipe-delimited descriptor from the class name and any
-#    key=value arguments, encoding values for safe storage.
+# 1. Generates a unique object ID from a global counter (__obj_01, __obj_02, …).
+# 2. Builds a pipe-delimited descriptor containing class metadata only
+#    (class, trueClass). Property values go into __boop_static directly.
 # 3. Registers the descriptor in __boop_registry.
 # 4. Generates direct wrappers for all methods and property accessors
 #    via __boop.backfillMethods. Each wrapper is a one-hop delegation to the
