@@ -6,6 +6,26 @@ Inline TODOs in source files should reference entries here by section name.
 
 ---
 
+## Documentation & Code Comment Fact-Check Audit
+
+Full survey of every factual claim in every `.md` file under `docs/` and
+every comment in every source file under the repo root, `boop`, `bin/`,
+`Geometry/`, `Games/`, `Collection/`, `Math/`, `Testing/`, `Config/`,
+`Data/`, `Text/`, `Signal/`, `SemVer/`, `Mixins/`, and `tests/`.
+
+Specifically look for:
+- Bash version requirements stated incorrectly (framework targets 4.3+,
+  not 5.x — caught in boop.md intro)
+- Feature availability claims tied to the wrong bash version
+- Method names, signatures, or option flags that have drifted from the
+  implementation
+- Performance numbers or comparisons that are stale or fabricated
+- Class/method references that point to non-existent or renamed items
+- "@@" markers (known open questions) that have since been resolved
+- Any other statement that can be checked against the source and is wrong
+
+---
+
 ## Error Severity Reclassification — DONE (2026-06-07)
 
 All data-condition `_Crash` calls reclassified to `_Error` + return 1.
