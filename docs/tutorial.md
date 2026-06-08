@@ -219,6 +219,8 @@ boopClass Counter 'has:count public:increment'
 Use it:
 
 ```bash
+. boop Counter # if in $BOOPPATH, or paste it inline
+
 into=a Counter count=0 && echo "a=$a"
 into=b Counter count=0 && echo b=$b"
 o=( "$a" "$b" ) # object names into an array
@@ -242,9 +244,9 @@ b=__obj_02
 
 **`local _Class="${_Class:-Counter}" _Self="${_Self:-}"`**
 
-Every method generally needs this boilerplate at the top. `_Class` is the class
-name (used by `_Super` and `_Cast`). `_Self` is the object ID (used
-by property access and dispatch). boop sets them via inline env vars
+Every method generally needs this boilerplate at the top. `_Class` is
+the class name (used by `_Super` and `_Cast`). `_Self` is the object ID
+(used by property access and dispatch). boop sets them via inline env vars
 on every call — these locals capture and protect them from leaking.
 
 **`into=__Counter_increment_val $_Self.count`**
@@ -270,7 +272,7 @@ property (getter and setter auto-generated, no method needed).
 
 **Object IDs are always safe unquoted.** They are generated as
 `__obj_` followed by lowercase hex digits — no spaces, no glob
-characters, no special characters. You never need to quote `$a`,
+characters, no special characters. You don't have to quote `$a`,
 `$_Self`, or `${!obj}` for word-splitting or globbing safety.
 
 ---
@@ -295,19 +297,11 @@ This is the **return-target prefix** pattern. The called function reads
 ### Inline prefix vs. export
 
 ```bash
-into=x $obj.method          # CORRECT: inline prefix, visible to method
-export into=x               # WRONG: turns 'into' into an env variable
+into=x $obj.method          # CORRECT: scoped inline prefix
+export into=x               # don't; there are better ways to do this
 ```
 
-Always use the inline (no-export) form.
-
-### Chaining returns
-
-```bash
-into=a $obj.firstName
-into=b $obj.lastName
-printf '%s %s\n' "$a" "$b"
-```
+Always use the inline (no-export) form. Treat `into` like a keyword.
 
 ### When to use stdout
 
@@ -319,15 +313,37 @@ $obj.describe          # prints to stdout
 $obj.describe | head   # pipes correctly
 ```
 
+This works for the usual subshell version of assignment, though it's
+much less efficient.
+
+```bash
+val=$($o.method) # will work, just pointlessly slower, and a bad habit
+```
+
+What will *not* work in a subshell is any change you make. This is still bash.
+The subshell forks a copy, and any changes made there silently vanish with the
+subshell's internal environment when it exits. 
+
 ### `_EOL=` — custom line ending
 
-`_EOL` is a sibling of `into=`. It controls what `_Out` appends after
-the value when writing to stdout (default: newline). Override inline:
+`_EOL` is a sibling of `into=`. It controls what appends after the value when
+writing to stdout (default: newline). Override inline:
 
 ```bash
 _EOL=' (done)\n' $obj.label   # prints: SomeLabel (done)
 _EOL=''          $obj.label   # prints without trailing newline
 ```
+
+You can set a different default globally as well, with either simple assignment
+or argument syntax. 
+
+```bash
+_EOL=$'\r\n' # just assign it,
+_EOL $'\n\n' # or pass as an argument
+```
+
+This changes the global default, but you can still override it inline for 
+any given command.
 
 ---
 
@@ -345,13 +361,13 @@ boopClass Person 'has:name,age public:greet'
 This generates:
 - a constructor that accepts `name=` and `age=` keyword arguments
 - getter methods `$obj.name` and `$obj.age`
-- setter syntax `$obj.name="value"` and `$obj.age="value"`
+- setter syntax `$obj.name "value"` and `$obj.age "value"`
 
 ```bash
 into=p Person name="Alice" age=30
 into=n $p.name         # n = "Alice"
 into=a $p.age          # a = "30"
-$p.name="Bob"          # update name
+$p.name "Bob"          # update name
 ```
 
 ### Custom constructor
