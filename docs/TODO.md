@@ -712,3 +712,56 @@ bash variables:
 - [x] Full boop framework doc (docs/boop.md)
 - [x] GOTCHAS.md — created; NUL, $() newline stripping, read partial-line,
       $(</dev/fd/N) socket issue, nameref scoping
+
+---
+
+## `_Self` Preamble Audit
+
+Widespread wrong pattern in class method implementations:
+```bash
+local _Self="${_Self:-${_Class:-ClassName}}" _Class="${_Class:-ClassName}"
+```
+
+`_Self` should never default to a class name — that silently promotes a
+class reference to an object identity, breaking `__boop_static` lookups.
+Correct form:
+```bash
+local _Class="${_Class:-ClassName}" _Self="${_Self:-}"
+```
+
+(If `_Self` is empty, `__boop_static[.propname]` lookups return empty strings
+rather than returning a class's properties — the right behavior.)
+
+Files known to contain the wrong pattern:
+- `Config/Config` — 9 methods
+- `Collection/Container/Container` — 40+ methods
+- `Geometry/Box/Box` — multiple methods
+- `Geometry/Cube/Cube` — at least Cube.volume
+- `Text/String/String` — 14+ methods
+- `Collection/Queue/Queue` / `Collection/Stack/Stack` — several methods
+
+In practice these methods only fail when called without the dispatcher
+setting `_Self`, which is rare. But docs now show the correct pattern.
+
+---
+
+## Documentation & Code Comment Fact-Check Audit
+
+Full codebase sweep to verify all claims in docs and source comments
+against the actual implementation. Do NOT do this during an active
+feature sprint — schedule as a standalone pass.
+
+Checklist:
+- [ ] bash version requirements in all docs (`4.3+` vs `5.0+`)
+- [ ] All method names in docs vs source (API reference tables)
+- [ ] Object ID format in examples (`__obj_XX`, not `_64d...`)
+- [ ] `auto` mode description (stdout always, not $_Out in main shell)
+- [ ] Descriptor format (metadata only — no encoded property values)
+- [ ] stale `EPOCHREALTIME` references in framework source comments
+- [ ] Typecast-via-env-prefix feature: verify `_Class=X $obj.method`
+  actually works with current `backfillMethods` wrappers (suspected broken)
+- [ ] `__boop.stubAll` → was renamed to `__boop.backfillMethods`; ensure
+  no other docs/tests still reference the old name
+- [ ] `test_stress_ts` → renamed to `test_adversarial_ts`; audit all
+  references including `docs/test_audit.md` and `docs/PLAN.md`
+- [ ] Per-file stale comments: `docs/PLAN.md` still says "bash 5+"

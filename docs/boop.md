@@ -16,98 +16,6 @@ The framework file is called `boop` because life is too short for
 is `__boop_*` — the filename is the personality, the internals are
 the plumbing.
 
-## Contents
-
-- [Requirements](#requirements)
-- [Loading the Framework](#loading-the-framework)
-- [The Five-Minute Tour](#the-five-minute-tour)
-- [Getting Values Back: The Return System](#getting-values-back-the-return-system)
-  - [`into=` — The Recommended Way](#into--the-recommended-way)
-  - [Just Print It](#just-print-it)
-  - [Subshell Capture](#subshell-capture)
-  - [Write to `$_Out`](#write-to-_out)
-  - [Explicit Mode Override](#explicit-mode-override)
-  - [Output Formatting: `_EOL` and `_Delimiter`](#output-formatting-_eol-and-_delimiter)
-- [Creating Objects](#creating-objects)
-- [Destroying Objects](#destroying-objects)
-  - [When to Use It](#when-to-use-it)
-  - [What It Does (Execution Order)](#what-it-does-execution-order)
-  - [Writing a `_destroy` Hook](#writing-a-_destroy-hook)
-  - [Cascading Destruction](#cascading-destruction)
-  - [Double-Destroy](#double-destroy)
-- [Properties: Get and Set](#properties-get-and-set)
-  - [Property Shorthand](#property-shorthand)
-  - [Value Encoding](#value-encoding)
-- [Type Checking: `isa` and `trueClass`](#type-checking-isa-and-trueclass)
-- [Display: `toString` and `inspect`](#display-tostring-and-inspect)
-  - [`toString` — User-Facing Representation](#tostring--user-facing-representation)
-  - [`inspect` — Debug View](#inspect--debug-view)
-- [Inheritance](#inheritance)
-  - [Method Resolution Order (MRO)](#method-resolution-order-mro)
-  - [Dispatch Helpers](#dispatch-helpers)
-    - [`_Super` — Same Object, Parent Class](#_super--same-object-parent-class)
-    - [`_Delegate` — Different Object, Clean Context](#_delegate--different-object-clean-context)
-    - [`_Cast` — Same Object, Explicit Class](#_cast--same-object-explicit-class)
-    - [`_Bless` — Runtime Re-Classification](#_bless--runtime-re-classification)
-  - [Typecasting via Environment Prefix](#typecasting-via-environment-prefix)
-- [Fully Qualified Names & Aliases](#fully-qualified-names--aliases)
-  - [`_AutoAlias`](#_autoalias)
-  - [`trueClass`](#trueclass)
-- [The Import System](#the-import-system)
-  - [Loading Classes](#loading-classes)
-  - [Framework Version Guard](#framework-version-guard)
-  - [Class Version Declarations](#class-version-declarations)
-  - [`.boopIndex` and the Namespace Index](#boopindex-and-the-namespace-index)
-  - [Load Guards and Circular Prevention](#load-guards-and-circular-prevention)
-  - [RC Files](#rc-files)
-- [Writing a Class](#writing-a-class)
-  - [`boopClass`](#boopclass)
-  - [`boopExtend` — Adding Methods to an Existing Class](#boopextend--adding-methods-to-an-existing-class)
-  - [Full Class Anatomy](#full-class-anatomy)
-  - [The Pattern, Step by Step](#the-pattern-step-by-step)
-  - [Manual Registration (Legacy / Fine-Grained Control)](#manual-registration-legacy--fine-grained-control)
-  - [Subclassing](#subclassing)
-- [Naming Conventions](#naming-conventions)
-  - [The `_Self` and `_Class` Pattern](#the-_self-and-_class-pattern)
-- [Configuration Variables](#configuration-variables)
-- [Serialization](#serialization)
-- [Validation](#validation)
-- [Static Storage](#static-storage)
-- [Under the Hood](#under-the-hood)
-  - [Object Storage](#object-storage)
-  - [Lazy Stubs and Baking](#lazy-stubs-and-baking)
-  - [FQN and `trueClass`](#fqn-and-trueclass)
-  - [Container Companion Arrays](#container-companion-arrays)
-  - [Iterator: Companion Class](#iterator-companion-class)
-- [Logging](#logging)
-  - [Levels](#levels)
-  - [Usage](#usage)
-  - [How It Works](#how-it-works)
-  - [Fatality Threshold](#fatality-threshold)
-  - [Output Format](#output-format)
-- [Framework API Reference](#framework-api-reference)
-  - [Core Dispatch](#core-dispatch)
-  - [Dispatch Helpers](#dispatch-helpers-1)
-  - [Class Declaration](#class-declaration)
-  - [Import & Loading](#import--loading)
-  - [Logging](#logging-1)
-  - [Encoding](#encoding)
-  - [Serialization](#serialization-1)
-  - [Configuration](#configuration)
-  - [Global Variables](#global-variables)
-- [Gotchas and Things That Will Bite You](#gotchas-and-things-that-will-bite-you)
-  - [Nameref Collisions](#nameref-collisions)
-  - [`set -u` and the Framework](#set--u-and-the-framework)
-  - [Subshells and Object Creation](#subshells-and-object-creation)
-  - [Aliases and `isa`](#aliases-and-isa)
-  - [Property Order](#property-order)
-  - [Deep Traversal and Object Identity](#deep-traversal-and-object-identity)
-- [The Class Hierarchy](#the-class-hierarchy)
-- [Project Structure](#project-structure)
-  - [Test Files](#test-files)
-
----
-
 ## Requirements
 
 - bash 4.3+ (associative arrays, namerefs)
@@ -144,16 +52,50 @@ re-executing the framework.
 
 ## The Five-Minute Tour
 
-I assume you read the [README](/README.md)? Yes? Good. I'll skip this.
+```bash
+. boop Geometry::Cube Math Collection::Map
 
-### Short Names
+# Create objects
+into=c Cube size=4 unit=cm
+into=m Math 3.14
+into=mp Map
+
+# Call methods
+into=vol $c.volume          # vol="64"
+into=v   $m.val             # v="3.14"
+$mp.set host localhost
+$mp.set port 5432
+into=h $mp.get host         # h="localhost"
+
+# Type checking walks the inheritance chain
+$c.isa Cube && printf "yes\n"   # yes
+$c.isa Box  && printf "yes\n"   # yes (Cube inherits Box)
+$c.isa Map  && printf "nope\n"  # (silence — returns 1)
+
+# Display
+into=s $c.toString pretty
+printf "%s\n" "$s"
+# Geometry.Cube(__obj_01) {
+#   size   = 4
+#   unit   = cm
+#   ...
+# }
+
+# Deep dive — full property and inheritance chain
+$c.inspect
+# [Geometry.Cube __obj_01]
+#   class:   Geometry.Cube extends Geometry.Box extends boop
+#   size     = 4
+#   length   = 4
+#   width    = 4
+#   height   = 4
+#   unit     = cm
+#   methods: new, side, top, end, bottom, volume, calc, area, get, set, ...
+```
 
 Short names (`Cube`, `Map`) work immediately after loading because the
 framework auto-aliases them when the class is registered. Details in
 [Fully Qualified Names & Aliases](#fully-qualified-names--aliases).
-
-The synopsis - if it's unique, you can use the shortest node. If there
-are conflicts, include the parent nodes until there aren't.
 
 ---
 
@@ -173,7 +115,7 @@ into=v $pi.val                  # v="3.14159265358979323846"
 ```
 
 `into=varname` creates a nameref binding. The value is written directly
-into your variable — zero-copy, no subshell, and it doesn't have to be global.
+into your variable — zero-copy, no subshell, no `$_Out` write.
 This is the fast path and the one you should use almost everywhere.
 
 ### Just Print It
@@ -183,17 +125,14 @@ This is the fast path and the one you should use almost everywhere.
 into=vol $cube.volume
 printf "%s\n" "$vol"            # 64
 
-# just print it - the out of the box default
-$cube.volume                    # prints 64 *unless you changed _OutMode*
-
-# Force stdout mode for one call, regardless of the global setting
+# Force stdout mode for one call — prints directly, no variable needed
 _OutMode=stdout $cube.volume
 
 # Alias makes it readable
 alias show='_OutMode=stdout'
 show $cube.volume               # same thing
 
-# Write to $_Out instead of stdout
+# Write to $_Out — use _OutMode=global
 _OutMode=global $cube.volume
 printf "%s\n" "$_Out"
 
@@ -207,10 +146,9 @@ printf "Volume: %s\n" "$( $cube.volume )"
 vol=$( $cube.volume )           # works, but forks a subshell
 ```
 
-It works, but every `$()` is a fork. Fine once; in a loop it adds up.
-Note: using `into=` inside a `$()` subshell will write to the variable
-within the subshell, but the value does not reach the parent scope. The
-framework emits a debug warning when this is detected.
+The framework detects subshells (via `BASHPID` vs the root PID captured
+at load time) and automatically switches to stdout mode inside them. It
+works, but every `$()` is a fork. Fine once; in a loop it adds up.
 
 Subshell capture enables one-liner chaining through nested objects,
 which `into=` can't do in a single expression:
@@ -237,51 +175,38 @@ _OutMode=global $cube.volume
 printf "%s\n" "$_Out"           # "64"
 ```
 
-`_OutMode=global` routes the return value into `$_Out` instead of stdout.
-A single flat global — the next call with `global` mode overwrites it.
-Rarely needed; `into=` is clearer and avoids the global state.
+`global` mode writes to `$_Out` instead of stdout. A single flat
+global — the next call overwrites it. Fine for quick one-offs, but
+`into=` is safer.
 
 ### Explicit Mode Override
 
-`_OutMode` works as both a variable and a function. The function form sets the
-process default and prints the new mode; the inline env-var form applies to one
-call only.
-
 ```bash
-# Process default — call it like a function
-_OutMode global                 # all subsequent calls write to $_Out
-_OutMode                        # print current mode without changing it
-_OutMode auto                   # restore default
-
-# Per-call override — inline env var before the command
-_OutMode=stdout $cube.volume    # this call only: stdout
-_OutMode=global $cube.volume    # this call only: $_Out
+_OutMode=stdout $cube.volume    # force stdout
+_OutMode=global $cube.volume    # force $\_Out
 ```
 
-Silent assignment (`_OutMode=global`) is an alternative to the function call
-when you don't want the confirmation printed.
+Modes: `auto` (default), `global`, `reply`, `stdout`, `nameref`, `filesystem`.
+`auto` is always stdout — use `global` to write to `$_Out` instead.
 
-Available modes: `auto` (default), `global`, `reply`, `stdout`, `nameref`, `filesystem`.
-`auto` is equivalent to `stdout` — always. `reply` writes to `$REPLY`.
+```bash
+_OutMode stdout    # change the process default
+```
 
 ### Output Formatting: `_EOL` and `_Delimiter`
 
-Two helpers control how values are formatted when returned. Both work as
-functions (set + print) or inline env vars (this call only).
+Two variables control how values are formatted when returned:
 
 ```bash
 # _EOL — appended after each value in stdout mode (default: newline)
-_EOL $'\n'                      # set process default to newline (default)
-_EOL ""                         # set to empty: raw output, no trailing newline
-
-_EOL="" $cube.volume            # raw output for this call only
+_EOL=$'\n'       # default — newline after each value
+_EOL=""          # raw — no trailing newline (pipe-friendly)
 
 # _Delimiter — separator for multi-value returns (default: $_EOL)
 into=keys $map.keys             # keys="host\nport\n..." (newline-separated)
 
-_Delimiter $'\t'                # set process default to tab
-_Delimiter $'\t' into=keys $map.keys   # tab-separated for this one call only
-_Delimiter '|'   into=all  $list.toArray
+_Delimiter=$'\t' into=keys $map.keys   # tab-separated for this one call
+_Delimiter='|'   into=all  $list.toArray
 ```
 
 `_Delimiter` is used by `Map.keys`, `Map.values`, `Map.toArray`,
@@ -290,14 +215,14 @@ other method that joins multiple values into a single string. It defaults
 to `_EOL` when not set, so the common case (newline-separated) requires
 no configuration.
 
-Silent assignment (`_EOL=""`, `_Delimiter='|'`) is an alternative to the
-function call when you don't want the confirmation printed.
+Set `_Delimiter` per-call via environment prefix, or set it globally
+for a pipeline stage.
 
 ---
 
 ## Creating Objects
 
-Two syntaxes. Pick whichever reads best in context:
+Two equivalent syntaxes:
 
 ```bash
 # Class-as-constructor (most common)
@@ -307,14 +232,14 @@ into=b Box length=5 width=3 height=7
 into=b new Box length=5 width=3 height=7
 ```
 
-Constructor arguments are `key=value` pairs. Values go directly into
-`__boop_static`; the descriptor stores metadata only. The object gets a
-unique ID from a global counter (`__obj_01`, `__obj_02`, …).
+Constructor arguments are `key=value` pairs. Values are stored in
+`__boop_static` keyed by object ID. The object gets a unique ID from a
+global counter (`__obj_01`, `__obj_02`, ...) — no subshell, no clock.
 
-After construction, the object has lazy stubs for every method in its
-class and all ancestor classes. The first call to any method triggers
-dispatch resolution and bakes a direct wrapper — subsequent calls skip
-dispatch entirely.
+After construction, the object has a direct wrapper function for every
+method in its class and all ancestor classes. Each wrapper is a one-hop
+call: `$obj.method` → `objid.method` → `ClassName.method` — no dispatch
+overhead on any call after creation.
 
 ---
 
@@ -437,19 +362,16 @@ into=len $b.length              # shorthand — no args = get
 $b.length 10                    # one arg = set
 ```
 
-### Value Encoding
+### Value Storage
 
-Property values are stored as plain strings in `__boop_static`, keyed
-by `objectId.propertyName`. No encoding is applied — any value bash can
-hold in a variable works:
+Properties are stored in `__boop_static` as `"objectId.propName"` keys —
+plain associative array entries, no encoding. Bash associative arrays can
+hold arbitrary strings (except NUL bytes), so values are stored verbatim:
 
 ```bash
 $b.set "notes" "width=3|height=7"
 into=n $b.get "notes"           # n="width=3|height=7" (clean)
 ```
-
-The only constraint is NUL bytes, which bash variables cannot hold or
-detect (see [GOTCHAS.md](GOTCHAS.md)).
 
 ---
 
@@ -488,19 +410,22 @@ clearly when that's your intent.
 ```bash
 # Compact (default)
 into=s $b.toString
-# Box(__obj_01){ length=5 width=3 height=7 }
+# Geometry.Box(__obj_01){ length=5 width=3 height=7 unit= color= }
 
 # Pretty — columnar with alignment
 into=s $b.toString pretty
-# Box(__obj_01) {
+# Geometry.Box(__obj_01) {
 #   length = 5
 #   width  = 3
 #   height = 7
+#   unit   = 
+#   color  = 
 # }
 ```
 
-Only user-defined properties show up. Container subclasses (List, Map)
-override `toString` to show their contents.
+Internal metadata (`class`, `parent`, `methods`, `properties`, `trueClass`)
+is hidden. Only user-defined properties show up. Container subclasses
+(List, Map) override `toString` to show their contents.
 
 ### `inspect` — Debug View
 
@@ -509,18 +434,19 @@ $obj.inspect              # always prints to stdout — pipe it, page it
 $obj.inspect | less
 ```
 
-`inspect` shows the full inheritance chain, all properties with current
-values, and the complete method list gathered from the entire ancestry:
+`inspect` shows everything `toString` hides. You get the full
+inheritance chain, every property including internal ones (decoded),
+and the complete method list gathered from the entire ancestry:
 
 ```
 [Geometry.Cube __obj_01]
   class:   Geometry.Cube extends Geometry.Box extends boop
-  size   = 4
-  unit   = cm
-  length = 4
-  width  = 4
-  height = 4
-  methods: new, side, top, end, bottom, volume, calc, area, get, set, ...
+  size     = 4
+  length   = 4
+  width    = 4
+  height   = 4
+  unit     = cm
+  methods: new, side, top, end, bottom, volume, calc, area, get, set, isa, toString, inspect, super
 ```
 
 This is your first stop when something isn't dispatching the way you
@@ -863,15 +789,17 @@ Here's `Config` — a real class in the project:
 ```bash
 #!/bin/bash
 
-. boop
+[[ -n "${__boop_registry[Config]+set}" ]] && return 2>/dev/null
 
-boop.init Config || return 0
+. boop
 
 # ... method implementations ...
 
 Config.get() {
   local _Class="${_Class:-Config}" _Self="${_Self:-}"
-  # ...
+  local __Config_get_key="$1"
+  local -n __Config_get_data="__boop_config_${_Self}"
+  boop.pass "${__Config_get_data[$__Config_get_key]:-}" ${into:-}
 }
 
 Config.set() { ... }
@@ -943,7 +871,7 @@ Point.new() {
 }
 
 Point.distanceTo() {
-  local _Self="${_Self:-${_Class:-Point}}" _Class="${_Class:-Point}"
+  local _Class="${_Class:-Point}" _Self="${_Self:-}"
   local __Point_dt_x1 __Point_dt_y1 __Point_dt_x2 __Point_dt_y2 __Point_dt_other="$1"
   __boop.parse "$_Self"            "x" __Point_dt_x1
   __boop.parse "$_Self"            "y" __Point_dt_y1
@@ -969,7 +897,7 @@ boopClass Point has:x,y public:new,distanceTo
 3. **Method functions**: Named `ClassName.methodName`. Start value-
    producing methods with `boop.pass "$val" ${into:-}` at the end.
    Methods that need object identity open with:
-   `local _Self="${_Self:-${_Class:-ClassName}}" _Class="${_Class:-ClassName}"`
+   `local _Class="${_Class:-ClassName}" _Self="${_Self:-}"`
 
 4. **`boopClass` declaration**: One line at the bottom. All registration,
    finalization, and auto-aliasing happens here.
@@ -1017,7 +945,7 @@ Cube.new() {
 }
 
 Cube.volume() {
-  local _Self="${_Self:-${_Class:-Cube}}" _Class="${_Class:-Cube}"
+  local _Class="${_Class:-Cube}" _Self="${_Self:-}"
   local __Cube_volume_size
   __boop.parse "$_Self" "size" __Cube_volume_size
   local __Cube_volume_vol
@@ -1052,7 +980,7 @@ These aren't suggestions — they prevent real bugs.
 Most methods that need object identity start with:
 
 ```bash
-local _Self="${_Self:-${_Class:-ClassName}}" _Class="${_Class:-ClassName}"
+local _Class="${_Class:-ClassName}" _Self="${_Self:-}"
 ```
 
 The dispatcher sets `_Self` and `_Class` as environment variables
@@ -1067,11 +995,11 @@ caller once the function returns.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `_OutMode` | `"auto"` | Return mode: auto, global, stdout, nameref, filesystem |
+| `_OutMode` | `"auto"` | Return mode: auto, global, reply, stdout, nameref, filesystem |
 | `_EOL` | `$'\n'` | Line ending appended in stdout mode |
 | `_Delimiter` | `""` (→`_EOL`) | Multi-value separator for keys/values/arrays |
 | `_AutoAlias` | `"full"` | Alias depth: full, best, short, none |
-| `_Out` | | Return value written by `_OutMode=global` calls |
+| `_Out` | (side-channel) | Global return value when mode=global |
 
 Set per-call with environment prefix:
 
@@ -1165,62 +1093,38 @@ the lifetime of the shell process. Math uses it for pi memoization.
 
 ### Object Storage
 
-Objects and classes share `__boop_registry`, a global associative array.
-An object entry holds a pipe-delimited metadata descriptor:
+Objects are entries in `__boop_registry`, a global associative array.
+The key is the object ID (e.g., `__obj_01`), the value is a
+pipe-delimited descriptor string holding only metadata:
 
 ```
-|class=Box|trueClass=Geometry.Box|
+|class=Box|trueClass=Geometry.Box
 ```
 
-A class entry holds schema metadata:
+Property values live in `__boop_static["__obj_01.propname"]` — plain
+associative array entries, no encoding. `__boop.parse` extracts fields
+from the descriptor by regex match.
 
-```
-|class=Box|trueClass=Geometry.Box|parent=boop|methods=new,volume,...|properties=length,width,height|
-```
+Classes are also entries in the same registry — distinguished by context.
+`__boop_registry["Box"]` holds the class descriptor (methods, properties,
+parent, trueClass). `__boop_registry["__obj_01"]` holds an object descriptor.
 
-Property **values** are not in the descriptor. They live in a separate
-associative array, `__boop_static`, keyed as `objectId.propertyName`:
+### Wrappers
 
-```
-__boop_static["__obj_01.length"] = "5"
-__boop_static["__obj_01.width"]  = "3"
-__boop_static["__obj_01.height"] = "7"
-```
-
-`__boop.parse` reads schema fields from the descriptor. `__boop.get` and
-`__boop.set` read and write property values directly in `__boop_static`.
-
-### Lazy Stubs and Baking
-
-When an object is created, `stubAll` generates tiny eval'd functions
-for every method:
+When an object is created, `__boop.backfillMethods` generates a direct
+wrapper function for every method in the class hierarchy:
 
 ```bash
-# What stubAll generates (conceptually):
-__obj_01.volume() {
-  __init=true _Self='__obj_01' _Class='Box' \
-    __boop.dispatch volume "$@"
-}
+# What backfillMethods generates:
+__obj_01.volume() { _Self='__obj_01' _Class='Box' Box.volume "$@"; }
 ```
 
-On first call, `__init=true` tells dispatch to bake a direct wrapper:
+This is a one-hop call: `$obj.volume` → `__obj_01.volume` → `Box.volume`.
+No dispatch overhead on normal calls. The wrapper is sourced from a
+tmpfile — one `source` call covers all methods for the object.
 
-```bash
-# What dispatch bakes (conceptually):
-__obj_01.volume() {
-  if [[ ${_Class:-Box} != 'Box' ]]; then
-    _Self='__obj_01' __boop.dispatch volume "$@"
-  else
-    _Self='__obj_01' _Class='Box' Box.volume "$@"
-  fi
-}
-```
-
-The baked wrapper calls `Box.volume` directly — no dispatch, no MRO
-walk, no registry lookup. The `if` guard handles typecasting.
-
-Cost: one `eval` per method at object creation, one dispatch on first
-call, then zero overhead forever.
+Cost: one wrapper function per method at object creation time. After
+that, every call is a direct bash function invocation.
 
 ### FQN and `trueClass`
 
@@ -1400,11 +1304,10 @@ Where `caller` is the function name from the call stack.
 | `boopExtend Name [tokens...]` | Add methods/properties to an existing class. Non-destructive. |
 | `__boop.registerMethod` | Map "Class.method" → implementing function in the method registry. |
 | `__boop.registerClass` | Finalize a class: create class-level wrappers and constructor shorthand. |
-| `__boop.stubAll` | Generate lazy stubs for all methods on an object. |
-| `__boop.refresh` | Tear down baked wrappers and re-stub (for runtime method changes). |
+| `__boop.backfillMethods` | Generate direct wrappers for all methods and property accessors on an object. |
+| `__boop.refresh` | Tear down baked wrappers and re-generate them (for runtime method changes). |
 | `__boop.autoAlias` | Run auto-aliasing for a FQN after registration. Respects `_AutoAlias`. |
 | `__boop.createAlias` | Clone a class descriptor under a new name. |
-| `__boop.backfillMethods` | Ensure inherited methods are stubs on an object. |
 
 ### Import & Loading
 
@@ -1439,6 +1342,8 @@ Where `caller` is the function name from the call stack.
 
 | Function | Description |
 |----------|-------------|
+| `__boop.encode` | Percent-encode pipes, equals, percents, newlines, tabs. |
+| `__boop.decode` | Reverse of encode. |
 | `__boop.validate` | Reject unsafe identifiers or function names (type=function mode). |
 
 ### Serialization
@@ -1452,6 +1357,7 @@ Where `caller` is the function name from the call stack.
 
 | Function | Description |
 |----------|-------------|
+| `_OutMode [mode]` | Get or set the global return mode. Call form prints current mode. |
 | `__boop.inSubshell` | Returns 0 if current context is a subshell. |
 
 ### Global Variables
@@ -1639,7 +1545,7 @@ and a position; it doesn't own data.
 | `tests/unit/test_box_cube_ts` | Box and Cube (~45 tests). |
 | `tests/unit/test_containers_ts` | Container, List, Map, Iterator, delegation (~155 tests). |
 | `tests/unit/test_math_ts` | Math including pi verification (~75 tests). |
-| `tests/unit/test_stress_ts` | Framework adversarial tests (~131 tests). |
+| `tests/integration/test_adversarial_ts` | Framework adversarial tests (edge cases, NUL, encoding, dispatch). |
 | `tests/unit/test_logging_ts` | Logging system (~51 tests). |
 | `tests/unit/test_config_ts` | Config class (flat and INI formats). |
 | `tests/unit/test_classpath_ts` | Classpath resolution and .boopIndex. |

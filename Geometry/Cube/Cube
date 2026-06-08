@@ -113,4 +113,5 @@ Geometry.Cube.volume() {
 # Class Declaration
 # ============================================================================
 
-boopClass Geometry.Cube isa:Geometry.Box has:size
+boopClass Geometry.Cube isa:Geometry.Box has:size \
+  public:new,side,top,end,bottom,volume

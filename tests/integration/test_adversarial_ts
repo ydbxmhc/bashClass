@@ -451,14 +451,14 @@ $t.assert_fail "_Cast no method" bash -c '. boop Cube
 # SECTION 17: _OutMode — bad inputs and valid modes
 # ============================================================================
 
-$t.section "_OutMode validation"
+$t.section "_OutMode"
 $t.assert_fail "_OutMode with garbage" bash -c '. boop Cube; _OutMode "garbage"'
-for mode in auto stdout global reply filesystem; do
+$t.assert_fail "_OutMode with empty string" bash -c '. boop Cube; _OutMode ""'
+for mode in auto reply stdout global filesystem; do
   $t.assert_ok "_OutMode $mode" bash -c ". boop Cube; _OutMode $mode"
 done
-# nameref can only be set silently — the function form crashes because it
-# immediately tries to return a value in nameref mode with no target.
-$t.assert_ok "_OutMode=nameref silent assignment" bash -c ". boop Cube; _OutMode=nameref"
+# nameref mode can be set silently via assignment (function form crashes without target)
+$t.assert_ok "_OutMode=nameref silent assignment" bash -c '. boop Cube; _OutMode=nameref'
 
 # ============================================================================
 # SECTION 18: registerClass — bad inputs

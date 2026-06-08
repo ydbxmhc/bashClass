@@ -109,8 +109,8 @@ declare -gr __boop_version="1.0.0"
 declare -g _AutoAlias="${_AutoAlias:-full}"
 
 # Controls how boop.pass delivers values when no explicit nameref
-# target is provided. Modes: auto (global in main shell, stdout in subshell),
-# nameref (requires target -- crashes without one), stdout, global, filesystem.
+# target is provided. Modes: auto (stdout, always), global (writes to $_Out),
+# reply (writes to $REPLY), stdout, nameref (crashes without target), filesystem.
 # Can be overridden per-call via environment: _OutMode=stdout $obj.volume
 declare -g _OutMode="${_OutMode:-auto}"
 
@@ -221,8 +221,7 @@ declare -gA __boop_resolvedFatalLevel
 # ============================================================================
 
 # Side-channel for global return mode. When boop.pass is called
-# without a nameref target and the mode resolves to "global", the value
-# lands here. Callers read it after the call: $obj.volume; printf "%s" "$_Out"
+# without a nameref target and mode is "global", the value lands here.
 # Intentionally a single flat global — keeps the API simple. If you need
 # to capture a value without clobbering this, use into=varname instead.
 declare -g  _Out="" # no dedicated method for this; no need
@@ -796,7 +795,7 @@ boop.pass() {
 #
 # Modes:
 #   auto        default — stdout (safe for subshell callers)
-#   global      always write to _Out (caller reads it after the call)
+#   global      always write to _Out (the default side-channel)
 #   reply       always write to REPLY (bash convention; pairs with read/select/${| })
 #   stdout      always print to stdout (good for CLI use)
 #   nameref     requires into= — crashes without one
@@ -929,8 +928,8 @@ __boop.validate() {
 
 # Extract a single field from a pipe-delimited descriptor string.
 # The descriptor format is: |field1=value1|field2=value2|...
-# Used for schema/metadata fields (class, trueClass, parent, methods,
-# properties). Values are decoded on read for historical safety.
+# Values are stored encoded (via __boop.encode); this function
+# decodes them before returning.
 #
 # Accepts an optional $3 nameref target for zero-copy extraction.
 # If the field doesn't exist, returns empty string (not an error —
@@ -1305,21 +1304,26 @@ __boop.inspect() {
     __boop.parse "$__boop_inspect_walk" "parent" __boop_inspect_walk
   done
 
-  : "collect properties from __boop_static (declared first, then dynamic extras)"
-  local __boop_inspect_field __boop_inspect_trueClass __boop_inspect_props
+  : "collect user-defined properties from __boop_static"
+  local __boop_inspect_trueClass
+  __boop.parse "$_Self" "trueClass" __boop_inspect_trueClass
+  : "${__boop_inspect_trueClass:=$_Class}"
+  local __boop_inspect_props
+  __boop.parse "$__boop_inspect_trueClass" "properties" __boop_inspect_props
+
+  local __boop_inspect_field __boop_inspect_value
   local -a __boop_inspect_keys=() __boop_inspect_vals=()
   local -A __boop_inspect_seen=()
   local -i __boop_inspect_maxlen=0
-  __boop.parse "$_Self" "trueClass" __boop_inspect_trueClass
-  : "${__boop_inspect_trueClass:=$_Class}"
-  __boop.parse "$__boop_inspect_trueClass" "properties" __boop_inspect_props
+
   if [[ -n "$__boop_inspect_props" ]]; then
     local -a __boop_inspect_propArr
     IFS=',' read -ra __boop_inspect_propArr <<< "$__boop_inspect_props"
     for __boop_inspect_field in "${__boop_inspect_propArr[@]}"; do
       [[ -n "$__boop_inspect_field" ]] || continue
+      __boop_inspect_value="${__boop_static[${_Self}.${__boop_inspect_field}]:-}"
       __boop_inspect_keys+=("$__boop_inspect_field")
-      __boop_inspect_vals+=("${__boop_static[${_Self}.${__boop_inspect_field}]:-}")
+      __boop_inspect_vals+=("$__boop_inspect_value")
       __boop_inspect_seen[$__boop_inspect_field]=1
       (( ${#__boop_inspect_field} > __boop_inspect_maxlen )) && __boop_inspect_maxlen=${#__boop_inspect_field} || true
     done
@@ -1463,9 +1467,10 @@ __boop.destroy() {
 
 # Object constructor. This is the beating heart of object creation.
 #
-# 1. Generates a unique object ID from a global counter (__obj_01, __obj_02, …).
-# 2. Builds a pipe-delimited descriptor containing class metadata only
-#    (class, trueClass). Property values go into __boop_static directly.
+# 1. Generates a unique object ID from a global counter — fast, no subshell,
+#    monotonically increasing. Format: __obj_XX (hex counter).
+# 2. Builds a pipe-delimited descriptor from the class name and any
+#    key=value arguments, encoding values for safe storage.
 # 3. Registers the descriptor in __boop_registry.
 # 4. Generates direct wrappers for all methods and property accessors
 #    via __boop.backfillMethods. Each wrapper is a one-hop delegation to the

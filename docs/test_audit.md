@@ -96,7 +96,7 @@ A smoke test file does not exist. Need a file `test_smoke` that:
 ### test_box_cube_ts                                                 [ ] FIXED
 
 1. **No crash/rejection tests.** `Cube size=abc`, `Cube` with no size,
-   `Box.calc` with zero — these are in test_stress_ts instead of here.
+   `Box.calc` with zero — these are in test_adversarial_ts instead of here.
    Unit tests for a class should be self-contained. Fix: add a "Rejection"
    section with the crash cases that belong to Box/Cube specifically.
 
@@ -172,7 +172,7 @@ A smoke test file does not exist. Need a file `test_smoke` that:
    through the normal object wrapper (`$box.test_log`) and verify the caller
    name is still correct.
 
-### test_stress_ts                                                   [ ] FIXED
+### test_adversarial_ts                                                   [ ] FIXED
 
 1. **File is misnamed.** It's an adversarial/integration test, not a stress
    test. The benchmark section is opt-in and skipped by default. Fix: rename
@@ -226,7 +226,7 @@ A smoke test file does not exist. Need a file `test_smoke` that:
 2. **No smoke-first ordering.** Fix: run test_smoke first; if it fails,
    print a clear message and exit before running the rest.
 
-3. **test_stress_ts rename.** Update the loop and any references when the
+3. **test_adversarial_ts rename.** Update the loop and any references when the
    file is renamed.
 
 ---
