@@ -193,8 +193,8 @@ _OutMode=stdout $cube.volume
 alias show='_OutMode=stdout'
 show $cube.volume               # same thing
 
-# Global side-channel — printed by the next call, not ideal
-$cube.volume
+# Write to $_Out instead of stdout
+_OutMode=global $cube.volume
 printf "%s\n" "$_Out"
 
 # Subshell capture — classic bash, works anywhere
@@ -207,9 +207,10 @@ printf "Volume: %s\n" "$( $cube.volume )"
 vol=$( $cube.volume )           # works, but forks a subshell
 ```
 
-The framework detects subshells (via `BASHPID` vs the root PID captured
-at load time) and automatically switches to stdout mode inside them. It
-works, but every `$()` is a fork. Fine once; in a loop it adds up.
+It works, but every `$()` is a fork. Fine once; in a loop it adds up.
+Note: using `into=` inside a `$()` subshell will write to the variable
+within the subshell, but the value does not reach the parent scope. The
+framework emits a debug warning when this is detected.
 
 Subshell capture enables one-liner chaining through nested objects,
 which `into=` can't do in a single expression:
@@ -232,13 +233,13 @@ into=val $matrix.itemAt 0 1     # one line, zero forks
 ### Global Side-Channel
 
 ```bash
-$cube.volume
+_OutMode=global $cube.volume
 printf "%s\n" "$_Out"           # "64"
 ```
 
-When no `into=` is provided in the main shell, the value lands in `_Out`.
-A single flat global — the next call overwrites it. Fine for quick
-one-offs, but `into=` is safer.
+`_OutMode=global` routes the return value into `$_Out` instead of stdout.
+A single flat global — the next call with `global` mode overwrites it.
+Rarely needed; `into=` is clearer and avoids the global state.
 
 ### Explicit Mode Override
 
@@ -247,8 +248,9 @@ _OutMode=stdout $cube.volume    # force stdout
 _OutMode=global $cube.volume    # force $\_Out
 ```
 
-Modes: `auto` (default), `global`, `stdout`, `nameref`, `filesystem`.
-Auto writes to `$_Out` in the main shell; stdout in subshells.
+Modes: `auto` (default), `global`, `reply`, `stdout`, `nameref`, `filesystem`.
+`auto` is equivalent to `stdout` — always. `reply` writes to `$REPLY`
+(per-call only; `__boop.setDefaultMode` does not accept `reply`).
 
 ```bash
 __boop.setDefaultMode stdout    # change the process default
