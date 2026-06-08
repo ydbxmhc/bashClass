@@ -219,18 +219,14 @@ boopClass Counter 'has:count public:increment'
 Use it:
 
 ```bash
-into=a Counter count=0
-echo "a=$a"
-into=b Counter count=0
-echo b=$b"
-o=( "$a" "$b" ) 
+into=a Counter count=0 && echo "a=$a"
+into=b Counter count=0 && echo b=$b"
+o=( "$a" "$b" ) # object names into an array
 
-$a.increment
-for i in loop three times; do $b.increment; done
+$a.increment                                     # a.count = 1
+for i in loop three times; do $b.increment; done # b.count = 3
 
 for obj in "${o[@]}"; do _EOL=" hits for $obj"$'\n' $obj.count; done
-# a.count = 1
-# b.count = 3
 ```
 
 ### What each line does
@@ -262,6 +258,11 @@ baked wrapper.
 Registers the class. `has:count` tells boop that `count` is a
 property (getter and setter auto-generated, no method needed).
 `public:` names the author-written methods that become dispatchable.
+
+**Object IDs are always safe unquoted.** They are generated as
+`__obj_` followed by lowercase hex digits — no spaces, no glob
+characters, no special characters. You never need to quote `$a`,
+`$_Self`, or `${!obj}` for word-splitting or globbing safety.
 
 ---
 
