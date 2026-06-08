@@ -129,8 +129,19 @@ Or load the core plus one or more library classes in a single line:
 . boop Args List Config
 ```
 
-Each name after `boop` is a class to preload. You can also load classes
-later with the same syntax.
+Each name after `boop` is a class to load. You can also load
+additional classes later with the same syntax — boop's framework
+initialization is guarded and won't re-run, but the import step
+runs every time:
+
+```bash
+. boop         # load framework
+# ... later ...
+. boop Foo Bar # framework init skipped; Foo and Bar are loaded now
+```
+
+Each class file has its own idempotence guard (`boop.init ClassName`),
+so sourcing an already-loaded class is a no-op.
 
 ### Verify it loaded
 
