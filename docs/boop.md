@@ -243,18 +243,31 @@ Rarely needed; `into=` is clearer and avoids the global state.
 
 ### Explicit Mode Override
 
+The mode can be set per-call (inline env var) or as a process-wide default
+(plain assignment). They are different things.
+
 ```bash
-_OutMode=stdout $cube.volume    # force stdout
-_OutMode=global $cube.volume    # force $\_Out
+# Per-call — affects only this one call
+_OutMode=stdout $cube.volume
+_OutMode=global $cube.volume
+
+# Process default — affects every subsequent call until changed
+_OutMode=global                 # now all calls write to $_Out
+$cube.volume                    # → $_Out
+$cube.area                      # → $_Out
+_OutMode=auto                   # restore default
 ```
 
-Modes: `auto` (default), `global`, `reply`, `stdout`, `nameref`, `filesystem`.
+`__boop.setDefaultMode` is an alternative to direct assignment that validates
+the value and crashes on an unrecognized mode:
+
+```bash
+__boop.setDefaultMode global    # same effect as _OutMode=global, with validation
+```
+
+Available modes: `auto` (default), `global`, `reply`, `stdout`, `nameref`, `filesystem`.
 `auto` is equivalent to `stdout` — always. `reply` writes to `$REPLY`
 (per-call only; `__boop.setDefaultMode` does not accept `reply`).
-
-```bash
-__boop.setDefaultMode stdout    # change the process default
-```
 
 ### Output Formatting: `_EOL` and `_Delimiter`
 
