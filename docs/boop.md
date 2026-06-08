@@ -243,46 +243,45 @@ Rarely needed; `into=` is clearer and avoids the global state.
 
 ### Explicit Mode Override
 
-The mode can be set per-call (inline env var) or as a process-wide default.
-They are different things.
+`_OutMode` works as both a variable and a function. The function form sets the
+process default and prints the new mode; the inline env-var form applies to one
+call only.
 
 ```bash
-# Per-call — affects only this one call
-_OutMode=stdout $cube.volume
-_OutMode=global $cube.volume
-
-# Process default — two ways to set it
-_OutMode=global                 # silent assignment
-_OutMode global                 # sets and prints the new mode
-
-# Now all subsequent calls write to $_Out until you change it
-$cube.volume                    # → $_Out
-$cube.area                      # → $_Out
-
-_OutMode auto                   # restore default; prints "auto"
+# Process default — call it like a function
+_OutMode global                 # all subsequent calls write to $_Out
 _OutMode                        # print current mode without changing it
+_OutMode auto                   # restore default
+
+# Per-call override — inline env var before the command
+_OutMode=stdout $cube.volume    # this call only: stdout
+_OutMode=global $cube.volume    # this call only: $_Out
 ```
+
+Silent assignment (`_OutMode=global`) is an alternative to the function call
+when you don't want the confirmation printed.
 
 Available modes: `auto` (default), `global`, `reply`, `stdout`, `nameref`, `filesystem`.
 `auto` is equivalent to `stdout` — always. `reply` writes to `$REPLY`.
-`nameref` can only be set via silent assignment (`_OutMode=nameref`); calling
-`_OutMode nameref` crashes because the function itself tries to return a value
-in nameref mode with no target.
 
 ### Output Formatting: `_EOL` and `_Delimiter`
 
-Two variables control how values are formatted when returned:
+Two helpers control how values are formatted when returned. Both work as
+functions (set + print) or inline env vars (this call only).
 
 ```bash
 # _EOL — appended after each value in stdout mode (default: newline)
-_EOL=$'\n'       # default — newline after each value
-_EOL=""          # raw — no trailing newline (pipe-friendly)
+_EOL $'\n'                      # set process default to newline (default)
+_EOL ""                         # set to empty: raw output, no trailing newline
+
+_EOL="" $cube.volume            # raw output for this call only
 
 # _Delimiter — separator for multi-value returns (default: $_EOL)
 into=keys $map.keys             # keys="host\nport\n..." (newline-separated)
 
-_Delimiter=$'\t' into=keys $map.keys   # tab-separated for this one call
-_Delimiter='|'   into=all  $list.toArray
+_Delimiter $'\t'                # set process default to tab
+_Delimiter $'\t' into=keys $map.keys   # tab-separated for this one call only
+_Delimiter '|'   into=all  $list.toArray
 ```
 
 `_Delimiter` is used by `Map.keys`, `Map.values`, `Map.toArray`,
@@ -291,8 +290,8 @@ other method that joins multiple values into a single string. It defaults
 to `_EOL` when not set, so the common case (newline-separated) requires
 no configuration.
 
-Set `_Delimiter` per-call via environment prefix, or set it globally
-for a pipeline stage.
+Silent assignment (`_EOL=""`, `_Delimiter='|'`) is an alternative to the
+function call when you don't want the confirmation printed.
 
 ---
 
