@@ -9,7 +9,7 @@ runner. No prior OOP-in-bash experience required.
 
 ## Table of Contents
 
-1. [What boop actually is](#1-what-boop-actually-is)
+1. [What boop actually is](#1-what-boop-actually-is) — and what it is not
 2. [Setup and first source](#2-setup-and-first-source)
 3. [Your first class](#3-your-first-class)
 4. [Returning values — the `into=` system](#4-returning-values--the-into-system)
@@ -49,6 +49,56 @@ lines) that, when sourced, gives you:
 Everything is pure bash. Nothing compiles. There are no C extensions,
 no subprocesses in the dispatch path, and no package manager
 requirements.
+
+### Why OOP in bash at all?
+
+The primitives OOP gives you — encapsulation, inheritance, object
+identity — aren't just aesthetics. They solve real bash pain:
+
+- **Data isolation.** A bash script's default state is one giant pile
+  of globals. Objects let you attach state to a named thing and pass
+  that thing around, rather than threading prefixed variables through
+  every function call.
+- **Code reuse.** Inheritance and mixins let you define behaviour once
+  and graft it onto multiple classes. Without this you copy-paste, or
+  invent yet another naming convention and hope everyone follows it.
+- **Boundaries.** A method that operates on `_Self` can only reach
+  what its class gives it. That constraint makes large scripts easier
+  to reason about and refactor.
+
+None of this is magic. It is convention — carefully maintained,
+enforced by the framework rather than by discipline alone.
+
+### What boop is not
+
+Be honest with yourself before you commit:
+
+**It is not fast.** Every method call goes through dispatch wrappers
+and associative-array lookups. It avoids `$()` subshells in the hot
+path, which helps, but it is still bash. If you need to process
+millions of records per second, reach for a compiled tool. boop is
+for the logic that *orchestrates* — not the loop that burns CPU.
+
+**It is not for binary data.** Bash variables cannot hold NUL bytes.
+If your data contains embedded NULs (binary blobs, certain compressed
+formats) it will be silently truncated. See
+[GOTCHAS.md](GOTCHAS.md#nul-bytes--silent-truncation-no-detection).
+
+**It is not a showcase of exemplary bash.** It is a thought experiment
+that turned out to be useful — a deliberate answer to the question
+"what *would* OOP in pure bash look like?" The internals use
+namerefs, associative arrays, `eval`, and dynamic dispatch in ways
+that would get a normal script rejected in code review. The framework
+earns those tricks; your code using the framework does not need to.
+
+**It is not a general replacement for a real language.** If you have
+Python, Ruby, or Go available and time is not the constraint, use
+them. boop earns its keep in the niche where you need structured logic
+*in bash specifically* — deployment hooks, system configuration,
+scripts that live next to the tools they orchestrate and cannot take
+on a runtime dependency.
+
+If you are still here: good. You found the niche.
 
 ---
 
