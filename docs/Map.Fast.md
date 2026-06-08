@@ -5,6 +5,28 @@ Keys are dot-delimited paths into a single bash associative array.
 No insertion order, no per-level objects, no subtree pass-by-reference —
 just fast get/set on fully-qualified paths.
 
+## Contents
+
+- [Dependencies](#dependencies)
+- [Fast vs Map](#fast-vs-map)
+- [Constructor](#constructor)
+- [Getting and Setting](#getting-and-setting)
+  - [`$doc.set key value`](#docset-key-value)
+  - [`$doc.get key`](#docget-key)
+  - [`$doc.has key`](#dochas-key)
+  - [`$doc.delete key`](#docdelete-key)
+- [Counting and Clearing](#counting-and-clearing)
+- [Enumeration](#enumeration)
+  - [All keys](#all-keys)
+  - [Keys under a prefix](#keys-under-a-prefix)
+  - [Delete a subtree](#delete-a-subtree)
+- [Serialization](#serialization)
+- [Loading from JSON](#loading-from-json)
+- [Full Example](#full-example)
+- [Design Notes](#design-notes)
+
+---
+
 ## Dependencies
 
 ```bash

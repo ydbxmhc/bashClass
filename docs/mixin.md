@@ -5,6 +5,20 @@ They are not classes — they have no constructor, no state of their own,
 and do not appear in the `isa` chain. They give objects additional behavior
 without inheritance.
 
+## Contents
+
+- [Declaring a Mixin](#declaring-a-mixin)
+- [Composing into a Class](#composing-into-a-class)
+- [Resolution Order](#resolution-order)
+- [Provenance Dispatch (`::`)](#provenance-dispatch)
+- [`mixes` Predicate](#mixes-predicate)
+- [Writing a Mixin File](#writing-a-mixin-file)
+- [A Class That Is Also a Mixin](#a-class-that-is-also-a-mixin)
+- [Available Mixins](#available-mixins)
+- [Mixin vs Inheritance](#mixin-vs-inheritance)
+
+---
+
 ## Declaring a Mixin
 
 ```bash
