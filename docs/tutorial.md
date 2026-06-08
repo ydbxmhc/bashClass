@@ -477,16 +477,23 @@ into=r MathHelper.square 7   # r = "49"
 
 ### `_Delegate`
 
-`_Delegate $obj.method args…` dispatches a method with all the calling
-method's context forwarded. Useful when a method on one object needs to
-run a method on another with the same `into=` target:
+For plain cross-object calls like the Dashboard example above, the
+baked wrapper takes care of everything — `_Self` and `_Class` are set
+explicitly as inline env vars on every dispatch, so the calling
+context's `_Class` is irrelevant.
+
+`_Delegate` is for a different situation: forwarding `into=` through
+the call so a return value flows all the way back to the outer caller's
+target variable.
 
 ```bash
 Wrapper.process() {
   local _Class="${_Class:-Wrapper}" _Self="${_Self:-}"
   local __Wrapper_process_inner
-  into=__Wrapper_process_inner $_Self.inner  # get inner object
+  into=__Wrapper_process_inner $_Self.inner
   _Delegate $__Wrapper_process_inner.doWork "$@"
+  # Without _Delegate, doWork's return value goes nowhere — into= is
+  # an inline prefix and does not survive the function boundary on its own.
 }
 ```
 
