@@ -226,7 +226,16 @@ o=( "$a" "$b" ) # object names into an array
 $a.increment                                     # a.count = 1
 for i in loop three times; do $b.increment; done # b.count = 3
 
-for obj in "${o[@]}"; do _EOL=" hits for $obj"$'\n' $obj.count; done
+for obj in "${o[@]}"; do _EOL=" on $obj"$'\n' $obj.count; done
+```
+
+The ouput:
+
+```
+a=__obj_01
+b=__obj_02
+1 on __obj_01
+3 on __obj_02
 ```
 
 ### What each line does
