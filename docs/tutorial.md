@@ -174,11 +174,14 @@ class is a cheap no-op (registry check, no file I/O).
 
 When boop looks for a class file it searches in order: the current
 directory, entries in `BOOPPATH` (colon-separated, like `PATH`), and
-finally entries from `PATH` itself. You can also register an explicit
-path for a class:
+finally entries from `PATH` itself. You can register an explicit path
+for a class using `boop.classPath`:
 
 ```bash
-__boop_classPath["MyClass"]="/opt/lib/myproject/MyClass"
+boop.classPath set MyClass /opt/lib/myproject/MyClass
+boop.classPath list          # show all registered overrides
+boop.classPath get MyClass   # show path for one class
+boop.classPath remove MyClass
 ```
 
 For most use cases — running from the repo root or with `PATH` set as
