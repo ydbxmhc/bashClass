@@ -534,9 +534,8 @@ Dog.speak() {
 GoldenRetriever.speak() {
   local _Class="${_Class:-GoldenRetriever}" _Self="${_Self:-}"
   local __GR_speak_parent
-  into=__GR_speak_parent _Super speak    # calls Dog.speak → "Woof!"
-  boop.pass "${__GR_speak_parent} (very happily)" "${into:-}"
-}
+  into=__GR_speak_parent _Super speak # calls Dog.speak → "Woof!"
+  boop.pass "(very happy) *${__GR_speak_parent}!*" "${into:-}"
 ```
 
 ### `isa` checking
