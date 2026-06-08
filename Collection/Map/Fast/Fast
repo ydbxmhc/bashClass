@@ -171,7 +171,7 @@ Collection.Map.Fast.toString() {
 
 # Destroy companion array. Private hook called by __boop.destroy.
 Collection.Map.Fast._destroy() {
-  local _Self="${_Self:-${_Class:-Collection.Map.Fast}}" _Class="${_Class:-Collection.Map.Fast}"
+  local _Class="${_Class:-Collection.Map.Fast}" _Self="${_Self:-}"
   _Trace "destroy: unsetting __boop_data_${_Self}"
   unset "__boop_data_${_Self}"
 }

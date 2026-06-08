@@ -82,7 +82,7 @@ Geometry.Cube.new() {
 # so the other face methods all delegate here. Validation happens in
 # Box.area via the inherited calc path.
 Geometry.Cube.side() {
-  local _Self="${_Self:-${_Class:-Geometry.Cube}}" _Class="${_Class:-Geometry.Cube}"
+  local _Class="${_Class:-Geometry.Cube}" _Self="${_Self:-}"
   local __Geometry_Cube_side_size __Geometry_Cube_side_val
   into=__Geometry_Cube_side_size $_Self.size
   into=__Geometry_Cube_side_val $_Self.area "$__Geometry_Cube_side_size" "$__Geometry_Cube_side_size"
@@ -101,7 +101,7 @@ Geometry.Cube.bottom() { ${_Self:-${_Class:-Geometry.Cube}}.side "$@"; }
 # Box.volume's semantics (exactly three dimensions), though for a cube all
 # three happen to be identical.
 Geometry.Cube.volume() {
-  local _Self="${_Self:-${_Class:-Geometry.Cube}}" _Class="${_Class:-Geometry.Cube}"
+  local _Class="${_Class:-Geometry.Cube}" _Self="${_Self:-}"
   local __Geometry_Cube_volume_size __Geometry_Cube_volume_vol
   into=__Geometry_Cube_volume_size $_Self.size
   into=__Geometry_Cube_volume_vol required=3 $_Self.calc "$__Geometry_Cube_volume_size" "$__Geometry_Cube_volume_size" "$__Geometry_Cube_volume_size"

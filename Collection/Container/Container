@@ -54,42 +54,42 @@ boop.init Collection.Container || return 0
 # ============================================================================
 
 Collection.Container.getAt() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}"
   _Crash "$_Class must implement 'getAt'"
 }
 
 Collection.Container.setAt() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}"
   _Crash "$_Class must implement 'setAt'"
 }
 
 Collection.Container.delete() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}"
   _Crash "$_Class must implement 'delete'"
 }
 
 Collection.Container.length() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}"
   _Crash "$_Class must implement 'length'"
 }
 
 Collection.Container.clear() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}"
   _Crash "$_Class must implement 'clear'"
 }
 
 Collection.Container.has() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}"
   _Crash "$_Class must implement 'has'"
 }
 
 Collection.Container.toArray() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}"
   _Crash "$_Class must implement 'toArray'"
 }
 
 Collection.Container.each() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}"
   _Crash "$_Class must implement 'each'"
 }
 
@@ -98,7 +98,7 @@ Collection.Container.each() {
 # ============================================================================
 
 Collection.Container.isEmpty() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}"
   local __Collection_Container_isEmpty_len
   into=__Collection_Container_isEmpty_len $_Self.length
   (( __Collection_Container_isEmpty_len == 0 )) && return 0 || return 1
@@ -139,7 +139,7 @@ __Collection_Container._ensureIterator() {
 #          into=val $iter.next
 #        done
 Collection.Container.iterator() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}"
   local __Collection_Container_iter_obj
   into=__Collection_Container_iter_obj Iterator target="$_Self" target_class="$_Class"
   boop.pass "$__Collection_Container_iter_obj" ${into:-}
@@ -147,7 +147,7 @@ Collection.Container.iterator() {
 
 # Advance the internal iterator and return the next value.
 Collection.Container.next() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}" __Collection_Container_next_iter
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}" __Collection_Container_next_iter
   __Collection_Container._ensureIterator "$_Self" "$_Class" __Collection_Container_next_iter
   into=__Collection_Container_next_val _Delegate $__Collection_Container_next_iter.next
   boop.pass "$__Collection_Container_next_val" ${into:-}
@@ -155,7 +155,7 @@ Collection.Container.next() {
 
 # Move the internal iterator backward and return the value.
 Collection.Container.prev() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}" __Collection_Container_prev_iter
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}" __Collection_Container_prev_iter
   __Collection_Container._ensureIterator "$_Self" "$_Class" __Collection_Container_prev_iter
   into=__Collection_Container_prev_val _Delegate $__Collection_Container_prev_iter.prev
   boop.pass "$__Collection_Container_prev_val" ${into:-}
@@ -163,21 +163,21 @@ Collection.Container.prev() {
 
 # Check if the internal iterator has more elements ahead.
 Collection.Container.hasNext() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}" __Collection_Container_hn_iter
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}" __Collection_Container_hn_iter
   __Collection_Container._ensureIterator "$_Self" "$_Class" __Collection_Container_hn_iter
   _Delegate $__Collection_Container_hn_iter.hasNext
 }
 
 # Check if the internal iterator has elements behind.
 Collection.Container.hasPrev() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}" __Collection_Container_hp_iter
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}" __Collection_Container_hp_iter
   __Collection_Container._ensureIterator "$_Self" "$_Class" __Collection_Container_hp_iter
   _Delegate $__Collection_Container_hp_iter.hasPrev
 }
 
 # Return the value at the internal iterator's current position.
 Collection.Container.current() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}" __Collection_Container_cur_iter
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}" __Collection_Container_cur_iter
   __Collection_Container._ensureIterator "$_Self" "$_Class" __Collection_Container_cur_iter
   into=__Collection_Container_cur_val _Delegate $__Collection_Container_cur_iter.current
   boop.pass "$__Collection_Container_cur_val" ${into:-}
@@ -185,7 +185,7 @@ Collection.Container.current() {
 
 # Return the key/index at the internal iterator's current position.
 Collection.Container.iterIndex() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}" __Collection_Container_idx_iter
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}" __Collection_Container_idx_iter
   __Collection_Container._ensureIterator "$_Self" "$_Class" __Collection_Container_idx_iter
   into=__Collection_Container_idx_val _Delegate $__Collection_Container_idx_iter.index
   boop.pass "$__Collection_Container_idx_val" ${into:-}
@@ -193,7 +193,7 @@ Collection.Container.iterIndex() {
 
 # Reset the internal iterator to before the first element.
 Collection.Container.iterReset() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}" __Collection_Container_rst_iter
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}" __Collection_Container_rst_iter
   __Collection_Container._ensureIterator "$_Self" "$_Class" __Collection_Container_rst_iter
   _Delegate $__Collection_Container_rst_iter.reset
 }
@@ -214,13 +214,13 @@ Collection.Container.new() {
 # companion arrays (Map's __boop_keys_, etc.) define their own _destroy
 # which runs before this one in the inheritance walk.
 Collection.Container._destroy() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}"
   _Trace "destroy: unsetting __boop_data_${_Self}"
   unset "__boop_data_${_Self}"
 }
 
 Collection.Container.toString() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}"
   local -l prettyPrint; : "${prettyPrint:=false}"
   [[ "${1:-}" == "pretty" ]] && prettyPrint=true
   local __Collection_Container_ts_len __Collection_Container_ts_type
@@ -243,7 +243,7 @@ Collection.Container.toString() {
 # ============================================================================
 
 Collection.Container.deepGet() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}"
   local __Collection_Container_deepGet_cursor="$_Self" __Collection_Container_deepGet_class="$_Class"
   while (( $# > 1 )); do
     into=__Collection_Container_deepGet_cursor _Delegate $__Collection_Container_deepGet_cursor.getAt "$1"
@@ -256,7 +256,7 @@ Collection.Container.deepGet() {
 }
 
 Collection.Container.deepSet() {
-  local _Self="${_Self:-${_Class:-Collection.Container}}" _Class="${_Class:-Collection.Container}"
+  local _Class="${_Class:-Collection.Container}" _Self="${_Self:-}"
   local __Collection_Container_deepSet_val="$1"; shift
   local __Collection_Container_deepSet_cursor="$_Self" __Collection_Container_deepSet_class="$_Class"
   while (( $# > 1 )); do
@@ -283,7 +283,7 @@ boopClass Collection.Container public:new,length,clear,has,getAt,setAt,delete,is
 # ============================================================================
 
 __boop.itemFrom() {
-  local _Self="${_Self:-${_Class:-boop}}" _Class="${_Class:-boop}"
+  local _Class="${_Class:-boop}" _Self="${_Self:-}"
   local __boop_itemFrom_cursor __boop_itemFrom_class
   local __boop_itemFrom_cursor="${__boop_static[${_Self}.${1}]:-}"
   [[ -n "$__boop_itemFrom_cursor" ]] || { boop.pass "" ${into:-}; return; }
@@ -300,7 +300,7 @@ __boop.itemFrom() {
 }
 
 __boop.setOn() {
-  local _Self="${_Self:-${_Class:-boop}}" _Class="${_Class:-boop}"
+  local _Class="${_Class:-boop}" _Self="${_Self:-}"
   local __boop_setOn_cursor __boop_setOn_class
   local __boop_setOn_cursor="${__boop_static[${_Self}.${1}]:-}"
   [[ -n "$__boop_setOn_cursor" ]] || { _Error "setOn: property '$1' is empty"; return 1; }
@@ -411,7 +411,7 @@ __Iterator._targetLen() {
 }
 
 Iterator.hasNext() {
-  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
+  local _Class="${_Class:-Iterator}" _Self="${_Self:-}"
   local __Iter_hn_pos
   __Iter_hn_pos="${__boop_static[${_Self}.position]:-}"
   : "${__Iter_hn_pos:=-1}"
@@ -421,7 +421,7 @@ Iterator.hasNext() {
 }
 
 Iterator.hasPrev() {
-  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
+  local _Class="${_Class:-Iterator}" _Self="${_Self:-}"
   local __Iter_hp_pos
   __Iter_hp_pos="${__boop_static[${_Self}.position]:-}"
   : "${__Iter_hp_pos:=-1}"
@@ -429,7 +429,7 @@ Iterator.hasPrev() {
 }
 
 Iterator.next() {
-  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
+  local _Class="${_Class:-Iterator}" _Self="${_Self:-}"
   local __Iter_next_pos
   __Iter_next_pos="${__boop_static[${_Self}.position]:-}"
   : "${__Iter_next_pos:=-1}"
@@ -457,7 +457,7 @@ Iterator.next() {
 }
 
 Iterator.prev() {
-  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
+  local _Class="${_Class:-Iterator}" _Self="${_Self:-}"
   local __Iter_prev_pos
   __Iter_prev_pos="${__boop_static[${_Self}.position]:-}"
   : "${__Iter_prev_pos:=-1}"
@@ -483,7 +483,7 @@ Iterator.prev() {
 }
 
 Iterator.current() {
-  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
+  local _Class="${_Class:-Iterator}" _Self="${_Self:-}"
   local __Iter_cur_pos
   __Iter_cur_pos="${__boop_static[${_Self}.position]:-}"
   : "${__Iter_cur_pos:=-1}"
@@ -509,7 +509,7 @@ Iterator.current() {
 }
 
 Iterator.index() {
-  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
+  local _Class="${_Class:-Iterator}" _Self="${_Self:-}"
   local __Iter_idx_pos
   __Iter_idx_pos="${__boop_static[${_Self}.position]:-}"
   : "${__Iter_idx_pos:=-1}"
@@ -531,14 +531,14 @@ Iterator.index() {
 }
 
 Iterator.reset() {
-  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
+  local _Class="${_Class:-Iterator}" _Self="${_Self:-}"
   $_Self.set position "-1"
 }
 
 # Destroy the iterator's key snapshot (if any).
 # Private hook called by __boop.destroy.
 Iterator._destroy() {
-  local _Self="${_Self:-${_Class:-Iterator}}" _Class="${_Class:-Iterator}"
+  local _Class="${_Class:-Iterator}" _Self="${_Self:-}"
   _Trace "destroy: unsetting __boop_iterkeys_${_Self}"
   unset "__boop_iterkeys_${_Self}"
 }

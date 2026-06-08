@@ -158,7 +158,7 @@ Text.String.substr() {
 # ============================================================================
 
 Text.String.trimmed() {
-  local _Self="${_Self:-${_Class:-Text.String}}"
+  local _Class="${_Class:-Text.String}" _Self="${_Self:-}"
   local __Text_String_trimmed_v
   if [[ $# -gt 0 ]]; then __Text_String_trimmed_v="$1"
   else into=__Text_String_trimmed_v $_Self.get value; fi
@@ -168,7 +168,7 @@ Text.String.trimmed() {
 }
 
 Text.String.upcased() {
-  local _Self="${_Self:-${_Class:-Text.String}}"
+  local _Class="${_Class:-Text.String}" _Self="${_Self:-}"
   local __Text_String_upcased_v
   if [[ $# -gt 0 ]]; then __Text_String_upcased_v="$1"
   else into=__Text_String_upcased_v $_Self.get value; fi
@@ -176,7 +176,7 @@ Text.String.upcased() {
 }
 
 Text.String.downcased() {
-  local _Self="${_Self:-${_Class:-Text.String}}"
+  local _Class="${_Class:-Text.String}" _Self="${_Self:-}"
   local __Text_String_downcased_v
   if [[ $# -gt 0 ]]; then __Text_String_downcased_v="$1"
   else into=__Text_String_downcased_v $_Self.get value; fi
@@ -184,7 +184,7 @@ Text.String.downcased() {
 }
 
 Text.String.capitalized() {
-  local _Self="${_Self:-${_Class:-Text.String}}"
+  local _Class="${_Class:-Text.String}" _Self="${_Self:-}"
   local __Text_String_capitalized_v
   if [[ $# -gt 0 ]]; then __Text_String_capitalized_v="$1"
   else into=__Text_String_capitalized_v $_Self.get value; fi
@@ -192,7 +192,7 @@ Text.String.capitalized() {
 }
 
 Text.String.decapitalized() {
-  local _Self="${_Self:-${_Class:-Text.String}}"
+  local _Class="${_Class:-Text.String}" _Self="${_Self:-}"
   local __Text_String_decapitalized_v
   if [[ $# -gt 0 ]]; then __Text_String_decapitalized_v="$1"
   else into=__Text_String_decapitalized_v $_Self.get value; fi
@@ -200,7 +200,7 @@ Text.String.decapitalized() {
 }
 
 Text.String.reversed() {
-  local _Self="${_Self:-${_Class:-Text.String}}"
+  local _Class="${_Class:-Text.String}" _Self="${_Self:-}"
   local __Text_String_reversed_v __Text_String_reversed_r="" __Text_String_reversed_i
   if [[ $# -gt 0 ]]; then __Text_String_reversed_v="$1"
   else into=__Text_String_reversed_v $_Self.get value; fi
@@ -213,7 +213,7 @@ Text.String.reversed() {
 }
 
 Text.String.appended() {
-  local _Self="${_Self:-${_Class:-Text.String}}"
+  local _Class="${_Class:-Text.String}" _Self="${_Self:-}"
   local __Text_String_appended_v __Text_String_appended_sfx
   if [[ "$_Self" =~ ^__obj_ ]]; then
     into=__Text_String_appended_v $_Self.get value; __Text_String_appended_sfx="${1:-}"
@@ -224,7 +224,7 @@ Text.String.appended() {
 }
 
 Text.String.prepended() {
-  local _Self="${_Self:-${_Class:-Text.String}}"
+  local _Class="${_Class:-Text.String}" _Self="${_Self:-}"
   local __Text_String_prepended_v __Text_String_prepended_pfx
   if [[ "$_Self" =~ ^__obj_ ]]; then
     into=__Text_String_prepended_v $_Self.get value; __Text_String_prepended_pfx="${1:-}"
@@ -235,7 +235,7 @@ Text.String.prepended() {
 }
 
 Text.String.replaced() {
-  local _Self="${_Self:-${_Class:-Text.String}}"
+  local _Class="${_Class:-Text.String}" _Self="${_Self:-}"
   local __Text_String_replaced_v __Text_String_replaced_from __Text_String_replaced_to
   if [[ "$_Self" =~ ^__obj_ ]]; then
     into=__Text_String_replaced_v $_Self.get value
@@ -248,7 +248,7 @@ Text.String.replaced() {
 }
 
 Text.String.lpadded() {
-  local _Self="${_Self:-${_Class:-Text.String}}"
+  local _Class="${_Class:-Text.String}" _Self="${_Self:-}"
   local __Text_String_lpadded_v __Text_String_lpadded_w __Text_String_lpadded_c
   if [[ "$_Self" =~ ^__obj_ ]]; then
     into=__Text_String_lpadded_v $_Self.get value
@@ -268,7 +268,7 @@ Text.String.lpadded() {
 }
 
 Text.String.rpadded() {
-  local _Self="${_Self:-${_Class:-Text.String}}"
+  local _Class="${_Class:-Text.String}" _Self="${_Self:-}"
   local __Text_String_rpadded_v __Text_String_rpadded_w __Text_String_rpadded_c
   if [[ "$_Self" =~ ^__obj_ ]]; then
     into=__Text_String_rpadded_v $_Self.get value
@@ -288,7 +288,7 @@ Text.String.rpadded() {
 }
 
 Text.String.centered() {
-  local _Self="${_Self:-${_Class:-Text.String}}"
+  local _Class="${_Class:-Text.String}" _Self="${_Self:-}"
   local __Text_String_centered_v __Text_String_centered_w __Text_String_centered_c
   if [[ "$_Self" =~ ^__obj_ ]]; then
     into=__Text_String_centered_v $_Self.get value
@@ -315,7 +315,7 @@ Text.String.centered() {
 }
 
 Text.String.folded() {
-  local _Self="${_Self:-${_Class:-Text.String}}"
+  local _Class="${_Class:-Text.String}" _Self="${_Self:-}"
   local __Text_String_folded_v __Text_String_folded_w
   if [[ "$_Self" =~ ^__obj_ ]]; then
     into=__Text_String_folded_v $_Self.get value; __Text_String_folded_w="${1:-80}"

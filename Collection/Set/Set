@@ -137,7 +137,7 @@ Collection.Set.difference() {
 
 # Destroy companion array. Private hook called by __boop.destroy.
 Collection.Set._destroy() {
-  local _Self="${_Self:-${_Class:-Collection.Set}}" _Class="${_Class:-Collection.Set}"
+  local _Class="${_Class:-Collection.Set}" _Self="${_Self:-}"
   _Trace "destroy: unsetting __Collection_Set_data_${_Self}"
   unset "__Collection_Set_data_${_Self}"
 }

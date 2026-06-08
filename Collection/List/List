@@ -72,7 +72,7 @@ Collection.List.new() {
 #        into=val $list.getAt -1     # last element
 #        $list.getAt 99              # empty string (no crash)
 Collection.List.getAt() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -i __Collection_List_getAt_idx="$1"
   local -n __Collection_List_getAt_arr="__boop_data_${_Self}"
   local -i __Collection_List_getAt_len=0; (( ${#__Collection_List_getAt_arr[@]} )) && __Collection_List_getAt_len=${#__Collection_List_getAt_arr[@]}
@@ -103,7 +103,7 @@ Collection.List.getAt() {
 #        $list.set -1 "new_last"    # replace last element
 #        $list.set 5 "append"       # append if length is 5
 Collection.List.setAt() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -i __Collection_List_setAt_idx="$1"
   local __Collection_List_setAt_val="$2"
   local -n __Collection_List_setAt_arr="__boop_data_${_Self}"
@@ -132,7 +132,7 @@ Collection.List.setAt() {
 # Usage: $list.delete 0     # remove first, shift everything down
 #        $list.delete -1    # remove last (same as pop, but no return)
 Collection.List.delete() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -i __Collection_List_del_idx="$1"
   local -n __Collection_List_del_arr="__boop_data_${_Self}"
   local -i __Collection_List_del_len=0; (( ${#__Collection_List_del_arr[@]} )) && __Collection_List_del_len=${#__Collection_List_del_arr[@]}
@@ -152,7 +152,7 @@ Collection.List.delete() {
 # Usage: into=len $list.length
 #        $list.length; printf "%s\n" "$_Out"
 Collection.List.length() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -n __Collection_List_length_arr="__boop_data_${_Self}"
   local -i __Collection_List_length_len=0; (( ${#__Collection_List_length_arr[@]} )) && __Collection_List_length_len=${#__Collection_List_length_arr[@]}
   boop.pass "$__Collection_List_length_len" ${into:-}
@@ -165,7 +165,7 @@ Collection.List.length() {
 #
 # Usage: $list.clear
 Collection.List.clear() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -n __Collection_List_clear_arr="__boop_data_${_Self}"
   local -i __Collection_List_clear_len=0; (( ${#__Collection_List_clear_arr[@]} )) && __Collection_List_clear_len=${#__Collection_List_clear_arr[@]} || true
   _Debug "clear: $__Collection_List_clear_len element(s) removed"
@@ -183,7 +183,7 @@ Collection.List.clear() {
 #        $list.has -1 && printf "not empty"
 #        $list.has 99 || printf "out of range"
 Collection.List.has() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -i __Collection_List_has_idx="$1"
   local -n __Collection_List_has_arr="__boop_data_${_Self}"
   local -i __Collection_List_has_len=0; (( ${#__Collection_List_has_arr[@]} )) && __Collection_List_has_len=${#__Collection_List_has_arr[@]}
@@ -203,7 +203,7 @@ Collection.List.has() {
 # Usage: $list.push "alpha"
 #        $list.push "a" "b" "c"    # append three at once
 Collection.List.push() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -n __Collection_List_push_arr="__boop_data_${_Self}"
   __Collection_List_push_arr+=("$@")
   _Debug "push: +$# element(s), length now ${#__Collection_List_push_arr[@]}"
@@ -221,7 +221,7 @@ Collection.List.push() {
 # Usage: into=val $list.pop
 #        $list.pop; printf "%s\n" "$_Out"
 Collection.List.pop() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -n __Collection_List_pop_arr="__boop_data_${_Self}"
   local -i __Collection_List_pop_len=0; (( ${#__Collection_List_pop_arr[@]} )) && __Collection_List_pop_len=${#__Collection_List_pop_arr[@]}
   (( __Collection_List_pop_len == 0 )) && { _Error "pop from empty List"; return 1; }
@@ -241,7 +241,7 @@ Collection.List.pop() {
 # Usage: into=val $list.shift
 #        $list.shift; printf "%s\n" "$_Out"
 Collection.List.shift() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -n __Collection_List_shift_arr="__boop_data_${_Self}"
   local -i __Collection_List_shift_len=0; (( ${#__Collection_List_shift_arr[@]} )) && __Collection_List_shift_len=${#__Collection_List_shift_arr[@]}
   (( __Collection_List_shift_len == 0 )) && { _Error "shift from empty List"; return 1; }
@@ -260,7 +260,7 @@ Collection.List.shift() {
 # Usage: $list.unshift "first"
 #        $list.unshift "a" "b"    # "a" becomes index 0, "b" index 1
 Collection.List.unshift() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -n __Collection_List_unshift_arr="__boop_data_${_Self}"
   __Collection_List_unshift_arr=("$@" "${__Collection_List_unshift_arr[@]+"${__Collection_List_unshift_arr[@]}"}")
   _Debug "unshift: +$# element(s), length now ${#__Collection_List_unshift_arr[@]}"
@@ -281,7 +281,7 @@ Collection.List.unshift() {
 #        into=s $list.slice 2      # index 2 through end
 #        into=s $list.slice -2     # last two elements
 Collection.List.slice() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -i __Collection_List_slice_start="${1:-0}" __Collection_List_slice_end
   local -n __Collection_List_slice_arr="__boop_data_${_Self}"
   local -i __Collection_List_slice_len=0; (( ${#__Collection_List_slice_arr[@]} )) && __Collection_List_slice_len=${#__Collection_List_slice_arr[@]}
@@ -311,7 +311,7 @@ Collection.List.slice() {
 #
 # Usage: into=all $list.toArray
 Collection.List.toArray() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -n __Collection_List_toArray_arr="__boop_data_${_Self}"
   local __Collection_List_toArray_d="${_EOL:-$'\n'}"
   local __Collection_List_toArray_out
@@ -341,7 +341,7 @@ Collection.List.toArray() {
 # Usage: $list.toString
 #        into=s $list.toString; printf "%s\n" "$s"
 Collection.List.toString() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -n __Collection_List_ts_arr="__boop_data_${_Self}"
   local -i __Collection_List_ts_len=0; (( ${#__Collection_List_ts_arr[@]} )) && __Collection_List_ts_len=${#__Collection_List_ts_arr[@]}
   _Trace "toString: $__Collection_List_ts_len element(s)"
@@ -368,7 +368,7 @@ Collection.List.toString() {
 #                                  #        my_callback 1 "beta"
 #                                  #        ...
 Collection.List.each() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local __Collection_List_each_fn="$1"
   local -n __Collection_List_each_arr="__boop_data_${_Self}"
   [[ -n "${__Collection_List_each_arr[@]:-}" ]] || return 0
@@ -386,7 +386,7 @@ Collection.List.each() {
 #
 # Usage: $list.contains "banana" && printf "found\n"
 Collection.List.contains() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local __Collection_List_contains_bitbucket
   if [[ -z "${1:-}" ]]; then _Error "$_Self.contains requires a search argument"; return 1; fi
   into=__Collection_List_contains_bitbucket $_Self.indexOf "$1"
@@ -399,7 +399,7 @@ Collection.List.contains() {
 #
 # Usage: into=pos $list.indexOf "banana"
 Collection.List.indexOf() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local __Collection_List_indexOf_val="$1"
   local -n __Collection_List_indexOf_arr="__boop_data_${_Self}"
   local -i __Collection_List_indexOf_i __Collection_List_indexOf_len=${#__Collection_List_indexOf_arr[@]}
@@ -425,7 +425,7 @@ Collection.List.indexOf() {
 #   is_long() { (( ${#1} > 3 )); }
 #   into=result $list.filter is_long
 Collection.List.filter() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local __Collection_List_filter_fn="$1"
   local -n __Collection_List_filter_src="__boop_data_${_Self}"
 
@@ -459,7 +459,7 @@ Collection.List.filter() {
 #   upcase() { _Result="${1^^}"; }
 #   into=result $list.map upcase
 Collection.List.map() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local __Collection_List_map_fn="$1"
   local -n __Collection_List_map_src="__boop_data_${_Self}"
 
@@ -497,7 +497,7 @@ Collection.List.map() {
 #   add() { _Result=$(( $1 + $2 )); }
 #   into=total $nums.reduce add
 Collection.List.reduce() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local __Collection_List_reduce_fn="$1"
   local -n __Collection_List_reduce_arr="__boop_data_${_Self}"
   local -i __Collection_List_reduce_len=${#__Collection_List_reduce_arr[@]}
@@ -549,7 +549,7 @@ Collection.List.reduce() {
 # Usage:
 #   into=result $list.do filter:is_even map:double_it reduce:add
 Collection.List.do() {
-  local _Self="${_Self:-${_Class:-Collection.List}}" _Class="${_Class:-Collection.List}"
+  local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
 
   # --- Normalize input into op:callback tokens ---
   local IFS=' '

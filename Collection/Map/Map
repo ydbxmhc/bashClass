@@ -53,7 +53,7 @@ Collection.Map.new() {
 #
 # Usage: into=val $map.get "host"
 Collection.Map.getAt() {
-  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local _Class="${_Class:-Collection.Map}" _Self="${_Self:-}"
   local __Collection_Map_getAt_key="$1"
   local -n __Collection_Map_getAt_arr="__boop_data_${_Self}"
   local __Collection_Map_getAt_val="${__Collection_Map_getAt_arr[$__Collection_Map_getAt_key]:-}"
@@ -69,7 +69,7 @@ Collection.Map.getAt() {
 #
 # Usage: $map.set "host" "localhost"
 Collection.Map.setAt() {
-  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local _Class="${_Class:-Collection.Map}" _Self="${_Self:-}"
   local __Collection_Map_setAt_key="$1" __Collection_Map_setAt_val="$2"
   local -n __Collection_Map_setAt_arr="__boop_data_${_Self}"
   local -n __Collection_Map_setAt_keys="__boop_keys_${_Self}"
@@ -92,7 +92,7 @@ Collection.Map.setAt() {
 #
 # Usage: $map.delete "debug"
 Collection.Map.delete() {
-  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local _Class="${_Class:-Collection.Map}" _Self="${_Self:-}"
   local __Collection_Map_del_key="$1"
   local -n __Collection_Map_del_arr="__boop_data_${_Self}"
   local -n __Collection_Map_del_keys="__boop_keys_${_Self}"
@@ -117,7 +117,7 @@ Collection.Map.delete() {
 #
 # Usage: into=len $map.length
 Collection.Map.length() {
-  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local _Class="${_Class:-Collection.Map}" _Self="${_Self:-}"
   local -n __Collection_Map_length_arr="__boop_data_${_Self}"
   local -i __Collection_Map_length_len=0; (( ${#__Collection_Map_length_arr[@]} )) && __Collection_Map_length_len=${#__Collection_Map_length_arr[@]}
   boop.pass "$__Collection_Map_length_len" ${into:-}
@@ -127,7 +127,7 @@ Collection.Map.length() {
 #
 # Usage: $map.clear
 Collection.Map.clear() {
-  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local _Class="${_Class:-Collection.Map}" _Self="${_Self:-}"
   local -n __Collection_Map_clear_arr="__boop_data_${_Self}"
   local -n __Collection_Map_clear_keys="__boop_keys_${_Self}"
   local -i __Collection_Map_clear_len=0; [[ -n "${!__Collection_Map_clear_arr[@]}" ]] && __Collection_Map_clear_len=${#__Collection_Map_clear_arr[@]}
@@ -140,7 +140,7 @@ Collection.Map.clear() {
 #
 # Usage: $map.has "host" && printf "host is configured"
 Collection.Map.has() {
-  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local _Class="${_Class:-Collection.Map}" _Self="${_Self:-}"
   local __Collection_Map_has_key="$1"
   local -n __Collection_Map_has_arr="__boop_data_${_Self}"
   if [[ -n "${__Collection_Map_has_arr[$__Collection_Map_has_key]+set}" ]]; then
@@ -155,7 +155,7 @@ Collection.Map.has() {
 #
 # Usage: into=k $map.keys
 Collection.Map.keys() {
-  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local _Class="${_Class:-Collection.Map}" _Self="${_Self:-}"
   local -n __Collection_Map_keys_keys="__boop_keys_${_Self}"
   local __Collection_Map_keys_d="${_EOL:-$'\n'}"
   local __Collection_Map_keys_out
@@ -176,7 +176,7 @@ Collection.Map.keys() {
 #
 # Usage: into=v $map.values
 Collection.Map.values() {
-  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local _Class="${_Class:-Collection.Map}" _Self="${_Self:-}"
   local -n __Collection_Map_values_arr="__boop_data_${_Self}"
   local -n __Collection_Map_values_keys="__boop_keys_${_Self}"
   _Trace "values: ${#__Collection_Map_values_keys[@]} value(s)"
@@ -200,7 +200,7 @@ Collection.Map.values() {
 #
 # Usage: into=entries $map.toArray
 Collection.Map.toArray() {
-  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local _Class="${_Class:-Collection.Map}" _Self="${_Self:-}"
   local -n __Collection_Map_toArray_arr="__boop_data_${_Self}"
   local -n __Collection_Map_toArray_keys="__boop_keys_${_Self}"
   _Trace "toArray: ${#__Collection_Map_toArray_keys[@]} entry/entries"
@@ -227,7 +227,7 @@ Collection.Map.toArray() {
 #
 # Usage: $map.toString
 Collection.Map.toString() {
-  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local _Class="${_Class:-Collection.Map}" _Self="${_Self:-}"
   local -n __Collection_Map_ts_arr="__boop_data_${_Self}"
   local -n __Collection_Map_ts_keys="__boop_keys_${_Self}"
   _Trace "toString: ${#__Collection_Map_ts_keys[@]} entry/entries"
@@ -252,7 +252,7 @@ Collection.Map.toString() {
 #
 # Usage: $map.each my_callback
 Collection.Map.each() {
-  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local _Class="${_Class:-Collection.Map}" _Self="${_Self:-}"
   local __Collection_Map_each_fn="$1"
   local -n __Collection_Map_each_arr="__boop_data_${_Self}"
   local -n __Collection_Map_each_keys="__boop_keys_${_Self}"
@@ -272,7 +272,7 @@ Collection.Map.each() {
 #
 # Usage: $target.merge $source
 Collection.Map.merge() {
-  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local _Class="${_Class:-Collection.Map}" _Self="${_Self:-}"
   local __Collection_Map_merge_src="$1"
   local -n __Collection_Map_merge_src_data="__boop_data_${__Collection_Map_merge_src}"
   local -n __Collection_Map_merge_src_keys="__boop_keys_${__Collection_Map_merge_src}"
@@ -292,7 +292,7 @@ Collection.Map.merge() {
 # Destroy the keys companion array. The data array (__boop_data_) is
 # handled by Collection.Container._destroy in the inheritance walk.
 Collection.Map._destroy() {
-  local _Self="${_Self:-${_Class:-Collection.Map}}" _Class="${_Class:-Collection.Map}"
+  local _Class="${_Class:-Collection.Map}" _Self="${_Self:-}"
   _Trace "destroy: unsetting __boop_keys_${_Self}"
   unset "__boop_keys_${_Self}"
 }

@@ -32,7 +32,7 @@ boop.init Collection.Queue.Fast || return 0
 
 # enqueue — append to the back. Thin wrapper over push (queue vocabulary).
 Collection.Queue.Fast.enqueue() {
-  local _Self="${_Self:-${_Class:-Collection.Queue.Fast}}" _Class="${_Class:-Collection.Queue.Fast}"
+  local _Class="${_Class:-Collection.Queue.Fast}" _Self="${_Self:-}"
   local -n __Collection_Queue_Fast_enqueue_arr="__boop_data_${_Self}"
   __Collection_Queue_Fast_enqueue_arr+=("$@")
   _Trace "enqueue: +$# element(s), length now ${#__Collection_Queue_Fast_enqueue_arr[@]}"
@@ -40,7 +40,7 @@ Collection.Queue.Fast.enqueue() {
 
 # dequeue — remove and return from the front. Crashes on empty.
 Collection.Queue.Fast.dequeue() {
-  local _Self="${_Self:-${_Class:-Collection.Queue.Fast}}" _Class="${_Class:-Collection.Queue.Fast}"
+  local _Class="${_Class:-Collection.Queue.Fast}" _Self="${_Self:-}"
   local -n __Collection_Queue_Fast_dequeue_arr="__boop_data_${_Self}"
   local -i __Collection_Queue_Fast_dequeue_len=${#__Collection_Queue_Fast_dequeue_arr[@]}
   (( __Collection_Queue_Fast_dequeue_len > 0 )) || { _Error "dequeue from empty Queue"; return 1; }
@@ -52,7 +52,7 @@ Collection.Queue.Fast.dequeue() {
 
 # peek — return front element without removing. Crashes on empty.
 Collection.Queue.Fast.peek() {
-  local _Self="${_Self:-${_Class:-Collection.Queue.Fast}}" _Class="${_Class:-Collection.Queue.Fast}"
+  local _Class="${_Class:-Collection.Queue.Fast}" _Self="${_Self:-}"
   local -n __Collection_Queue_Fast_peek_arr="__boop_data_${_Self}"
   local -i __Collection_Queue_Fast_peek_len=${#__Collection_Queue_Fast_peek_arr[@]}
   (( __Collection_Queue_Fast_peek_len > 0 )) || { _Error "peek on empty Queue"; return 1; }
@@ -61,14 +61,14 @@ Collection.Queue.Fast.peek() {
 
 # size — alias for length (queue vocabulary)
 Collection.Queue.Fast.size() {
-  local _Self="${_Self:-${_Class:-Collection.Queue.Fast}}" _Class="${_Class:-Collection.Queue.Fast}"
+  local _Class="${_Class:-Collection.Queue.Fast}" _Self="${_Self:-}"
   local -n __Collection_Queue_Fast_size_arr="__boop_data_${_Self}"
   boop.pass "${#__Collection_Queue_Fast_size_arr[@]}" ${into:-}
 }
 
 # isEmpty — exit 0 if empty, 1 if not
 Collection.Queue.Fast.isEmpty() {
-  local _Self="${_Self:-${_Class:-Collection.Queue.Fast}}" _Class="${_Class:-Collection.Queue.Fast}"
+  local _Class="${_Class:-Collection.Queue.Fast}" _Self="${_Self:-}"
   local -n __Collection_Queue_Fast_isEmpty_arr="__boop_data_${_Self}"
   (( ${#__Collection_Queue_Fast_isEmpty_arr[@]} == 0 ))
 }

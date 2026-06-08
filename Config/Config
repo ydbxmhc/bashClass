@@ -148,7 +148,7 @@ Config.loadINI() {
 # Usage: into=val $cfg.get theme
 #        into=host $cfg.get database.host
 Config.get() {
-  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local _Class="${_Class:-Config}" _Self="${_Self:-}"
   local __Config_get_key="$1"
   local -n __Config_get_data="__boop_config_${_Self}"
   local __Config_get_val="${__Config_get_data[$__Config_get_key]:-}"
@@ -161,7 +161,7 @@ Config.get() {
 # Usage: $cfg.set theme dark
 #        $cfg.set database.host localhost
 Config.set() {
-  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local _Class="${_Class:-Config}" _Self="${_Self:-}"
   local __Config_set_key="$1" __Config_set_val="$2"
   local -n __Config_set_data="__boop_config_${_Self}"
   local -n __Config_set_keys="__boop_config_keys_${_Self}"
@@ -177,7 +177,7 @@ Config.set() {
 # Test whether a key exists. Returns exit code 0 (present) or 1 (absent).
 # Usage: $cfg.has database.port && echo "port configured"
 Config.has() {
-  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local _Class="${_Class:-Config}" _Self="${_Self:-}"
   local -n __Config_has_data="__boop_config_${_Self}"
   if [[ -n "${__Config_has_data[$1]+set}" ]]; then
     _Trace "has: '$1' -> true"
@@ -193,7 +193,7 @@ Config.has() {
 # Usage: into=all_keys $cfg.keys
 #        into=db_keys  $cfg.keys database
 Config.keys() {
-  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local _Class="${_Class:-Config}" _Self="${_Self:-}"
   local __Config_keys_section="${1:-}"
   local -n __Config_keys_list="__boop_config_keys_${_Self}"
   local __Config_keys_out="" __Config_keys_k __Config_keys_sep=""
@@ -216,7 +216,7 @@ Config.keys() {
 # Keys without a dot (top-level keys) are not listed.
 # Usage: into=sections $cfg.sections
 Config.sections() {
-  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local _Class="${_Class:-Config}" _Self="${_Self:-}"
   local -n __Config_sections_keys="__boop_config_keys_${_Self}"
   local __Config_sections_d="${_EOL:-$'\n'}"
   local __Config_sections_out="" __Config_sections_sep=""
@@ -240,7 +240,7 @@ Config.sections() {
 # Usage: $cfg.save
 #        $cfg.save /path/to/output.cfg
 Config.save() {
-  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local _Class="${_Class:-Config}" _Self="${_Self:-}"
   local __Config_save_target="${1:-}"
   if [[ -z "$__Config_save_target" ]]; then
     into=__Config_save_target __boop.get file
@@ -261,7 +261,7 @@ Config.save() {
 # Usage: $cfg.toFlat ~/.myapp.cfg
 #        into=text $cfg.toFlat
 Config.toFlat() {
-  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local _Class="${_Class:-Config}" _Self="${_Self:-}"
   local __Config_toFlat_file="${1:-}"
   local -n __Config_toFlat_data="__boop_config_${_Self}"
   local -n __Config_toFlat_keys="__boop_config_keys_${_Self}"
@@ -289,7 +289,7 @@ Config.toFlat() {
 # Usage: $cfg.toINI /etc/myapp.ini
 #        into=text $cfg.toINI
 Config.toINI() {
-  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local _Class="${_Class:-Config}" _Self="${_Self:-}"
   local __Config_toINI_file="${1:-}"
   local -n __Config_toINI_data="__boop_config_${_Self}"
   local -n __Config_toINI_keys="__boop_config_keys_${_Self}"
@@ -350,7 +350,7 @@ Config.fromString() {
 
 # Destroy companion arrays. Private hook called by __boop.destroy.
 Config._destroy() {
-  local _Self="${_Self:-${_Class:-Config}}" _Class="${_Class:-Config}"
+  local _Class="${_Class:-Config}" _Self="${_Self:-}"
   _Trace "destroy: unsetting __boop_config_${_Self}, __boop_config_keys_${_Self}"
   unset "__boop_config_${_Self}" "__boop_config_keys_${_Self}"
 }

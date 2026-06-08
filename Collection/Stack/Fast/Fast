@@ -33,7 +33,7 @@ boop.init Collection.Stack.Fast || return 0
 
 # peek — return top element without removing. Crashes on empty.
 Collection.Stack.Fast.peek() {
-  local _Self="${_Self:-${_Class:-Collection.Stack.Fast}}" _Class="${_Class:-Collection.Stack.Fast}"
+  local _Class="${_Class:-Collection.Stack.Fast}" _Self="${_Self:-}"
   local -n __Collection_Stack_Fast_peek_arr="__boop_data_${_Self}"
   local -i __Collection_Stack_Fast_peek_len=${#__Collection_Stack_Fast_peek_arr[@]}
   (( __Collection_Stack_Fast_peek_len > 0 )) || { _Error "peek on empty Stack"; return 1; }
@@ -42,14 +42,14 @@ Collection.Stack.Fast.peek() {
 
 # size — alias for length (stack vocabulary)
 Collection.Stack.Fast.size() {
-  local _Self="${_Self:-${_Class:-Collection.Stack.Fast}}" _Class="${_Class:-Collection.Stack.Fast}"
+  local _Class="${_Class:-Collection.Stack.Fast}" _Self="${_Self:-}"
   local -n __Collection_Stack_Fast_size_arr="__boop_data_${_Self}"
   boop.pass "${#__Collection_Stack_Fast_size_arr[@]}" ${into:-}
 }
 
 # isEmpty — exit 0 if empty, 1 if not
 Collection.Stack.Fast.isEmpty() {
-  local _Self="${_Self:-${_Class:-Collection.Stack.Fast}}" _Class="${_Class:-Collection.Stack.Fast}"
+  local _Class="${_Class:-Collection.Stack.Fast}" _Self="${_Self:-}"
   local -n __Collection_Stack_Fast_isEmpty_arr="__boop_data_${_Self}"
   (( ${#__Collection_Stack_Fast_isEmpty_arr[@]} == 0 ))
 }
