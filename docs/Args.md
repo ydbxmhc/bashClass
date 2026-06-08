@@ -7,6 +7,33 @@ full GNU-style long-option + subcommand parser for complex CLIs.
 Both operate in the caller's scope by default (setting variables
 directly), or return a Config object when used with `into=`.
 
+## Contents
+
+- [Quick Start](#quick-start)
+- [Args.getOpts](#argsgetopts)
+  - [Signature](#signature)
+  - [Behavior](#behavior)
+  - [Example](#example)
+- [Args.parse](#argsparse)
+  - [Signature](#signature-1)
+  - [Schema Format](#schema-format)
+    - [Sections](#sections)
+    - [Option Line Syntax](#option-line-syntax)
+    - [Subcommand Line Syntax](#subcommand-line-syntax)
+  - [Examples](#examples)
+  - [Option Processing Rules](#option-processing-rules)
+  - [After Parsing (Scope-Write Mode)](#after-parsing-scope-write-mode)
+  - [After Parsing (Object Mode)](#after-parsing-object-mode)
+  - [Args.given -- was an option supplied?](#argsgiven---was-an-option-supplied)
+  - [Error Handling](#error-handling)
+- [Help Generation (Planned)](#help-generation-planned)
+- [Subcommand Option Isolation (Planned)](#subcommand-option-isolation-planned)
+- [Design Notes](#design-notes)
+  - [Why Not Just Use getopts?](#why-not-just-use-getopts)
+  - [Why Schema-as-String?](#why-schema-as-string)
+  - [Scope-Write vs Object Mode](#scope-write-vs-object-mode)
+  - [Variable Naming](#variable-naming)
+
 ---
 
 ## Quick Start

@@ -4,6 +4,43 @@ Managed per-signal callback stacks. Layers a LIFO handler queue on top of
 bash's single-slot `trap`, so multiple components in the same script can
 register cleanup or error handlers without stomping each other.
 
+## Contents
+
+- [Dependencies](#dependencies)
+- [The Problem](#the-problem)
+- [Quick Start](#quick-start)
+- [Signal Names](#signal-names)
+  - [Bash pseudo-signals](#bash-pseudo-signals)
+  - [Standard signals](#standard-signals)
+  - [Untrappable signals](#untrappable-signals)
+  - [Notes on specific signals](#notes-on-specific-signals)
+  - [Unrecognized names](#unrecognized-names)
+- [Methods](#methods)
+  - [`Signal.strict [0|1|on|off]`](#signalstrict-011onoff)
+  - [`Signal.on signame callback`](#signalon-signame-callback)
+  - [`Signal.push signame callback`](#signalpush-signame-callback)
+  - [`Signal.off signame callback`](#signaloff-signame-callback)
+  - [`Signal.pop signame` → `into=`](#signalpop-signame--into)
+  - [`Signal.shift signame` → `into=`](#signalshift-signame--into)
+  - [`Signal.clear signame`](#signalclear-signame)
+  - [`Signal.list signame` → `into=`](#signallist-signame--into)
+  - [`Signal.dispatch signame [extra_args...]`](#signaldispatch-signame-extra_args)
+- [LIFO Dispatch Order](#lifo-dispatch-order)
+- [Error Resilience](#error-resilience)
+- [Callback Contract](#callback-contract)
+- [Pre-existing Trap Survey](#pre-existing-trap-survey)
+- [Common Patterns](#common-patterns)
+  - [Multi-component EXIT cleanup](#multi-component-exit-cleanup)
+  - [Terminal raw-mode guard](#terminal-raw-mode-guard)
+  - [Temporary suspension of a handler](#temporary-suspension-of-a-handler)
+  - [One-shot handler](#one-shot-handler)
+  - [Layered ERR reporting](#layered-err-reporting)
+  - [Manual dispatch for testing](#manual-dispatch-for-testing)
+- [ERR Notes](#err-notes)
+- [Design Notes](#design-notes)
+
+---
+
 ## Dependencies
 
 ```bash
