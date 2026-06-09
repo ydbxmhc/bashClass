@@ -812,7 +812,7 @@ boop.pass() {
 #   _OutMode=stdout
 #   _EOL=$'\n'
 _OutMode() {
-  if [[ -n "${1:-}" ]]; then
+  if [[ $# -gt 0 ]]; then
     case "$1" in auto|global|reply|stdout|nameref|filesystem) _OutMode="$1"          ;;
     *) _Crash "invalid _OutMode: '$1' (auto|global|reply|stdout|nameref|filesystem)" ;;
     esac
