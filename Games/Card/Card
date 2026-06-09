@@ -17,7 +17,7 @@ Games.Card.new() {
 }
 
 Games.Card.toString() {
-  local _Self="${_Self:-${Class:-Games.Card}}" _Class="${_Class:-Games.Card}"
+  local _Class="${_Class:-Games.Card}" _Self="${_Self:-}"
   boop.pass "$_Self" ${into:-}
 }
 

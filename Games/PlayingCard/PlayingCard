@@ -30,7 +30,7 @@ Games.PlayingCard.new() {
 }
 
 Games.PlayingCard.toString() {
-  local _Self="${_Self:-${Class:-Games.PlayingCard}}" _Class="${_Class:-Games.PlayingCard}"
+  local _Class="${_Class:-Games.PlayingCard}" _Self="${_Self:-}"
   local __Games_PlayingCard_toString_rank __Games_PlayingCard_toString_suit
   __Games_PlayingCard_toString_rank="${__boop_static[${_Self}.rank]:-}"
   __Games_PlayingCard_toString_suit="${__boop_static[${_Self}.suit]:-}"

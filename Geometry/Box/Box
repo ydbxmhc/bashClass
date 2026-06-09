@@ -55,7 +55,7 @@ boop.init Geometry.Box || return 0
 #   into=v Geometry.Box.calc 5 3 7          -> 105
 #   required=2 into=a $obj.calc 5 3         -> 15
 Geometry.Box.calc() {
-  local _Self="${_Self:-${Class:-Geometry.Box}}" _Class="${_Class:-Geometry.Box}"
+  local _Class="${_Class:-Geometry.Box}" _Self="${_Self:-}"
   local -i __Geometry_Box_calc_tot=1 required="${required:-0}"
 
   if ((required)); then
@@ -76,13 +76,13 @@ Geometry.Box.calc() {
 #
 # Usage:  into=v Geometry.Box.area 5 3     -> 15
 Geometry.Box.area() {
-  local _Self="${_Self:-${Class:-Geometry.Box}}" _Class="${_Class:-Geometry.Box}"
+  local _Class="${_Class:-Geometry.Box}" _Self="${_Self:-}"
   required=2 into=${into:-} Geometry.Box.calc "$@"
 }
 
 # top -- area of the top face (length x width).
 Geometry.Box.top() {
-  local _Self="${_Self:-${Class:-Geometry.Box}}" _Class="${_Class:-Geometry.Box}"
+  local _Class="${_Class:-Geometry.Box}" _Self="${_Self:-}"
   local __Geometry_Box_top_l __Geometry_Box_top_w __Geometry_Box_top_val
   into=__Geometry_Box_top_l $_Self.length
   into=__Geometry_Box_top_w $_Self.width
@@ -92,7 +92,7 @@ Geometry.Box.top() {
 
 # end -- area of an end face (height x width).
 Geometry.Box.end() {
-  local _Self="${_Self:-${Class:-Geometry.Box}}" _Class="${_Class:-Geometry.Box}"
+  local _Class="${_Class:-Geometry.Box}" _Self="${_Self:-}"
   local __Geometry_Box_end_h __Geometry_Box_end_w __Geometry_Box_end_val
   into=__Geometry_Box_end_h $_Self.height
   into=__Geometry_Box_end_w $_Self.width
@@ -102,7 +102,7 @@ Geometry.Box.end() {
 
 # side -- area of a side face (height x length).
 Geometry.Box.side() {
-  local _Self="${_Self:-${Class:-Geometry.Box}}" _Class="${_Class:-Geometry.Box}"
+  local _Class="${_Class:-Geometry.Box}" _Self="${_Self:-}"
   local __Geometry_Box_side_h __Geometry_Box_side_l __Geometry_Box_side_val
   into=__Geometry_Box_side_h $_Self.height
   into=__Geometry_Box_side_l $_Self.length
@@ -121,7 +121,7 @@ Geometry.Box.bottom() { ${_Self:-${_Class:-Geometry.Box}}.top "$@"; }
 # volume -- 3D volume (length x width x height). Crashes if any dimension
 # is missing, zero, or non-numeric, via calc's validation.
 Geometry.Box.volume() {
-  local _Self="${_Self:-${Class:-Geometry.Box}}" _Class="${_Class:-Geometry.Box}"
+  local _Class="${_Class:-Geometry.Box}" _Self="${_Self:-}"
   local __Geometry_Box_volume_l __Geometry_Box_volume_h __Geometry_Box_volume_w __Geometry_Box_volume_vol
   into=__Geometry_Box_volume_l $_Self.length
   into=__Geometry_Box_volume_h $_Self.height
