@@ -60,7 +60,6 @@ verbose    | v              # print request headers to stderr
 quiet      | q              # suppress informational stderr messages
 
 [Exclusive]
-output | status
 include | status
 
 [Examples]
@@ -125,7 +124,8 @@ probe — Options Reference
     -q, --quiet             Suppress informational stderr messages
 
   Notes:
-    -s is mutually exclusive with -i and -o (it suppresses the body).
+    -s prints the code alone; with -o it reports the code while the body is
+    saved to the file. -s and -i are mutually exclusive (code vs. headers).
     A relative redirect Location is resolved against the current request.
     https:// URLs are rejected -- probe is plaintext HTTP only.
 
@@ -304,21 +304,28 @@ __probe_fetch() {
   __probe_body="${__probe_body_lines[*]}"
   $__probe_s.close
 
-  # Output
+  # --- Output ---
+  # Body destination and status/header reporting are independent:
+  #   -o FILE  sends the body to FILE (so it never lands on stdout)
+  #   -s       prints just the status code to stdout
+  #   -i       prints the status line + headers to stdout (before any body)
+  # This lets natural combinations work, e.g. '-s -o page.html' saves the
+  # body and reports the code, and '-i -o page.html' saves the body while
+  # showing headers.
+
   if (( status )); then
     printf '%s\n' "$__probe_http_status"
-    return
-  fi
-
-  if (( include )); then
+  elif (( include )); then
     printf '%s\n' "$__probe_status_line"
     for __probe_hline in "${__probe_resp_hdrs[@]}"; do printf '%s\n' "$__probe_hline"; done
     printf '\n'
   fi
 
+  # Body: to a file with -o, otherwise to stdout -- unless -s asked for the
+  # status code ALONE (no -o, no -i), in which case the body is suppressed.
   if [[ -n "${output:-}" ]]; then
     printf '%s' "$__probe_body" > "$output"
-  else
+  elif (( ! status )); then
     printf '%s\n' "$__probe_body"
   fi
 }

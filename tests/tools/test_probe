@@ -82,6 +82,30 @@ $t.assert_eq "404 status"  "$("$__tp_probe" -s "$__tp_base/nope")"        "404"
 $t.assert_eq "500 status"  "$("$__tp_probe" -s "$__tp_base/status/500")"  "500"
 
 # ============================================================================
+# Output to file (-o), and the -s/-o pairing
+# ============================================================================
+
+$t.section "Output to file"
+
+# -o alone: body goes to the file, stdout is empty.
+__tp_ofile="$(mktemp)"
+__tp_ostdout="$("$__tp_probe" -o "$__tp_ofile" "$__tp_base/")"
+$t.assert_eq "output -o: stdout empty"  "$__tp_ostdout" ""
+$t.assert_eq "output -o: body in file"  "$(< "$__tp_ofile")" "hello from test server"
+
+# -s -o together (formerly mutually exclusive): status code to stdout,
+# body to the file. This is the natural "save the body, report the code" combo.
+: > "$__tp_ofile"
+__tp_socode="$("$__tp_probe" -s -o "$__tp_ofile" "$__tp_base/")"
+$t.assert_eq "-s -o: status on stdout"  "$__tp_socode" "200"
+$t.assert_eq "-s -o: body still in file" "$(< "$__tp_ofile")" "hello from test server"
+rm -f "$__tp_ofile"
+
+# -s and -i remain mutually exclusive (code vs. headers -- contradictory).
+$t.assert_fail "-s -i still mutually exclusive" \
+  "$__tp_probe" -s -i "$__tp_base/"
+
+# ============================================================================
 # Header inclusion (-i)
 # ============================================================================
 
