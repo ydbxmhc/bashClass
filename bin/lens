@@ -42,13 +42,18 @@ subscreen = boop=Boop
 
 [Use]
 lens { --first N [--last N] | --last N [--first N]
-     | --from N [--to N]   | --to N [--from N]
-     | --match PAT...      [--no-match PAT...] [--and|--or]
-     | --fields SPEC       [-f|-F|-W DELIM]
-     | --chars SPEC }
-     [--not] [-d|-D|-E DELIM] [-n] [-c] [-H] [-P file]
+     | --from N  [--to N]   | --to N   [--from N]
+     | --match PAT...       [--no-match PAT...]    [--and|--or]
+     | --fields SPEC        [-f|-F|-W DELIM]
+     | --chars SPEC 
+     }
+     [--not] [-d|-D|-E DELIM] [-n] [-c] [-H] [ [-P|--file] file ]
 
-  More: --options, --examples, --about, --boop
+See also:
+ --options  for a detailed option reference
+ --examples for specific use templates
+ --about    for a this-tool overview
+ --boop     for a framework overview
 
 [Options]
 # --- Input ---
