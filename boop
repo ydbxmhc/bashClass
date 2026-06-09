@@ -836,7 +836,7 @@ boop.isObject() {
   [[ "$_Self" == __obj_* ]]
 }
 
- — get or set the line ending for stdout output.
+# _EOL — get or set the line ending for stdout output.
 #
 # Appended after the payload in boop.pass stdout mode. Default is
 # newline. Set to empty string for raw output (pipe-friendly).
