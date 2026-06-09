@@ -107,13 +107,41 @@ __bb_resolve() {
 }
 
 # ============================================================================
+# Is this line a "source boop" line?
+#
+# Recognizes both forms in use across the codebase:
+#   . boop [Dep...]                  — bare (class files, e.g. Stream, List)
+#   . "$__tool_root/boop" [Dep...]   — path form (tools in bin/, post-reorg)
+#
+# A line qualifies if it starts with '. ' (dot-space) and its first token,
+# stripped of quotes and any leading directory path, is exactly 'boop'.
+# Returns 0 (match) / 1 (no match). Sets nothing.
+# ============================================================================
+
+__bb_is_boop_source() {
+  local __bb_ibs_line="$1"
+  [[ "$__bb_ibs_line" == '. '* ]] || return 1
+  # First whitespace-delimited token after '. '
+  local __bb_ibs_rest="${__bb_ibs_line#. }"
+  local __bb_ibs_first="${__bb_ibs_rest%%[[:space:]]*}"
+  # Strip surrounding/embedded quotes, then reduce to basename.
+  __bb_ibs_first="${__bb_ibs_first//\"/}"
+  __bb_ibs_first="${__bb_ibs_first//\'/}"
+  __bb_ibs_first="${__bb_ibs_first##*/}"
+  [[ "$__bb_ibs_first" == "boop" ]]
+}
+
+# ============================================================================
 # Extract dep names from a file (one per line on stdout)
 #
 # Sources of deps:
-#   '. boop Dep1 Dep2 ...'      — direct load declarations
-#   'boopClass Name isa:Parent' — inheritance (first physical line only)
+#   '. boop Dep1 Dep2 ...'           — direct load declarations (bare form)
+#   '. "$root/boop" Dep1 Dep2 ...'   — path form (tools under bin/)
+#   'boopClass Name isa:Parent'      — inheritance (first physical line only)
+#   '_Require/_Load/_Import Dep ...'  — runtime loaders (may be indented)
 #
-# require:* tokens are skipped — they are version guards, not class names.
+# require:* tokens and version constraints (1.2+, >=1.0) are skipped — they
+# are not class names. For _Import, the 'as ALIAS' tail is skipped too.
 # ============================================================================
 
 __bb_file_deps() {
@@ -121,10 +149,13 @@ __bb_file_deps() {
   local __bb_fd_line
   local -a __bb_fd_toks
   while IFS= read -r __bb_fd_line || [[ -n "$__bb_fd_line" ]]; do
-    if [[ "$__bb_fd_line" == '. boop'* ]]; then
-      read -ra __bb_fd_toks <<< "${__bb_fd_line#. boop}"
-      local __bb_fd_t
+    if __bb_is_boop_source "$__bb_fd_line"; then
+      # Drop the leading '. ' and the boop-file token; the rest are deps.
+      # Handles both bare '. boop Dep...' and path '. "$root/boop" Dep...'.
+      read -ra __bb_fd_toks <<< "${__bb_fd_line#. }"
+      local __bb_fd_t __bb_fd_first=1
       for __bb_fd_t in "${__bb_fd_toks[@]+"${__bb_fd_toks[@]}"}"; do
+        if (( __bb_fd_first )); then __bb_fd_first=0; continue; fi  # skip the boop file token
         [[ -z "$__bb_fd_t" || "$__bb_fd_t" == require:* ]] && continue
         printf '%s\n' "$__bb_fd_t"
       done
@@ -137,6 +168,26 @@ __bb_file_deps() {
           break
         fi
       done
+    else
+      # Runtime loaders: _Require / _Load / _Import declare class deps too.
+      # These may be indented (inside functions), so trim leading whitespace
+      # before matching. Tokens after the keyword are class names; skip
+      # version constraints (1.2+, >=1.0, <2) and the _Import 'as ALIAS' tail.
+      local __bb_fd_trim="${__bb_fd_line#"${__bb_fd_line%%[![:space:]]*}"}"
+      case "$__bb_fd_trim" in
+        '_Require '*|'_Load '*|'_Import '*)
+          read -ra __bb_fd_toks <<< "$__bb_fd_trim"
+          local __bb_fd_t __bb_fd_first=1
+          for __bb_fd_t in "${__bb_fd_toks[@]+"${__bb_fd_toks[@]}"}"; do
+            if (( __bb_fd_first )); then __bb_fd_first=0; continue; fi  # the loader keyword
+            # 'as' starts the alias tail of _Import — stop collecting.
+            [[ "$__bb_fd_t" == "as" ]] && break
+            # Skip version constraints: leading digit / > / <, or trailing +.
+            [[ "$__bb_fd_t" == [0-9\>\<]* || "$__bb_fd_t" == *+ ]] && continue
+            printf '%s\n' "$__bb_fd_t"
+          done
+          ;;
+      esac
     fi
   done < "$__bb_fd_file"
 }
@@ -208,7 +259,7 @@ __bb_emit_file() {
   local __bb_ef_line
   while IFS= read -r __bb_ef_line || [[ -n "$__bb_ef_line" ]]; do
     [[ "$__bb_ef_line" == '#!'* ]] && continue
-    if [[ "$__bb_ef_line" == '. boop'* ]]; then
+    if __bb_is_boop_source "$__bb_ef_line"; then
       printf ': # bundled\n'
     else
       printf '%s\n' "$__bb_ef_line"
