@@ -256,7 +256,9 @@ Args.parse '
 ' --help
 HELPEOF
 )
-$t.assert_contains "help includes [Use]" "$__args_help_out" "[Use]"
+$t.assert_contains "help includes synopsis content" "$__args_help_out" "testapp [options]"
+$t.assert_fail "help suppresses the [Use] header line" \
+  grep -qF '[Use]' <<< "$__args_help_out"
 $t.assert_contains "help includes option line" "$__args_help_out" "verbose | v"
 $t.assert_contains "help includes comment" "$__args_help_out" "be loud"
 
@@ -271,7 +273,7 @@ Args.parse '
 ' -h
 HELPEOF2
 )
-$t.assert_contains "-h triggers help" "$__args_help_h" "[Use]"
+$t.assert_contains "-h triggers help (synopsis content)" "$__args_help_h" "testapp"
 
 # ============================================================================
 # Error cases and edge cases

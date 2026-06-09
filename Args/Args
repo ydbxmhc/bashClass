@@ -268,11 +268,17 @@ __Args.printHelp() {
             ;;
         esac
       fi
-      # Don't print the section header bracket line itself for hidden sections
-      (( __Args_ph_printing )) || continue
+      # A section header line is structural markup, never content -- skip it
+      # in all cases (shown or hidden). The section's body lines still print
+      # when the section is shown.
+      continue
     fi
     (( __Args_ph_printing )) && printf '%s\n' "$__Args_ph_line"
   done <<< "$__Args_parse_schema"
+  # Explicit success: the loop's final '(( printing )) && printf' can leave a
+  # non-zero status when the last line belongs to a hidden section, which under
+  # the caller's `set -e` would abort before the post-help `exit 0`.
+  return 0
 }
 
 # ============================================================================

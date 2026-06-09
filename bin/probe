@@ -20,11 +20,24 @@ Args.parse '
 [Parser]
 show = Use
 bareKV = false
+subscreen = options=OptionsRef
 subscreen = examples=Examples
 subscreen = about=About
+subscreen = boop=Boop
 
 [Use]
-probe [options] URL [URL...]
+probe [-X METHOD] [-d DATA] [-j] [-H "Name: Value"]...
+      [-i | -s | -o FILE] [-t SECONDS] [--no-follow]
+      [-v | -q] URL [URL...]
+
+  Fetch plaintext HTTP URLs over bash /dev/tcp -- no curl, no TLS.
+  Method defaults to GET, or POST when -d is given.
+
+See also:
+ --options  for a detailed option reference
+ --examples for common request recipes
+ --about    for a this-tool overview
+ --boop     for a framework overview
 
 [Options]
 # --- Request ---
@@ -87,6 +100,57 @@ probe — minimal plaintext HTTP client
 
   Built on the boop framework and the Socket class.
   https://github.com/ydbxmhc/bashClass
+
+[OptionsRef]
+probe — Options Reference
+
+  Request:
+    -X, --method METHOD     HTTP method (default: GET, or POST with -d)
+    -d, --data STRING       Request body; sets Content-Length, implies POST
+    -j, --json              Add Content-Type + Accept: application/json
+    -H, --header "N: V"     Add a request header (repeatable)
+
+  Response:
+    -i, --include           Print the status line and headers before the body
+    -s, --status            Print only the numeric HTTP status code
+    -o, --output FILE       Write the body to FILE instead of stdout
+        (default)           With none of the above, the body goes to stdout
+
+  Connection:
+    -t, --timeout SECONDS   Connection + read timeout (default: 30)
+        --no-follow         Do not follow 3xx redirects
+
+  Verbosity:
+    -v, --verbose           Print the request headers to stderr (> prefixed)
+    -q, --quiet             Suppress informational stderr messages
+
+  Notes:
+    -s is mutually exclusive with -i and -o (it suppresses the body).
+    A relative redirect Location is resolved against the current request.
+    https:// URLs are rejected -- probe is plaintext HTTP only.
+
+  Help:
+    -h, --help              This synopsis
+        --options           Full options reference (this screen)
+        --examples          Request recipes
+        --about             About probe
+        --boop              About the boop framework
+
+[Boop]
+probe is built on boop — an OOP framework for bash 4.3+.
+
+  boop provides classes, objects, inheritance, method dispatch, a universal
+  return system, and a standard library including Net.Socket (the /dev/tcp
+  wrapper probe is built on), Args (CLI parsing), Stream, Math, and more.
+
+  This tool can run as a single-file bundle: the framework and required
+  classes embedded inline, working standalone with no installation.
+
+  To install the full boop framework:
+    probe --boop-install              install to ~/.local/lib/boop
+    probe --boop-install /opt/boop    install to custom path
+
+  Repository: https://github.com/ydbxmhc/bashClass
 ' "$@" || exit 1
 
 # ============================================================================

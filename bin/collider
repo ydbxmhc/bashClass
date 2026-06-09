@@ -12,18 +12,73 @@ __bb_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 (( $# )) || set -- --help
 
 Args.parse '
+[Parser]
+show = Use
+subscreen = options=OptionsRef
+subscreen = about=About
+subscreen = boop=Boop
+
 [Use]
-collider <tool-file> [-o output]
+collider <tool-file> [-o OUTPUT]
 
-  Bundle a boop tool and all its class dependencies into a single
-  portable executable that runs on any machine with bash 4.3+.
+  Bundle a boop tool and all its class dependencies into one
+  self-contained file that runs anywhere bash 4.3+ is present --
+  no framework checkout, no PATH setup.
 
-  The output file is self-contained: boop core + required classes
-  (resolved transitively) + the tool itself.  Can optionally install
-  the full framework with --install (Installer mixin, future).
+See also:
+ --options  for a detailed option reference
+ --about    for a this-tool overview
+ --boop     for a framework overview
 
 [Options]
 output | o =    # output file (default: bundle-<tool>; use - for stdout)
+
+[OptionsRef]
+collider — Options Reference
+
+  Usage:
+    collider <tool-file> [-o OUTPUT]
+
+  Arguments:
+    <tool-file>             The boop tool to bundle (required, must be readable)
+
+  Options:
+    -o, --output FILE       Output path. Default: bundle-<tool> in the tool'\''s
+                            own directory. Use - to write the bundle to stdout.
+
+  What gets bundled:
+    boop core, every class the tool needs (resolved transitively from
+    . boop / _Require / _Load / _Import / isa: declarations and ordered
+    parents-first), the installer library, then the tool itself.
+
+  Help:
+    -h, --help              This synopsis
+        --options           Full options reference (this screen)
+        --about             About collider
+        --boop              About the boop framework
+
+[About]
+collider — single-file bundler for boop tools
+
+  Resolves a tool'\''s class dependencies, orders them correctly, neutralizes
+  the dynamic source lines, and concatenates boop core + classes + installer
+  + the tool into one portable executable. The result needs no framework
+  install and can itself bootstrap boop on demand (--boop-install).
+
+  Repository: https://github.com/ydbxmhc/bashClass
+
+[Boop]
+collider is built on boop — an OOP framework for bash 4.3+.
+
+  boop provides classes, objects, inheritance, method dispatch, a universal
+  return system, and a standard library (Stream, Args, Math, Collections,
+  Data.JSON, Net.Socket, and more). collider is what packages any boop tool
+  built on that library into a single distributable file.
+
+  To install the full boop framework:
+    <any-bundle> --boop-install       install to ~/.local/lib/boop
+
+  Repository: https://github.com/ydbxmhc/bashClass
 ' "$@"
 
 __bb_tool="${_ArgsRemaining[0]:-}"
