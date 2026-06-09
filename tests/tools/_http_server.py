@@ -34,8 +34,15 @@ class Handler(BaseHTTPRequestHandler):
         for key, val in (extra or {}).items():
             self.send_header(key, val)
         self.end_headers()
-        if body:
+        # For HEAD, headers are sent but the body is suppressed (Content-Length
+        # still reflects what a GET would return, per RFC 7231).
+        if body and not getattr(self, "_head_only", False):
             self.wfile.write(body)
+
+    def do_HEAD(self):
+        # Same status/headers as GET, no body.
+        self._head_only = True
+        self.do_GET()
 
     def do_GET(self):
         if self.path == "/":

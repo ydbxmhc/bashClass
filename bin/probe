@@ -27,7 +27,7 @@ subscreen = boop=Boop
 
 [Use]
 probe [-X METHOD] [-d DATA] [-j] [-H "Name: Value"]...
-      [-i | -s | -o FILE] [-t SECONDS] [--no-follow]
+      [-i] [-I] [-o FILE] [-w FILE] [-t SECONDS] [--no-follow]
       [-v | -q] URL [URL...]
 
   Fetch plaintext HTTP URLs over bash /dev/tcp -- no curl, no TLS.
@@ -47,9 +47,10 @@ json       | j              # Content-Type + Accept: application/json
 header[]   | H  =           # add request header (repeatable): "Name: Value"
 
 # --- Response ---
-include    | i              # print response status line and headers
+include    | i              # print response status line + headers (then body)
+head       | I              # send HEAD: print status line + headers, no body
 output     | o  =           # write body to file instead of stdout
-status     | s              # print only the HTTP status code
+status_file | w | status =   # write the HTTP status code to FILE (use /dev/stdout for inline)
 
 # --- Connection ---
 timeout    | t  = 30        # connection + read timeout in seconds
@@ -58,9 +59,6 @@ no_follow  | no-follow      # do not follow redirects (3xx)
 # --- Verbosity ---
 verbose    | v              # print request headers to stderr
 quiet      | q              # suppress informational stderr messages
-
-[Exclusive]
-include | status
 
 [Examples]
 probe — Examples
@@ -81,8 +79,11 @@ probe — Examples
     probe -j http://api.example.com/data
 
   Response inspection:
-    probe -i http://example.com         status line + headers + body
-    probe -s http://example.com         status code only (e.g. 200)
+    probe -i http://example.com           status line + headers + body
+    probe -I http://example.com           headers only (HEAD request)
+    probe -w /dev/stdout http://host      status code inline (e.g. 200)
+    probe -w code.txt -o page.html http://host   code to file, body to file
+    probe -w /dev/stdout -I http://host   status code + headers, no body
     probe -o page.html http://example.com
 
   Verbose (show request headers on stderr):
@@ -109,11 +110,13 @@ probe — Options Reference
     -j, --json              Add Content-Type + Accept: application/json
     -H, --header "N: V"     Add a request header (repeatable)
 
-  Response:
-    -i, --include           Print the status line and headers before the body
-    -s, --status            Print only the numeric HTTP status code
+  Response (output components are independent and freely combinable):
+    -i, --include           Print the status line + headers, then the body
+    -I, --head              Send HEAD: print the status line + headers, no body
     -o, --output FILE       Write the body to FILE instead of stdout
-        (default)           With none of the above, the body goes to stdout
+    -w, --status FILE       Write the HTTP status code to FILE
+                            (use /dev/stdout to see it inline)
+        (default)           With no -o/-i/-I, the body goes to stdout
 
   Connection:
     -t, --timeout SECONDS   Connection + read timeout (default: 30)
@@ -124,8 +127,12 @@ probe — Options Reference
     -q, --quiet             Suppress informational stderr messages
 
   Notes:
-    -s prints the code alone; with -o it reports the code while the body is
-    saved to the file. -s and -i are mutually exclusive (code vs. headers).
+    Each output component has its own destination, so they compose without
+    conflict: e.g. -w code.txt -o body.html captures the status and body
+    separately; -w /dev/stdout -I shows the code and headers with no body.
+    -I issues a real HEAD request, so there is never a body to read.
+    Value-taking short options (-w -o -X -d -H -t) must not be clustered
+    before another option -- a cluster like -wI reads "I" as the -w value.
     A relative redirect Location is resolved against the current request.
     https:// URLs are rejected -- probe is plaintext HTTP only.
 
@@ -199,7 +206,12 @@ __probe_fetch() {
   fi
 
   local __probe_method="${method:-}"
-  [[ -z "$__probe_method" ]] && { [[ -n "${data:-}" ]] && __probe_method=POST || __probe_method=GET; }
+  if [[ -z "$__probe_method" ]]; then
+    if   (( head ));            then __probe_method=HEAD
+    elif [[ -n "${data:-}" ]];  then __probe_method=POST
+    else                             __probe_method=GET
+    fi
+  fi
   __probe_method="${__probe_method^^}"
 
   local __probe_s
@@ -294,39 +306,50 @@ __probe_fetch() {
     fi
   fi
 
-  # Read body. $(</dev/fd/N) fails for socket fds (bash's $(<) optimization
-  # doesn't fire; the open() fallback returns ENXIO). mapfile -u N reads
-  # directly from the fd number and works for sockets and pipes alike.
-  local __probe_body
-  local -a __probe_body_lines=()
-  mapfile -u "$__probe_fd" __probe_body_lines
-  local IFS=''
-  __probe_body="${__probe_body_lines[*]}"
+  # Read body, unless this was a HEAD request (servers send no body for HEAD,
+  # so attempting to read would just block until the connection closes).
+  # $(</dev/fd/N) fails for socket fds (bash's $(<) optimization doesn't fire;
+  # the open() fallback returns ENXIO). mapfile -u N reads directly from the
+  # fd number and works for sockets and pipes alike.
+  local __probe_body=""
+  if [[ "$__probe_method" != HEAD ]]; then
+    local -a __probe_body_lines=()
+    mapfile -u "$__probe_fd" __probe_body_lines
+    local IFS=''
+    __probe_body="${__probe_body_lines[*]}"
+  fi
   $__probe_s.close
 
   # --- Output ---
-  # Body destination and status/header reporting are independent:
-  #   -o FILE  sends the body to FILE (so it never lands on stdout)
-  #   -s       prints just the status code to stdout
-  #   -i       prints the status line + headers to stdout (before any body)
-  # This lets natural combinations work, e.g. '-s -o page.html' saves the
-  # body and reports the code, and '-i -o page.html' saves the body while
-  # showing headers.
+  # Output components are orthogonal and freely combinable -- each thing has
+  # its own destination, no special cases:
+  #   -w FILE  writes the status code to FILE (use /dev/stdout for inline)
+  #   -i       prints the status line + headers to stdout, then the body
+  #   -I       prints the status line + headers to stdout (HEAD: no body)
+  #   -o FILE  sends the body to FILE instead of stdout
+  # Everything not redirected lands on stdout in a deterministic order
+  # (headers block, then body), so it can be separated downstream if needed.
 
-  if (( status )); then
-    printf '%s\n' "$__probe_http_status"
-  elif (( include )); then
+  # Status code -> its file (status_file is the -w/--status value).
+  if [[ -n "${status_file:-}" ]]; then
+    printf '%s\n' "$__probe_http_status" > "$status_file"
+  fi
+
+  # Headers -> stdout when -i or -I is given.
+  if (( include )) || (( head )); then
     printf '%s\n' "$__probe_status_line"
     for __probe_hline in "${__probe_resp_hdrs[@]}"; do printf '%s\n' "$__probe_hline"; done
     printf '\n'
   fi
 
-  # Body: to a file with -o, otherwise to stdout -- unless -s asked for the
-  # status code ALONE (no -o, no -i), in which case the body is suppressed.
-  if [[ -n "${output:-}" ]]; then
-    printf '%s' "$__probe_body" > "$output"
-  elif (( ! status )); then
-    printf '%s\n' "$__probe_body"
+  # Body -> file with -o, else stdout. HEAD has no body. With -I (and no -i)
+  # there is no body to show even on a GET path, so nothing extra prints.
+  if [[ "$__probe_method" != HEAD ]]; then
+    if [[ -n "${output:-}" ]]; then
+      printf '%s' "$__probe_body" > "$output"
+    elif (( ! head )); then
+      printf '%s\n' "$__probe_body"
+    fi
   fi
 }
 

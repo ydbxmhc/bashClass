@@ -4,7 +4,8 @@ set -uo pipefail
 # probe tool tests
 #
 # Classification: INTEGRATION (tools/probe)
-# Covers: GET, status codes (-s), header inclusion (-i), POST body echo (-d),
+# Covers: GET, status code to file (-w), HEAD (-I), header inclusion (-i),
+#         POST body echo (-d),
 #         JSON shorthand (-j), custom headers (-H), redirect following
 #         (absolute and relative Location), --no-follow, HTTPS rejection,
 #         multiple URLs.
@@ -72,17 +73,24 @@ $t.assert_eq "GET / body" "$("$__tp_probe" "$__tp_base/")" "hello from test serv
 $t.assert_eq "GET /json body" "$("$__tp_probe" "$__tp_base/json")" '{"ok": true, "n": 42}'
 
 # ============================================================================
-# Status code (-s)
+# Status code to a file (-w / --status)
 # ============================================================================
 
-$t.section "Status code"
+$t.section "Status code (-w FILE)"
 
-$t.assert_eq "200 status"  "$("$__tp_probe" -s "$__tp_base/")"            "200"
-$t.assert_eq "404 status"  "$("$__tp_probe" -s "$__tp_base/nope")"        "404"
-$t.assert_eq "500 status"  "$("$__tp_probe" -s "$__tp_base/status/500")"  "500"
+# -w writes the status code to a file; body still goes to stdout.
+__tp_wfile="$(mktemp)"
+__tp_wbody="$("$__tp_probe" -w "$__tp_wfile" "$__tp_base/")"
+$t.assert_eq "-w: body on stdout"        "$__tp_wbody"          "hello from test server"
+$t.assert_eq "-w: status code in file"   "$(< "$__tp_wfile")"   "200"
+
+# Status codes for various responses, via -w /dev/stdout (inline).
+$t.assert_eq "200 via -w" "$("$__tp_probe" -w /dev/stdout -o /dev/null "$__tp_base/")"           "200"
+$t.assert_eq "404 via -w" "$("$__tp_probe" -w /dev/stdout -o /dev/null "$__tp_base/nope")"       "404"
+$t.assert_eq "500 via -w" "$("$__tp_probe" -w /dev/stdout -o /dev/null "$__tp_base/status/500")" "500"
 
 # ============================================================================
-# Output to file (-o), and the -s/-o pairing
+# Output to file (-o), composed with -w
 # ============================================================================
 
 $t.section "Output to file"
@@ -93,20 +101,43 @@ __tp_ostdout="$("$__tp_probe" -o "$__tp_ofile" "$__tp_base/")"
 $t.assert_eq "output -o: stdout empty"  "$__tp_ostdout" ""
 $t.assert_eq "output -o: body in file"  "$(< "$__tp_ofile")" "hello from test server"
 
-# -s -o together (formerly mutually exclusive): status code to stdout,
-# body to the file. This is the natural "save the body, report the code" combo.
-: > "$__tp_ofile"
-__tp_socode="$("$__tp_probe" -s -o "$__tp_ofile" "$__tp_base/")"
-$t.assert_eq "-s -o: status on stdout"  "$__tp_socode" "200"
-$t.assert_eq "-s -o: body still in file" "$(< "$__tp_ofile")" "hello from test server"
-rm -f "$__tp_ofile"
-
-# -s and -i remain mutually exclusive (code vs. headers -- contradictory).
-$t.assert_fail "-s -i still mutually exclusive" \
-  "$__tp_probe" -s -i "$__tp_base/"
+# -w and -o compose: code to one file, body to another (no conflict).
+: > "$__tp_ofile"; : > "$__tp_wfile"
+__tp_wo_stdout="$("$__tp_probe" -w "$__tp_wfile" -o "$__tp_ofile" "$__tp_base/")"
+$t.assert_eq "-w -o: stdout empty"      "$__tp_wo_stdout"     ""
+$t.assert_eq "-w -o: code in w-file"    "$(< "$__tp_wfile")"  "200"
+$t.assert_eq "-w -o: body in o-file"    "$(< "$__tp_ofile")"  "hello from test server"
+rm -f "$__tp_ofile" "$__tp_wfile"
 
 # ============================================================================
-# Header inclusion (-i)
+# HEAD request (-I): headers only, no body
+# ============================================================================
+
+$t.section "HEAD (-I)"
+
+__tp_head="$("$__tp_probe" -I "$__tp_base/")"
+$t.assert_contains "HEAD shows status line" "$__tp_head" "HTTP/1.1 200"
+$t.assert_contains "HEAD shows a header"     "$__tp_head" "Content-Type:"
+# HEAD must NOT include the body.
+$t.assert_fail "HEAD omits body" \
+  grep -qF 'hello from test server' <<< "$__tp_head"
+
+# -I composes with -w: code to file, headers to stdout, still no body.
+__tp_hwfile="$(mktemp)"
+__tp_headw="$("$__tp_probe" -I -w "$__tp_hwfile" "$__tp_base/")"
+$t.assert_contains "-I -w: headers on stdout" "$__tp_headw" "HTTP/1.1 200"
+$t.assert_eq       "-I -w: code in file"      "$(< "$__tp_hwfile")" "200"
+rm -f "$__tp_hwfile"
+
+# Clustering: -Iw FILE is the correct form (-I boolean, -w takes the next arg).
+__tp_clfile="$(mktemp)"
+__tp_cl="$("$__tp_probe" -Iw "$__tp_clfile" "$__tp_base/")"
+$t.assert_contains "-Iw FILE: headers on stdout" "$__tp_cl" "HTTP/1.1 200"
+$t.assert_eq       "-Iw FILE: code in file"      "$(< "$__tp_clfile")" "200"
+rm -f "$__tp_clfile"
+
+# ============================================================================
+# Header inclusion (-i): status line + headers + body
 # ============================================================================
 
 $t.section "Header inclusion"
@@ -155,7 +186,7 @@ $t.assert_eq "follows relative redirect" \
 
 # --no-follow stops at the 3xx and reports its status.
 $t.assert_eq "no-follow stops at 302" \
-  "$("$__tp_probe" --no-follow -s "$__tp_base/redirect")" "302"
+  "$("$__tp_probe" --no-follow -w /dev/stdout -o /dev/null "$__tp_base/redirect")" "302"
 
 # ============================================================================
 # HTTPS rejection
