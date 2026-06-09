@@ -390,8 +390,9 @@ _lens_emit_rec() {
 #                              "lit" (a literal string in _out, emitted verbatim)
 #       Tokens are comma-separated. A token is a COLUMN if it is a positive
 #       integer (`7`) or an ascending range (`3-5`, expanded to 2,3,4 zero-based).
-#       Any other token is a LITERAL, emitted verbatim — so `5-17,foo,2-4` yields
-#       columns 5-17, the literal "foo", then columns 2-4.
+#       A descending range (`3-1`) is an error -- a transposed typo, not a silent
+#       no-op. Any other token is a LITERAL, emitted verbatim — so `5-17,foo,2-4`
+#       yields columns 5-17, the literal "foo", then columns 2-4.
 #
 #       Backslash escapes let a literal contain the separator or look like a
 #       column spec:
@@ -446,8 +447,15 @@ _lens_parse_spec() {
       _lens_spec_out+=( "$__lens_parse_part" )
       _lens_spec_kind+=( "lit" )
     elif [[ "$__lens_parse_part" =~ ^[1-9][0-9]*-[1-9][0-9]*$ ]]; then
-      # Ascending range N-M → columns N..M (descending selects nothing).
+      # Range N-M. Ascending expands to columns N..M; descending (N > M) is
+      # almost always a transposed typo, so it's a hard error rather than a
+      # silent no-op. To use "N-M" as literal text, escape any part of it
+      # (e.g. 3\-1) so it is classified as a literal above.
       __lens_parse_lo="${__lens_parse_part%%-*}"; __lens_parse_hi="${__lens_parse_part##*-}"
+      if (( __lens_parse_lo > __lens_parse_hi )); then
+        _Error "lens: descending range '$__lens_parse_part' (ranges are ascending; escape it, e.g. ${__lens_parse_lo}\\-${__lens_parse_hi}, for a literal)"
+        exit 1
+      fi
       for (( __lens_parse_i = __lens_parse_lo; __lens_parse_i <= __lens_parse_hi; __lens_parse_i++ )); do
         _lens_spec_out+=( "$(( __lens_parse_i - 1 ))" )
         _lens_spec_kind+=( "col" )

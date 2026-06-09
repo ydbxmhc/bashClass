@@ -175,8 +175,9 @@ one `--match` or `--no-match`.
 
 SPEC is a comma list of 1-based indices and ranges: `1`, `1,3`, `1,3-5`,
 `2-4,7`. Fields are emitted in the order listed, so a comma list can **reorder**
-columns (`--fields 3,1` emits field 3 then field 1). Ranges are ascending only
-(`3-1` selects nothing); reverse or reorder with an explicit list.
+columns (`--fields 3,1` emits field 3 then field 1). Ranges are ascending only;
+a descending range (`3-1`) is rejected as an error (a transposed typo), so
+reverse or reorder with an explicit list (`5,4,3`).
 
 Field delimiter (choose at most one; defaults to whitespace-collapse):
 
@@ -385,9 +386,10 @@ lens --fields 3,1 -f : data.txt       # field 3, then field 1
 lens --fields 3,1,2 -f : data.txt     # rotate: 3, 1, 2
 ```
 
-Ranges (`3-5`) are ascending only; a "descending range" like `3-1` selects
-nothing. To reverse or reorder, use an explicit comma list (`5,4,3`), not a
-range.
+Ranges (`3-5`) are ascending only; a descending range like `3-1` is **rejected
+as an error** (almost always a transposed typo). To reverse or reorder, use an
+explicit comma list (`5,4,3`). To use `N-M` as literal *text*, escape any part
+of it (`3\-1`) so it is treated as a literal rather than a range.
 
 ### Inserting literals and converting formats
 

@@ -368,6 +368,15 @@ $t.assert_eq "empty input field preserved" "$__tl_out" "a,,c"
 __tl_out="$(__tl_run 'a,b,c' --fields '1,,3' -f ,)"
 $t.assert_eq "empty spec token = empty literal" "$__tl_out" "a,,c"
 
+# A descending range is a hard error (transposed typo), not a silent no-op.
+$t.assert_fail "descending range errors" \
+  bash -c "cd '$__tl_root'; printf 'a:b:c\n' | ./bin/lens --fields '3-1' -f :"
+$t.assert_fail "embedded descending range errors" \
+  bash -c "cd '$__tl_root'; printf 'a:b:c\n' | ./bin/lens --fields '1,5-3,3' -f :"
+# ...but an escaped one is a literal, not a range
+__tl_out="$(__tl_run 'a:b:c' --fields '1,3\-1,3' -f : --ofs '')"
+$t.assert_eq "escaped descending range is literal" "$__tl_out" "a3-1c"
+
 # ============================================================================
 # Spec escapes (\<sep> and spec-shaped literals)
 # ============================================================================
