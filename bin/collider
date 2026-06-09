@@ -7,6 +7,10 @@ __bb_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 . "$__bb_root/boop" Args
 
+# No arguments: show help rather than erroring. Bundling needs a tool file,
+# so a bare invocation is almost always "how do I use this?", not intent.
+(( $# )) || set -- --help
+
 Args.parse '
 [Use]
 collider <tool-file> [-o output]
