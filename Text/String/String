@@ -69,7 +69,7 @@ Text.String.new() {
 
 # read -- current value (after any mutations)
 Text.String.read() {
-  local _Self="${_Self:-Text.String}"
+  local _Self="${_Self:-${_Class:-Text.String}}"
   local __Text_String_read_v
   into=__Text_String_read_v $_Self.get value
   boop.pass "$__Text_String_read_v" ${into:-}
@@ -77,7 +77,7 @@ Text.String.read() {
 
 # raw -- original value as passed to new
 Text.String.raw() {
-  local _Self="${_Self:-Text.String}"
+  local _Self="${_Self:-${_Class:-Text.String}}"
   local __Text_String_raw_v
   into=__Text_String_raw_v $_Self.get raw
   boop.pass "$__Text_String_raw_v" ${into:-}
@@ -88,42 +88,42 @@ Text.String.raw() {
 # ============================================================================
 
 Text.String.length() {
-  local _Self="${_Self:-Text.String}"
+  local _Self="${_Self:-${_Class:-Text.String}}"
   local __Text_String_length_v
   into=__Text_String_length_v $_Self.get value
   boop.pass "${#__Text_String_length_v}" ${into:-}
 }
 
 Text.String.isEmpty() {
-  local _Self="${_Self:-Text.String}"
+  local _Self="${_Self:-${_Class:-Text.String}}"
   local __Text_String_isEmpty_v
   into=__Text_String_isEmpty_v $_Self.get value
   [[ -z "$__Text_String_isEmpty_v" ]]
 }
 
 Text.String.contains() {
-  local _Self="${_Self:-Text.String}"
+  local _Self="${_Self:-${_Class:-Text.String}}"
   local __Text_String_contains_v
   into=__Text_String_contains_v $_Self.get value
   [[ "$__Text_String_contains_v" == *"${1}"* ]]
 }
 
 Text.String.startsWith() {
-  local _Self="${_Self:-Text.String}"
+  local _Self="${_Self:-${_Class:-Text.String}}"
   local __Text_String_startsWith_v
   into=__Text_String_startsWith_v $_Self.get value
   [[ "$__Text_String_startsWith_v" == "${1}"* ]]
 }
 
 Text.String.endsWith() {
-  local _Self="${_Self:-Text.String}"
+  local _Self="${_Self:-${_Class:-Text.String}}"
   local __Text_String_endsWith_v
   into=__Text_String_endsWith_v $_Self.get value
   [[ "$__Text_String_endsWith_v" == *"${1}" ]]
 }
 
 Text.String.indexOf() {
-  local _Self="${_Self:-Text.String}"
+  local _Self="${_Self:-${_Class:-Text.String}}"
   local __Text_String_indexOf_v __Text_String_indexOf_needle="${1}"
   into=__Text_String_indexOf_v $_Self.get value
   local __Text_String_indexOf_before="${__Text_String_indexOf_v%%"$__Text_String_indexOf_needle"*}"
@@ -135,7 +135,7 @@ Text.String.indexOf() {
 }
 
 Text.String.substr() {
-  local _Self="${_Self:-Text.String}"
+  local _Self="${_Self:-${_Class:-Text.String}}"
   local __Text_String_substr_v __Text_String_substr_off="${1:-0}" __Text_String_substr_len="${2:-}"
   into=__Text_String_substr_v $_Self.get value
   if [[ -n "$__Text_String_substr_len" ]]; then
@@ -342,19 +342,19 @@ Text.String.folded() {
 # Bare mutators -- delegate to -ed form, store result back
 # ============================================================================
 
-Text.String.trim()        { local _Self="${_Self:-Text.String}"; local __Text_String_trim_v;        into=__Text_String_trim_v        $_Self.trimmed;     $_Self.set value "$__Text_String_trim_v"; }
-Text.String.upcase()      { local _Self="${_Self:-Text.String}"; local __Text_String_upcase_v;      into=__Text_String_upcase_v      $_Self.upcased;     $_Self.set value "$__Text_String_upcase_v"; }
-Text.String.downcase()    { local _Self="${_Self:-Text.String}"; local __Text_String_downcase_v;    into=__Text_String_downcase_v    $_Self.downcased;   $_Self.set value "$__Text_String_downcase_v"; }
-Text.String.capitalize()  { local _Self="${_Self:-Text.String}"; local __Text_String_capitalize_v;  into=__Text_String_capitalize_v  $_Self.capitalized; $_Self.set value "$__Text_String_capitalize_v"; }
-Text.String.decapitalize(){ local _Self="${_Self:-Text.String}"; local __Text_String_decapitalize_v;into=__Text_String_decapitalize_v $_Self.decapitalized;$_Self.set value "$__Text_String_decapitalize_v"; }
-Text.String.reverse()     { local _Self="${_Self:-Text.String}"; local __Text_String_reverse_v;     into=__Text_String_reverse_v     $_Self.reversed;    $_Self.set value "$__Text_String_reverse_v"; }
-Text.String.append()      { local _Self="${_Self:-Text.String}"; local __Text_String_append_v;      into=__Text_String_append_v      $_Self.appended  "$@"; $_Self.set value "$__Text_String_append_v"; }
-Text.String.prepend()     { local _Self="${_Self:-Text.String}"; local __Text_String_prepend_v;     into=__Text_String_prepend_v     $_Self.prepended "$@"; $_Self.set value "$__Text_String_prepend_v"; }
-Text.String.replace()     { local _Self="${_Self:-Text.String}"; local __Text_String_replace_v;     into=__Text_String_replace_v     $_Self.replaced  "$@"; $_Self.set value "$__Text_String_replace_v"; }
-Text.String.lpad()        { local _Self="${_Self:-Text.String}"; local __Text_String_lpad_v;        into=__Text_String_lpad_v        $_Self.lpadded   "$@"; $_Self.set value "$__Text_String_lpad_v"; }
-Text.String.rpad()        { local _Self="${_Self:-Text.String}"; local __Text_String_rpad_v;        into=__Text_String_rpad_v        $_Self.rpadded   "$@"; $_Self.set value "$__Text_String_rpad_v"; }
-Text.String.center()      { local _Self="${_Self:-Text.String}"; local __Text_String_center_v;      into=__Text_String_center_v      $_Self.centered  "$@"; $_Self.set value "$__Text_String_center_v"; }
-Text.String.fold()        { local _Self="${_Self:-Text.String}"; local __Text_String_fold_v;        into=__Text_String_fold_v        $_Self.folded    "$@"; $_Self.set value "$__Text_String_fold_v"; }
+Text.String.trim()        { local _Self="${_Self:-${_Class:-Text.String}}"; local __Text_String_trim_v;        into=__Text_String_trim_v        $_Self.trimmed;     $_Self.set value "$__Text_String_trim_v"; }
+Text.String.upcase()      { local _Self="${_Self:-${_Class:-Text.String}}"; local __Text_String_upcase_v;      into=__Text_String_upcase_v      $_Self.upcased;     $_Self.set value "$__Text_String_upcase_v"; }
+Text.String.downcase()    { local _Self="${_Self:-${_Class:-Text.String}}"; local __Text_String_downcase_v;    into=__Text_String_downcase_v    $_Self.downcased;   $_Self.set value "$__Text_String_downcase_v"; }
+Text.String.capitalize()  { local _Self="${_Self:-${_Class:-Text.String}}"; local __Text_String_capitalize_v;  into=__Text_String_capitalize_v  $_Self.capitalized; $_Self.set value "$__Text_String_capitalize_v"; }
+Text.String.decapitalize(){ local _Self="${_Self:-${_Class:-Text.String}}"; local __Text_String_decapitalize_v;into=__Text_String_decapitalize_v $_Self.decapitalized;$_Self.set value "$__Text_String_decapitalize_v"; }
+Text.String.reverse()     { local _Self="${_Self:-${_Class:-Text.String}}"; local __Text_String_reverse_v;     into=__Text_String_reverse_v     $_Self.reversed;    $_Self.set value "$__Text_String_reverse_v"; }
+Text.String.append()      { local _Self="${_Self:-${_Class:-Text.String}}"; local __Text_String_append_v;      into=__Text_String_append_v      $_Self.appended  "$@"; $_Self.set value "$__Text_String_append_v"; }
+Text.String.prepend()     { local _Self="${_Self:-${_Class:-Text.String}}"; local __Text_String_prepend_v;     into=__Text_String_prepend_v     $_Self.prepended "$@"; $_Self.set value "$__Text_String_prepend_v"; }
+Text.String.replace()     { local _Self="${_Self:-${_Class:-Text.String}}"; local __Text_String_replace_v;     into=__Text_String_replace_v     $_Self.replaced  "$@"; $_Self.set value "$__Text_String_replace_v"; }
+Text.String.lpad()        { local _Self="${_Self:-${_Class:-Text.String}}"; local __Text_String_lpad_v;        into=__Text_String_lpad_v        $_Self.lpadded   "$@"; $_Self.set value "$__Text_String_lpad_v"; }
+Text.String.rpad()        { local _Self="${_Self:-${_Class:-Text.String}}"; local __Text_String_rpad_v;        into=__Text_String_rpad_v        $_Self.rpadded   "$@"; $_Self.set value "$__Text_String_rpad_v"; }
+Text.String.center()      { local _Self="${_Self:-${_Class:-Text.String}}"; local __Text_String_center_v;      into=__Text_String_center_v      $_Self.centered  "$@"; $_Self.set value "$__Text_String_center_v"; }
+Text.String.fold()        { local _Self="${_Self:-${_Class:-Text.String}}"; local __Text_String_fold_v;        into=__Text_String_fold_v        $_Self.folded    "$@"; $_Self.set value "$__Text_String_fold_v"; }
 
 # ============================================================================
 # do -- type-homogeneous pipeline executor
@@ -367,7 +367,7 @@ Text.String.fold()        { local _Self="${_Self:-Text.String}"; local __Text_St
 #
 # Arg separator within an op is ':': replace:foo:bar, lpad:20, center:40:*
 Text.String.do() {
-  local _Self="${_Self:-Text.String}"
+  local _Self="${_Self:-${_Class:-Text.String}}"
   local __Text_String_do_pipeline="${1:-}"
   [[ -n "$__Text_String_do_pipeline" ]] || { _Error "Text.String.do: empty pipeline"; return 1; }
 

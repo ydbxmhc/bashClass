@@ -820,7 +820,23 @@ _OutMode() {
   boop.pass "$_OutMode"
 }
 
-# _EOL — get or set the line ending for stdout output.
+# boop.isObject -- test whether _Self is an object (not a class or empty).
+#
+# Returns 0 (true) if _Self starts with __obj_, 1 (false) otherwise.
+# No boop.pass -- communicates via exit code only, like isa.
+#
+# Used as a guard in methods that require object identity:
+#   boop.isObject || { _Error "requires an object"; return 1; }
+#
+# Also callable on an object to branch on instance vs class context:
+#   if $obj.isObject; then ... fi
+#   if boop.isObject;  then ... fi   # reads ambient _Self
+boop.isObject() {
+  local _Self="${_Self:-}"
+  [[ "$_Self" == __obj_* ]]
+}
+
+ — get or set the line ending for stdout output.
 #
 # Appended after the payload in boop.pass stdout mode. Default is
 # newline. Set to empty string for raw output (pipe-friendly).
@@ -3034,7 +3050,7 @@ _Bless() {
 # from it (parent chain terminates at boop's empty parent field).
 # The standard methods registered here (get, set, isa, toString, new, super)
 # are available to all objects unless overridden by a subclass.
-__boop_registry["boop"]="|class=boop|trueClass=boop|parent=|methods=new,destroy,get,set,isa,mixes,trueClass,toString,inspect,super|properties=|mixins=|"
+__boop_registry["boop"]="|class=boop|trueClass=boop|parent=|methods=new,destroy,get,set,isa,mixes,trueClass,toString,inspect,super,isObject|properties=|mixins=|"
 
 #boopClass boop '
 #  custom:new=__boop.new,get=__boop.get,set=__boop.set,isa=__boop.isa,toString=__boop.toString
@@ -3049,6 +3065,7 @@ __boop.registerMethod boop trueClass __boop.trueClass
 __boop.registerMethod boop toString __boop.toString
 __boop.registerMethod boop inspect __boop.inspect
 __boop.registerMethod boop new __boop.new
+__boop.registerMethod boop isObject boop.isObject
 __boop.registerMethod boop resolve boop.resolve
 __boop.registerMethod boop classPath boop.classPath
 #__boop.registerMethod boop super __boop.super
