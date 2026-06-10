@@ -26,29 +26,92 @@ Specifically look for:
 
 ---
 
-## `_Self` Preamble Audit
+## `_Self` / `_Class` Default Audit (survey + evaluate — NOT a rewrite)
 
-Nearly every method in Collection, Config, Geometry/Cube, Text/String, and
-Collection/Queue/Stack/Fast uses:
+**This is an audit. Audit means survey and report, not refactor.** The job
+is to walk every method that defaults `_Self` to `_Class` (directly, or via
+`${_Self:-${_Class:-ClassName}}`), describe what it actually does, and judge
+whether that default is right *for that specific method*. Do NOT blindly
+align every class to one preamble — intent differs per method, and aligning
+without thinking is exactly how this went wrong before.
 
-```bash
-local _Self="${_Self:-${_Class:-ClassName}}" _Class="${_Class:-ClassName}"
-```
+### Design intent — the default is a FEATURE, not a bug
 
-The `_Self` fallback to `_Class` is wrong: `_Self` is an object ID, never
-a class name. If a method is called without `_Self` set, it should fail
-loudly (empty `_Self`, broken nameref) rather than silently use the class
-name as if it were an object.
+`_Self` deliberately falls back to `_Class` so the same inherited accessor
+and method logic can operate on **either an object or the class itself**.
+Class-level properties act as prototype defaults for new instances:
 
-The correct form is:
+- Set `Box.color = blue` → every new Box instantiates blue.
+- Later set `Box.color = red` → new Boxes instantiate red.
+- A value set on an individual object always takes precedence over the
+  class default.
 
-```bash
-local _Class="${_Class:-ClassName}" _Self="${_Self:-}"
-```
+So by default a constructor should consult the class for any attribute
+defined on the class but not set on the object, and seed the new object
+from the class value when one exists. That prototype behavior is the whole
+point of the `_Self:-_Class` default.
 
-Methods are always called through the baked dispatch wrapper in practice,
-so this is not causing failures today — but it masks direct-call misuse
-and is wrong per STANDARDS.md. Fix across all class files.
+If a given method should NOT behave that way, that method simply doesn't
+use the default — write it however it needs to be. The decision is
+per-method. Uniformity is not the goal; correctness-of-intent is.
+
+### What this audit produces
+
+For each method, report what it does and classify its use (or non-use) of
+the `_Self:-_Class` default as one of:
+
+- **Neat feature** — class-as-prototype behavior is intended and useful here.
+- **Benign but useless** — harmless, but this method never meaningfully
+  runs on the class, so the default does nothing either way.
+- **Subtle bug waiting to happen** — would silently misbehave if ever
+  called on the class (e.g. builds a nameref onto a class-level array).
+- **Just dumb** — actively wrong or confusing; should change.
+- **Something else** — doesn't fit the above; write down the reasoning.
+
+The codebase is currently *mixed*: some methods default `_Self` to `_Class`,
+others to empty (`${_Self:-}`). Reconciling that inconsistency — deciding
+which each method *should* be and why — is part of the audit, not a
+foregone conclusion in either direction.
+
+### How we work this
+
+One file at a time. **No hurry.** Look the methods over, discuss as much as
+it takes, record notes below, come back another day, change focus when we
+feel like it. We finish when we finish. Nothing here gets changed in code
+until we've talked it through and agreed on the call for that method.
+
+### Files to survey (check off as evaluated)
+
+- [ ] boop (core: `_Me`, `_Static`, `_Property`, accessors)
+- [ ] Collection/Container/Container
+- [ ] Collection/List/List
+- [ ] Collection/Map/Map
+- [ ] Collection/Map/Fast/Fast
+- [ ] Collection/Set/Set
+- [ ] Collection/Stack/Stack
+- [ ] Collection/Stack/Fast/Fast
+- [ ] Collection/Queue/Queue
+- [ ] Collection/Queue/Fast/Fast
+- [ ] Config/Config
+- [ ] Geometry/Box/Box
+- [ ] Geometry/Cube/Cube
+- [ ] Text/String/String
+- [ ] Math/Math
+- [ ] SemVer/SemVer
+- [ ] Signal/Signal
+- [ ] Stream/Stream
+- [ ] DateTime/DateTime
+- [ ] Net/Socket/Socket
+- [ ] Data/JSON/JSON
+- [ ] Games (Card, PlayingCard, Deck)
+- [ ] Mixins (Greetable, Serializable, Taggable, Terminal)
+- [ ] Testing/TestSuite/TestSuite
+- [ ] Args/Args
+
+### Findings
+
+_(per-file notes go here as we go — method, current default, classification,
+reasoning, and any agreed action)_
 
 ---
 
@@ -715,33 +778,14 @@ bash variables:
 
 ---
 
-## `_Self` Preamble Audit
+## `_Self` / `_Class` Default Audit (duplicate — see canonical entry above)
 
-Widespread wrong pattern in class method implementations:
-```bash
-local _Self="${_Self:-${_Class:-ClassName}}" _Class="${_Class:-ClassName}"
-```
-
-`_Self` should never default to a class name — that silently promotes a
-class reference to an object identity, breaking `__boop_static` lookups.
-Correct form:
-```bash
-local _Class="${_Class:-ClassName}" _Self="${_Self:-}"
-```
-
-(If `_Self` is empty, `__boop_static[.propname]` lookups return empty strings
-rather than returning a class's properties — the right behavior.)
-
-Files known to contain the wrong pattern:
-- `Config/Config` — 9 methods
-- `Collection/Container/Container` — 40+ methods
-- `Geometry/Box/Box` — multiple methods
-- `Geometry/Cube/Cube` — at least Cube.volume
-- `Text/String/String` — 14+ methods
-- `Collection/Queue/Queue` / `Collection/Stack/Stack` — several methods
-
-In practice these methods only fail when called without the dispatcher
-setting `_Self`, which is rare. But docs now show the correct pattern.
+This was a second, also-incorrect copy of the old "preamble" entry. It
+framed the `_Self:-_Class` default as a bug to be stamped out. It is not —
+the default is intentional (class-level properties act as prototype
+defaults for instances). The real task is the survey-and-evaluate audit
+described in the canonical **`_Self` / `_Class` Default Audit** section
+near the top of this file. Work it there.
 
 ---
 
