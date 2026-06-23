@@ -41,8 +41,7 @@ section before using the class.
 SemVer.satisfies "1.3.0" "1.2+" && echo "ok"    # passes  (1.3.0 >= 1.2.0)
 SemVer.satisfies "1.1.9" "1.2+" && echo "ok"    # silent  (1.1.9 < 1.2.0)
 
-into=r SemVer.compare "1.10.0" "1.9.0"          # r="-1" .. wait, no
-into=r SemVer.compare "1.10.0" "1.9.0"          # r="1"  (1.10 > 1.9, numeric)
+into=r SemVer.compare "1.10.0" "1.9.0"          # r="1"  (numeric: 10 > 9, not string sort)
 
 # boop version guard — no SemVer class needed
 . boop require:1.2+         # crashes if boop < 1.2.0
