@@ -1,0 +1,39 @@
+# GitHub Pages site configuration for boopshell.com
+#
+# `theme` selects one of GitHub Pages' built-in, supported themes — no
+# Gemfile needed on the GitHub Pages build. Cayman is a clean,
+# landing-page-style theme with a banner header.
+#
+# `title` and `description` populate that banner header, so the index page
+# itself does not repeat them as an <h1>.
+title: boop
+description: >-
+  Object-oriented programming for bash 4.3+ — real classes, objects,
+  inheritance, and a standard library, in pure bash.
+theme: jekyll-theme-cayman
+show_downloads: false
+
+# Files and directories Jekyll should not copy into the published site.
+# (Dotfiles like .boopIndex are excluded by Jekyll automatically.)
+exclude:
+  - tests/
+  - bin/
+  - lib/
+  - Args/
+  - Collection/
+  - Config/
+  - Data/
+  - DateTime/
+  - Games/
+  - Geometry/
+  - Math/
+  - Mixins/
+  - Net/
+  - SemVer/
+  - Signal/
+  - Stream/
+  - Testing/
+  - Text/
+  - boop
+  - Greeter
+  - Bad Poem
