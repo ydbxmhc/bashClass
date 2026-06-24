@@ -37,7 +37,7 @@ See also:
  --options  for a detailed option reference
  --examples for common request recipes
  --about    for a this-tool overview
- --boop     for a framework overview
+ --boop     for install, self-update, and framework info
 
 [Options]
 # --- Request ---
@@ -153,10 +153,14 @@ probe is built on boop — an OOP framework for bash 4.3+.
   This tool can run as a single-file bundle: the framework and required
   classes embedded inline, working standalone with no installation.
 
-  To install the full boop framework:
-    probe --boop-install              install to ~/.local/lib/boop
-    probe --boop-install /opt/boop    install to custom path
+  Install and update:
+    probe --self-update               replace this file with the latest version
+    probe --boop-install              install the full boop framework to ~/.local/lib/boop
+    probe --boop-install /opt/boop    install to a custom path
+    probe --boop-update               git pull an existing boop installation
+    probe --fetch-probe DEST          download probe to DEST (default: ~/.local/bin/probe)
 
+  Download: https://boopshell.com/dist/probe
   Repository: https://github.com/ydbxmhc/bashClass
 ' "$@" || exit 1
 

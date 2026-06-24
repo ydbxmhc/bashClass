@@ -104,10 +104,14 @@ boson is built on boop — an OOP framework for bash 4.3+.
   This tool is a single-file bundle: the framework and required classes are
   embedded inline. It works standalone with no installation.
 
-  To install the full boop framework:
-    boson --boop-install              install to ~/.local/lib/boop
-    boson --boop-install /opt/boop    install to custom path
+  Install and update:
+    boson --self-update               replace this file with the latest version
+    boson --boop-install              install the full boop framework to ~/.local/lib/boop
+    boson --boop-install /opt/boop    install to a custom path
+    boson --boop-update               git pull an existing boop installation
+    boson --fetch-probe DEST          download probe to DEST (default: ~/.local/bin/probe)
 
+  Download: https://boopshell.com/dist/boson
   Repository: https://github.com/ydbxmhc/bashClass
 EOF
     exit 0 ;;
@@ -187,7 +191,7 @@ boson [-r] [--emit | --into=VAR | --eponymous] EXPR [file]
   -E, --eponymous
     Subtrees like --emit; iteration → array named by the source field.
 
-  More: --examples, --caveats, --about, --boop
+  More: --examples, --caveats, --about, --boop (install/update/framework info)
 
 [Options]
 raw       | r         # raw output (no quotes on strings)
