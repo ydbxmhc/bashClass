@@ -23,7 +23,7 @@
 
 # --- Distribution configuration ---
 # Override BOOP_DIST_URL for testing: BOOP_DIST_URL=http://localhost:8080 probe --self-update
-__installer_dist_url="${BOOP_DIST_URL:-http://get.boop.sh}"
+__installer_dist_url="${BOOP_DIST_URL:-https://boopshell.com/dist}"
 __installer_probe_url="${__installer_dist_url}/probe"
 __installer_bundle_url="${__installer_dist_url}/boop-full.bundle"
 
@@ -214,6 +214,34 @@ __installer_http_get() {
 }
 
 # ============================================================================
+# Fetch a URL to a file (or stdout). Handles both http:// and https://.
+# For HTTPS, falls through to curl then wget (pure-bash /dev/tcp is HTTP only).
+# ============================================================================
+
+__installer_fetch() {
+  local __installer_fetch_url="$1" __installer_fetch_dest="${2:-}"
+  if [[ "$__installer_fetch_url" == https://* ]]; then
+    if __installer_has curl; then
+      if [[ -n "$__installer_fetch_dest" ]]; then
+        curl -fsSL "$__installer_fetch_url" -o "$__installer_fetch_dest"
+      else
+        curl -fsSL "$__installer_fetch_url"
+      fi
+    elif __installer_has wget; then
+      if [[ -n "$__installer_fetch_dest" ]]; then
+        wget -q "$__installer_fetch_url" -O "$__installer_fetch_dest"
+      else
+        wget -q "$__installer_fetch_url" -O -
+      fi
+    else
+      printf 'installer: HTTPS requires curl or wget\n' >&2; return 1
+    fi
+  else
+    __installer_http_get "$__installer_fetch_url" "$__installer_fetch_dest"
+  fi
+}
+
+# ============================================================================
 # Self-update — fetch latest version of this tool from its distribution URL
 #
 # Replaces $0 in-place (download to temp, chmod, mv).
@@ -232,7 +260,7 @@ __installer_self_update() {
   local __installer_su_tmp="${TMPDIR:-/tmp}/__boop_update_$$"
   printf '  Fetching %s from %s\n' "${__installer_self_name:-update}" "$__installer_su_url" >&2
 
-  __installer_http_get "$__installer_su_url" "$__installer_su_tmp" || {
+  __installer_fetch "$__installer_su_url" "$__installer_su_tmp" || {
     rm -f "$__installer_su_tmp"; return 1
   }
 
@@ -267,7 +295,7 @@ __installer_fetch_probe() {
   }
 
   printf '  Fetching probe from %s\n' "$__installer_probe_url" >&2
-  __installer_http_get "$__installer_probe_url" "$__installer_fp_dest" || return 1
+  __installer_fetch "$__installer_probe_url" "$__installer_fp_dest" || return 1
   chmod +x "$__installer_fp_dest"
   printf '  ✓ probe installed to: %s\n' "$__installer_fp_dest" >&2
   printf '  Add %s to PATH if not already present.\n' "$__installer_fp_dir" >&2

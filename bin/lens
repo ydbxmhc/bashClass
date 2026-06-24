@@ -21,7 +21,7 @@ __lens_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Distribution URLs — override with BOOP_DIST_URL for testing:
 #   BOOP_DIST_URL=http://localhost:8080 lens --self-update
 __installer_self_name="lens"
-__installer_self_url="${BOOP_DIST_URL:-http://get.boop.sh}/lens"
+__installer_self_url="${BOOP_DIST_URL:-https://boopshell.com/dist}/lens"
 
 # Installer dispatch — must run before Args.parse
 # In a bundle, lib/installer is already inline; in dev, source it.
