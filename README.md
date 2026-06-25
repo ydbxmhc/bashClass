@@ -564,7 +564,7 @@ bash tests/unit/test_mixin_ts
 bash tests/unit/test_terminal_ts
 bash tests/visual/test_terminal_visual   # interactive — grades each element y/n
 bash tests/integration/test_blackjack
-bash tests/integration/test_stress_ts
+bash tests/integration/test_adversarial_ts
 ```
 
 ---
