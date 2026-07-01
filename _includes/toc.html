@@ -1,0 +1,25 @@
+{%- comment -%}
+Pure-Liquid table of contents. No plugins (GitHub Pages won't run custom
+ones). Scans the rendered page HTML passed in as `include.html` for level-2
+headings. kramdown (the GitHub Pages markdown engine) auto-assigns an `id`
+to every heading, so each `<h2 id="...">Text</h2>` gives us both an anchor
+target and a label.
+
+For each heading chunk (everything after a `<h2 ` marker):
+  - the id is the first quoted string in the chunk
+  - the text is what sits between the first `>` and the closing `</h2`
+{%- endcomment -%}
+{%- assign _heads = include.html | split: '<h2 ' -%}
+{%- if _heads.size > 1 -%}
+<p class="toc-title">On this page</p>
+<ul>
+{%- for _h in _heads offset: 1 -%}
+  {%- assign _id = _h | split: '"' | slice: 1 | first -%}
+  {%- assign _heading = _h | split: '</h2' | first -%}
+  {%- assign _txt = _heading | split: '>' | last | strip_html | strip -%}
+  {%- if _txt != "" -%}
+  <li><a href="#{{ _id }}">{{ _txt }}</a></li>
+  {%- endif -%}
+{%- endfor -%}
+</ul>
+{%- endif -%}

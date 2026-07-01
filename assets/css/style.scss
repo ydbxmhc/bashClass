@@ -1,0 +1,80 @@
+---
+# Front matter (even empty) tells Jekyll to process this SCSS file.
+---
+
+@import "jekyll-theme-midnight";
+
+/* ------------------------------------------------------------------ *
+ * Widen the fixed 650px column to make room for the TOC sidebar.
+ * ------------------------------------------------------------------ */
+.wrapper { max-width: 1000px; }
+section  { max-width: 1000px; }
+#header nav { max-width: 1000px; }
+
+/* ------------------------------------------------------------------ *
+ * Two-column layout: thin sticky TOC on the left, content on the right.
+ * ------------------------------------------------------------------ */
+.with-toc {
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+}
+
+.content-body {
+  flex: 1 1 auto;
+  min-width: 0;          /* let <pre> blocks scroll instead of blowing out the row */
+}
+
+.toc-panel {
+  flex: 0 0 170px;       /* thin, fixed-width panel */
+  align-self: flex-start;
+  position: sticky;
+  top: 84px;             /* clear the fixed 60px header */
+  max-height: calc(100vh - 108px);
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.toc-panel .toc-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #b6b6b6;
+}
+
+.toc-panel ul {
+  list-style: none;      /* override the theme's bullet image */
+  margin: 0;
+  padding: 0;
+  border-left: 1px solid #434343;
+}
+
+.toc-panel li { margin: 0; }
+
+.toc-panel li a {
+  display: block;
+  padding: 5px 0 5px 12px;
+  margin-left: -1px;
+  border-left: 2px solid transparent;
+  color: #d7cfbe;
+}
+
+.toc-panel li a:hover {
+  color: #ffeb9b;
+  border-left-color: #ffcc00;
+}
+
+/* ------------------------------------------------------------------ *
+ * On narrow screens, stack the TOC above the content (not sticky).
+ * ------------------------------------------------------------------ */
+@media screen and (max-width: 720px) {
+  .with-toc { display: block; }
+  .toc-panel {
+    position: static;
+    max-height: none;
+    flex-basis: auto;
+    margin-bottom: 24px;
+  }
+}

@@ -10,7 +10,7 @@ title: boop
 description: >-
   Object-oriented programming for bash 4.3+ — real classes, objects,
   inheritance, and a standard library, in pure bash.
-theme: jekyll-theme-cayman
+theme: jekyll-theme-midnight
 show_downloads: false
 
 # Files and directories Jekyll should not copy into the published site.
