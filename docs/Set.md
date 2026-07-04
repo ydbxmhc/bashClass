@@ -2,7 +2,7 @@
 
 Unordered collection of unique values. Backed by a bash associative array
 (keys are members, values are unused). Membership tests, add, and remove are
-O(1). Set operations (`union`, `intersect`, `difference`) return new Set objects.
+O(1). Set operations (`union`, `intersect`, `diffs`, `minus`) return new Set objects.
 
 ## Contents
 
@@ -15,9 +15,10 @@ O(1). Set operations (`union`, `intersect`, `difference`) return new Set objects
 - [Size](#size)
 - [Iteration](#iteration)
 - [Set Operations](#set-operations)
-  - [union — members in A or B](#union-members-in-a-or-b)
+  - [union — all members of A or B](#union-all-members-of-a-or-b)
   - [intersect — members in both A and B](#intersect-members-in-both-a-and-b)
-  - [difference — members in A but not B](#difference-members-in-a-but-not-b)
+  - [diffs — members in exactly one (symmetric difference)](#diffs-members-in-exactly-one-symmetric-difference)
+  - [minus — members of A not in B (A − B)](#minus-members-of-a-not-in-b-a--b)
 - [Common Patterns](#common-patterns)
   - [Deduplication](#deduplication)
   - [Tag/label system](#taglabel-system)
@@ -126,31 +127,55 @@ done
 
 ## Set Operations
 
-All three operations return a **new** Set object. The originals are unchanged.
+All operations return a **new** Set object. The originals are unchanged.
 
-### union — members in A or B
+```
+a = {1, 2, 3}    b = {3, 4, 5}
+```
+
+### union — all members of A or B
+
+Symmetric: `a.union(b)` == `b.union(a)`.
 
 ```bash
 into=a Collection.Set; $a.add 1 2 3
 into=b Collection.Set; $b.add 3 4 5
 
 into=u $a.union "$b"
-into=n $u.size          # n="5" (1,2,3,4,5)
+into=n $u.size          # "5"  → {1, 2, 3, 4, 5}
 ```
 
 ### intersect — members in both A and B
 
+Symmetric: `a.intersect(b)` == `b.intersect(a)`.
+
 ```bash
 into=i $a.intersect "$b"
-into=n $i.size          # n="1" (just 3)
+into=n $i.size          # "1"  → {3}
 $i.has "3" && echo "yes"
 ```
 
-### difference — members in A but not B
+### diffs — members in exactly one (symmetric difference)
+
+Symmetric: `a.diffs(b)` == `b.diffs(a)`.
 
 ```bash
-into=d $a.difference "$b"
-into=n $d.size          # n="2" (1 and 2)
+into=d $a.diffs "$b"
+into=n $d.size          # "4"  → {1, 2, 4, 5}
+$d.has "1" && echo "only in a"
+$d.has "5" && echo "only in b"
+```
+
+### minus — members of A not in B (A − B)
+
+Asymmetric: `a.minus(b)` ≠ `b.minus(a)`.
+
+```bash
+into=m $a.minus "$b"
+into=n $m.size          # "2"  → {1, 2}
+
+into=m2 $b.minus "$a"
+into=n $m2.size         # "2"  → {4, 5}
 ```
 
 ---
@@ -185,9 +210,10 @@ into=old Collection.Set
 into=new Collection.Set
 # ... populate both ...
 
-into=added   $new.difference "$old"    # in new but not old
-into=removed $old.difference "$new"    # in old but not new
-into=kept    $old.intersect  "$new"    # in both
+into=added   $new.minus    "$old"    # in new but not old
+into=removed $old.minus    "$new"    # in old but not new
+into=changed $old.diffs    "$new"    # in exactly one (added or removed)
+into=kept    $old.intersect "$new"   # in both
 ```
 
 ---

@@ -7,15 +7,16 @@
 # hash-defined (undefined). Set operations return new Set objects.
 #
 # Public interface:
-#   $s.add     val ...   -- add one or more members
-#   $s.has     val       -- exits 0 if member, 1 if not
-#   $s.remove  val ...   -- remove one or more members (no-op if absent)
+#   $s.add      val ...  -- add one or more members
+#   $s.has      val      -- exits 0 if member, 1 if not
+#   $s.remove   val ...  -- remove one or more members (no-op if absent)
 #   $s.size              -- number of members
 #   $s.isEmpty           -- exits 0 if empty, 1 if not
 #   $s.toArray           -- members as _Delimiter-joined string (order undefined)
-#   $s.union      other  -- new Set: members of self or other
-#   $s.intersect  other  -- new Set: members of self and other
-#   $s.difference other  -- new Set: members of self not in other
+#   $s.union    other    -- new Set: all members of self or other (symmetric)
+#   $s.intersect other   -- new Set: members in both self and other (symmetric)
+#   $s.diffs    other    -- new Set: members in exactly one (symmetric difference)
+#   $s.minus    other    -- new Set: members of self not in other (self − other)
 
 . boop
 boop.init Collection.Set || return 0
@@ -82,7 +83,7 @@ Collection.Set.toArray() {
   boop.pass "$__Collection_Set_toArray_out" ${into:-}
 }
 
-# Return a new Set containing all members from self and other.
+# Return a new Set containing all members from self or other (symmetric).
 Collection.Set.union() {
   local _Self="${_Self:-Collection.Set}" _Class="${_Class:-Collection.Set}"
   local -n __Collection_Set_union_a="__Collection_Set_data_${_Self}"
@@ -101,7 +102,7 @@ Collection.Set.union() {
   boop.pass "$__Collection_Set_union_result" ${into:-}
 }
 
-# Return a new Set containing only members present in both self and other.
+# Return a new Set containing only members present in both self and other (symmetric).
 Collection.Set.intersect() {
   local _Self="${_Self:-Collection.Set}" _Class="${_Class:-Collection.Set}"
   local -n __Collection_Set_intersect_a="__Collection_Set_data_${_Self}"
@@ -118,21 +119,42 @@ Collection.Set.intersect() {
   boop.pass "$__Collection_Set_intersect_result" ${into:-}
 }
 
-# Return a new Set containing members of self not present in other.
-Collection.Set.difference() {
+# Return a new Set containing members in exactly one of self or other (symmetric difference).
+Collection.Set.diffs() {
   local _Self="${_Self:-Collection.Set}" _Class="${_Class:-Collection.Set}"
-  local -n __Collection_Set_difference_a="__Collection_Set_data_${_Self}"
-  local -n __Collection_Set_difference_b="__Collection_Set_data_${1}"
-  local __Collection_Set_difference_result
-  into=__Collection_Set_difference_result Collection.Set.new
-  local -n __Collection_Set_difference_r="__Collection_Set_data_${__Collection_Set_difference_result}"
-  local __Collection_Set_difference_k
-  for __Collection_Set_difference_k in "${!__Collection_Set_difference_a[@]}"; do
-    [[ -z "${__Collection_Set_difference_b[$__Collection_Set_difference_k]+set}" ]] &&
-      __Collection_Set_difference_r["$__Collection_Set_difference_k"]=1
+  local -n __Collection_Set_diffs_a="__Collection_Set_data_${_Self}"
+  local -n __Collection_Set_diffs_b="__Collection_Set_data_${1}"
+  local __Collection_Set_diffs_result
+  into=__Collection_Set_diffs_result Collection.Set.new
+  local -n __Collection_Set_diffs_r="__Collection_Set_data_${__Collection_Set_diffs_result}"
+  local __Collection_Set_diffs_k
+  for __Collection_Set_diffs_k in "${!__Collection_Set_diffs_a[@]}"; do
+    [[ -z "${__Collection_Set_diffs_b[$__Collection_Set_diffs_k]+set}" ]] &&
+      __Collection_Set_diffs_r["$__Collection_Set_diffs_k"]=1
   done
-  _Trace "difference: ${#__Collection_Set_difference_r[@]} member(s)"
-  boop.pass "$__Collection_Set_difference_result" ${into:-}
+  for __Collection_Set_diffs_k in "${!__Collection_Set_diffs_b[@]}"; do
+    [[ -z "${__Collection_Set_diffs_a[$__Collection_Set_diffs_k]+set}" ]] &&
+      __Collection_Set_diffs_r["$__Collection_Set_diffs_k"]=1
+  done
+  _Trace "diffs: ${#__Collection_Set_diffs_r[@]} member(s)"
+  boop.pass "$__Collection_Set_diffs_result" ${into:-}
+}
+
+# Return a new Set containing members of self not present in other (self − other).
+Collection.Set.minus() {
+  local _Self="${_Self:-Collection.Set}" _Class="${_Class:-Collection.Set}"
+  local -n __Collection_Set_minus_a="__Collection_Set_data_${_Self}"
+  local -n __Collection_Set_minus_b="__Collection_Set_data_${1}"
+  local __Collection_Set_minus_result
+  into=__Collection_Set_minus_result Collection.Set.new
+  local -n __Collection_Set_minus_r="__Collection_Set_data_${__Collection_Set_minus_result}"
+  local __Collection_Set_minus_k
+  for __Collection_Set_minus_k in "${!__Collection_Set_minus_a[@]}"; do
+    [[ -z "${__Collection_Set_minus_b[$__Collection_Set_minus_k]+set}" ]] &&
+      __Collection_Set_minus_r["$__Collection_Set_minus_k"]=1
+  done
+  _Trace "minus: ${#__Collection_Set_minus_r[@]} member(s)"
+  boop.pass "$__Collection_Set_minus_result" ${into:-}
 }
 
 # Destroy companion array. Private hook called by __boop.destroy.
@@ -142,6 +164,6 @@ Collection.Set._destroy() {
   unset "__Collection_Set_data_${_Self}"
 }
 
-boopClass Collection.Set version:1.0.0 '
-  public:new,add,has,remove,size,isEmpty,toArray,union,intersect,difference
+boopClass Collection.Set version:1.1.0 '
+  public:new,add,has,remove,size,isEmpty,toArray,union,intersect,diffs,minus
 '

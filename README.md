@@ -586,7 +586,7 @@ boop                                    root — new, destroy, get, set, isa, mi
   │     │     └── Stack.Fast            LIFO via List inheritance — lighter, faster
   │     ├── Queue                       FIFO — enqueue/dequeue/peek (composition)
   │     │     └── Queue.Fast            FIFO via List inheritance — lighter, faster
-  │     └── Set                         unique members — add/has/remove/union/intersect/difference
+  │     └── Set                         unique members — add/has/remove/union/intersect/diffs/minus
   ├── Mixins
   │     ├── Terminal                    ANSI control, named colors, symbol table
   │     ├── Greetable                   demo mixin — greet, identify
@@ -844,16 +844,17 @@ $a.has grape               # exits 1 (not a member)
 $a.add apple               # no-op (already present)
 into=n $a.size             # "3"
 
-into=u $a.union      "$b"  # new Set object (apple, banana, cherry, date)
-into=i $a.intersect  "$b"  # new Set object (banana, cherry)
-into=d $a.difference "$b"  # new Set object (apple)
+# All three symmetric operations — order of operands doesn't matter:
+into=u $a.union     "$b"   # new Set: {apple, banana, cherry, date}
+into=i $a.intersect "$b"   # new Set: {banana, cherry}
+into=d $a.diffs     "$b"   # new Set: {apple, date}  ← in exactly one
 
-# Set operations return objects — call toArray to get the members:
-into=arr_u $u.toArray      # "apple\nbanana\ncherry\ndate" (order undefined)
-into=arr_i $i.toArray      # "banana\ncherry"             (order undefined)
-into=arr_d $d.toArray      # "apple"
+# Asymmetric subtraction — order matters:
+into=m $a.minus "$b"       # new Set: {apple}        ← in a but not b
+into=m $b.minus "$a"       # new Set: {date}         ← in b but not a
 
-into=arr $a.toArray        # newline-separated members (order undefined)
+# Set operations return new objects — call toArray to iterate:
+into=arr $u.toArray        # newline-separated members (order undefined)
 ```
 
 ---

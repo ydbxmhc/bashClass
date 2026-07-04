@@ -4,7 +4,7 @@ set -uo pipefail
 # Set class tests
 #
 # Classification: UNIT (Collection.Set)
-# Covers: add, has, remove, size, isEmpty, toArray, union, intersect, difference
+# Covers: add, has, remove, size, isEmpty, toArray, union, intersect, diffs, minus
 
 . boop TestSuite Set
 
@@ -97,6 +97,10 @@ $t.assert_ok "union has 5"  $u.has "5"
 $t.assert_ok "originals unchanged after union" $a.has "1"
 into=n $a.size; $t.assert_eq "a unchanged" "$n" "3"
 
+# union is symmetric: a.union(b) == b.union(a)
+into=u2 $b.union "$a"
+into=n $u2.size; $t.assert_eq "union symmetric size" "$n" "5"
+
 # ============================================================================
 # intersect
 # ============================================================================
@@ -113,22 +117,68 @@ into=c Collection.Set.new; $c.add "9" "8"
 into=empty_i $a.intersect "$c"
 $t.assert_ok "disjoint intersect is empty" $empty_i.isEmpty
 
+# intersect is symmetric: a.intersect(b) == b.intersect(a)
+into=i2 $b.intersect "$a"
+into=n $i2.size; $t.assert_eq "intersect symmetric size" "$n" "1"
+$t.assert_ok "intersect symmetric has 3" $i2.has "3"
+
 # ============================================================================
-# difference
+# diffs — symmetric difference (members in exactly one set)
 # ============================================================================
 
-$t.section "difference"
+$t.section "diffs"
 
-into=d $a.difference "$b"
-into=n $d.size; $t.assert_eq "difference size" "$n" "2"
-$t.assert_ok   "difference has 1"   $d.has "1"
-$t.assert_ok   "difference has 2"   $d.has "2"
-$t.assert_fail "difference not 3"   $d.has "3"
+# a={1,2,3}  b={3,4,5}  diffs={1,2,4,5}
+into=d $a.diffs "$b"
+into=n $d.size; $t.assert_eq "diffs size" "$n" "4"
+$t.assert_ok   "diffs has 1"   $d.has "1"
+$t.assert_ok   "diffs has 2"   $d.has "2"
+$t.assert_fail "diffs not 3"   $d.has "3"
+$t.assert_ok   "diffs has 4"   $d.has "4"
+$t.assert_ok   "diffs has 5"   $d.has "5"
 
-into=d2 $b.difference "$a"
-into=n $d2.size; $t.assert_eq "difference is not symmetric" "$n" "2"
-$t.assert_ok   "b-a has 4"  $d2.has "4"
-$t.assert_ok   "b-a has 5"  $d2.has "5"
+# diffs is symmetric: a.diffs(b) == b.diffs(a)
+into=d2 $b.diffs "$a"
+into=n $d2.size; $t.assert_eq "diffs is symmetric" "$n" "4"
+$t.assert_ok   "diffs symmetric has 1"  $d2.has "1"
+$t.assert_ok   "diffs symmetric has 4"  $d2.has "4"
+$t.assert_fail "diffs symmetric not 3"  $d2.has "3"
+
+# diffs with disjoint sets == union
+into=d3 $a.diffs "$c"
+into=n $d3.size; $t.assert_eq "diffs disjoint == union" "$n" "5"
+
+# diffs with identical sets == empty
+into=d4 $a.diffs "$a"
+$t.assert_ok "diffs self is empty" $d4.isEmpty
+
+# ============================================================================
+# minus — asymmetric difference (self − other)
+# ============================================================================
+
+$t.section "minus"
+
+# a={1,2,3}  b={3,4,5}  a.minus(b)={1,2}
+into=m $a.minus "$b"
+into=n $m.size; $t.assert_eq "minus size" "$n" "2"
+$t.assert_ok   "minus has 1"   $m.has "1"
+$t.assert_ok   "minus has 2"   $m.has "2"
+$t.assert_fail "minus not 3"   $m.has "3"
+
+# minus is NOT symmetric: b.minus(a)={4,5}
+into=m2 $b.minus "$a"
+into=n $m2.size; $t.assert_eq "minus is not symmetric" "$n" "2"
+$t.assert_ok   "b-a has 4"  $m2.has "4"
+$t.assert_ok   "b-a has 5"  $m2.has "5"
+$t.assert_fail "b-a not 1"  $m2.has "1"
+
+# minus with disjoint set == self
+into=m3 $a.minus "$c"
+into=n $m3.size; $t.assert_eq "minus disjoint == self" "$n" "3"
+
+# minus self == empty
+into=m4 $a.minus "$a"
+$t.assert_ok "minus self is empty" $m4.isEmpty
 
 # ============================================================================
 # direct execution guard
