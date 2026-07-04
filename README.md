@@ -844,9 +844,14 @@ $a.has grape               # exits 1 (not a member)
 $a.add apple               # no-op (already present)
 into=n $a.size             # "3"
 
-into=u $a.union      "$b"  # {apple, banana, cherry, date}
-into=i $a.intersect  "$b"  # {banana, cherry}
-into=d $a.difference "$b"  # {apple}
+into=u $a.union      "$b"  # new Set object (apple, banana, cherry, date)
+into=i $a.intersect  "$b"  # new Set object (banana, cherry)
+into=d $a.difference "$b"  # new Set object (apple)
+
+# Set operations return objects — call toArray to get the members:
+into=arr_u $u.toArray      # "apple\nbanana\ncherry\ndate" (order undefined)
+into=arr_i $i.toArray      # "banana\ncherry"             (order undefined)
+into=arr_d $d.toArray      # "apple"
 
 into=arr $a.toArray        # newline-separated members (order undefined)
 ```
