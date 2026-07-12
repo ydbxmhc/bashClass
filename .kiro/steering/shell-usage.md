@@ -98,19 +98,35 @@ local -n __ref="$varname"
 __ref="$value"
 ```
 
-## No Subshells in Hot Paths
+## Avoid Unnecessary Subshells and Complexity
 
-Avoid `$(...)` in loops or frequently-called functions. Use `printf -v`,
-builtins, and parameter expansion instead.
+Never use a subshell when a reasonable alternative exists. "Reasonable"
+means: if you can name and explain why the simpler form doesn't work,
+use the complex one. If you can't, use the simple one.
+
+Parameter expansion handles most cases that cargo-culted `$(...)` reaches for:
 
 ```bash
-# BAD: forks a subshell every iteration
-result=$(some_function)
+# BAD: two subshells, cd, pwd, dirname — all to get a directory path
+__root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# GOOD: write to a variable directly
-printf -v result '%s' "$value"
-# or use into= / boop.pass / nameref patterns
+# GOOD: one string operation, no forks
+__root="${BASH_SOURCE[0]%/*}/.."
 ```
+
+The resolved-absolute-path form is only justified when the path itself
+will be used in a context that can't handle `..` (e.g. passed to a tool
+that resolves relative to cwd, or used as a base for further `cd`).
+Sourcing a file by path is not such a context.
+
+More generally: every `$(...)` forks a subshell. In a loop or hot path
+that cost compounds. But even once is worth avoiding when parameter
+expansion, `printf -v`, builtins, namerefs, or `into=` patterns do
+the same job without forking.
+
+The rule is not "avoid subshells in hot paths." It is: **avoid subshells
+you cannot justify.** If you reach for `$(...)`, ask first whether
+parameter expansion handles it. Usually it does.
 
 ## Real Arrays Over Joined Strings
 
