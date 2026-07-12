@@ -77,7 +77,7 @@ $q.enqueue "task-b" "task-c"   # two in one call; task-b is ahead of task-c
 
 ### `$q.dequeue`
 
-Remove and return the front value. Crashes if the queue is empty.
+Remove and return the front value. Returns non-zero with an error if the queue is empty.
 
 ```bash
 into=v $q.dequeue
@@ -89,7 +89,7 @@ or two-stack implementation instead.
 
 ### `$q.peek`
 
-Return the front value without removing it. Crashes if the queue is empty.
+Return the front value without removing it. Returns non-zero with an error if the queue is empty.
 
 ```bash
 into=v $q.peek
@@ -180,8 +180,8 @@ array. For bash script use cases this is rarely a problem. If you need true
 O(1) dequeue at scale, a two-stack queue (two Collection.Stacks) gives
 amortized O(1) at the cost of complexity.
 
-**Crash on underflow.** Both `dequeue` and `peek` call `_Crash` on an empty
-queue. Check `isEmpty` before calling if underflow is possible.
+**Error on underflow.** Both `dequeue` and `peek` call `_Error` on an empty
+queue and return non-zero. Check `isEmpty` before calling if underflow is possible.
 
 ---
 
@@ -209,7 +209,7 @@ List API is accessible if a caller ignores the queue contract.
 ```bash
 . boop Collection::Queue::Fast
 
-into=q Collection.Queue.Fast.new
+into=q Collection.Queue.Fast
 $q.enqueue "job-1" "job-2" "job-3"
 into=v $q.peek              # "job-1"
 into=v $q.dequeue           # "job-1"

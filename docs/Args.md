@@ -26,8 +26,14 @@ directly), or return a Config object when used with `into=`.
   - [After Parsing (Object Mode)](#after-parsing-object-mode)
   - [Args.given -- was an option supplied?](#argsgiven---was-an-option-supplied)
   - [Error Handling](#error-handling)
-- [Help Generation (Planned)](#help-generation-planned)
-- [Subcommand Option Isolation (Planned)](#subcommand-option-isolation-planned)
+- [Type Markers — Arrays, Maps, Files](#type-markers--arrays-maps-files)
+- [Advanced Schema Sections](#advanced-schema-sections)
+  - [[Parser] — behavior toggles](#parser--behavior-toggles)
+  - [[Exclusive] — mutual exclusion](#exclusive--mutual-exclusion)
+  - [[Requires] — conditional requirements](#requires--conditional-requirements)
+  - [[Together] — all-or-none groups](#together--all-or-none-groups)
+- [Help Generation](#help-generation)
+- [Subcommand Option Isolation via subscreens](#subcommand-option-isolation-via-subscreens)
 - [Design Notes](#design-notes)
   - [Why Not Just Use getopts?](#why-not-just-use-getopts)
   - [Why Schema-as-String?](#why-schema-as-string)
@@ -93,7 +99,7 @@ Args.getOpts optstring "$@"
 - A letter followed by `:` means that option takes a value
 - Boolean options (no `:`) get the value `"1"` when present
 - Value-taking options get the argument value
-- Unknown option or missing required value: `_Crash`
+- Unknown option or missing required value: calls `_Error` and returns non-zero
 - Sets `$__Args_orig` to the original argument array
 - Caller MUST run `shift $((OPTIND-1))` after to consume processed args
 
@@ -141,13 +147,18 @@ parser, useful as inline documentation).
 #### Option Line Syntax
 
 ```
-[: ] varName [| alias ...] [= [default]]
+[: ] varName[TYPE][<] [| alias ...] [= [default]]
 ```
 
 | Element | Meaning |
 |---------|---------|
-| Leading `:` | Option is required. Parse crashes if not provided. |
+| Leading `:` | Option is required. Returns non-zero with an error if not provided. |
 | `varName` | The bash variable name to set. Must be a valid identifier (no hyphens). |
+| `[]` suffix | Array type. Each occurrence appends to an indexed bash array. |
+| `{}` suffix | Map type. Each occurrence sets a key (`k=v` or bare `k` → `"1"`). |
+| `[]<` suffix | File-loaded array. CLI value is a filename; each line becomes one element. |
+| `{}<` suffix | File-loaded map. CLI value is a filename; lines parsed as `k=v` or bare `k`. |
+| `<` suffix (scalar) | File-loaded scalar. CLI value is a filename; entire file content slurped. |
 | `\| alias` | Additional CLI names. Single char = `-x`. Multi char = `--name`. Hyphens allowed in aliases. |
 | `= default` | Option takes a value. If not provided on CLI, uses `default`. |
 | `=` (no default) | Option takes a value. If not provided, variable is empty string. |
@@ -172,7 +183,7 @@ verbose | v                    # -v or --verbose -> $verbose="1"
 output | o = /tmp/out.txt      # --output file or -o file -> $output
 
 # Required value (no default)
-: token | t =                  # --token X or -t X -> $token (crashes if missing)
+: token | t =                  # --token X or -t X -> $token (required; error if missing)
 
 # Required value with explicit default (unusual but valid)
 : config | c = ./config.yml    # still required on CLI despite default shown
@@ -264,7 +275,7 @@ not a "duplicate" error.)
 
 ### Error Handling
 
-All errors crash with a descriptive message:
+All errors call `_Error` and return non-zero with a descriptive message:
 
 - `"Args.parse: unknown option: --badname"` -- unrecognized option
 - `"Args.parse: --token requires a value"` -- value-taking option with no value
@@ -273,41 +284,194 @@ All errors crash with a descriptive message:
 
 ---
 
-## Help Generation (Planned)
+## Type Markers — Arrays, Maps, Files
 
-Auto-generated `--help` output from the schema. The `[Use]` section
-provides the synopsis, option descriptions come from `#` comments,
-and the formatter aligns columns automatically.
+Add a type marker as a suffix to the variable name (before any `|` aliases)
+to declare array, map, or file-loading options.
 
 ```
-Usage: myapp [options] COMMAND [args...]
-
-Options:
-  -v, --verbose              enable verbose output
-  -o, --output FILE          output file (default: /tmp/out.txt)
-  -t, --token TOKEN          auth token (required)
-
-Commands:
-  deploy, d                  deploy the application
-  status, s                  check deployment status
-
-deploy options:
-  -w, --workers N            number of workers (default: 4)
+[Options]
+  output[] | o =            # array — each --output appends an element
+  tag{} | t =               # map   — each --tag k=v adds an entry
+  input[]< | i =            # file array — CLI value is a filename; each line → element
+  config{}< | c =           # file map   — CLI value is a filename; lines parsed as k=v
+  secret< | s =             # file scalar — entire file content slurped
 ```
 
-Implementation: parse the schema, extract `#` comments as descriptions,
-format with column alignment, print to stdout, exit 0.
+| Suffix | Bash variable type | CLI value |
+|--------|-------------------|-----------|
+| (none) | plain string | any string |
+| `[]` | indexed array (`declare -ga`) | any string; repeated occurrences append |
+| `{}` | associative array (`declare -gA`) | `k=v` sets key `k`; bare `k` sets key to `"1"` |
+| `[]<` | indexed array | filename; each non-empty line becomes one element |
+| `{}<` | associative array | filename; lines parsed as `k=v` or bare `k` |
+| `<` (scalar) | plain string | filename; entire file content slurped |
+
+Arrays and maps always take a value (the type marker implies `=`). Duplicate
+map keys are an error. Arrays allow unlimited repetition.
+
+After parsing:
+
+```bash
+# CLI: --output foo.txt --output bar.txt
+printf '%s\n' "${output[@]}"     # foo.txt
+                                  # bar.txt
+
+# CLI: --tag env=prod --tag debug
+printf '%s\n' "${!tag[@]}"       # env debug
+printf '%s\n' "${tag[env]}"      # prod
+printf '%s\n' "${tag[debug]}"    # 1
+```
 
 ---
 
-## Subcommand Option Isolation (Planned)
+## Advanced Schema Sections
 
-Currently all option sections (`[Options]`, `[deploy]`, `[status]`)
-share a single alias pool. A `--workers` option defined under `[deploy]`
-is recognized even when the subcommand is `status`.
+### [Parser] — behavior toggles
 
-Future: options defined under a subcommand section are only recognized
-after that subcommand is matched. Global `[Options]` are always available.
+Controls parser behavior. All keys are optional.
+
+```
+[Parser]
+  bareKV = true                  # accept bare key=value positionals
+  subscreen = deploy=DeployOpts  # link --deploy flag to [DeployOpts] section
+```
+
+**`bareKV`** (default `false`): when true, a bare positional like `foo=bar` is
+treated as `--foo=bar`. Used for boop-style constructors where `MyClass foo=bar`
+is the calling convention.
+
+**`subscreen`**: links a boolean flag to a named schema section.
+`subscreen = deploy=DeployOpts` registers `--deploy` as a boolean option and
+hides `[DeployOpts]` from the default `--help` output. When `--deploy` is set,
+`[DeployOpts]` is printed and the script exits 0 — enabling per-subcommand help
+without a separate dispatch layer.
+
+### [Exclusive] — mutual exclusion
+
+At most one option in each group may be provided. Two forms:
+
+```
+[Exclusive]
+  json | yaml | csv            # pairwise: at most one output format
+  (json pretty) | (csv tab)    # group: at most one format+style combination
+```
+
+**Pairwise form** (`a | b | c`): at most one of the listed options may be set.
+Error: `"Args.parse: mutually exclusive options used together: a, b"`
+
+**Group form** (`(a b) | (c d)`): options in a group are treated as a unit;
+at most one group may have any member set.
+Error: `"Args.parse: mutually exclusive option groups used together: a, b; c, d"`
+
+### [Requires] — conditional requirements
+
+If the left-hand option is provided, at least one right-hand option must
+also be provided.
+
+```
+[Requires]
+  upload => bucket | endpoint  # --upload requires --bucket or --endpoint
+  tls    => cert | cert_file   # --tls requires a certificate in some form
+```
+
+Syntax: `lhs => rhs1 | rhs2 | ...`
+
+Error: `"Args.parse: upload requires one of: bucket | endpoint"`
+
+### [Together] — all-or-none groups
+
+All options in a group must be provided together, or none may be provided.
+
+```
+[Together]
+  key cert                     # --key and --cert must both appear or neither
+  user password host           # all three or none
+```
+
+Error: `"Args.parse: options must be used together: key cert"`
+
+---
+
+## Help Generation
+
+Passing `--help` or `-h` at any point during argument processing prints help
+and exits 0. The output is the schema body with structural sections stripped:
+`[Parser]`, `[Exclusive]`, `[Requires]`, and `[Together]` are always hidden,
+as are any sections registered as subscreen targets. Section header lines
+(`[Name]`) are stripped; body lines (including `#` comments) print as-is.
+
+```
+[Use]
+  myapp [options] COMMAND [args...]
+
+[Options]
+  verbose | v                    # enable verbose output
+  output  | o = /tmp/out.txt    # output file (default: /tmp/out.txt)
+  : token | t =                 # auth token (required)
+
+[Subcommands]
+  deploy  | d                   # deploy the application
+  status  | s                   # check deployment status
+```
+
+Running `myapp --help` prints:
+
+```
+  myapp [options] COMMAND [args...]
+
+  verbose | v                    # enable verbose output
+  output  | o = /tmp/out.txt    # output file (default: /tmp/out.txt)
+  : token | t =                 # auth token (required)
+
+  deploy  | d                   # deploy the application
+  status  | s                   # check deployment status
+```
+
+The `[Parser] show = Options,Subcommands` key restricts output to named sections.
+
+---
+
+## Subcommand Option Isolation via subscreens
+
+Options declared under a `[SubcmdName]` section are scope-isolated: they are
+only accepted after that subcommand is identified on the command line.
+
+```bash
+Args.parse '
+[Options]
+  verbose | v
+
+[Subcommands]
+  deploy | d
+  status | s
+
+[deploy]
+  workers | w = 4
+' "$@"
+```
+
+- `--workers 8 deploy` → error: `"--workers is only valid after subcommand 'deploy'"`
+- `deploy status --workers 8` → error: `"--workers is not valid for subcommand 'status'"`
+- `deploy --workers 8` → `$workers="8"` ✓
+
+Global `[Options]` are always available regardless of subcommand.
+
+**Help isolation via subscreens.** `[Parser] subscreen = varName=SectionName`
+hides `[SectionName]` from default `--help` and links it to a boolean flag:
+
+```
+[Parser]
+  subscreen = deploy=DeployOpts
+
+[DeployOpts]
+  workers | w = 4              # worker count
+  region  | r = us-east-1     # target region
+```
+
+`[DeployOpts]` is hidden from the top-level `--help` output. When `--deploy`
+is set, the `[DeployOpts]` section is printed and the script exits 0, giving
+the user per-subcommand option documentation without a separate help dispatch.
 
 ---
 

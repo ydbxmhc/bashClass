@@ -147,7 +147,7 @@ into=r SemVer.compare "1.2" "1.2.0"      # "0"  — missing patch = 0
 into=r SemVer.compare "1.2.3-beta" "1.2.3"  # "0" — pre-release stripped
 ```
 
-Crashes if either argument is missing.
+Returns non-zero with an error if either argument is missing.
 
 ---
 
@@ -169,7 +169,7 @@ SemVer.satisfies "2.0.0"  "<=2.0"   && echo "ok"   # passes — 2.0.0 <= 2.0.0
 SemVer.satisfies "1.2.3"  "1.2.3"   && echo "ok"   # exact match
 ```
 
-Crashes if either argument is missing.
+Returns non-zero with an error if either argument is missing.
 
 ### In scripts
 

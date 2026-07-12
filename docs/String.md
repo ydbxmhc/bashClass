@@ -56,11 +56,10 @@ $s.trim                         # mutates in place
 into=v $s.read                  # "Hello, World!"
 into=v $s.raw                   # "  Hello, World!  " (original, never changes)
 
-into=s2 $s.downcased            # new object; $s unchanged
-into=v $s2.read                 # "hello, world!"
+into=v $s.downcased             # "hello, world!"; $s unchanged
 
 $s.do "trim,downcase,capitalize"     # bare pipeline: mutates $s
-into=s3 $s.do "trimmed,downcased"    # -ed pipeline: new object
+into=v $s.do "trimmed,downcased"     # -ed pipeline: returns plain string value
 ```
 
 ---
@@ -101,8 +100,8 @@ for any individual operation. The overhead comes from several layers:
    locates `Text.String.trim`, and enters a function frame.
 3. **Property access**: every internal `get`/`set` is a descriptor read
    or write — a hash lookup, not a variable access.
-4. **The `-ed` forms**: each creates a full new object (via `new`) in
-   addition to the dispatch and property overhead of the transform.
+4. **The `-ed` forms**: each adds dispatch overhead to look up and call
+   the -ed function. They return a plain string value, not a new object.
 
 For a single `trim` on a one-off string, raw parameter expansion is
 faster by an order of magnitude:
@@ -326,9 +325,8 @@ into=v $s.raw           # "  HELLO, WORLD.  "
 
 ### `-ed` Forms
 
-Every bare mutator has a corresponding `-ed` form that returns a **new
-Text.String object** with the transformation applied. The original
-object is not modified.
+Every bare mutator has a corresponding `-ed` form that returns the
+**transformed string value** directly. The original object is not modified.
 
 | Bare | `-ed` form |
 |---|---|
@@ -351,17 +349,14 @@ counterpart.
 
 ```bash
 into=s Text.String.new "  hello  "
-into=s2 $s.trimmed
-into=v $s.read    # "  hello  "  (unchanged)
-into=v $s2.read   # "hello"      (new object)
+into=v $s.trimmed          # "hello" — plain string value; $s unchanged
+into=v $s.read             # "  hello  " — still the original
 
-into=s3 $s2.replaced "hello" "world"
-into=v $s3.read   # "world"
+into=v $s.replaced "  hello  " "world"   # "world"
 ```
 
-The `-ed` form internally creates one clone of the current value, applies
-the corresponding bare mutator to the clone, and returns the clone. No
-intermediate objects are created.
+The `-ed` form transforms the current value and passes the result directly.
+No object is created. To chain `-ed` calls, use `do` instead.
 
 ---
 
@@ -388,7 +383,7 @@ A pipeline must be **uniformly bare or uniformly `-ed`**. Mixing the two
 is a hard error:
 
 ```bash
-$s.do "trim,downcased"    # CRASH: type mismatch
+$s.do "trim,downcased"    # ERROR: type mismatch
 ```
 
 This is enforced because the two families have different return
@@ -401,22 +396,19 @@ mixing would make the return type of `do` unpredictable.
 `do` is the most efficient way to apply multiple transformations. A bare
 `do` pipeline pays one `do` dispatch overhead plus one function call per
 operation, and performs all mutations on the same object. An `-ed` `do`
-pipeline clones the current value once, applies all bare mutators to the
-clone, and returns it — a single object allocation regardless of how
-many operations are in the pipeline.
+pipeline threads the current value through each `-ed` form in sequence,
+passing each result as input to the next — no objects are created.
 
 Compare the two approaches for five operations:
 
 ```bash
-# Five -ed chains: five object allocations, five dispatches
-into=s2 $s.trimmed
-into=s3 $s2.downcased
-into=s4 $s3.capitalized
-into=s5 $s4.replaced "foo" "bar"
-into=s6 $s5.rpadded 40
+# Five chained -ed calls: five dispatches (and you can't chain — each returns a string)
+into=trimmed   $s.trimmed
+into=downcased Text.String.downcased "$trimmed"
+# ... each step must be done manually
 
-# One -ed do: one object allocation, one do dispatch, five bare calls
-into=s2 $s.do "trimmed,downcased,capitalized,replaced:foo:bar,rpadded:40"
+# One -ed do: one do dispatch, five -ed function calls, one final string
+into=v $s.do "trimmed,downcased,capitalized,replaced:foo:bar,rpadded:40"
 ```
 
 ---
@@ -478,10 +470,10 @@ This is useful for logging, error messages, undo, and any context where
 ### Why `do` enforces type homogeneity
 
 The bare and `-ed` families have incompatible return contracts. A bare
-`do` returns an exit code; an `-ed` `do` returns an object. If both
-types were allowed in the same pipeline, the caller would need to
-inspect the pipeline string at runtime to know what to do with the
-result — or silently discard one of the two possible outputs. Crashing
+`do` returns an exit code; an `-ed` `do` returns a plain string value.
+If both types were allowed in the same pipeline, the caller would need
+to inspect the pipeline string at runtime to know what to do with the
+result — or silently discard one of the two possible outputs. Erroring
 on a mixed pipeline catches the mistake at the call site where it is
 cheapest to fix.
 

@@ -74,40 +74,44 @@ into=top   $cfg.get "topLevelKey"     # no prefix
 
 ```bash
 into=cfg Config.new          # empty config, no backing file
-into=cfg Config.new          # then call load or fromString to populate
 ```
 
-The constructor creates an empty Config. You populate it separately via
-`load`, `fromString`, or by calling `set`.
+`Config.new` creates an empty Config. You can then call `$cfg.set` to add
+keys, or use one of the static loading constructors below instead.
 
 ---
 
 ## Loading
 
+All loaders are **static constructors** — they return a new Config object.
+There is no instance-method form of `load`.
+
 ### From a file
 
 ```bash
-into=cfg Config.new
-$cfg.load settings.ini      # auto-detects flat vs INI by scanning for [ headers
-$cfg.loadINI settings.ini   # force INI parsing regardless of content
+into=cfg Config.load    settings.cfg   # flat key=value file
+into=cfg Config.loadINI settings.ini   # INI file with [section] headers
 ```
 
-`load` reads the file, detects the format, and stores keys. The `file` and
-`format` properties are set automatically so `save` can write back.
+`Config.load` parses flat key=value format only. For INI files, use
+`Config.loadINI`. The `file` and `format` properties are recorded
+automatically so `$cfg.save` can write back to the same file.
 
 ### From a string
 
 ```bash
-# Useful for config embedded in a script or received from another process
-into=cfg Config.new
-$cfg.fromString "$(cat <<'EOF'
+# Flat key=value string:
+into=cfg Config.fromFlatString "host=localhost
+port=9000"
+
+# INI-format string:
+into=cfg Config.fromString "[server]
 host=localhost
-port=9000
-EOF
-)"
+port=8080"
 ```
 
-`fromString` parses flat format only (no `[sections]`).
+`fromFlatString` parses flat format. `fromString` parses INI format
+(with `[section]` headers). Neither requires a backing file.
 
 ---
 
@@ -133,8 +137,11 @@ into=all  $cfg.keys               # all keys, newline-joined, insertion order
 For INI configs, to get all keys in a section:
 
 ```bash
-# Walk keys manually and filter by prefix
-_Delimiter=$'\n' into=all $cfg.keys
+# Get all keys in a section using the section argument:
+into=db_keys $cfg.keys database     # keys in [database], without the prefix
+
+# Or filter the full key list manually:
+into=all $cfg.keys
 while IFS= read -r k; do
   [[ "$k" == database.* ]] && printf "%s\n" "$k"
 done <<< "$all"
@@ -163,7 +170,7 @@ Set does not validate key format. Any string is a valid key.
 ## Saving
 
 ```bash
-$cfg.save                    # writes to the file loaded from (crashes if no file)
+$cfg.save                    # writes to the file loaded from (errors if no file was loaded)
 $cfg.save /path/to/new.ini   # saves to a different file; does not update $file
 ```
 
@@ -183,20 +190,19 @@ into=s $cfg.toINI    # "[server]\nhost=localhost\n..."
 ```bash
 . boop Config
 
-# Read
-into=cfg Config.new
-$cfg.load /etc/myapp/config.ini
+# Load an INI file
+into=cfg Config.loadINI /etc/myapp/config.ini
 
 into=host  $cfg.get "database.host"
 into=port  $cfg.get "database.port"
 printf "Connecting to %s:%s\n" "$host" "$port"
 
-# Modify and save
+# Modify and save back to the same file
 $cfg.set "database.port" "5433"
 $cfg.save
 
 # Check sections
-_Delimiter=" " into=secs $cfg.sections
+_EOL=" " into=secs $cfg.sections
 printf "Sections: %s\n" "$secs"
 ```
 
@@ -214,6 +220,6 @@ always returns keys in the order they were first seen.
 **Re-setting a key updates its value but not its position.** The key stays
 where it was inserted in the order.
 
-**Format auto-detection.** `load` scans the file for a `[` character at the
-start of any line. If found, it uses INI parsing; otherwise flat. Override
-with `loadINI`.
+**Two separate loaders, not auto-detection.** `Config.load` always parses flat
+key=value format. `Config.loadINI` always parses INI with `[section]` headers.
+Choose the right loader for your file — there is no auto-detection.

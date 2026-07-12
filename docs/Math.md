@@ -92,6 +92,8 @@ into=v Math.- 10 3.5             # subtract
 into=v Math.x 2.5 4              # multiply
 into=v Math.'*' 2.5 4            # multiply (quoted asterisk)
 into=v Math./ 10 4               # divide
+into=v Math.% 17 5               # modulo (alias for Math.mod)
+into=v Math.^ 2 10               # power (alias for Math.pow)
 ```
 
 ### Math.DO — Infix Expression Evaluator

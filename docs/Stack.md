@@ -78,7 +78,7 @@ Multiple values are pushed left-to-right, so `"gamma"` ends up on top.
 
 ### `$s.pop`
 
-Remove and return the top value. Crashes if the stack is empty.
+Remove and return the top value. Returns non-zero with an error if the stack is empty.
 
 ```bash
 into=v $s.pop
@@ -86,7 +86,7 @@ into=v $s.pop
 
 ### `$s.peek`
 
-Return the top value without removing it. Crashes if the stack is empty.
+Return the top value without removing it. Returns non-zero with an error if the stack is empty.
 
 ```bash
 into=v $s.peek
@@ -174,8 +174,8 @@ List is not accessible from outside the object.
 **No iteration.** If you need to iterate a stack without destroying it, use
 a List directly. Stack is deliberately opaque.
 
-**Crash on underflow.** Both `pop` and `peek` call `_Crash` on an empty
-stack. Check `isEmpty` before calling if underflow is possible.
+**Error on underflow.** Both `pop` and `peek` call `_Error` on an empty
+stack and return non-zero. Check `isEmpty` before calling if underflow is possible.
 
 ---
 
@@ -203,7 +203,7 @@ List API is accessible if a caller ignores the stack contract.
 ```bash
 . boop Collection::Stack::Fast
 
-into=s Collection.Stack.Fast.new
+into=s Collection.Stack.Fast
 $s.push "a" "b" "c"
 into=v $s.peek              # "c"
 into=v $s.pop               # "c"

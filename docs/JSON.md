@@ -66,7 +66,7 @@ structure from compound keys:
 - String children = JSON object
 
 Type reconstruction:
-- Values matching `^-?[0-9]+\.?[0-9]*$` = unquoted number
+- Values matching `^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$` = unquoted number
 - `"true"` / `"false"` = unquoted boolean
 - Empty string = `null`
 - Everything else = quoted string

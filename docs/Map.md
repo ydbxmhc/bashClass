@@ -34,7 +34,7 @@ preserves the order in which keys were first added.
 into=m Map
 ```
 
-Creates an empty map. Populate it with `set`.
+Creates an empty map. Populate it with `setAt`.
 
 ## Insertion Order
 
@@ -51,9 +51,9 @@ walk keys in insertion order.
 
 ```bash
 into=m Map
-$m.set "charlie" "3"
-$m.set "alpha" "1"
-$m.set "bravo" "2"
+$m.setAt "charlie" "3"
+$m.setAt "alpha" "1"
+$m.setAt "bravo" "2"
 
 into=k $m.keys
 printf "%s\n" "$k"
@@ -61,11 +61,11 @@ printf "%s\n" "$k"
 # alpha
 # bravo
 
-$m.set "alpha" "99"            # overwrite — order unchanged
+$m.setAt "alpha" "99"            # overwrite — order unchanged
 into=k $m.keys                 # still: charlie, alpha, bravo
 
 $m.delete "alpha"
-$m.set "alpha" "1"             # re-insert — goes to end
+$m.setAt "alpha" "1"             # re-insert — goes to end
 into=k $m.keys                 # charlie, bravo, alpha
 ```
 
@@ -74,13 +74,13 @@ into=k $m.keys                 # charlie, bravo, alpha
 ### Element Access
 
 ```bash
-$m.set "host" "localhost"       # store key-value pair
-into=val $m.get "host"          # retrieve by key
+$m.setAt "host" "localhost"       # store key-value pair
+into=val $m.getAt "host"          # retrieve by key
 $m.has "host" && printf "exists\n"  # key existence check (exit code)
 $m.delete "host"                # remove key-value pair
 ```
 
-Missing key `get` returns empty string. `delete` on a missing key is
+Missing key `getAt` returns empty string. `delete` on a missing key is
 a silent no-op (idempotent).
 
 ### Enumeration (Insertion Order)
@@ -164,14 +164,14 @@ Map values can be object IDs, enabling nested structures:
 
 ```bash
 into=db Map
-$db.set "host" "localhost"
-$db.set "port" "5432"
+$db.setAt "host" "localhost"
+$db.setAt "port" "5432"
 
 into=config Map
-$config.set "db" "$db"
+$config.setAt "db" "$db"
 
-into=val $config.itemAt "db" "host"   # "localhost"
-$config.setAt "newhost" "db" "host"   # update nested value
+into=val $config.deepGet "db" "host"   # "localhost"
+$config.deepSet "newhost" "db" "host"  # update nested value
 ```
 
 ## Example
@@ -180,11 +180,11 @@ $config.setAt "newhost" "db" "host"   # update nested value
 . boop Map
 
 into=m Map
-$m.set "name" "myapp"
-$m.set "version" "1.0"
-$m.set "debug" "true"
+$m.setAt "name" "myapp"
+$m.setAt "version" "1.0"
+$m.setAt "debug" "true"
 
-into=v $m.get "name"
+into=v $m.getAt "name"
 printf "%s\n" "$v"              # myapp
 
 $m.has "version" && printf "versioned\n"   # versioned

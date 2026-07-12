@@ -78,7 +78,7 @@ $c.fromJSON '{"host":"prod.example.com","port":"5433","debug":"true"}'
 into=h $c.get host   # → prod.example.com
 ```
 
-**Parameter**: JSON object string (required; crashes if empty).
+**Parameter**: JSON object string (required; returns non-zero with an error if empty).
 
 ---
 
@@ -88,7 +88,7 @@ Writes `toJSON` output to a file.
 
 - If `file` is given, saves to that path and remembers it as `_savefile`.
 - If `file` is omitted, reuses the last path stored in `_savefile`.
-- Crashes if no file has ever been specified.
+- Returns non-zero with an error if no file has ever been specified.
 
 ```bash
 $c.save /tmp/config.json    # save and remember the path
@@ -103,7 +103,7 @@ $c.save                     # no arg — reuses /tmp/config.json
 Reads a JSON file and restores properties via `fromJSON`.
 
 - Same path memory as `save` — first call stores the path, subsequent calls can omit it.
-- Crashes if the file doesn't exist.
+- Returns non-zero with an error if the file doesn't exist.
 
 ```bash
 into=c2 Config.new
@@ -164,7 +164,7 @@ boopClass Player mixin:Serializable has:name,score,level 'public:new'
 boopClass Hero mixin:Serializable,Taggable has:name,level 'public:new'
 
 into=h Hero.new name="Thor" level="50"
-$h.tag "legendary" "divine"
+$h.addTag "legendary" "divine"
 $h.save /tmp/hero.json    # saves name and level; tags are internal (_tags)
 ```
 

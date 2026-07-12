@@ -55,6 +55,19 @@ $obj.removeTag "nonexistent"    # no-op — does not crash
 
 ---
 
+## Identifying the Mixin
+
+```bash
+into=v $obj.identify    # "Taggable::identify"
+```
+
+Returns the string `"Taggable::identify"`. Used to verify mixin resolution
+order when multiple mixins provide the same method name. The first mixin
+listed in `boopClass` wins; call `$obj.Taggable::identify` to force
+Taggable's version regardless of resolution order.
+
+---
+
 ## Common Patterns
 
 ### Filtering by tag

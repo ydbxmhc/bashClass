@@ -16,7 +16,7 @@ Used by all boop test suites and available for any bash project.
   - [`assert_ne` — string inequality](#assert_ne-string-inequality)
   - [`assert_match` — glob pattern](#assert_match-glob-pattern)
   - [`assert_contains` — substring](#assert_contains-substring)
-  - [`run` — alias for `assert_ok`](#run-alias-for-assert_ok)
+  - [`run` — execute queued assertions (queue mode)](#run-execute-queued-assertions-queue-mode)
 - [Info Lines](#info-lines)
 - [Summary](#summary)
 - [Full Example — Unit Test File](#full-example-unit-test-file)
@@ -60,16 +60,19 @@ $t.summary
 
 ```bash
 into=t TestSuite name="Suite Name"
+into=t TestSuite name="Suite Name" mode=queue verbose=1
 ```
 
-**Options (environment variables):**
+**Constructor arguments:**
 
-| Variable | Default | Effect |
+| Argument | Default | Effect |
 |----------|---------|--------|
-| `TESTSUITE_VERBOSE` | `0` | Set to `1` to print every PASS line (not just failures) |
+| `name=` | (required) | Suite name shown in output |
+| `mode=` | `immediate` | `immediate` — run assertions as called; `queue` — store and batch-execute via `$t.run` |
+| `verbose=` | `0` | `1` prints every PASS line, section headers, and timing |
 
-The constructor reads `TESTSUITE_VERBOSE` at creation time. Set it before
-running `test_all` to get verbose output for all suites:
+`verbose` can also be set via the environment variable `TESTSUITE_VERBOSE=1`
+before creating the suite. The constructor reads it at creation time:
 
 ```bash
 TESTSUITE_VERBOSE=1 ./tests/test_all
@@ -159,14 +162,38 @@ $t.assert_contains "has key"        "$s"        "port"
 
 Passes if `actual` contains `substring` (uses `[[ "$actual" == *"$substring"* ]]`).
 
-### `run` — alias for `assert_ok`
+### `run` — execute queued assertions (queue mode)
 
 ```bash
-$t.run "label"  command [args...]
+$t.run
 ```
 
-Identical to `assert_ok`. Available as a more neutral name when the
-command is not strictly an assertion.
+Executes all assertions that have been stored in the queue (queue mode only).
+Each stored assertion is run in sequence, results are recorded, and the
+queue is cleared. Call after a batch of assertions to report the results
+and free the queue.
+
+In immediate mode the queue is always empty, so `$t.run` is a no-op.
+
+**Queue mode example:**
+
+```bash
+into=t TestSuite name="Batch Tests" mode=queue
+
+$t.section "basics"
+$t.assert_eq "one is one" "1" "1"
+$t.assert_ok "true is true" true
+$t.assert_fail "false is false" false
+
+# Nothing has run yet — all stored in the queue.
+$t.run    # Execute the batch; clears the queue.
+
+$t.section "more"
+$t.assert_ne "distinct values" "a" "b"
+$t.run    # Execute this batch.
+
+$t.summary
+```
 
 ---
 
@@ -260,6 +287,6 @@ any suite marks the whole run as failed.
 verbose mode every PASS appears immediately; in normal mode only failures print
 until `summary`.
 
-**Crash isolation.** `assert_fail` runs the command in a subshell via `$()`.
-This means a crashed command (exit from `_Crash`) counts as a non-zero exit and
-the assertion passes. The subshell isolates the crash from the test runner.
+**Crash isolation.** `assert_fail` runs the command in a subshell `()`.
+This means a crashed command (non-zero exit) counts as a non-zero exit and
+the assertion passes. The subshell isolates the failure from the test runner.

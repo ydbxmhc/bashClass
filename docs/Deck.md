@@ -79,7 +79,7 @@ when working with decks:
 into=n $d.length          # cards remaining
 $d.isEmpty && printf "deck is empty\n"
 $d.push "$card"           # add a card
-into=n $d.get 0           # peek at bottom card
+into=n $d.getAt 0         # peek at bottom card
 ```
 
 See [List.md](List.md) for the full API including iteration, slicing, and

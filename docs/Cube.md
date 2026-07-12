@@ -16,7 +16,8 @@ into=c Cube size=4
 ```
 
 The constructor sets `length`, `width`, and `height` equal to `size`
-in the underlying Box descriptor. Defaults to `size=1` if omitted.
+in the underlying Box descriptor. `size` is required and must be a
+positive integer; omitting it returns non-zero with an error.
 
 ## Properties
 

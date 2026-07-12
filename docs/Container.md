@@ -17,7 +17,6 @@ cursor traversal.
   - [Lazy Delegation (Implicit Iterator)](#lazy-delegation-implicit-iterator)
   - [Explicit Iterators (Independent Cursors)](#explicit-iterators-independent-cursors)
   - [Map Iterator Snapshots](#map-iterator-snapshots)
-  - [Opting Out: noIterators](#opting-out-noiterators)
 - [Inheritance Hierarchy](#inheritance-hierarchy)
 
 ---
@@ -47,8 +46,8 @@ These crash with a descriptive error if a child class forgets to override:
 
 | Method   | Contract                                    |
 |----------|---------------------------------------------|
-| get      | Retrieve element by key/index               |
-| set      | Store element at key/index                  |
+| getAt    | Retrieve element by key/index               |
+| setAt    | Store element at key/index                  |
 | delete   | Remove element by key/index                 |
 | length   | Return element count                        |
 | clear    | Remove all elements                         |
@@ -89,20 +88,20 @@ If the callback returns non-zero, iteration stops immediately (early exit).
 Container provides methods for walking nested structures:
 
 ```bash
-# itemAt — read through nested containers
-into=val $matrix.itemAt 1 2            # matrix[1][2]
-into=val $config.itemAt "db" "host"    # config["db"]["host"]
+# deepGet — read through nested containers
+into=val $matrix.deepGet 1 2            # matrix[1][2]
+into=val $config.deepGet "db" "host"    # config["db"]["host"]
 
-# setAt — write through nested containers
-$matrix.setAt "99" 1 2                 # matrix[1][2] = "99"
+# deepSet — write through nested containers (value first, then keys)
+$matrix.deepSet "99" 1 2               # matrix[1][2] = "99"
 ```
 
 When Container is loaded, it also augments boop with `itemFrom`
 and `setOn`, which start from a named property on any object:
 
 ```bash
-into=val $obj.itemFrom "tags" 0        # obj.tags → List → get 0
-$obj.setOn "tags" "urgent" 0           # obj.tags → List → set 0 "urgent"
+into=val $obj.itemFrom "tags" 0        # obj.tags → List → getAt 0
+$obj.setOn "tags" "urgent" 0           # obj.tags → List → setAt 0 "urgent"
 ```
 
 ## Iterator: Stateful Cursor
@@ -202,26 +201,6 @@ while $iter.hasNext; do
   $iter.next; (( __count++ ))
 done
 printf "%d\n" "$__count"        # 2 (not 3 — snapshot has a, b only)
-```
-
-### Opting Out: `noIterators`
-
-Subclasses that don't want iterator support call `$_Self.noIterators`
-in their constructor. This replaces all iterator methods with stubs
-that crash with a clear message:
-
-```bash
-MyStack.new() {
-  local _Class="${_Class:-MyStack}"
-  local __MyStack_new_self
-  into=__MyStack_new_self __boop.new "$@"
-  declare -ga "__boop_data_${__MyStack_new_self}"
-  $__MyStack_new_self.noIterators
-  boop.pass "$__MyStack_new_self" ${into:-}
-}
-
-# Later:
-$stack.next    # CRASH: "MyStack does not support iterators"
 ```
 
 ## Inheritance Hierarchy

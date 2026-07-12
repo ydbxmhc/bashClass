@@ -46,14 +46,15 @@ Creates an empty list. Populate it with `push`, `set`, or `unshift`.
 ### Element Access
 
 ```bash
-into=val $l.get 0          # first element
-into=val $l.get -1         # last element (Python-style negative index)
-$l.set 0 "new_first"       # replace first element
-$l.set -1 "new_last"       # replace last element
+into=val $l.getAt 0          # first element
+into=val $l.getAt -1         # last element (Python-style negative index)
+$l.setAt 0 "new_first"       # replace first element
+$l.setAt -1 "new_last"       # replace last element
 $l.has 0 && printf "exists\n"  # bounds check (exit code)
 ```
 
-Out-of-range `get` returns empty string. Out-of-range `set` and `delete` crash.
+Out-of-range `getAt` returns empty string. Out-of-range `setAt` and `delete` return
+non-zero with an error message.
 
 ### Stack Operations (LIFO)
 
@@ -242,9 +243,9 @@ into=inner List
 $inner.push "a" "b"
 
 into=outer List
-$outer.push "$inner"        # nested list
+$outer.push "$inner"           # nested list
 
-into=val $outer.itemAt 0 1  # "b" — traverses into inner list
+into=val $outer.deepGet 0 1    # "b" — traverses into inner list
 ```
 
 ## Example

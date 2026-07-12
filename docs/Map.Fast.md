@@ -122,7 +122,7 @@ $doc.clear            # remove all keys
 ### All keys
 
 ```bash
-_Delimiter=$'\n' into=all $doc.keys
+_EOL=$'\n' into=all $doc.keys
 while IFS= read -r k; do
   into=v $doc.get "$k"
   printf "%s = %s\n" "$k" "$v"
@@ -134,7 +134,7 @@ Keys are returned in hash-defined order (not insertion order).
 ### Keys under a prefix
 
 ```bash
-_Delimiter=$'\n' into=skeys $doc.keysUnder "server"
+_EOL=$'\n' into=skeys $doc.keysUnder "server"
 # skeys = "server.host\nserver.port"
 ```
 
@@ -147,7 +147,7 @@ $doc.set "a/b/c" "1"
 $doc.set "a/b/d" "2"
 $doc.set "a/x"   "3"
 
-_Delimiter=$'\n' into=ab $doc.keysUnder "a/b"
+_EOL=$'\n' into=ab $doc.keysUnder "a/b"
 # ab = "a/b/c\na/b/d"
 ```
 
@@ -207,7 +207,7 @@ into=v $cfg.get "app.version"       # v="2.1.0"
 $cfg.has "db.password" || echo "no db password set"
 
 # Enumerate a subtree
-_Delimiter=$'\n' into=dbkeys $cfg.keysUnder "db"
+_EOL=$'\n' into=dbkeys $cfg.keysUnder "db"
 printf "DB keys:\n%s\n" "$dbkeys"
 
 # Remove a subtree

@@ -103,11 +103,11 @@ $s.isEmpty          # exit 0 if empty
 
 ## Iteration
 
-`toArray` returns all members joined by `_Delimiter` (default: newline).
+`toArray` returns all members joined by `_EOL` (default: newline).
 Iteration order is hash-defined — not insertion order.
 
 ```bash
-_Delimiter=$'\n' into=members $s.toArray
+_EOL=$'\n' into=members $s.toArray
 while IFS= read -r m; do
   printf "member: %s\n" "$m"
 done <<< "$members"
@@ -116,7 +116,7 @@ done <<< "$members"
 To get members as a bash array:
 
 ```bash
-_Delimiter=$'\n' into=raw $s.toArray
+_EOL=$'\n' into=raw $s.toArray
 mapfile -t arr <<< "$raw"
 for m in "${arr[@]}"; do
   printf "%s\n" "$m"
@@ -227,6 +227,5 @@ one operation, no iteration.
 If you need a set with stable iteration order, use a Map (insert key with
 a placeholder value; `$map.keys` gives insertion order).
 
-**Values are strings.** Set members can be any non-empty string, including
-object IDs, file paths, or multi-word strings. Empty string is not a valid
-member (add ignores it silently).
+**Values are strings.** Set members can be any string, including object IDs,
+file paths, or multi-word strings.

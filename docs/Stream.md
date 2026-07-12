@@ -32,6 +32,7 @@ delimiters with run-collapsing.
   - [`$s.write STR`](#swrite-str)
   - [`$s.writeLine STR`](#swriteline-str)
   - [`$s.putBack STR`](#sputback-str)
+  - [`$s.bulk ARRNAME`](#sbulk-arrname)
 - [The CRLF Contract](#the-crlf-contract)
 - [Parse Modes in Detail](#parse-modes-in-detail)
   - [Direct Mode](#direct-mode)
@@ -287,6 +288,32 @@ $s.putBack "$line"
 Best used with buffered-mode streams. Direct-mode streams don't use the
 internal buffer, so putBack behavior is less predictable there.
 
+### `$s.bulk ARRNAME`
+
+Read a chunk of data from the FD, split it into complete records, and
+append them to the named bash array. Partial records at the chunk boundary
+are held in the internal buffer for the next call.
+
+Returns the number of records parsed this call (via `into=`). Returns `0`
+at EOF.
+
+```bash
+declare -ga bulk=()
+while true; do
+  into=n $s.bulk bulk
+  (( n )) || break
+  # process bulk[0..n-1]
+  bulk=()    # reset for next chunk
+done
+```
+
+In field mode (`-a`), each record's fields are appended sequentially —
+stride by field count to reconstruct records.
+
+Reduces dispatch overhead from O(records) to O(records/chunk_size). For
+large files this is significantly faster than a record-by-record `Read` loop.
+Only available in buffered mode.
+
 ---
 
 ## The CRLF Contract
@@ -405,20 +432,20 @@ range. Default is 1024. Override with `--blockSize=N` if you have a
 specific reason (e.g. very long records where a larger buffer avoids
 multiple refills).
 
-### Optimization: `__Stream_data`
+### Optimization: direct `__boop_static` access
 
-Stream stores per-object configuration in a single global associative
-array (`__Stream_data`) with compound keys (`"${objId}.property"`).
-This eliminates the `__boop.get` function call overhead that would
-otherwise dominate the hot path. The property system is still used
-for introspection but not in the read loop.
+Stream's hot path (`read`, `Read`, `bulk`) accesses the global
+`__boop_static` associative array directly with compound keys
+(`"${_Self}.property"`) instead of going through `__boop.get`.
+This eliminates one function-call layer per record. The property system
+is still used for object construction and introspection.
 
 ---
 
 ## Null Bytes
 
-Bash variables cannot hold `\0`. Stream operates on text only.
-Binary data with embedded nulls is out of scope.
+Bash variables cannot hold or detect NUL bytes. Stream operates on text only.
+Binary data with embedded NUL bytes is out of scope.
 
 ---
 

@@ -93,7 +93,7 @@ printf " ALERT "; $r.reset; printf "\n"
 | `cyan` | `bright_cyan` |
 | `white` | `bright_white` |
 
-Both `fg` and `bg` accept all 16 names. Unknown names crash.
+Both `fg` and `bg` accept all 16 names. Unknown names return non-zero with an error.
 
 ---
 
@@ -282,6 +282,6 @@ printf '%s%sERROR%s: %s\n' "$($r.bold)" "$($r.fg red)" "$($r.reset)" "$message"
 
 Or for even tighter output, combine `printf` calls so the sequences are adjacent.
 
-**Crash on unknown names.** `char`, `fg`, and `bg` crash with a descriptive
-message if given an unknown name. This catches typos at test time rather than
+**Error on unknown names.** `char`, `fg`, and `bg` call `_Error` and return
+non-zero for unknown names. This catches typos at test time rather than
 silently producing broken output.

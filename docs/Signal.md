@@ -101,8 +101,9 @@ These are not OS signals — bash generates them internally:
 |------|--------------|
 | `EXIT` | The shell exits for any reason |
 | `ERR` | A command returns non-zero (see [ERR notes](#err-notes)) |
-| `DEBUG` | Before every simple command (use sparingly — fires constantly) |
-| `RETURN` | After every `return` or sourced-file exit |
+
+`DEBUG` and `RETURN` are also bash pseudo-signals, but Signal **rejects**
+them — see [Rejected signals](#untrappable-signals) below.
 
 ### Standard signals
 
@@ -127,30 +128,37 @@ These are not OS signals — bash generates them internally:
 | `USR1` | 10 | Application-defined | Terminate |
 | `USR2` | 12 | Application-defined | Terminate |
 
-### Untrappable signals
+### Rejected signals
 
-`KILL` (9) and `STOP` (19) **cannot** be caught, blocked, or ignored —
-the OS enforces this. Bash does not error when you call
-`Signal.on KILL …` or `Signal.on STOP …`, but the handler will **never
-fire**. The process is simply killed or stopped by the kernel with no
-opportunity for cleanup.
+Signal outright **rejects** four names with `_Error` and returns non-zero.
+No handler is registered. The call fails immediately.
 
-If you want to handle the keyboard stop gesture (`Ctrl-Z`), trap `TSTP`,
-not `STOP`. `TSTP` is the *request* to stop; the process can intercept it.
-`STOP` is the kernel *enforcing* the stop with no escape.
+| Signal | Reason rejected |
+|--------|----------------|
+| `KILL` (9) | Unblockable — the OS delivers it without consulting the process; a trap can never fire |
+| `STOP` (19) | Unblockable — same reason |
+| `DEBUG` | Fires before *every* simple command; a LIFO callback stack on DEBUG means N callbacks per command — that's a profiler, not a signal handler |
+| `RETURN` | Fires after every `return` or sourced-file exit; incompatible with the callback-stack model for the same reason |
+
+```bash
+Signal.on KILL my_handler   # _Error: '...' is not supported — returns 1
+Signal.on STOP my_handler   # same
+Signal.on DEBUG my_handler  # same
+```
+
+For KILL/STOP alternatives:
+
+- Trap `TSTP` (keyboard `Ctrl-Z` *request*) instead of `STOP` (kernel enforcement).
+- Trap `TERM` (polite shutdown) instead of `KILL`. Well-behaved process managers
+  send `TERM` first and only escalate to `KILL` if the process doesn't exit.
 
 ```bash
 # CORRECT — trap the keyboard Ctrl-Z request:
 Signal.on TSTP handle_suspend
-
-# USELESS — SIGSTOP cannot be caught:
-Signal.on STOP handle_suspend   # handler registers but never fires
 ```
 
-Similarly, trap `TERM` (polite shutdown) and `HUP` (disconnect) rather
-than relying on `KILL` cleanup. Well-behaved process managers send `TERM`
-first and only escalate to `KILL` if the process doesn't exit within a
-timeout.
+For `DEBUG`/`RETURN`: use `trap ... DEBUG` or `trap ... RETURN` directly
+if you need per-command or per-return hooks.
 
 ### Notes on specific signals
 
@@ -218,8 +226,8 @@ When **on** (default):
 - `Signal.on` warns if the signal name is invalid (trap refused by bash)
 - `Signal.on` warns if the callback is not currently a defined function
 
-When **off**: both of the above warnings are suppressed. KILL/STOP warnings
-are always emitted regardless.
+When **off**: both of the above warnings are suppressed. KILL, STOP, DEBUG,
+and RETURN are always rejected with an error regardless of this setting.
 
 ```bash
 # Turn off for a test file that uses synthetic signal names:
@@ -246,10 +254,11 @@ Signal.on EXIT restore_terminal    # fires first on exit
 Signal.on ERR  log_error
 ```
 
-**Strict-mode checks run at registration time:**
+**Checks at registration time:**
 
-- If `signame` is `KILL` or `STOP`, always warns that the handler will never
-  fire (SIGKILL and SIGSTOP are unblockable by the OS).
+- If `signame` is `KILL`, `STOP`, `DEBUG`, or `RETURN`, `Signal.on` returns
+  non-zero with a descriptive error. No handler is registered. These four names
+  are always rejected regardless of strict mode.
 - If `signame` is otherwise invalid (bash rejects the trap), warns in strict
   mode. The callback is still registered; `Signal.dispatch` works manually.
 - If `callback` is not currently a defined bash function, warns in strict mode.
@@ -652,12 +661,11 @@ but still creates the per-signal array. `Signal.dispatch` and all collection
 operations work — useful for tests that use synthetic signal names. Disable
 the warning with `Signal.strict off`.
 
-**KILL and STOP always warn.** Registering a handler for SIGKILL or SIGSTOP
-is a latent bug — the kernel delivers these signals without consulting the
-process's signal mask. Signal warns unconditionally (even with `Signal.strict
-off`) because a developer who sees "my cleanup never ran" has a hard time
-diagnosing why without this hint. The handler is still registered so it can
-be reached via `Signal.dispatch` in tests.
+**KILL, STOP, DEBUG, and RETURN are always rejected.** `Signal.on` returns
+non-zero with a clear error for all four, regardless of strict mode. KILL/STOP
+are unblockable OS signals; DEBUG/RETURN fire per-command or per-return and are
+incompatible with the callback-stack model. Use `trap ... DEBUG` directly if
+you need per-command hooks.
 
 **Undefined callback warning.** `Signal.on` checks `declare -f` at
 registration time. This catches typos immediately rather than silently
