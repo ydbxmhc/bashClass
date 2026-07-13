@@ -374,5 +374,74 @@ __st_usr2_out=$(bash -c '
 ')
 $t.assert_eq "USR2 delivered and handled" "$__st_usr2_out" "yes:USR2"
 
+# == Signal.returnTrap — caller-scoped trap command builder ==
+
+$t.section "returnTrap"
+
+# Default signal is RETURN when only a handler is given.
+into=__st_rt Signal.returnTrap "myCleanup"
+$t.assert_eq "returnTrap defaults to RETURN" "$__st_rt" "trap -- myCleanup RETURN"
+
+# Explicit signal honored. Nothing is excluded here — RETURN and DEBUG are
+# exactly what this method exists for (Signal.on rejects them; returnTrap must not).
+into=__st_rt Signal.returnTrap DEBUG "probe"
+$t.assert_eq "returnTrap builds a DEBUG trap" "$__st_rt" "trap -- probe DEBUG"
+
+into=__st_rt Signal.returnTrap RETURN "myCleanup"
+$t.assert_eq "returnTrap builds a RETURN trap (not rejected)" "$__st_rt" "trap -- myCleanup RETURN"
+
+# Missing handler is an error.
+$t.assert_fail "returnTrap requires a handler" Signal.returnTrap
+
+# Functional: the returned command, eval'd inside a function, installs a
+# RETURN trap scoped to THAT function. It fires when the function returns —
+# not when Signal.returnTrap itself returned.
+__st_rt_fire=$(bash -c '
+  . "'"$__st_boop"'" Signal
+  caller() {
+    local __t; into=__t Signal.returnTrap "printf ran"
+    eval "$__t"
+    printf "body;"
+  }
+  caller
+  printf "after"
+')
+$t.assert_eq "RETURN trap fires on caller return, in order" "$__st_rt_fire" "body;ranafter"
+
+# The trap is scoped to the caller only — a sibling frame does not fire it.
+__st_rt_scope=$(bash -c '
+  . "'"$__st_boop"'" Signal
+  armed() { local __t; into=__t Signal.returnTrap "printf X"; eval "$__t"; }
+  other() { printf "o;"; }
+  armed
+  other
+  printf "done"
+')
+$t.assert_eq "RETURN trap does not leak to sibling frames" "$__st_rt_scope" "Xo;done"
+
+# once=1 makes the handler clear its own trap after firing.
+__st_rt_once=$(bash -c '
+  . "'"$__st_boop"'" Signal
+  f() { local __t; into=__t once=1 Signal.returnTrap USR1 "printf hi"; eval "$__t"; trap -p USR1; }
+  f
+')
+$t.assert_contains "once keeps the handler"  "$__st_rt_once" "printf hi"
+$t.assert_contains "once appends self-clear" "$__st_rt_once" "trap - USR1"
+
+# A handler containing a single quote is escaped via printf %q, so the
+# returned line stays parseable when the caller evals it.
+into=__st_rt Signal.returnTrap USR2 "x'y"
+$t.assert_eq "single quote in handler is escaped" "$__st_rt" "trap -- x\\'y USR2"
+
+# And a quote-containing handler actually round-trips when fired: define the
+# handler as a function so the quote lives in its output, not the call site.
+__st_rt_quote=$(bash -c '
+  . "'"$__st_boop"'" Signal
+  emit() { printf "%s" "a'\''b"; }
+  caller() { local __t; into=__t Signal.returnTrap "emit"; eval "$__t"; }
+  caller
+')
+$t.assert_eq "handler fires and emits a quote" "$__st_rt_quote" "a'b"
+
 $t.summary
 

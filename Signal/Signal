@@ -27,6 +27,10 @@
 #   Signal.clear  signame          — empty stack, uninstall trap
 #   Signal.list   signame          — newline-joined callback list (into=)
 #   Signal.dispatch signame [args…] — fire all callbacks LIFO
+#   Signal.returnTrap [sig] handler — build (NOT install) a trap command string
+#                                     for the caller to eval in its own frame.
+#                                     sig defaults to RETURN; once=1 self-clears.
+#                                     Works for ANY sigspec (RETURN, DEBUG, ...).
 
 . boop
 
@@ -318,8 +322,59 @@ Signal.dispatch() {
   __Signal.dispatch "$__Signal_dispatch_sig" "$@"
 }
 
+# Signal.returnTrap — build (but do NOT install) a trap command string for
+# the CALLER to eval in its own function scope.
+#
+# A function cannot install a trap in its caller's frame — `trap` only ever
+# affects the current execution context. For per-frame pseudo-signals
+# (RETURN, DEBUG) that the LIFO callback stack cannot manage, this is the
+# escape hatch: Signal hands back the command, and the caller runs it where
+# the trap must actually live:
+#
+#   myMethod() {
+#     local __t; into=__t Signal.returnTrap 'myCleanup'   # sig defaults to RETURN
+#     eval "$__t"
+#     ...                                                 # myCleanup runs on return
+#   }
+#
+# Usage:
+#   Signal.returnTrap HANDLER              # sigspec defaults to RETURN
+#   Signal.returnTrap SIGSPEC HANDLER      # explicit signal (RETURN, DEBUG, INT, EXIT, ERR, ...)
+#   once=1 Signal.returnTrap SIG HANDLER   # one-shot: handler clears its own trap after firing
+#
+# Unlike the callback-stack API (on/off/dispatch), this excludes NO signals —
+# RETURN and DEBUG are precisely what it exists for. It does not touch global
+# trap state; it only returns a string.
+#
+# The handler is quoted with printf %q so the returned line reconstructs the
+# exact handler text when the caller evals it, surviving the second execution
+# that happens when the trap actually fires.
+Signal.returnTrap() {
+  local _Class="${_Class:-Signal}"
+  local __Signal_returnTrap_sig __Signal_returnTrap_cb
+  if (( $# >= 2 )); then
+    __Signal_returnTrap_sig="$1"; __Signal_returnTrap_cb="$2"
+  else
+    __Signal_returnTrap_sig="RETURN"; __Signal_returnTrap_cb="${1:-}"
+  fi
+  [[ -n "$__Signal_returnTrap_sig" ]] || { _Error "Signal.returnTrap: signal name required"; return 1; }
+  [[ -n "$__Signal_returnTrap_cb"  ]] || { _Error "Signal.returnTrap: handler command required"; return 1; }
+
+  # Optional one-shot: the handler removes its own trap after it fires.
+  if [[ "${once:-}" == "1" || "${once:-}" == "true" ]]; then
+    __Signal_returnTrap_cb="${__Signal_returnTrap_cb}; trap - ${__Signal_returnTrap_sig}"
+  fi
+
+  # %q yields a single, safely-quoted shell word that rebuilds the exact
+  # handler text when the caller evals the returned line.
+  local __Signal_returnTrap_q
+  printf -v __Signal_returnTrap_q '%q' "$__Signal_returnTrap_cb"
+
+  boop.pass "trap -- ${__Signal_returnTrap_q} ${__Signal_returnTrap_sig}" "${into:-}"
+}
+
 boopClass Signal \
-  'public:strict,on,push,off,pop,shift,clear,list,dispatch'
+  'public:strict,on,push,off,pop,shift,clear,list,dispatch,returnTrap'
 
 # Survey and internalize any traps that were set before Signal loaded.
 __Signal.surveyExisting
