@@ -25,6 +25,7 @@ register cleanup or error handlers without stomping each other.
   - [`Signal.clear signame`](#signalclear-signame)
   - [`Signal.list signame` → `into=`](#signallist-signame--into)
   - [`Signal.dispatch signame [extra_args...]`](#signaldispatch-signame-extra_args)
+  - [`Signal.returnTrap [signame] handler` → `into=`](#signalreturntrap-signame-handler--into)
 - [LIFO Dispatch Order](#lifo-dispatch-order)
 - [Error Resilience](#error-resilience)
 - [Callback Contract](#callback-contract)
@@ -34,6 +35,7 @@ register cleanup or error handlers without stomping each other.
   - [Terminal raw-mode guard](#terminal-raw-mode-guard)
   - [Temporary suspension of a handler](#temporary-suspension-of-a-handler)
   - [One-shot handler](#one-shot-handler)
+  - [Caller-scoped RETURN cleanup](#caller-scoped-return-cleanup)
   - [Layered ERR reporting](#layered-err-reporting)
   - [Manual dispatch for testing](#manual-dispatch-for-testing)
 - [ERR Notes](#err-notes)
@@ -157,8 +159,10 @@ For KILL/STOP alternatives:
 Signal.on TSTP handle_suspend
 ```
 
-For `DEBUG`/`RETURN`: use `trap ... DEBUG` or `trap ... RETURN` directly
-if you need per-command or per-return hooks.
+For `DEBUG`/`RETURN`: the callback-stack model doesn't fit, but
+[`Signal.returnTrap`](#signalreturntrap-signame-handler--into) builds a
+caller-scoped `trap` command for exactly these (or use `trap ... RETURN`
+directly).
 
 ### Notes on specific signals
 
@@ -397,6 +401,75 @@ Dispatching on a signal with no registered callbacks is a no-op.
 
 ---
 
+### `Signal.returnTrap [signame] handler` → `into=`
+
+Build — but do **not** install — a `trap` command string for the **caller**
+to run in its own function scope. Returns the command via `into=` (or stdout).
+
+This is the escape hatch for the per-frame pseudo-signals (`RETURN`, `DEBUG`)
+that `Signal.on` rejects, and it works for any signal name. Unlike the
+callback-stack API, `returnTrap` excludes nothing — `RETURN` and `DEBUG` are
+exactly what it exists for.
+
+**Why a string instead of installing it?** A function cannot install a trap in
+its caller's frame — bash's `trap` only ever affects the current execution
+context. When you call `Signal.returnTrap`, the "current function" is
+`Signal.returnTrap` itself, so a trap it set would fire on *its* return, not
+yours. So it hands the command back and you install it where the trap must
+actually live.
+
+**Arguments:**
+
+- One argument → treated as the handler; the signal defaults to `RETURN`.
+- Two arguments → `signame handler`, for any spec (`RETURN`, `DEBUG`, `INT`,
+  `EXIT`, `ERR`, ...).
+- `once=1` (environment) → the returned handler clears its own trap after it
+  fires.
+
+**Install it in the caller's scope with `eval`:**
+
+```bash
+myMethod() {
+  eval "$(Signal.returnTrap 'cleanup')"    # RETURN trap, scoped to myMethod
+  # ... work ...
+}                                           # 'cleanup' runs as myMethod returns
+```
+
+Or capture first, then eval (boop's no-subshell return path):
+
+```bash
+myMethod() {
+  local __t; into=__t Signal.returnTrap DEBUG 'probe'
+  eval "$__t"
+  # ...
+}
+```
+
+One-shot, self-clearing:
+
+```bash
+eval "$(once=1 Signal.returnTrap INT 'handle_once')"
+```
+
+**Always install with `eval`.** The handler is quoted with `printf %q` so it
+reconstructs exactly when the shell parser re-reads it — which is what `eval`
+does. Do **not** run the returned command through bare, unquoted command
+substitution:
+
+```bash
+$(Signal.returnTrap 'cleanup')          # DON'T — works only by accident
+```
+
+That form *appears* to work for a trivial single-word handler (the `trap`
+command does end up running in your frame), but it routes the string through
+word-splitting and globbing instead of the parser. Any handler containing a
+space, a quote, a glob character, or the `; trap - SIG` that `once=1` appends
+is silently mangled. `eval "$(...)"` re-parses it correctly; the bare form does
+not. A real `( ... )` subshell is worse — the trap either just prints or dies
+with the subshell and never reaches the caller.
+
+---
+
 ## LIFO Dispatch Order
 
 Handlers fire in reverse registration order — last registered, first called.
@@ -576,6 +649,27 @@ Signal.on EXIT __once_handler
 
 ---
 
+### Caller-scoped RETURN cleanup
+
+Run cleanup when *the current function* returns, without touching global signal
+state. `Signal.on` can't do this — `RETURN` is rejected, and it's per-frame
+anyway — so use [`Signal.returnTrap`](#signalreturntrap-signame-handler--into)
+and install it with `eval`:
+
+```bash
+process_file() {
+  local fd
+  exec {fd}<"$1"
+  eval "$(Signal.returnTrap "exec ${fd}<&-")"   # close fd on return, any path
+  # ... read from $fd; early returns still trigger the close ...
+}
+```
+
+The trap is scoped to `process_file` only: it fires on every return path and
+does not leak to callers or sibling functions.
+
+---
+
 ### Layered ERR reporting
 
 ```bash
@@ -664,8 +758,9 @@ the warning with `Signal.strict off`.
 **KILL, STOP, DEBUG, and RETURN are always rejected.** `Signal.on` returns
 non-zero with a clear error for all four, regardless of strict mode. KILL/STOP
 are unblockable OS signals; DEBUG/RETURN fire per-command or per-return and are
-incompatible with the callback-stack model. Use `trap ... DEBUG` directly if
-you need per-command hooks.
+incompatible with the callback-stack model. For per-command hooks use
+`trap ... DEBUG` directly; for a caller-scoped `RETURN`/`DEBUG` trap use
+[`Signal.returnTrap`](#signalreturntrap-signame-handler--into).
 
 **Undefined callback warning.** `Signal.on` checks `declare -f` at
 registration time. This catches typos immediately rather than silently
