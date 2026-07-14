@@ -731,13 +731,20 @@ report_error() {
 
 ## Design Notes
 
-**Plain arrays, not boop objects.** Signal uses one raw bash indexed array
-per signal (`__Signal_handlers_SIGNAME`) rather than boop List or Stack
-objects. This keeps the internal `__Signal.dispatch` function — which runs
-inside a `trap` handler — free of boop's global return-value machinery. Trap
-handlers fire asynchronously relative to your script's command flow; reading
-or writing `into=` globals from within them could corrupt a boop call in
-progress. Raw arrays sidestep the problem entirely.
+**Handler stacks live in `_Stack`, read raw at dispatch.** Signal keeps its
+per-signal handler stacks in the core `_Stack` primitive, scoped to the Signal
+class identity (so they're one process-global set regardless of what object
+context a signal interrupts). `_Stack` stores into `__boop_static`, and the
+dispatch path (`_Stack each`) reads that array by direct index — it never
+routes through boop's `into=`/`boop.pass` return machinery. That matters
+because `__Signal.dispatch` runs inside a `trap` handler, firing
+asynchronously relative to your script's command flow; touching `into=`
+globals mid-signal could corrupt a boop call in progress. Reading the store
+directly sidesteps that entirely. (Signal predates `_Stack` and originally
+used one raw bash array per signal; the behavior is identical, but the storage
+is now shared with the rest of the framework — and, unlike a raw array named
+after the signal, `_Stack` keys are arbitrary strings, so it never chokes on
+odd signal names.)
 
 **Trap installed on first `on`.** Signal doesn't install a `trap` until at
 least one callback is registered for a signal. Calling `Signal.dispatch`
@@ -781,11 +788,12 @@ input), and it is evaluated at dispatch time inside a wrapper function rather
 than at survey time, so variable references like `$tmpdir` expand correctly
 when the handler fires.
 
-**Callback errors suppressed at dispatch time.** `2>/dev/null || true`
-wraps each callback invocation. This means even a callback that calls `exit`
-or crashes will not abort the dispatch loop. If a callback legitimately needs
-to propagate an error, it should write to a shared variable and let the
-calling code check it after dispatch.
+**Callback errors suppressed at dispatch time.** Each callback invocation is
+wrapped with `|| true`, so a handler that returns non-zero (or `exit`s a
+subshell) won't abort the dispatch loop. The exit code is swallowed, but
+stderr is left alone — a failing handler still complains where you can see it.
+If a callback needs to propagate an error, it should write to a shared
+variable and let the calling code check it after dispatch.
 
 **Class-level only — no instances.** Signal has no constructor. All methods
 are static (`Signal.method args`). There is no reason to create a Signal
