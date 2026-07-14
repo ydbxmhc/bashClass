@@ -1,0 +1,81 @@
+#!/bin/bash
+# Eventable mixin — per-object publish/subscribe events.
+#
+# Mix it into any class and its instances gain their own event channels:
+#
+#   boopClass Button mixin:Eventable public:new,...
+#   into=b Button
+#   $b.on click handle_click          # subscribe
+#   $b.emit click 12 34               # fire — handle_click 'click' 12 34
+#
+# It's a thin layer over the core `_Stack` primitive: each event is a named
+# stack scoped to the object (via _Me), so subscriptions for one object never
+# touch another's. Handlers fire LIFO — last subscribed, first called — the
+# same order Signal uses, which matches the usual "most recent wins / unwinds
+# first" expectation.
+#
+# Because the stacks live in __boop_static under the object's "<id>." prefix,
+# __boop.destroy sweeps them away automatically when the object is destroyed.
+# No _destroy hook, no leak, nothing to remember.
+#
+# Callback contract: a handler is invoked as
+#   handler <event> [emit-args...]
+# so its $1 is the event name and $2... are whatever emit forwarded. A handler
+# that returns non-zero does not abort the rest of the chain (one grumpy
+# listener shouldn't spoil the party), though its stderr still flows so you
+# can see it complain.
+#
+# Works at class scope too: `Button.on ...` registers a class-level channel
+# (identity falls back to the class), if you ever want shared/broadcast events.
+
+. boop
+boop.initMixin Eventable || return 0
+
+# Internal trampoline: _Stack.each hands us (callback, event, args...); we run
+# the callback as a command with the event + args. Exit code is swallowed so a
+# failing listener doesn't halt dispatch; stderr is left alone.
+__Eventable.invoke() {
+  local __Eventable_invoke_cb="$1"; shift
+  "$__Eventable_invoke_cb" "$@" || true
+}
+
+# on EVENT CALLBACK — subscribe CALLBACK (a function name) to EVENT.
+Eventable.on() {
+  local __Eventable_on_event="${1:-}" __Eventable_on_cb="${2:-}"
+  [[ -n "$__Eventable_on_event" ]] || { _Error "Eventable.on: event name required"; return 1; }
+  [[ -n "$__Eventable_on_cb"    ]] || { _Error "Eventable.on: callback required"; return 1; }
+  _Stack push "evt.$__Eventable_on_event" "$__Eventable_on_cb"
+}
+
+# off EVENT CALLBACK — remove the first occurrence of CALLBACK from EVENT.
+Eventable.off() {
+  local __Eventable_off_event="${1:-}" __Eventable_off_cb="${2:-}"
+  [[ -n "$__Eventable_off_event" ]] || { _Error "Eventable.off: event name required"; return 1; }
+  [[ -n "$__Eventable_off_cb"    ]] || { _Error "Eventable.off: callback required"; return 1; }
+  _Stack remove "evt.$__Eventable_off_event" "$__Eventable_off_cb"
+}
+
+# emit EVENT [args...] — fire every handler for EVENT (LIFO), forwarding the
+# event name and any extra args to each.
+Eventable.emit() {
+  local __Eventable_emit_event="${1:-}"
+  [[ -n "$__Eventable_emit_event" ]] || { _Error "Eventable.emit: event name required"; return 1; }
+  shift
+  _Stack each "evt.$__Eventable_emit_event" __Eventable.invoke "$__Eventable_emit_event" "$@"
+}
+
+# count EVENT -> into= — number of handlers currently registered for EVENT.
+Eventable.count() {
+  local __Eventable_count_event="${1:-}"
+  [[ -n "$__Eventable_count_event" ]] || { _Error "Eventable.count: event name required"; return 1; }
+  _Stack size "evt.$__Eventable_count_event"
+}
+
+# clear EVENT — drop all handlers for EVENT.
+Eventable.clear() {
+  local __Eventable_clear_event="${1:-}"
+  [[ -n "$__Eventable_clear_event" ]] || { _Error "Eventable.clear: event name required"; return 1; }
+  _Stack clear "evt.$__Eventable_clear_event"
+}
+
+boopMixin Eventable 'public:on,off,emit,count,clear'

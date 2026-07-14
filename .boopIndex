@@ -18,6 +18,7 @@ Stream=Stream
 Greetable=Mixins/Greetable
 Map=Collection/Map
 Signal=Signal
+Eventable=Mixins/Eventable
 List=Collection/List
 Container=Collection/Container
 JSON=Data/JSON

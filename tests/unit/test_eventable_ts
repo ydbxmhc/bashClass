@@ -1,0 +1,115 @@
+#!/bin/bash
+set -uo pipefail
+
+# Eventable tests — per-object publish/subscribe mixin, built on _Stack.
+#
+# Classification: UNIT (Mixins/Eventable)
+# Covers: on/emit with event+args contract, LIFO order, off, count, clear,
+#         no-op emit on unknown event, error resilience, per-object
+#         isolation, and automatic subscription cleanup on destroy.
+
+. boop TestSuite Eventable
+
+into=t TestSuite name="Eventable Tests"
+
+# A minimal host that mixes in Eventable (boop provides the constructor).
+boopClass EmitHost mixin:Eventable
+
+# Handlers write to a shared log so we can assert order and payloads.
+__ev_log=""
+__ev_a()    { __ev_log+="A($1)"; }
+__ev_b()    { __ev_log+="B($1)"; }
+__ev_args() { __ev_log+="($1:$2:$3)"; }
+__ev_bad()  { return 1; }   # always fails — tests dispatch resilience
+
+# == on + emit ==
+
+$t.section "on and emit"
+
+into=h EmitHost
+$h.on click __ev_a
+__ev_log=""; $h.emit click
+$t.assert_eq "handler fires with event name as \$1" "$__ev_log" "A(click)"
+
+# == LIFO order ==
+
+$t.section "LIFO dispatch order"
+
+$h.on click __ev_b
+__ev_log=""; $h.emit click
+$t.assert_eq "last subscribed fires first" "$__ev_log" "B(click)A(click)"
+
+into=n $h.count click; $t.assert_eq "count reflects two listeners" "$n" "2"
+
+# == off ==
+
+$t.section "off"
+
+$h.off click __ev_a
+__ev_log=""; $h.emit click
+$t.assert_eq "removed handler no longer fires" "$__ev_log" "B(click)"
+into=n $h.count click; $t.assert_eq "count after off" "$n" "1"
+
+# == emit forwards args ==
+
+$t.section "emit forwards args"
+
+$h.on data __ev_args
+__ev_log=""; $h.emit data X Y
+$t.assert_eq "callback receives (event, args...)" "$__ev_log" "(data:X:Y)"
+
+# == unknown event ==
+
+$t.section "unknown event"
+
+__ev_log=""; $h.emit nonexistent
+$t.assert_eq "emit with no handlers is a no-op" "$__ev_log" ""
+into=n $h.count nonexistent; $t.assert_eq "count of unknown event is 0" "$n" "0"
+
+# == clear ==
+
+$t.section "clear"
+
+$h.clear click
+into=n $h.count click; $t.assert_eq "count after clear is 0" "$n" "0"
+
+# == error resilience ==
+
+$t.section "error resilience"
+
+into=h2 EmitHost
+$h2.on ev __ev_a      # fires last
+$h2.on ev __ev_bad    # fires middle, returns 1
+$h2.on ev __ev_b      # fires first
+__ev_log=""; $h2.emit ev
+$t.assert_contains "handler before the bad one ran" "$__ev_log" "B(ev)"
+$t.assert_contains "handler after the bad one ran"  "$__ev_log" "A(ev)"
+
+# == per-object isolation ==
+
+$t.section "per-object isolation"
+
+into=hA EmitHost
+into=hB EmitHost
+$hA.on ping __ev_a
+$hB.on ping __ev_b
+__ev_log=""; $hA.emit ping; $t.assert_eq "hA fires only its own handler" "$__ev_log" "A(ping)"
+__ev_log=""; $hB.emit ping; $t.assert_eq "hB is independent"             "$__ev_log" "B(ping)"
+
+# == destroy auto-cleans subscriptions ==
+
+$t.section "destroy cleanup"
+
+into=h3 EmitHost
+$h3.on gone __ev_a
+__ev_before=0
+for __ev_k in "${!__boop_static[@]}"; do [[ "$__ev_k" == "$h3."* ]] && (( __ev_before++ )); done
+$t.assert_ok "h3 has subscription keys before destroy" test "$__ev_before" -gt 0
+
+$h3.destroy
+
+__ev_after=0
+for __ev_k in "${!__boop_static[@]}"; do [[ "$__ev_k" == "$h3."* ]] && (( __ev_after++ )); done
+$t.assert_eq "destroy wiped h3 subscriptions" "$__ev_after" "0"
+
+$t.summary
