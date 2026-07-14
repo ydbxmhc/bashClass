@@ -69,6 +69,7 @@ forcing a particular inheritance chain. A class can include multiple mixins.
 
 | Mixin | Description |
 |---|---|
+| [Mixins.Eventable](Eventable) | Per-object publish/subscribe events — on/emit/off, LIFO dispatch |
 | [Mixins.Greetable](Greetable) | Adds configurable greeting behaviour |
 | [Mixins.Serializable](Serializable) | Object serialization and deserialization |
 | [Mixins.Taggable](Taggable) | Tag and label management |

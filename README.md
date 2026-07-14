@@ -589,6 +589,7 @@ boop                                    root — new, destroy, get, set, isa, mi
   │     └── Set                         unique members — add/has/remove/union/intersect/diffs/minus
   ├── Mixins
   │     ├── Terminal                    ANSI control, named colors, symbol table
+  │     ├── Eventable                   per-object pub/sub — on/emit/off (built on _Stack)
   │     ├── Greetable                   demo mixin — greet, identify
   │     └── Taggable                    demo mixin — addTag/hasTag/removeTag
   ├── Text

@@ -732,7 +732,7 @@ report_error() {
 ## Design Notes
 
 **Handler stacks live in `_Stack`, read raw at dispatch.** Signal keeps its
-per-signal handler stacks in the core `_Stack` primitive, scoped to the Signal
+per-signal handler stacks in the core [`_Stack`](boop#stack) primitive, scoped to the Signal
 class identity (so they're one process-global set regardless of what object
 context a signal interrupts). `_Stack` stores into `__boop_static`, and the
 dispatch path (`_Stack each`) reads that array by direct index — it never
@@ -744,7 +744,9 @@ directly sidesteps that entirely. (Signal predates `_Stack` and originally
 used one raw bash array per signal; the behavior is identical, but the storage
 is now shared with the rest of the framework — and, unlike a raw array named
 after the signal, `_Stack` keys are arbitrary strings, so it never chokes on
-odd signal names.)
+odd signal names.) The same `_Stack` foundation powers the per-object
+[Eventable](Eventable) mixin — Signal is the process-global, OS-signal-driven
+sibling.
 
 **Trap installed on first `on`.** Signal doesn't install a `trap` until at
 least one callback is registered for a signal. Calling `Signal.dispatch`

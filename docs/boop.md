@@ -1090,6 +1090,59 @@ the lifetime of the shell process. Math uses it for pi memoization.
 
 ---
 
+## Named Stacks — `_Stack` {#stack}
+
+`_Stack` is a core primitive (alongside `_Me`, `_Static`, and `_Property`)
+for keeping named, ordered stacks of values on an object or class. It's a
+double-ended queue under the hood, so it serves as a stack, a queue, or a
+deque depending on which ends you use.
+
+Storage lives in `__boop_static`, scoped by identity (`_Me`: the object ID in
+an object method, the class name in a class method, else `boop`). Keys are:
+
+```
+<identity>.__stack.<name>.head   first live index (inclusive)
+<identity>.__stack.<name>.tail   one past the last (exclusive)
+<identity>.__stack.<name>.<i>    the element at index i
+```
+
+`size = tail - head`, so there's no separate count to keep in sync, and the
+live range `[head, tail)` is kept hole-free (only `remove` compacts). Because
+every key sits under the `<identity>.` prefix, [object destruction](#destroying-objects)
+wipes an object's stacks automatically — no cleanup hook required.
+
+| Op | Effect |
+|---|---|
+| `_Stack push NAME VAL...` | Append one or more values to the top |
+| `_Stack pop NAME` | Remove & return the top (`into=`; `''` + rc 1 if empty) |
+| `_Stack shift NAME` | Remove & return the bottom (`into=`; `''` + rc 1 if empty) |
+| `_Stack peek NAME` | Return the top without removing (`into=`) |
+| `_Stack size NAME` | Number of live elements (`into=`) |
+| `_Stack empty NAME` | Exit 0 if empty, 1 if not |
+| `_Stack list NAME` | Newline-joined, bottom → top (`into=`) |
+| `_Stack each NAME FN [args]` | Call `FN element [args]` for each, top → bottom (LIFO) |
+| `_Stack remove NAME VAL` | Remove the first occurrence (from the bottom) by value |
+| `_Stack clear NAME` | Drop all elements and metadata |
+
+```bash
+myMethod() {
+  _Stack push audit "opened $1"       # per-object stack, keyed by $_Self
+  _Stack push audit "validated $1"
+  into=n _Stack size audit            # n=2
+  into=last _Stack pop audit          # last="validated ..."
+}
+```
+
+The dispatch-style reads (`each`, `peek`, `list`) touch `__boop_static` by
+direct index and never route through the `into=`/`boop.pass` return
+machinery, so they're safe to call from inside a `trap` handler. Mutations
+(`push`/`pop`/`shift`/`remove`) are not meant to run from within an async trap.
+
+`_Stack` is the shared substrate for [Signal](Signal)'s handler stacks and the
+[Eventable](Eventable) mixin's per-object event channels.
+
+---
+
 ## Under the Hood
 
 ### Object Storage

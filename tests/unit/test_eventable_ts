@@ -112,4 +112,30 @@ __ev_after=0
 for __ev_k in "${!__boop_static[@]}"; do [[ "$__ev_k" == "$h3."* ]] && (( __ev_after++ )); done
 $t.assert_eq "destroy wiped h3 subscriptions" "$__ev_after" "0"
 
+# == a failing listener is logged (not silently swallowed) ==
+
+$t.section "failing listener is logged"
+
+into=h4 EmitHost
+$h4.on boom __ev_bad
+# Capture stderr only (stdout discarded); the _Warn from __Eventable.invoke
+# lands on stderr. This is deliberate capture-for-assertion, not suppression.
+__ev_warn="$($h4.emit boom 2>&1 1>/dev/null)"
+$t.assert_contains "warning names the failing listener" "$__ev_warn" "__ev_bad"
+$t.assert_contains "warning notes the nonzero return"   "$__ev_warn" "nonzero"
+
+# == regression: listener must see the caller's IFS, not a forced value ==
+# The invoke trampoline pins IFS only around its own warning message; pinning
+# it before the call would leak IFS=' ' into the listener via dynamic scoping.
+
+$t.section "listener IFS is not clobbered"
+
+__ev_seen_ifs="sentinel"
+__ev_capture_ifs() { __ev_seen_ifs="$IFS"; }
+into=h5 EmitHost
+$h5.on probe __ev_capture_ifs
+__ev_caller_ifs="$IFS"          # the test's ambient IFS (bash default)
+$h5.emit probe
+$t.assert_eq "listener sees caller's IFS unchanged" "$__ev_seen_ifs" "$__ev_caller_ifs"
+
 $t.summary

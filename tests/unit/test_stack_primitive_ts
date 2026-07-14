@@ -113,4 +113,39 @@ __ts_after=0
 for __ts_k in "${!__boop_static[@]}"; do [[ "$__ts_k" == "$o3."* ]] && (( __ts_after++ )); done
 $t.assert_eq "o3 stack keys wiped by destroy" "$__ts_after" "0"
 
+# == remove edge cases ==
+
+$t.section "remove edge cases"
+
+_Stack clear s
+_Stack push s a b a c
+_Stack remove s a
+into=v _Stack list s; $t.assert_eq "remove drops only the first occurrence" "$v" $'b\na\nc'
+_Stack remove s zzz
+into=v _Stack list s; $t.assert_eq "remove of a missing value is a no-op" "$v" $'b\na\nc'
+_Stack clear s
+$t.assert_ok "remove from an empty stack is harmless" _Stack remove s x
+$t.assert_ok "still empty after removing from empty"  _Stack empty s
+
+# == read ops on an empty stack ==
+
+$t.section "empty-stack reads"
+
+_Stack clear s
+into=v _Stack peek s; $t.assert_eq "peek on empty returns ''" "$v" ""
+into=v _Stack list s; $t.assert_eq "list on empty returns ''" "$v" ""
+into=v _Stack size s; $t.assert_eq "size on empty is 0"       "$v" "0"
+
+# == interleaved push/pop/shift keeps head/tail coherent ==
+
+$t.section "interleaved operations"
+
+_Stack clear s
+_Stack push s a b c
+into=v _Stack shift s; $t.assert_eq "shift a"            "$v" "a"
+_Stack push s d
+into=v _Stack pop s;   $t.assert_eq "pop d (newest)"     "$v" "d"
+into=v _Stack list s;  $t.assert_eq "b,c remain in order" "$v" $'b\nc'
+into=v _Stack size s;  $t.assert_eq "size is 2"          "$v" "2"
+
 $t.summary
