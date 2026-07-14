@@ -1,0 +1,116 @@
+#!/bin/bash
+set -uo pipefail
+
+# _Stack tests — boop-core per-identity named double-ended stacks in
+# __boop_static. (Distinct from test_stack_ts, which covers the
+# Collection.Stack class.)
+#
+# Classification: UNIT (boop core)
+# Covers: push/pop/peek/size (LIFO end), shift (FIFO end), list order,
+#         each (LIFO iteration + arg forwarding), remove-by-value with
+#         compaction, empty/pop-empty contract, empty-string vs absent,
+#         per-object identity isolation, and automatic cleanup on destroy.
+
+. boop TestSuite List
+
+into=t TestSuite name="_Stack primitive Tests"
+
+__ts_log=""
+__ts_collect()  { __ts_log+="[$1]"; }
+__ts_collect2() { __ts_log+="($1:$2)"; }
+
+# == basic push / pop / peek / size (LIFO) ==
+
+$t.section "push/pop/peek/size"
+
+_Stack push s a b c
+into=v _Stack size s; $t.assert_eq "size after 3 push" "$v" "3"
+into=v _Stack peek s; $t.assert_eq "peek is top"        "$v" "c"
+into=v _Stack pop s;  $t.assert_eq "pop returns top"    "$v" "c"
+into=v _Stack pop s;  $t.assert_eq "pop again"          "$v" "b"
+into=v _Stack size s; $t.assert_eq "size after 2 pop"   "$v" "1"
+_Stack clear s
+
+# == shift (FIFO end) ==
+
+$t.section "shift"
+
+_Stack push s a b c
+into=v _Stack shift s; $t.assert_eq "shift returns bottom" "$v" "a"
+into=v _Stack shift s; $t.assert_eq "shift again"          "$v" "b"
+into=v _Stack peek s;  $t.assert_eq "peek after shifts"    "$v" "c"
+into=v _Stack size s;  $t.assert_eq "size after 2 shift"   "$v" "1"
+_Stack clear s
+
+# == list order + each (LIFO) ==
+
+$t.section "list and each"
+
+_Stack push s x y z
+into=v _Stack list s; $t.assert_eq "list is bottom->top" "$v" $'x\ny\nz'
+__ts_log=""; _Stack each s __ts_collect
+$t.assert_eq "each iterates LIFO top->bottom" "$__ts_log" "[z][y][x]"
+_Stack clear s
+
+_Stack push s p q
+__ts_log=""; _Stack each s __ts_collect2 EXTRA
+$t.assert_eq "each forwards extra args" "$__ts_log" "(q:EXTRA)(p:EXTRA)"
+_Stack clear s
+
+# == remove by value (middle) compacts ==
+
+$t.section "remove"
+
+_Stack push s a b c d
+_Stack remove s c
+into=v _Stack list s; $t.assert_eq "middle removed, order kept" "$v" $'a\nb\nd'
+into=v _Stack size s; $t.assert_eq "size after remove"          "$v" "3"
+into=v _Stack pop s;  $t.assert_eq "pop finds top after compaction" "$v" "d"
+_Stack clear s
+
+# == empty / pop-empty contract ==
+
+$t.section "empty contract"
+
+$t.assert_ok "fresh stack is empty" _Stack empty s
+into=v _Stack pop s; $t.assert_eq "pop empty returns ''" "$v" ""
+$t.assert_fail "pop empty exits nonzero" _Stack pop s
+
+# == empty-string element is distinct from absent ==
+
+$t.section "empty-string element"
+
+_Stack push s ""
+into=v _Stack size s; $t.assert_eq "one empty-string element counts as 1" "$v" "1"
+into=v _Stack pop s;  $t.assert_eq "pops the empty string" "$v" ""
+$t.assert_ok "empty again after pop" _Stack empty s
+
+# == per-object identity isolation ==
+
+$t.section "identity isolation"
+
+into=o1 List
+into=o2 List
+_Self="$o1" _Stack push chan a b
+_Self="$o2" _Stack push chan z
+into=v _Self="$o1" _Stack list chan; $t.assert_eq "o1 has its own stack" "$v" $'a\nb'
+into=v _Self="$o2" _Stack list chan; $t.assert_eq "o2 independent"       "$v" "z"
+
+# == destroy auto-cleans an object's stacks ==
+
+$t.section "destroy cleanup"
+
+into=o3 List
+_Self="$o3" _Stack push doomed x y z
+
+__ts_before=0
+for __ts_k in "${!__boop_static[@]}"; do [[ "$__ts_k" == "$o3."* ]] && (( __ts_before++ )); done
+$t.assert_ok "o3 has __boop_static keys before destroy" test "$__ts_before" -gt 0
+
+$o3.destroy
+
+__ts_after=0
+for __ts_k in "${!__boop_static[@]}"; do [[ "$__ts_k" == "$o3."* ]] && (( __ts_after++ )); done
+$t.assert_eq "o3 stack keys wiped by destroy" "$__ts_after" "0"
+
+$t.summary

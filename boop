@@ -559,6 +559,130 @@ _Property() {
   fi
 }
 
+# _Stack — per-identity named stacks (a double-ended queue), stored in
+# __boop_static alongside properties and statics.
+#
+# Identity is _Me: the object id when called inside an object method
+# ($_Self), the class name in a class-level method ($_Class), or "boop" if
+# neither is set. Each named stack keeps its data under the keys:
+#
+#   <identity>.__stack.<name>.head   first live index (inclusive)
+#   <identity>.__stack.<name>.tail   one past the last (exclusive)
+#   <identity>.__stack.<name>.<i>    the element at index i
+#
+# size = tail - head; the range [head, tail) is kept hole-free (only `remove`
+# compacts, O(n)), so no separate count or hole-tracking is needed. Because
+# every key lives under the "<identity>." prefix, __boop.destroy wipes an
+# object's stacks automatically when it is destroyed — no cleanup hook needed.
+#
+# This is a primitive: a keyed multimap of ordered callback/value stacks with
+# O(1) access at both ends. Event dispatch (Eventable), OS-signal handler
+# stacks (Signal), and destroy-time finalizers are all expected to build on it.
+#
+# NOTE ON TRAP CONTEXT: dispatch-style reads here touch __boop_static directly
+# (no into=/boop.pass), so `each`/`peek`/`list` are safe to call from within a
+# trap handler. Mutations (push/pop/shift/remove) are not intended to run from
+# inside an async trap.
+#
+# Ops:
+#   _Stack push  NAME VAL...     append one or more to the top
+#   _Stack pop   NAME            remove & return the top    (into=; '' + rc 1 if empty)
+#   _Stack shift NAME            remove & return the bottom (into=; '' + rc 1 if empty)
+#   _Stack peek  NAME            return the top without removing (into=)
+#   _Stack size  NAME            number of live elements (into=)
+#   _Stack empty NAME            exit 0 if empty, 1 if not
+#   _Stack list  NAME            newline-joined, bottom -> top (into=)
+#   _Stack each  NAME FN [args]  call FN for each element, top -> bottom (LIFO)
+#   _Stack remove NAME VAL       remove first occurrence (from bottom) by value
+#   _Stack clear NAME            drop all elements and metadata
+_Stack() {
+  local __Stack_op="${1:-}" __Stack_name="${2:-}"
+  local __Stack_me="${_Self:-${_Class:-boop}}"
+  local __Stack_base="${__Stack_me}.__stack.${__Stack_name}"
+  local -i __Stack_h="${__boop_static[$__Stack_base.head]:-0}"
+  local -i __Stack_t="${__boop_static[$__Stack_base.tail]:-0}"
+  local -i __Stack_i
+  local __Stack_v
+
+  case "$__Stack_op" in
+    push)
+      for __Stack_v in "${@:3}"; do
+        __boop_static["$__Stack_base.$__Stack_t"]="$__Stack_v"
+        (( __Stack_t++ ))
+      done
+      __boop_static["$__Stack_base.head"]=$__Stack_h
+      __boop_static["$__Stack_base.tail"]=$__Stack_t
+      ;;
+    pop)
+      (( __Stack_t > __Stack_h )) || { boop.pass "" ${into:-}; return 1; }
+      __Stack_i=$(( __Stack_t - 1 ))
+      __Stack_v="${__boop_static[$__Stack_base.$__Stack_i]}"
+      unset "__boop_static[$__Stack_base.$__Stack_i]"
+      __boop_static["$__Stack_base.tail"]=$__Stack_i
+      boop.pass "$__Stack_v" ${into:-}
+      ;;
+    shift)
+      (( __Stack_t > __Stack_h )) || { boop.pass "" ${into:-}; return 1; }
+      __Stack_v="${__boop_static[$__Stack_base.$__Stack_h]}"
+      unset "__boop_static[$__Stack_base.$__Stack_h]"
+      __boop_static["$__Stack_base.head"]=$(( __Stack_h + 1 ))
+      boop.pass "$__Stack_v" ${into:-}
+      ;;
+    peek)
+      (( __Stack_t > __Stack_h )) || { boop.pass "" ${into:-}; return 1; }
+      boop.pass "${__boop_static[$__Stack_base.$(( __Stack_t - 1 ))]}" ${into:-}
+      ;;
+    size)
+      boop.pass "$(( __Stack_t - __Stack_h ))" ${into:-}
+      ;;
+    empty)
+      (( __Stack_t <= __Stack_h ))
+      ;;
+    list)
+      local __Stack_out=""
+      for (( __Stack_i = __Stack_h; __Stack_i < __Stack_t; __Stack_i++ )); do
+        [[ -n "$__Stack_out" ]] && __Stack_out+=$'\n'
+        __Stack_out+="${__boop_static[$__Stack_base.$__Stack_i]}"
+      done
+      boop.pass "$__Stack_out" ${into:-}
+      ;;
+    each)
+      local __Stack_fn="${3:?_Stack each: function name required}"
+      for (( __Stack_i = __Stack_t - 1; __Stack_i >= __Stack_h; __Stack_i-- )); do
+        "$__Stack_fn" "${__boop_static[$__Stack_base.$__Stack_i]}" "${@:4}"
+      done
+      ;;
+    remove)
+      local -a __Stack_keep=()
+      local -i __Stack_removed=0
+      for (( __Stack_i = __Stack_h; __Stack_i < __Stack_t; __Stack_i++ )); do
+        __Stack_v="${__boop_static[$__Stack_base.$__Stack_i]}"
+        if (( ! __Stack_removed )) && [[ "$__Stack_v" == "${3:-}" ]]; then
+          __Stack_removed=1
+        else
+          __Stack_keep+=( "$__Stack_v" )
+        fi
+        unset "__boop_static[$__Stack_base.$__Stack_i]"
+      done
+      local -i __Stack_k=0
+      for __Stack_v in "${__Stack_keep[@]+"${__Stack_keep[@]}"}"; do
+        __boop_static["$__Stack_base.$__Stack_k"]="$__Stack_v"; (( __Stack_k++ ))
+      done
+      __boop_static["$__Stack_base.head"]=0
+      __boop_static["$__Stack_base.tail"]=$__Stack_k
+      ;;
+    clear)
+      for (( __Stack_i = __Stack_h; __Stack_i < __Stack_t; __Stack_i++ )); do
+        unset "__boop_static[$__Stack_base.$__Stack_i]"
+      done
+      unset "__boop_static[$__Stack_base.head]" "__boop_static[$__Stack_base.tail]"
+      ;;
+    *)
+      _Error "_Stack: unknown op '$__Stack_op' (push/pop/shift/peek/size/empty/list/each/remove/clear)"
+      return 1 ;;
+  esac
+}
+
 # ============================================================================
 # ALIAS RESOLUTION
 # ============================================================================

@@ -35,7 +35,7 @@ printf '\ntest_smoke...\n'
 # Unit tests
 # ============================================================================
 if [[ "$__ta_mode" == all || "$__ta_mode" == unit ]]; then
-  for f in test_testsuite_ts test_box_cube_ts test_containers_ts \
+  for f in test_testsuite_ts test_stack_primitive_ts test_box_cube_ts test_containers_ts \
             test_logging_ts test_math_ts test_classpath_ts test_classpath_pbt \
             test_config_ts test_args_ts test_alias_ts test_map_fast_ts test_json_ts \
             test_semver_ts test_stack_ts test_queue_ts test_set_ts test_mixin_ts test_terminal_ts \
