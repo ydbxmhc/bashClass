@@ -32,11 +32,22 @@
 boop.initMixin Eventable || return 0
 
 # Internal trampoline: _Stack.each hands us (callback, event, args...); we run
-# the callback as a command with the event + args. Exit code is swallowed so a
-# failing listener doesn't halt dispatch; stderr is left alone.
+# the callback as a command with the event + args. A non-zero return does NOT
+# halt dispatch (the other listeners still fire), but we log it — a listener
+# that failed silently is miserable to debug. `_Warn` returns 0, so the
+# compound stays errexit-safe; under the opt-in `_FatalLevel warn` the warning
+# escalates to a crash (intended strict-mode behavior).
+#
+# The listener runs FIRST, with the caller's ambient IFS untouched. Pinning
+# IFS before the call would leak into the listener via bash's dynamic scoping
+# and quietly change its word-splitting. We set `local IFS=' '` only in the
+# failure branch, purely to make the "$*" join in the message deterministic.
 __Eventable.invoke() {
   local __Eventable_invoke_cb="$1"; shift
-  "$__Eventable_invoke_cb" "$@" || true
+  if ! "$__Eventable_invoke_cb" "$@"; then
+    local IFS=' '
+    _Warn "Eventable: listener '$__Eventable_invoke_cb' returned nonzero ($*)"
+  fi
 }
 
 # on EVENT CALLBACK — subscribe CALLBACK (a function name) to EVENT.
