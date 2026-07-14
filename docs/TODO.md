@@ -6,6 +6,77 @@ Inline TODOs in source files should reference entries here by section name.
 
 ---
 
+## ★ Hardened Full-Suite Run (morning priority — give it time to iterate)
+
+Run the **entire** test suite under a deliberately hostile shell environment
+and fix whatever falls out. This has NOT been done recently: the test files
+only set `set -uo pipefail`, and `test_all` imposes nothing stricter, so the
+"errexit-safe by default" promise (STANDARDS.md) and glob/case robustness are
+asserted but not actually exercised — especially against recent code
+(`_Stack`, `Eventable`, the Signal re-base onto `_Stack`).
+
+Target environment:
+
+```bash
+set -veuxo pipefail
+shopt -s globstar nullglob dotglob nocasematch nocaseglob
+```
+
+- **Behavior-changing (the ones that will find bugs):** `-e` (errexit),
+  `-u` (nounset), `pipefail`, and the shopts — `nullglob`/`dotglob` (unmatched
+  globs vanish / dotfiles included → loop-count and path surprises),
+  `nocasematch` (case-insensitive `[[ ]]` — **prime suspect**: could silently
+  match signal names, class names, mode strings, `[[ $x == Pattern ]]` guards
+  the wrong way), `nocaseglob`, `globstar`.
+- **Diagnostic noise only:** `-v` and `-x` (huge output; keep for pinpointing a
+  failure, drop for a clean pass/fail read).
+
+Approach / gotchas:
+- The strict options must be in force **during class code execution**, not just
+  the harness. Each test file re-runs `set -uo pipefail` (which does NOT clear
+  `-e`), so starting bash with the flags mostly carries through — but shopts and
+  `-x` need to actually reach the sourced framework/class code. Likely need a
+  hardened runner (a `test_all` variant, or `bash -O globstar -O nullglob ...`
+  plus an injected `set`/`shopt` preamble) rather than editing every file.
+- Expect the property-based and Math suites to be slow; budget for a few full
+  passes (fix → re-run) across the morning.
+- Prime suspects to eyeball first: `nocasematch` interactions in Signal
+  (signal-name compares), boop dispatch/validation (`[[ ]]` guards), Args
+  (option matching), and any `for f in *glob*` loops now affected by
+  nullglob/dotglob.
+
+Deliverable: a green full run under the hardened env, or a documented list of
+intentional exceptions.
+
+---
+
+## Documentation Link Survey (deferred from 2026-07-14)
+
+Full-site hotlink pass: link non-current-page class names in prose to their
+doc pages (never inside code fences), matching the extensionless
+`[Name](Name)` convention `docs/index.md` uses. Produce a link map first for
+review, then apply.
+
+**Already found — broken links to fix (targets live in `docs/`, not root, so
+the `../` escapes the docs tree):**
+
+```
+docs/boop.md      → ../GOTCHAS.md    (should be GOTCHAS)
+docs/JSON.md      → ../GOTCHAS.md
+docs/Stream.md    → ../GOTCHAS.md
+docs/boson.md     → ../TODO.md       (should be TODO)
+docs/collider.md  → ../TODO.md   (×3)
+docs/probe.md     → ../TODO.md
+docs/tools.md     → ../TODO.md
+```
+
+Open question to settle during the survey (needs a live/Jekyll check from an
+unblocked network): whether GitHub Pages serves the extensionless URLs
+(`[Signal](Signal)` → `/docs/Signal`) or whether the docs should use the
+`.md` form that `jekyll-relative-links` rewrites to `.html`.
+
+---
+
 ## Documentation & Code Comment Fact-Check Audit
 
 Full survey of every factual claim in every `.md` file under `docs/` and
