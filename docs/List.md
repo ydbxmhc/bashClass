@@ -124,7 +124,7 @@ done
 ```
 
 See [Container.md](Container.md) for full iterator documentation,
-including multiple independent cursors and Map snapshot behavior.
+including multiple independent cursors and [Map](Map) snapshot behavior.
 
 ### Utility
 

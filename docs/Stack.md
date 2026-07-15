@@ -1,7 +1,7 @@
 # Collection.Stack
 
-LIFO (last-in, first-out) stack. Backed internally by a List; exposes only
-the stack surface. Push to the top, pop from the top.
+LIFO (last-in, first-out) stack. Backed internally by a [List](List); exposes
+only the stack surface. Push to the top, pop from the top.
 
 ## Contents
 

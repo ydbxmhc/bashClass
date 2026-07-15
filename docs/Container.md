@@ -1,9 +1,9 @@
 # Container
 
 Virtual base class for all collection types. Defines the interface
-contract that List, Map, and future containers (Stack, Queue, etc.)
-must implement. Also defines the Iterator companion class for stateful
-cursor traversal.
+contract that [List](List), [Map](Map), and future containers
+([Stack](Stack), [Queue](Queue), etc.) must implement. Also defines the
+[Iterator](Iterator) companion class for stateful cursor traversal.
 
 ## Contents
 

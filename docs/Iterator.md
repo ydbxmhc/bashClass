@@ -1,12 +1,12 @@
 # Iterator
 
-A stateful cursor over a Container (List, Map, or any subclass).
-Holds a reference to a container and a current position.
+A stateful cursor over a [Container](Container) ([List](List), [Map](Map), or
+any subclass). Holds a reference to a container and a current position.
 Does not own data — it reads from its target.
 
 **Iterator is defined in `Collection/Container/Container`, not in its own file.**
 It lives there because it was designed alongside Container and has no meaning
-without one. Loading Container (directly or via List/Map/Deck) makes Iterator available.
+without one. Loading Container (directly or via List/Map/[Deck](Deck)) makes Iterator available.
 
 ## Dependencies
 

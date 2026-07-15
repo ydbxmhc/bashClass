@@ -224,7 +224,7 @@ into=kept    $old.intersect "$new"   # in both
 one operation, no iteration.
 
 **Unordered.** Bash associative arrays have hash-defined iteration order.
-If you need a set with stable iteration order, use a Map (insert key with
+If you need a set with stable iteration order, use a [Map](Map) (insert key with
 a placeholder value; `$map.keys` gives insertion order).
 
 **Values are strings.** Set members can be any string, including object IDs,

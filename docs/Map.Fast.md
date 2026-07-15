@@ -42,7 +42,7 @@ Use **Fast** when you need:
 - A flat store keyed by paths (`"users.0.name"`, `"server.port"`)
 - Minimal overhead per node
 
-Use **Map** when you need:
+Use **[Map](Map)** when you need:
 - Insertion-ordered iteration
 - Subtrees as objects you can pass around
 - Per-level `getAt`/`setAt` with real object dispatch
@@ -170,7 +170,7 @@ into=s $doc.toString   # "key=value\n..." one per line, order undefined
 ## Loading from JSON
 
 `Data.JSON` produces `Collection.Map` trees (nested objects, insertion-ordered).
-If you parse JSON and want Fast's O(1) access, flatten it:
+If you parse [JSON](JSON) and want Fast's O(1) access, flatten it:
 
 ```bash
 . boop JSON Collection::Map::Fast

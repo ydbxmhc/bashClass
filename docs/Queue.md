@@ -1,7 +1,7 @@
 # Collection.Queue
 
-FIFO (first-in, first-out) queue. Backed internally by a List; exposes only
-the queue surface. Enqueue to the back, dequeue from the front.
+FIFO (first-in, first-out) queue. Backed internally by a [List](List); exposes
+only the queue surface. Enqueue to the back, dequeue from the front.
 
 ## Contents
 
