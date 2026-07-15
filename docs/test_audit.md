@@ -255,3 +255,7 @@ As of this audit:
   or naming check. Investigate before next push.
 - README.md test counts will need updating after fixes (currently says 488,
   actual is higher after recent additions).
+
+---
+
+[↑ Site map](index)

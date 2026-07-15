@@ -212,3 +212,7 @@ boop → Container → List  (indexed array)
 
 boop → Iterator  (companion to Container — stateful cursor)
 ```
+
+---
+
+[↑ Site map](index)

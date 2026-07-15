@@ -61,3 +61,7 @@ printf "Volume: %s\n" "$v"   # Volume: 125
 $c.isa Box && printf "yes\n"   # yes — Cube inherits from Box
 ```
 
+
+---
+
+[↑ Site map](index)

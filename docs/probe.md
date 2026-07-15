@@ -185,3 +185,7 @@ probe with `collider` (`collider probe` → `bundle-probe`).
 `curl(1)`, `wget(1)` — the fuller-featured clients probe stands in for.
 [docs/Stream.md](Stream.md) for the planned socket-stream model,
 [docs/tools.md](tools.md) for the tool family.
+
+---
+
+[↑ Site map](index)

@@ -431,3 +431,7 @@ first-class value, compute the seconds and pass the integer around.
 not handled by the pure-bash path. They fall through to `date -d`, which
 handles them on systems with GNU date. This is intentional: natural-language
 parsing is complex and locale-sensitive; delegating it to `date` is correct.
+
+---
+
+[↑ Site map](index)

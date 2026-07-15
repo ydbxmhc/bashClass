@@ -687,3 +687,7 @@ pipefail`. Patterns for retry/recovery based on which stage failed.
 - [YSAP Bash Style Guide](https://style.ysap.sh/) by Dave Eddy (MIT)
 - [Wooledge BashGuide](https://mywiki.wooledge.org/BashGuide)
 - [BashPitfalls](https://mywiki.wooledge.org/BashPitfalls)
+
+---
+
+[↑ Site map](index)

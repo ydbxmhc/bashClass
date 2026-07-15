@@ -211,3 +211,7 @@ Post it with a straight face and let the thread do the work.
 - `boop.pass` filesystem mode: `boop.passPath` from call stack introspection
 - Doubly-linked List: decide before implementing LinkedList @@
 
+
+---
+
+[↑ Site map](index)

@@ -115,3 +115,7 @@ printf "%s cards left\n" "$remaining"
 
 For a ready-made 52-card deck of proper `PlayingCard` objects, see
 [`Games.PlayingCard.newDeck`](PlayingCard.md#gamesplayingcardnewdeck).
+
+---
+
+[↑ Site map](index)

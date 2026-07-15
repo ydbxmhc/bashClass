@@ -146,3 +146,7 @@ This is valid because both registries (`__boop_registry` for classes and
 | `mixes` check | N/A | Yes |
 | Multiple | No (single parent) | Yes (as many as needed) |
 | Method priority | Parent loses to child | First mixin listed wins |
+
+---
+
+[↑ Site map](index)

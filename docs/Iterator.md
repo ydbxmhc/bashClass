@@ -225,3 +225,7 @@ with each other or with the implicit one.
 
 **target and target_class.** The `target` property holds the container's object
 ID; `target_class` holds its class name. Both are needed for dispatch.
+
+---
+
+[↑ Site map](index)

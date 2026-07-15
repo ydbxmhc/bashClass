@@ -176,3 +176,7 @@ $h.save /tmp/hero.json    # saves name and level; tags are internal (_tags)
 - **Lazy parsing**: `Data.JSON` is only loaded when `fromJSON` is first called. If your code only uses `toJSON`/`save`, no JSON parser is loaded.
 - **Class name leaking**: `toJSON` always writes `"_class"`. `fromJSON` ignores it on load. This makes saved files self-describing but does not enforce class compatibility — you can load any JSON into any object.
 - **No nested objects**: properties are serialized as flat strings. If a property holds an object ID, that ID is saved literally (a meaningless string in another session).
+
+---
+
+[↑ Site map](index)

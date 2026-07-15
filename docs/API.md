@@ -460,3 +460,7 @@ Greetable  — demo/test mixin
 ```
 
 See [mixin.md](mixin.md) for how to write and compose mixins.
+
+---
+
+[↑ Site map](index)

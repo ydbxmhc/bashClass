@@ -514,3 +514,7 @@ memory stays bounded on inputs of any size.
 consolidates. [docs/Stream.md](Stream.md) for the delimiter engine,
 [docs/tools.md](tools.md) for the tool family, and `lens --examples` for the
 built-in cookbook.
+
+---
+
+[↑ Site map](index)

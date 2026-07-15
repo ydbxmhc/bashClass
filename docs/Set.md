@@ -229,3 +229,7 @@ a placeholder value; `$map.keys` gives insertion order).
 
 **Values are strings.** Set members can be any string, including object IDs,
 file paths, or multi-word strings.
+
+---
+
+[↑ Site map](index)

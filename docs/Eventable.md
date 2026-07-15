@@ -331,3 +331,7 @@ Both layer LIFO handler stacks over `_Stack`, but they serve different needs:
 Reach for **Eventable** when objects need to announce things to interested
 observers; reach for **Signal** when you're handling actual OS signals or need
 one shared, process-wide handler stack.
+
+---
+
+[↑ Site map](index)

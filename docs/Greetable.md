@@ -68,3 +68,7 @@ $obj.Taggable::identify     # always Taggable's version
 
 Greetable exists to exercise and demonstrate the mixin system — it has no
 production use case. Taggable and Terminal are the production mixins.
+
+---
+
+[↑ Site map](index)

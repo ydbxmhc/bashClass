@@ -290,3 +290,7 @@ until `summary`.
 **Crash isolation.** `assert_fail` runs the command in a subshell `()`.
 This means a crashed command (non-zero exit) counts as a non-zero exit and
 the assertion passes. The subshell isolates the failure from the test runner.
+
+---
+
+[↑ Site map](index)

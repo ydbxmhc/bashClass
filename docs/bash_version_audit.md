@@ -247,3 +247,7 @@ Grep sweeps run across all non-doc files:
 - `\[-[0-9]+\]|\[-1\]` — 4.3 negative subscripts → List, Stack.Fast
 - `SRANDOM` — 5.1 → **none** (only `RANDOM`, which is ancient)
 - `wait -n` / funsub `${ ;}` — 4.4/5.3 → **none found**
+
+---
+
+[↑ Site map](index)

@@ -285,3 +285,7 @@ Or for even tighter output, combine `printf` calls so the sequences are adjacent
 **Error on unknown names.** `char`, `fg`, and `bg` call `_Error` and return
 non-zero for unknown names. This catches typos at test time rather than
 silently producing broken output.
+
+---
+
+[↑ Site map](index)

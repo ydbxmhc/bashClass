@@ -347,3 +347,7 @@ the `boop.pass` nameref path and the dispatch wrapper call overhead.
   `$EPOCHREALTIME` (microsecond resolution).
 - No effort was made to warm CPU caches or isolate from background load.
   These are "real script" numbers, not laboratory numbers.
+
+---
+
+[↑ Site map](index)

@@ -800,3 +800,7 @@ variable and let the calling code check it after dispatch.
 **Class-level only — no instances.** Signal has no constructor. All methods
 are static (`Signal.method args`). There is no reason to create a Signal
 object; the handler stacks are process-global by nature.
+
+---
+
+[↑ Site map](index)

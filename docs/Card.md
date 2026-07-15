@@ -248,3 +248,7 @@ for `pop`. `push` adds to the top (end). The underlying array is `__boop_data_${
 **`newDeck` uses `_Class`.** The deck-filling loop calls `$_Class suit=... rank=...`
 rather than `Games.PlayingCard ...`. Subclass constructors get called automatically
 when `newDeck` is inherited.
+
+---
+
+[↑ Site map](index)

@@ -229,3 +229,7 @@ all keys linearly — fine for small stores, slow for very large ones.
 
 **No insertion order.** If you need keys in a predictable order, use a
 `Collection.Map` or build your own ordered list alongside the store.
+
+---
+
+[↑ Site map](index)

@@ -416,3 +416,7 @@ internals if you use variable names that collide with boop's internal
 
 The triple-prefix naming convention (`__ClassName_methodName_varname`)
 exists specifically to avoid this.
+
+---
+
+[↑ Site map](index)

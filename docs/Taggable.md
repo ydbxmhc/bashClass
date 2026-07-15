@@ -115,3 +115,7 @@ are not valid characters within a tag value. Any other character is fine.
 **Conflict resolution.** If another mixin also declares `identify`, the first
 mixin listed in `boopClass` wins. Call `$obj.Taggable::identify` to invoke
 Taggable's version explicitly regardless of resolution order.
+
+---
+
+[↑ Site map](index)

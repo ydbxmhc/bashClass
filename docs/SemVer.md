@@ -336,3 +336,7 @@ SemVer.satisfies "$v" "1.2+" && SemVer.satisfies "$v" "<2.0"
 **Version parsing into an object** is not implemented. There is no
 `SemVer.parse "1.2.3"` that returns an object with `.major`, `.minor`,
 `.patch` properties. The static API covers all current use cases.
+
+---
+
+[↑ Site map](index)

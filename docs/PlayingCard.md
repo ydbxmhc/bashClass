@@ -151,3 +151,7 @@ boopClass MyCard isa:Games.PlayingCard public:new,value
 # Creates a shuffled deck of 52 MyCard objects, not PlayingCards:
 _Class=MyCard into=deck Games.PlayingCard.newDeck
 ```
+
+---
+
+[↑ Site map](index)

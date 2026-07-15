@@ -932,3 +932,7 @@ Checklist:
 - [ ] `test_stress_ts` → renamed to `test_adversarial_ts`; audit all
   references including `docs/test_audit.md` and `docs/PLAN.md`
 - [ ] Per-file stale comments: `docs/PLAN.md` still says "bash 5+"
+
+---
+
+[↑ Site map](index)

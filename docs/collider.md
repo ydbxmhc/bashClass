@@ -144,3 +144,7 @@ boop, Args, Data.JSON, Map.Fast, List, and friends.
 [docs/tools.md](tools.md) for the tool family, [docs/boop.md](boop.md) for the
 framework, and [TODO.md](TODO.md) for the bundle/installer delivery model.
 Tested by `tests/tools/test_collider` (24 assertions).
+
+---
+
+[↑ Site map](index)

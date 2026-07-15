@@ -244,3 +244,7 @@ method to use.
 front element. This is inherent to bash indexed arrays. The Fast variant
 saves overhead on object creation, method dispatch, and destroy — not on
 the dequeue operation itself.
+
+---
+
+[↑ Site map](index)

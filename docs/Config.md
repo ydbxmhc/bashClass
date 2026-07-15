@@ -223,3 +223,7 @@ where it was inserted in the order.
 **Two separate loaders, not auto-detection.** `Config.load` always parses flat
 key=value format. `Config.loadINI` always parses INI with `[section]` headers.
 Choose the right loader for your file — there is no auto-detection.
+
+---
+
+[↑ Site map](index)

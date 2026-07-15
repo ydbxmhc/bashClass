@@ -77,3 +77,7 @@ into=t $b.top
 printf "Top area: %s\n" "$t" # Top area: 50
 ```
 
+
+---
+
+[↑ Site map](index)

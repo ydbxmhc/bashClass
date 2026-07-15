@@ -504,3 +504,7 @@ beyond scope for a pure-bash implementation.
 not implemented. Bash's `=~` and `${v/pattern/replacement}` cover the
 common cases. A richer regex surface would likely live in a separate
 `Text.Regex` class.
+
+---
+
+[↑ Site map](index)

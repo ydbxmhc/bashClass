@@ -7,7 +7,19 @@ title: boop — Class & Tool Reference
 Complete catalog of every class and tool in the boop framework,
 grouped by namespace.
 
-**Jump to:** [Collection](#collection) · [Data](#data) · [Games](#games) · [Geometry](#geometry) · [Mixins](#mixins) · [Net](#net) · [Text](#text) · [Testing](#testing) · [System](#system) · [Tools](#tools)
+**Jump to:** [Core](#core-framework) · [Collection](#collection) · [Data](#data) · [Games](#games) · [Geometry](#geometry) · [Mixins](#mixins) · [Net](#net) · [Text](#text) · [Testing](#testing) · [System](#system) · [Tools](#tools) · [Guides](#guides--references) · [Project](#project--design-notes)
+
+---
+
+## Core Framework
+
+The framework itself and its primary entry points.
+
+| Document | Description |
+|---|---|
+| [boop](boop) | The framework — object model, dispatch, the subshell-free return system, lifecycle/destroy, and the `_Me` / `_Static` / `_Property` / `_Stack` core primitives. Start here for how boop works under the hood. |
+| [API reference](API) | Complete public API surface across the framework |
+| [Tutorial](tutorial) | Step-by-step introduction to boop |
 
 ---
 
@@ -121,7 +133,6 @@ Standalone command-line tools distributed as single-file scripts from
 
 | Tool | Description |
 |---|---|
-| [boop](boop) | Core OOP framework — object model, dispatch, lifecycle |
 | [lens](lens) | Interactive class inspector REPL |
 | [probe](probe) | Diagnostic tool — inspect live objects and framework state |
 | [boson](boson) | JSON processor CLI |
@@ -133,10 +144,29 @@ Standalone command-line tools distributed as single-file scripts from
 
 | Document | Description |
 |---|---|
-| [API reference](API) | Complete boop API reference |
-| [Tutorial](tutorial) | Step-by-step introduction to boop |
+| [Language comparison](comparison) | boop idioms side by side with Python, Ruby, and Go |
 | [Mixin guide](mixin) | How to author and apply mixins |
 | [Iterator guide](Iterator) | Deep dive into the iterator protocol |
+| [CLI tools overview](tools) | When to reach for lens / boson / probe / collider, and shared conventions |
 | [GOTCHAS](GOTCHAS) | Common pitfalls and their fixes |
 | [STANDARDS](STANDARDS) | Coding standards for boop classes |
 | [Bash style guide](bash_style) | Shell conventions used throughout the codebase |
+
+(The [API reference](API) and [Tutorial](tutorial) live under
+[Core Framework](#core-framework) above.)
+
+---
+
+## Project & Design Notes
+
+Internal docs — roadmap, history, design notes, and point-in-time audits.
+
+| Document | Description |
+|---|---|
+| [TODO](TODO) | Active roadmap and open design questions |
+| [DEVLOG](DEVLOG) | Development log — completed work and the reasoning behind it |
+| [PLAN](PLAN) | High-level project plan |
+| [ArgParser design](ArgParser_design) | Design notes for the Args parser |
+| [Audit report](audit_report) | Full-codebase audit findings |
+| [Test audit](test_audit) | Test-coverage audit |
+| [Bash version audit](bash_version_audit) | Bash 4.3+ compatibility audit |
