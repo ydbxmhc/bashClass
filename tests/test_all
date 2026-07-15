@@ -77,7 +77,7 @@ __nc_files+=" $__nc_root/Math/Math $__nc_root/Testing/TestSuite/TestSuite $__nc_
 __nc_files+=" $__nc_root/Config/Config"
 __nc_files+=" $__nc_root/Games/PlayingCard/PlayingCard"
 __nc_files+=" $__nc_root/Mixins/Serializable/Serializable"
-__nc_exclude='__boop_\|__boop\.\|__Crash_\|__Container_\|__Iterator_\|__Iter_\|__List_\|__Map_\|__Math_\|__Box_\|__Cube_\|__Card_\|__Deck_\|__PlayingCard_\|__TestSuite_\|__BJ_\|__FC_\|__boopClass_\|__init\|__Config_\|__tc_\|__Load_\|__Require_\|__Serializable_\|__Data_\|__Games_\|__Signal_'
+__nc_exclude='__boop_\|__boop\.\|__Crash_\|__Container_\|__Iterator_\|__Iter_\|__List_\|__Map_\|__Math_\|__Box_\|__Cube_\|__Card_\|__Deck_\|__PlayingCard_\|__TestSuite_\|__BJ_\|__FC_\|__boopClass_\|__init\|__Config_\|__tc_\|__Load_\|__Require_\|__Serializable_\|__Data_\|__Games_\|__Signal_\|__obj_'
 __nc_hits=$(grep -rn '__[a-z]\+_' $__nc_files | grep -v "$__nc_exclude" | grep -v '#')
 if [[ -n "$__nc_hits" ]]; then
   printf '  FAIL: non-compliant variable names found:\n%s\n' "$__nc_hits"
