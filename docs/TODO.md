@@ -8,45 +8,57 @@ Inline TODOs in source files should reference entries here by section name.
 
 ## ★ Hardened Full-Suite Run (morning priority — give it time to iterate)
 
-Run the **entire** test suite under a deliberately hostile shell environment
-and fix whatever falls out. This has NOT been done recently: the test files
-only set `set -uo pipefail`, and `test_all` imposes nothing stricter, so the
-"errexit-safe by default" promise (STANDARDS.md) and glob/case robustness are
-asserted but not actually exercised — especially against recent code
-(`_Stack`, `Eventable`, the Signal re-base onto `_Stack`).
+Goal: prove the framework works when a *user's* shell is hostile — `set -e`,
+`nounset`, `pipefail`, and aggressive globbing/case options — since real
+callers may have any of these set. Two parts, because the obvious approach is
+a trap.
 
-Target environment:
+**DON'T just run the existing suite under the options.** That corrupts the test
+*harness*, not just exposes framework bugs:
+- `set -e` aborts on commands TestSuite runs *on purpose* (`assert_fail`,
+  negative `assert_ne` paths, "invalid input crashes" cases).
+- `nocasematch` makes `[[ $a == $b ]]` case-insensitive, so TestSuite's own
+  `assert_eq`/`assert_ne` comparisons silently flip on case-differing values.
+Those failures are harness artifacts and tell us nothing about boop.
+
+**Part 1 — hostile-caller `test_hardened` suite.** Exercise the framework FROM
+a hostile caller and assert (in a normal shell) that it survives:
 
 ```bash
-set -veuxo pipefail
+( set -euo pipefail; shopt -s globstar nullglob dotglob nocasematch nocaseglob
+  . boop List Map Signal Eventable ...
+  into=l List; $l.push a b c; into=n $l.length; [[ "$n" == 3 ]]   # survives -e?
+  # representative ops per class; verify results and no unexpected abort )
+```
+
+Hostile options live in the CALLER subshell; assertions run in the normal
+harness so verdicts stay trustworthy. Prime suspects: `nocasematch` in Signal
+(signal-name compares), boop dispatch/validation (`[[ ]]` guards), Args (option
+matching); `nullglob`/`dotglob` in any `for f in *glob*` loops.
+
+**Part 2 — harden the TestSuite harness itself (it's a product, not just infra).**
+A user may legitimately run TestSuite inside a script that already has
+`errexit`/`nocasematch`/`nullglob` set. The harness should stay correct
+regardless: normalize the shell state it depends on for its OWN work — e.g. pin
+`shopt -u nocasematch` and a known IFS around its comparisons, and run
+intentional-failure commands in guarded `if !`/`||` contexts so a caller's
+errexit can't abort them.
+
+Reference — the full hostile set (`-v`/`-x` are diagnostic noise; add `-x` only
+to pinpoint a failure):
+
+```bash
+set -euo pipefail
 shopt -s globstar nullglob dotglob nocasematch nocaseglob
 ```
 
-- **Behavior-changing (the ones that will find bugs):** `-e` (errexit),
-  `-u` (nounset), `pipefail`, and the shopts — `nullglob`/`dotglob` (unmatched
-  globs vanish / dotfiles included → loop-count and path surprises),
-  `nocasematch` (case-insensitive `[[ ]]` — **prime suspect**: could silently
-  match signal names, class names, mode strings, `[[ $x == Pattern ]]` guards
-  the wrong way), `nocaseglob`, `globstar`.
-- **Diagnostic noise only:** `-v` and `-x` (huge output; keep for pinpointing a
-  failure, drop for a clean pass/fail read).
+Propagation note: options don't cross `bash` process boundaries unless exported
+via `SHELLOPTS`/`BASHOPTS` or passed as flags — relevant if a runner must reach
+exec'd child suites.
 
-Approach / gotchas:
-- The strict options must be in force **during class code execution**, not just
-  the harness. Each test file re-runs `set -uo pipefail` (which does NOT clear
-  `-e`), so starting bash with the flags mostly carries through — but shopts and
-  `-x` need to actually reach the sourced framework/class code. Likely need a
-  hardened runner (a `test_all` variant, or `bash -O globstar -O nullglob ...`
-  plus an injected `set`/`shopt` preamble) rather than editing every file.
-- Expect the property-based and Math suites to be slow; budget for a few full
-  passes (fix → re-run) across the morning.
-- Prime suspects to eyeball first: `nocasematch` interactions in Signal
-  (signal-name compares), boop dispatch/validation (`[[ ]]` guards), Args
-  (option matching), and any `for f in *glob*` loops now affected by
-  nullglob/dotglob.
-
-Deliverable: a green full run under the hardened env, or a documented list of
-intentional exceptions.
+Status: baseline full run is GREEN (2026-07-15). The lone naming-check hit was
+a false positive on the `__obj_*` object-ID glob in `boop.isObject`, since
+fixed by excluding `__obj_` in the checker. This hardening is the next piece.
 
 ---
 
