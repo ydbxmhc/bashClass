@@ -6,7 +6,7 @@ O(1) point lookups via compound keys.
 
 > **NUL bytes.** Bash variables cannot hold or detect NUL bytes. Any JSON
 > string value containing a NUL will be silently truncated at the first one.
-> See [GOTCHAS.md](../GOTCHAS.md).
+> See [GOTCHAS.md](GOTCHAS.md).
 
 ## Contents
 

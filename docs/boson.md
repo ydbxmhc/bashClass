@@ -339,4 +339,4 @@ feed the same backend. For repeated use, bundle boson with `collider`
 
 `jq(1)` — the tool boson imitates. [docs/JSON.md](JSON.md) for the parser,
 [docs/Map.md](Map.md) for the backing store, [docs/tools.md](tools.md) for the
-tool family, and [TODO.md](../TODO.md) for the staged roadmap.
+tool family, and [TODO.md](TODO.md) for the staged roadmap.

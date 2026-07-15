@@ -156,7 +156,7 @@ probe http://a.host/ http://b.host/   # several URLs, fetched in order
 - **No HTTPS/TLS.** TLS belongs in a crypto library, not pure bash, so probe
   rejects `https://` up front rather than failing obscurely. For TLS, use
   `curl` or `wget`; the bundle/installer machinery can also fetch a richer
-  client (see [TODO.md](../TODO.md)).
+  client (see [TODO.md](TODO.md)).
 - **Text bodies only.** The body is read line-by-line with `mapfile` into a
   bash array, then joined. Trailing newlines on the final line are lost; bash
   variables cannot hold NUL bytes. Binary responses are not preserved

@@ -38,7 +38,7 @@ that runs anywhere bash does — no framework checkout, no `PATH` setup.
 
 The result is the framework's standard delivery vehicle: a tool that is useful
 standalone *and* able to bootstrap the full framework on demand (see
-[TODO.md](../TODO.md), "Adoption & Distribution").
+[TODO.md](TODO.md), "Adoption & Distribution").
 
 ### What it does
 
@@ -113,7 +113,7 @@ By deliberate choice, collider does not strip inline comments (telling a real
 `#` from one inside a string needs a full parser), does not minify, does not
 tree-shake individual functions (too coupled to pay off), and does not compile
 (bash has no bytecode). An optional pass to strip comment-only lines (~35%
-smaller) is planned but off by default; see [TODO.md](../TODO.md).
+smaller) is planned but off by default; see [TODO.md](TODO.md).
 
 ## EXIT STATUS
 
@@ -142,5 +142,5 @@ boop, Args, Data.JSON, Map.Fast, List, and friends.
 ## SEE ALSO
 
 [docs/tools.md](tools.md) for the tool family, [docs/boop.md](boop.md) for the
-framework, and [TODO.md](../TODO.md) for the bundle/installer delivery model.
+framework, and [TODO.md](TODO.md) for the bundle/installer delivery model.
 Tested by `tests/tools/test_collider` (24 assertions).

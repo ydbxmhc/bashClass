@@ -55,7 +55,7 @@ naming rationale.
 **Installer.** Every bundle carries `lib/installer`, so any tool can bootstrap
 the full framework on demand (`--boop-install`) or update itself
 (`--self-update`). See the "Adoption & Distribution" section of
-[TODO.md](../TODO.md) for the delivery model.
+[TODO.md](TODO.md) for the delivery model.
 
 ---
 

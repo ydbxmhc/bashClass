@@ -8,7 +8,7 @@ delimiters with run-collapsing.
 
 > **NUL bytes.** Bash variables cannot hold or detect NUL bytes. Any record
 > or field value containing a NUL will be silently truncated at the first one.
-> See [GOTCHAS.md](../GOTCHAS.md).
+> See [GOTCHAS.md](GOTCHAS.md).
 
 ## Contents
 
