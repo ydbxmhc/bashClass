@@ -109,6 +109,8 @@ $t.assert_ok "length is set" test -n "$length"
 $t.assert_ok "isa check"     $obj.isa Collection.List
 ```
 
+( See [List](List) )
+
 Passes if the command exits 0. Fails if non-zero.
 
 ### `assert_fail` — command exits non-zero
@@ -274,6 +276,8 @@ $t.assert_ok   "5 >= 5" $a.ge "$a"
 
 $t.summary
 ```
+
+( See [Math](Math) )
 
 ---
 

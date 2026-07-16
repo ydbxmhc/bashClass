@@ -259,7 +259,7 @@ for every option type (scalar, boolean, array, map).
 
 **Persistence and the intended model.** The seen-record persists across parses
 for the life of the process. This is deliberate: the intended use is a single
-script-argv parse, and constructors (e.g. `Stream.new`) often run their *own*
+script-argv parse, and constructors (e.g. [Stream.new](Stream)) often run their *own*
 `Args.parse` internally — a fresh-each-time table would let those nested parses
 erase the script's record before you could query it. Persistence means
 `Args.given` still answers correctly after you have built such objects.

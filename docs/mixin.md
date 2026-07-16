@@ -125,6 +125,8 @@ boopClass Serializable public:new,toJSON,fromJSON has:...
 boopMixin  Serializable 'public:toJSON,fromJSON'
 ```
 
+( See [Serializable](Serializable) )
+
 This is valid because both registries (`__boop_registry` for classes and
 `__boop_mixin_registry` for mixins) are independent.
 

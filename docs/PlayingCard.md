@@ -86,7 +86,7 @@ $c.render
 
 ### `Games.PlayingCard.newDeck`
 
-Class method. Build a shuffled `Games.Deck` containing all 52 standard
+Class method. Build a shuffled [Games.Deck](Deck) containing all 52 standard
 playing cards (4 suits × 13 ranks) and return it.
 
 ```bash

@@ -71,6 +71,8 @@ deck = Deck.new
 my $rect = Box->new(length => 5, width => 3, height => 7);
 ```
 
+( See [Box](Box) and [Deck](Deck) )
+
 ### Method Calls
 
 ```bash
@@ -105,6 +107,8 @@ class Cube(Box):
 # Ruby
 class Cube < Box; end
 ```
+
+( See [Cube](Cube) )
 
 ### Return Values
 

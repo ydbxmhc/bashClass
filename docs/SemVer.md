@@ -246,6 +246,8 @@ _Require SemVer Math 1.2+   # load SemVer first, then enforce Math version
 _Require Config             # no version constraint — current behavior unchanged
 ```
 
+( See [Math](Math) and [Config](Config) )
+
 A version constraint in `_Require` is any argument that starts with a digit,
 `>`, or `<`, or ends with `+`. Class names start with uppercase letters, so
 there is no ambiguity.

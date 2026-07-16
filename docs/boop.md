@@ -1203,7 +1203,7 @@ preserves its position. Deleting a key removes it from the order.
 
 ### Iterator: Companion Class
 
-Iterator is a stateful cursor for traversing containers. It's defined
+[Iterator](Iterator) is a stateful cursor for traversing containers. It's defined
 inside the Container source file (not a separate file) because it's
 useless without Container.
 

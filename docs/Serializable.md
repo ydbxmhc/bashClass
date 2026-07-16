@@ -168,6 +168,8 @@ $h.addTag "legendary" "divine"
 $h.save /tmp/hero.json    # saves name and level; tags are internal (_tags)
 ```
 
+( See [Taggable](Taggable) )
+
 ---
 
 ## Design Notes

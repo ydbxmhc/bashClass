@@ -1,7 +1,7 @@
 # Data.JSON -- JSON Parser and Serializer
 
 Pure bash JSON parser and serializer. No external dependencies (no jq,
-no python). Parses JSON into a `Collection.Map.Fast` flat store for
+no python). Parses JSON into a [Collection.Map.Fast](Map.Fast) flat store for
 O(1) point lookups via compound keys.
 
 > **NUL bytes.** Bash variables cannot hold or detect NUL bytes. Any JSON

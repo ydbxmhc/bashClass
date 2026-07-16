@@ -14,6 +14,8 @@ boop → Collection.Container → Collection.List → Games.Deck
 . boop Deck           # loads List and Container
 ```
 
+( See [Container](Container) and [List](List) )
+
 ---
 
 ## Games.Card — Generic Base
