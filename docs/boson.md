@@ -322,8 +322,8 @@ Diagnostics print to standard error beginning with `boson:`.
 
 ## NOTES
 
-boson is pure bash, built on the **boop** framework's `Data.JSON`, `Map.Fast`,
-and `Args` classes. It began as a thought experiment — how much of `jq` can a
+boson is pure bash, built on the **boop** framework's [Data.JSON](JSON), [Map.Fast](Map.Fast),
+and [Args](Args) classes. It began as a thought experiment — how much of `jq` can a
 bash OOP standard library express? — and it will never match a C-based JSON
 processor on speed. Its value is reach: it runs anywhere **bash 4.3+** is
 present, with no `jq`, no Python, and no external dependencies, which makes it a

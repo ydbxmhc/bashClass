@@ -166,7 +166,7 @@ probe http://a.host/ http://b.host/   # several URLs, fetched in order
 
 ## NOTES
 
-probe is pure bash, built on the **boop** framework's `Net.Socket` and `Args`
+probe is pure bash, built on the **boop** framework's [Net.Socket](Socket) and [Args](Args)
 classes. It began as a thought experiment — what can an OOP bash standard
 library do with `/dev/tcp` alone? — and it is not competitive on speed or
 completeness with `curl`. Its value is reach: it runs anywhere **bash 4.3+** is

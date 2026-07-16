@@ -123,7 +123,7 @@ smaller) is planned but off by default; see [TODO.md](TODO.md).
 
 ## NOTES
 
-collider is pure bash, built on the **boop** framework's `Args` class. Like the
+collider is pure bash, built on the **boop** framework's [Args](Args) class. Like the
 tools it packages, it began as part of a thought experiment in how far a bash
 OOP standard library can be pushed, and it is not a general-purpose build system
 — it does exactly one job (dependency-correct concatenation) for boop tools.

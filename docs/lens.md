@@ -488,7 +488,7 @@ Errors print a single diagnostic line beginning with `lens:`.
 
 ## NOTES
 
-lens is pure bash, built on the **boop** framework's `Stream` and `Args`
+lens is pure bash, built on the **boop** framework's [Stream](Stream) and [Args](Args)
 classes. It began as a thought experiment — how far can an OOP standard library
 in bash be pushed? — and it will never be competitive on speed with the C tools
 it imitates (`grep`, `cut`, and friends fork once and run native code). What it
