@@ -5,7 +5,7 @@ points: a lightweight `getopts` wrapper for simple scripts, and a
 full GNU-style long-option + subcommand parser for complex CLIs.
 
 Both operate in the caller's scope by default (setting variables
-directly), or return a Config object when used with `into=`.
+directly), or return a [Config](Config) object when used with `into=`.
 
 ## Contents
 

@@ -141,7 +141,7 @@ a packed string like `3-2`. With whitespace, `-2` is a negative
 number and `- 2` is the subtraction operator followed by `2`.
 
 Both evaluators use internal bash arrays as stacks — no dependency on
-the Stack or Container class.
+the [Stack](Stack) or [Container](Container) class.
 
 ## Instance Methods
 

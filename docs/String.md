@@ -491,7 +491,7 @@ flag.
 **`split`** is absent from the current implementation because it changes
 the type of the result from a string to a sequence. The right return
 type for `split` is a `Collection.List`, and that dependency has not
-been established yet. When it is, `split` will return a List object and
+been established yet. When it is, `split` will return a [List](List) object and
 live here alongside the rest of the interface.
 
 **Case-folding for Unicode** is not implemented. `upcase`, `downcase`,

@@ -70,7 +70,7 @@ into=json $c.toJSON
 Restores properties from a JSON object string.
 
 - Skips the `"_class"` key (it is metadata, not a property).
-- Lazy-loads `Data.JSON` on first call — no cost if you only use `toJSON`.
+- Lazy-loads [Data.JSON](JSON) on first call — no cost if you only use `toJSON`.
 - Only sets properties that appear in the JSON; existing properties not in the JSON are unchanged.
 
 ```bash

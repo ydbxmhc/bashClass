@@ -1,7 +1,7 @@
 # Games.PlayingCard
 
 A standard playing card with a suit (♠ ♥ ♦ ♣) and rank (A 2–10 J Q K).
-Extends `Games.Card`.
+Extends [Games.Card](Card).
 
 Knows how to display itself as a short string (`A♠`) or as a 7-line
 ASCII art card with ANSI colour. Does not assign numeric values — point

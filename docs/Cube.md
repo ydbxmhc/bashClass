@@ -1,6 +1,6 @@
 # Cube
 
-A cube — all faces equal. Inherits from Box, overrides face and volume
+A cube — all faces equal. Inherits from [Box](Box), overrides face and volume
 methods to use the single `size` dimension.
 
 ## Dependencies

@@ -114,7 +114,7 @@ into=deck MyCard.newDeck    # deck full of MyCard objects
 
 `boopClass Games.Deck isa:Collection.List has:type`
 
-A List you can shuffle and draw from. No opinion about what's in it.
+A [List](List) you can shuffle and draw from. No opinion about what's in it.
 
 ### Constructor
 

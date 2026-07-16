@@ -527,7 +527,7 @@ the boop framework. Stream implements the complex (Layer 2) path:
 
 **Layer 1 -- the fast path (single-char, used everywhere):**
 - `printf`, parameter expansion, `read -d` -- zero overhead
-- What Map.keys, List.toArray, boop.pass, Config.keys etc. use
+- What [Map](Map).keys, [List](List).toArray, boop.pass, [Config](Config).keys etc. use
 - Single characters are the common case and stay fast
 
 **Layer 2 -- Stream (multi-char capable):**

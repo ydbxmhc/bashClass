@@ -261,7 +261,7 @@ The visual test suite lets you grade each Terminal capability interactively:
 ./tests/visual/test_terminal_visual
 ```
 
-Grade each item `y` (pass) or `n` (fail). Results feed into TestSuite
+Grade each item `y` (pass) or `n` (fail). Results feed into [TestSuite](TestSuite)
 reporting. Run manually — not part of `test_all`.
 
 ---
