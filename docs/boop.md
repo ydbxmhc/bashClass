@@ -313,7 +313,7 @@ need a hook — the core cleanup handles `__boop_static` and wrappers.
 
 ### Cascading Destruction
 
-If your class owns child objects (like Stack owns a List), destroy them
+If your class owns child objects (like [Stack](Stack) owns a [List](List)), destroy them
 in your `_destroy` hook:
 
 ```bash
@@ -424,8 +424,8 @@ into=s $b.toString pretty
 ```
 
 Internal metadata (`class`, `parent`, `methods`, `properties`, `trueClass`)
-is hidden. Only user-defined properties show up. Container subclasses
-(List, Map) override `toString` to show their contents.
+is hidden. Only user-defined properties show up. [Container](Container) subclasses
+(List, [Map](Map)) override `toString` to show their contents.
 
 ### `inspect` — Debug View
 

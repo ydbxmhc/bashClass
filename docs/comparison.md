@@ -184,7 +184,7 @@ costs 100× more than the arithmetic.
 
 bc is faster per operation than boop (~2.5ms fork vs ~4ms boop call) for
 simple arithmetic. boop's advantage is not raw throughput — it's integration:
-a Math object persists across operations, carries scale and sign, and
+a [Math](Math) object persists across operations, carries scale and sign, and
 participates in the class system without needing external tools to be present.
 
 ### Benchmark: Pi
@@ -256,8 +256,8 @@ handful of long-lived objects can ignore it — process exit cleans up.
 ## Collection Operations
 
 @@  Direct timing comparison with Python list / dict operations. Qualitatively:
-- boop List.push / pop: one hash write + array append. Fast relative to dispatch cost.
-- boop Map operations: associative array, insertion-ordered via parallel index array.
+- boop [List](List).push / pop: one hash write + array append. Fast relative to dispatch cost.
+- boop [Map](Map) operations: associative array, insertion-ordered via parallel index array.
 - Python list: C array operations, orders of magnitude faster.
 - The Collection layer is not a performance tool. It is an organizational tool
   for bash scripts that need structured data.

@@ -10,9 +10,9 @@ form (NAME / SYNOPSIS / DESCRIPTION / OPTIONS / EXAMPLES / …) — follow the l
 
 | Tool | Reach for it when… | Built on | Reference |
 |------|--------------------|----------|-----------|
-| **lens** | you'd otherwise chain `head`/`tail`/`grep`/`cut`/`wc` | Stream, Args | [lens.md](lens.md) |
-| **boson** | you need to pull values out of JSON without `jq` | Data.JSON, Map.Fast, Args | [boson.md](boson.md) |
-| **probe** | you need a quick plaintext HTTP request, no curl | Net.Socket, Args | [probe.md](probe.md) |
+| **lens** | you'd otherwise chain `head`/`tail`/`grep`/`cut`/`wc` | [Stream](Stream), [Args](Args) | [lens.md](lens.md) |
+| **boson** | you need to pull values out of JSON without `jq` | [Data.JSON](JSON), [Map.Fast](Map.Fast), Args | [boson.md](boson.md) |
+| **probe** | you need a quick plaintext HTTP request, no curl | [Net.Socket](Socket), Args | [probe.md](probe.md) |
 | **collider** | you want to ship a tool as one portable file | Args | [collider.md](collider.md) |
 
 ---
