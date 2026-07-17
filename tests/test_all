@@ -9,6 +9,7 @@
 #   ./test_all integration      — smoke + integration
 #   TESTSUITE_VERBOSE=1 ./test_all [mode]   — verbose (every PASS line)
 
+
 export TESTSUITE_VERBOSE="${TESTSUITE_VERBOSE:-1}"
 
 __ta_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,6 +22,7 @@ __ta_mode="${1:-all}"
 __ta_log="$(cd "$__ta_dir/.." && pwd)/test_all.log"
 
 {
+date
 rc=0
 
 # ============================================================================
@@ -43,6 +45,7 @@ if [[ "$__ta_mode" == all || "$__ta_mode" == unit ]]; then
             test_eventable_ts test_destroy_ts; do
     printf '\n%s...\n' "$f"
     "$__ta_dir/unit/$f" || rc=1
+    date
   done
 fi
 
@@ -55,6 +58,7 @@ if [[ "$__ta_mode" == all || "$__ta_mode" == integration ]]; then
   for f in test_adversarial_ts test_blackjack; do
     printf '\n%s...\n' "$f"
     "$__ta_dir/integration/$f" || rc=1
+    date
   done
 fi
 
@@ -85,6 +89,7 @@ if [[ -n "$__nc_hits" ]]; then
 else
   printf '  PASS: all variable names follow convention\n'
 fi
+date
 
 # ============================================================================
 # Footer — utility tool tests are NOT part of this run
@@ -102,6 +107,7 @@ printf '  bash tests/tools/test_probe       # needs python (loopback server)\n'
 printf '  bash tests/tools/test_collider    # builds a bundle\n'
 printf '  bash tests/tools/test_installer\n'
 printf '%s\n' '------------------------------------------------------------'
+date
 
 exit $rc
 

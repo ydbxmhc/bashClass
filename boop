@@ -805,16 +805,8 @@ __boop.createAlias() {
   done
 
   # Constructor shorthand
-  if declare -F "${__boop_ca_fqn}.new" >/dev/null; then
-    printf '%s() { _Class=%q %s.new "$@"; }\n' \
-      "$__boop_ca_alias" "$__boop_ca_alias" "$__boop_ca_fqn" \
-      >> "$__boop_ca_tmpfile"
-  else
-    printf '%s() { _Class=%q __boop.new "$@"; }\n' \
-      "$__boop_ca_alias" "$__boop_ca_alias" \
-      >> "$__boop_ca_tmpfile"
-  fi
-
+  declare -F "${__boop_ca_fqn}.new" >/dev/null || __boop_ca_fqn=__boop # last time used, overwrite if no such method
+  printf '%s() { _Class=%q %s.new "$@"; }\n' "$__boop_ca_alias" "$__boop_ca_alias" "$__boop_ca_fqn" >> "$__boop_ca_tmpfile"
   . "$__boop_ca_tmpfile"
   rm -f "$__boop_ca_tmpfile"
 }

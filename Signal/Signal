@@ -115,8 +115,7 @@ __Signal.ensure() {
   fi
 
   if [[ -z "${__Signal_installed[$__Signal__ensure_sig]+set}" ]]; then
-    if trap "__Signal.dispatch '${__Signal__ensure_sig}'" \
-       "$__Signal__ensure_sig"; then
+    if trap "__Signal.dispatch '${__Signal__ensure_sig}'" "$__Signal__ensure_sig"; then
       __Signal_installed[$__Signal__ensure_sig]=1
     else
       (( __Signal_strict )) &&
