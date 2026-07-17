@@ -935,4 +935,34 @@ Checklist:
 
 ---
 
+---
+
+## Collection underflow semantics — _Warn vs _Error (decide, then apply in one pass)
+
+Deferred from the `$_Class` message cleanup. Underflow across the Collection
+family (`List.pop`/`shift`, `Stack`/`Queue` `pop`/`peek`/`dequeue`, and the
+`.Fast` variants) currently calls `_Error` + `return 1`. Earlier discussion
+leaned toward a softer `_Warn` + `return 1` — recoverable, non-fatal under the
+default `_FatalLevel`, only fatal under `_FatalLevel warn`. Decide warning vs
+error, then apply consistently in ONE pass: fix the base (`List.pop`/`shift`)
+and the composed `Stack`/`Queue` + inheriting `.Fast` variants follow. Update
+docs (Stack/List/Queue/Deck/Card) and the "underflow" test-section wording to
+match. Keep the underflow-vs-misuse distinction: the `.Fast` blocked-op stubs
+(`shift` on a stack, `pop` on a queue, random access) are genuine API misuse
+and should stay `_Error`, not become `_Warn`.
+
+## Games.Deck.draw swallows List.pop's return code
+
+`Games.Deck.draw` captures `$_Self.pop` into a local, ignores its exit status,
+then unconditionally `boop.pass`es the (empty) value. Drawing from an empty
+Deck therefore returns "" with exit 0 — no failure signal reaches the caller —
+even though `List.pop` warns/errors and returns non-zero. The docs disagree
+with each other and with reality: `docs/Deck.md` says "exits non-zero if
+empty", `docs/Card.md` says "Crashes if empty"; neither holds. Fix `draw` to
+propagate pop's failure (e.g. `into=card $_Self.pop || return 1`), then
+reconcile both docs. Coordinate with the underflow-semantics decision above —
+whatever `pop` does on empty, `draw` should forward it.
+
+---
+
 [↑ Site map](index)

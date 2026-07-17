@@ -110,7 +110,7 @@ Collection.List.setAt() {
   local -i __Collection_List_setAt_len=0; (( ${#__Collection_List_setAt_arr[@]} )) && __Collection_List_setAt_len=${#__Collection_List_setAt_arr[@]}
   (( __Collection_List_setAt_idx < 0 )) && (( __Collection_List_setAt_idx += __Collection_List_setAt_len ))
   (( __Collection_List_setAt_idx < 0 || __Collection_List_setAt_idx > __Collection_List_setAt_len )) && {
-    _Error "List index out of range: $1 (length: $__Collection_List_setAt_len)"; return 1; }
+    _Error "$_Class index out of range: $1 (length: $__Collection_List_setAt_len)"; return 1; }
   _Trace "setAt: [$__Collection_List_setAt_idx] = '$__Collection_List_setAt_val'"
   __Collection_List_setAt_arr[$__Collection_List_setAt_idx]="$__Collection_List_setAt_val"
 }
@@ -138,7 +138,7 @@ Collection.List.delete() {
   local -i __Collection_List_del_len=0; (( ${#__Collection_List_del_arr[@]} )) && __Collection_List_del_len=${#__Collection_List_del_arr[@]}
   (( __Collection_List_del_idx < 0 )) && (( __Collection_List_del_idx += __Collection_List_del_len ))
   (( __Collection_List_del_idx < 0 || __Collection_List_del_idx >= __Collection_List_del_len )) && {
-    _Error "List index out of range: $1 (length: $__Collection_List_del_len)"; return 1; }
+    _Error "$_Class index out of range: $1 (length: $__Collection_List_del_len)"; return 1; }
   _Debug "delete: [$__Collection_List_del_idx], length now $(( __Collection_List_del_len - 1 ))"
   unset '__Collection_List_del_arr[$__Collection_List_del_idx]'
   __Collection_List_del_arr=("${__Collection_List_del_arr[@]+"${__Collection_List_del_arr[@]}"}")
@@ -224,7 +224,10 @@ Collection.List.pop() {
   local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -n __Collection_List_pop_arr="__boop_data_${_Self}"
   local -i __Collection_List_pop_len=0; (( ${#__Collection_List_pop_arr[@]} )) && __Collection_List_pop_len=${#__Collection_List_pop_arr[@]}
-  (( __Collection_List_pop_len == 0 )) && { _Error "pop from empty List"; return 1; }
+  # $_Class, not a literal "List": the dispatch wrapper sets _Class to the
+  # object's trueClass, so a subclass (isa:List) or a composed owner that
+  # delegates here reports ITS own FQN — no per-class override needed.
+  (( __Collection_List_pop_len == 0 )) && { _Error "pop from empty $_Class"; return 1; }
   local __Collection_List_pop_val="${__Collection_List_pop_arr[-1]}"
   unset '__Collection_List_pop_arr[-1]'
   _Debug "pop: -> '$__Collection_List_pop_val', length now $(( __Collection_List_pop_len - 1 ))"
@@ -244,7 +247,8 @@ Collection.List.shift() {
   local _Class="${_Class:-Collection.List}" _Self="${_Self:-}"
   local -n __Collection_List_shift_arr="__boop_data_${_Self}"
   local -i __Collection_List_shift_len=0; (( ${#__Collection_List_shift_arr[@]} )) && __Collection_List_shift_len=${#__Collection_List_shift_arr[@]}
-  (( __Collection_List_shift_len == 0 )) && { _Error "shift from empty List"; return 1; }
+  # $_Class (runtime FQN), not a literal — see the note on pop above.
+  (( __Collection_List_shift_len == 0 )) && { _Error "shift from empty $_Class"; return 1; }
   local __Collection_List_shift_val="${__Collection_List_shift_arr[0]}"
   __Collection_List_shift_arr=("${__Collection_List_shift_arr[@]:1}")
   _Debug "shift: -> '$__Collection_List_shift_val', length now $(( __Collection_List_shift_len - 1 ))"
@@ -567,7 +571,7 @@ Collection.List.do() {
   read -ra __Collection_List_do_tokens <<< "$__Collection_List_do_raw"
 
   (( ${#__Collection_List_do_tokens[@]} > 0 )) ||
-    { _Error "List.do: empty pipeline"; return 1; }
+    { _Error "$_Class.do: empty pipeline"; return 1; }
 
   _Debug "do: ${#__Collection_List_do_tokens[@]} operation(s)"
 
@@ -581,7 +585,7 @@ Collection.List.do() {
     __Collection_List_do_op="${__Collection_List_do_tok%%:*}"
     __Collection_List_do_cb="${__Collection_List_do_tok#*:}"
     [[ -n "$__Collection_List_do_op" && -n "$__Collection_List_do_cb" && "$__Collection_List_do_op" != "$__Collection_List_do_cb" ]] ||
-      { _Error "List.do: malformed token '$__Collection_List_do_tok' — expected op:callback"; return 1; }
+      { _Error "$_Class.do: malformed token '$__Collection_List_do_tok' — expected op:callback"; return 1; }
 
     _Trace "do: $__Collection_List_do_op:$__Collection_List_do_cb on $__Collection_List_do_current"
 
@@ -604,7 +608,7 @@ Collection.List.do() {
           _Self="$__Collection_List_do_current" _Class=Collection.List \
           Collection.List.reduce "$__Collection_List_do_cb" || __Collection_List_do_rc=$?
         ;;
-      *) _Error "List.do: unknown operation '$__Collection_List_do_op' (expected: filter, map, reduce)"; return 1 ;;
+      *) _Error "$_Class.do: unknown operation '$__Collection_List_do_op' (expected: filter, map, reduce)"; return 1 ;;
     esac
 
     # Destroy the intermediate (but never the original input)

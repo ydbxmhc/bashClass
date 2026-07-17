@@ -35,6 +35,10 @@ Collection.Stack.pop() {
   local _Self="${_Self:-Collection.Stack}" _Class="${_Class:-Collection.Stack}"
   local -n __Collection_Stack_pop_l="__Collection_Stack_list_${_Self}"
   _Trace "pop"
+  # Delegate to the inner List. We override _Self (to the inner list) but
+  # deliberately NOT _Class: leaving _Class as Collection.Stack means List.pop's
+  # diagnostics report THIS stack, not its private List. Rides on dynamic scope
+  # (bash locals are visible to callees) — intentional, not an oversight.
   _Self="$__Collection_Stack_pop_l" Collection.List.pop
 }
 
@@ -43,7 +47,7 @@ Collection.Stack.peek() {
   local -n __Collection_Stack_peek_l="__Collection_Stack_list_${_Self}"
   local __Collection_Stack_peek_len
   into=__Collection_Stack_peek_len _Self="$__Collection_Stack_peek_l" Collection.List.length
-  (( __Collection_Stack_peek_len > 0 )) || { _Error "peek on empty Stack"; return 1; }
+  (( __Collection_Stack_peek_len > 0 )) || { _Error "peek on empty $_Class"; return 1; }
   _Trace "peek"
   _Self="$__Collection_Stack_peek_l" Collection.List.getAt -1
 }
